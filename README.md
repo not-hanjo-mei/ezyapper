@@ -22,8 +22,10 @@ EZyapper is a group chat companion that can understand images, recall past conve
 
 See [Quick Start](docs/QUICK_START.md) for the full walkthrough.
 
+**Precompiled binaries** are available from [GitHub Actions Artifacts](https://github.com/not-hanjo-mei/ezyapper/actions) — download the latest build for your platform if you don't want to compile from source.
+
 ```bash
-# Build it
+# Or build it yourself
 go build -o ezyapper ./cmd/bot
 
 # Run it (edit config.yaml first!)
