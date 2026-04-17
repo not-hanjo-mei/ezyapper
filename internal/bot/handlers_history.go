@@ -1,0 +1,266 @@
+// Package bot provides Discord bot event handlers
+package bot
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"ezyapper/internal/config"
+	"ezyapper/internal/logger"
+	"ezyapper/internal/memory"
+
+	"github.com/bwmarrin/discordgo"
+	openai "github.com/sashabaranov/go-openai"
+)
+
+// UserInfo holds information about a user for mention purposes
+type UserInfo struct {
+	ID       string
+	Username string
+}
+
+// formatMessageXML formats a single message in XML style with UserID and timestamp (UTC)
+func formatMessageXML(username, userID, content string, timestamp time.Time) string {
+	return fmt.Sprintf(`"%s"{UserID=%s,Time=%s}: "%s"`, username, userID, timestamp.UTC().Format(time.RFC3339), content)
+}
+
+// shouldEnrichRecentHistoricalImages checks if recent historical images should be enriched
+func shouldEnrichRecentHistoricalImages(m *discordgo.MessageCreate) bool {
+	if m == nil || m.Message == nil {
+		return false
+	}
+
+	// Replying to a previous message usually means the user is referring to it.
+	if m.Reference() != nil {
+		return true
+	}
+
+	content := strings.ToLower(strings.TrimSpace(m.Content))
+	if content == "" {
+		return false
+	}
+
+	imageKeywords := []string{
+		"image",
+		"img",
+		"photo",
+		"picture",
+		"pic",
+		"screenshot",
+	}
+
+	for _, keyword := range imageKeywords {
+		if strings.Contains(content, keyword) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// buildConversationHistory builds message history from Discord messages
+func (b *Bot) buildConversationHistory(ctx context.Context, messages []*memory.DiscordMessage) []openai.ChatCompletionMessage {
+	var result []openai.ChatCompletionMessage
+	visionDescriber := b.getVisionDescriber()
+
+	// Discord returns messages in reverse chronological order (newest first)
+	// We need to reverse them to get chronological order for the AI
+	for i := len(messages) - 1; i >= 0; i-- {
+		msg := messages[i]
+		role := openai.ChatMessageRoleUser
+		if msg.IsBot {
+			role = openai.ChatMessageRoleAssistant
+		}
+
+		// If message has images, handle based on vision mode
+		if len(msg.ImageURLs) > 0 {
+			switch b.config.AI.Vision.Mode {
+			case config.VisionModeHybrid:
+				// Hybrid mode: describe images with vision model
+				content := msg.Content
+				if visionDescriber != nil {
+					var descriptions []string
+
+					// Check if we have cached descriptions
+					if len(msg.ImageDescriptions) > 0 {
+						descriptions = msg.ImageDescriptions
+						logger.Debugf("[vision] using cached image descriptions for message %s count=%d", msg.ID, len(descriptions))
+					} else if cachedDescriptions, ok := b.getHistoricalImageDescriptions(msg.ID, msg.ImageURLs); ok {
+						descriptions = cachedDescriptions
+						msg.ImageDescriptions = cachedDescriptions
+						logger.Debugf("[vision] using bot cache image descriptions for message %s count=%d", msg.ID, len(descriptions))
+					} else {
+						// Avoid blocking reply generation on cold-start history scans.
+						// Historical images are enriched only when descriptions are already cached.
+						logger.Debugf("[vision] skipping uncached historical image descriptions for message %s", msg.ID)
+					}
+
+					// Add descriptions to content
+					for j, desc := range descriptions {
+						if j < b.config.AI.Vision.MaxImages || b.config.AI.Vision.MaxImages == 0 {
+							content = fmt.Sprintf("%s\n[Image %d: %s]", content, j+1, desc)
+						}
+					}
+				}
+				result = append(result, openai.ChatCompletionMessage{
+					Role:    role,
+					Content: content,
+				})
+
+			case config.VisionModeMultimodal:
+				// Multimodal mode: create multi-content message with images
+				var parts []openai.ChatMessagePart
+				if msg.Content != "" {
+					parts = append(parts, openai.ChatMessagePart{
+						Type: openai.ChatMessagePartTypeText,
+						Text: msg.Content,
+					})
+				}
+				for _, imgURL := range msg.ImageURLs {
+					parts = append(parts, openai.ChatMessagePart{
+						Type: openai.ChatMessagePartTypeImageURL,
+						ImageURL: &openai.ChatMessageImageURL{
+							URL:    imgURL,
+							Detail: openai.ImageURLDetailAuto,
+						},
+					})
+				}
+				result = append(result, openai.ChatCompletionMessage{
+					Role:         role,
+					MultiContent: parts,
+				})
+
+			default:
+				// Text-only mode or unknown mode: ignore images, keep text only
+				result = append(result, openai.ChatCompletionMessage{
+					Role:    role,
+					Content: msg.Content,
+				})
+			}
+		} else {
+			// Text-only message
+			result = append(result, openai.ChatCompletionMessage{
+				Role:    role,
+				Content: msg.Content,
+			})
+		}
+	}
+
+	return result
+}
+
+// buildConversationHistoryText builds formatted conversation history text from Discord messages
+// Returns XML formatted <context> section with previous messages
+// Filters out the current message being processed and marks only the current bot as "Assistant"
+// In hybrid mode, primarily uses cached historical image descriptions; optionally performs
+// tightly bounded on-demand enrichment for the most recent image message.
+func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*memory.DiscordMessage, currentMsgID, botID string, allowOnDemandRecentImageEnrichment bool) string {
+	if len(messages) == 0 {
+		return ""
+	}
+
+	var result strings.Builder
+	result.WriteString("<context>\n")
+
+	// Track the most recent image message for on-demand enrichment
+	var mostRecentImageIndex int = -1
+	visionDescriber := b.getVisionDescriber()
+
+	// Find the most recent image message (excluding current message)
+	for i, msg := range messages {
+		if msg.ID == currentMsgID {
+			continue
+		}
+		if len(msg.ImageURLs) > 0 {
+			mostRecentImageIndex = i
+			break // Found the most recent
+		}
+	}
+
+	// Process messages and build history
+	for i, msg := range messages {
+		// Skip the current message being processed
+		if msg.ID == currentMsgID {
+			continue
+		}
+
+		// Determine role - only mark current bot as "Assistant", everyone else is "User"
+		role := "User"
+		if msg.IsBot && msg.AuthorID == botID {
+			role = "Assistant"
+		}
+
+		// Build content with optional image descriptions
+		content := msg.Content
+
+		// Handle images based on vision mode
+		if len(msg.ImageURLs) > 0 && b.config.AI.Vision.Mode != config.VisionModeTextOnly {
+			// Check if this is the most recent image message and on-demand enrichment is allowed
+			isMostRecentImage := (i == mostRecentImageIndex && allowOnDemandRecentImageEnrichment)
+
+			var descriptions []string
+			haveCachedDescriptions := false
+
+			// Try to get cached descriptions first
+			if len(msg.ImageDescriptions) > 0 {
+				descriptions = msg.ImageDescriptions
+				haveCachedDescriptions = true
+				logger.Debugf("[history] using memory-cached descriptions for message %s", msg.ID)
+			} else if cached, ok := b.getHistoricalImageDescriptions(msg.ID, msg.ImageURLs); ok {
+				descriptions = cached
+				haveCachedDescriptions = true
+				logger.Debugf("[history] using bot-cache descriptions for message %s", msg.ID)
+			}
+
+			// On-demand enrichment for most recent image only
+			if isMostRecentImage && !haveCachedDescriptions && visionDescriber != nil {
+				logger.Debugf("[history] performing on-demand enrichment for most recent image message %s", msg.ID)
+				freshDescriptions, err := visionDescriber.DescribeImages(ctx, msg.ImageURLs)
+				if err == nil {
+					descriptions = freshDescriptions
+					// Cache for future use
+					b.setHistoricalImageDescriptions(msg.ID, msg.ImageURLs, descriptions)
+					haveCachedDescriptions = true
+				} else {
+					logger.Warnf("[history] on-demand enrichment failed for message %s: %v", msg.ID, err)
+				}
+			}
+
+			// Add image descriptions to content if available
+			if haveCachedDescriptions {
+				for j, desc := range descriptions {
+					if j < b.config.AI.Vision.MaxImages || b.config.AI.Vision.MaxImages == 0 {
+						content = fmt.Sprintf("%s\n[Image %d: %s]", content, j+1, desc)
+					}
+				}
+			}
+		}
+
+		// Write formatted message
+		result.WriteString(fmt.Sprintf("  [%s] %s (ID:%s): %s\n", role, msg.Username, msg.AuthorID, content))
+	}
+
+	result.WriteString("</context>")
+
+	return result.String()
+}
+
+// collectRecentUsers collects unique users from recent messages
+func (b *Bot) collectRecentUsers(messages []*memory.DiscordMessage) []UserInfo {
+	seen := make(map[string]bool)
+	var users []UserInfo
+
+	for _, msg := range messages {
+		if !seen[msg.AuthorID] {
+			seen[msg.AuthorID] = true
+			users = append(users, UserInfo{
+				ID:       msg.AuthorID,
+				Username: msg.Username,
+			})
+		}
+	}
+
+	return users
+}

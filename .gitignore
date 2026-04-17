@@ -1,0 +1,59 @@
+# Binaries
+ezyapper
+bot
+!bot/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+./plugins/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment (secrets)
+.env
+*.env.local
+config.yaml
+
+# Data & Logs
+data/
+logs/
+*.db
+*.db-journal
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+build/
+cover
+ezyapper-*
+temp.json
+test-image.png
+build.ps1
+
+# Local tool/runtime scratch
+.sisyphus/
+
+# AI
+AGENTS.md
+README_FIELDTEST.md

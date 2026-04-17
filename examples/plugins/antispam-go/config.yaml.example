@@ -1,0 +1,4 @@
+max_messages: 6
+time_window_seconds: 10
+ignore_bots: true
+log_detection: true

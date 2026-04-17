@@ -1,0 +1,57 @@
+name: build
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    name: Build ${{ matrix.goos }}-${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            artifact_name: ezyapper-linux-amd64
+            binary_name: ezyapper-linux-amd64
+          - goos: windows
+            goarch: amd64
+            artifact_name: ezyapper-windows-amd64
+            binary_name: ezyapper-windows-amd64.exe
+          - goos: darwin
+            goarch: amd64
+            artifact_name: ezyapper-darwin-amd64
+            binary_name: ezyapper-darwin-amd64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build binary
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -trimpath -o "${{ matrix.binary_name }}" ./cmd/bot
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.binary_name }}
+          if-no-files-found: error

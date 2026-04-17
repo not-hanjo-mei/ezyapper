@@ -1,0 +1,10 @@
+base_url: "https://api.moonshot.cn/v1"
+api_key: "YOUR_MOONSHOT_API_KEY"
+timeout_seconds: 30
+
+# Formula URI supports short name and will be normalized:
+# - web-search -> moonshot/web-search:latest
+# - moonshot/convert -> moonshot/convert:latest
+formulas:
+  - "moonshot/web-search:latest"
+  - "moonshot/fetch:latest"

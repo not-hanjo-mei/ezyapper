@@ -1,0 +1,10 @@
+# Datetime plugin configuration
+# If omitted, plugin uses system timezone.
+
+# Option 1: IANA timezone (DST-aware in Go runtime)
+# timezone: "Asia/Shanghai"
+
+# Option 2: Fixed offset timezone
+# timezone: "UTC+09"
+# utc_offset_hours: 9
+# utc_offset_minutes: 540

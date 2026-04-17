@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EZyapper Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">🤖 EZyapper</div>
+        <div class="nav-links">
+            <a href="#" class="nav-link active" data-tab="dashboard">Dashboard</a>
+            <a href="#" class="nav-link" data-tab="config">Configuration</a>
+            <a href="#" class="nav-link" data-tab="channels">Channels</a>
+            <a href="#" class="nav-link" data-tab="plugins">Plugins</a>
+            <a href="#" class="nav-link" data-tab="logs">Logs</a>
+        </div>
+        <div class="nav-user">
+            <span id="username">guest</span>
+            <button id="loginBtn" class="btn btn-sm">Login</button>
+            <button id="logoutBtn" class="btn btn-sm">Logout</button>
+        </div>
+    </nav>
+
+    <main class="container">
+        <!-- Dashboard Tab -->
+        <section id="dashboard-tab" class="tab-content active">
+            <h2>Dashboard</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Total Memories</h3>
+                    <p class="stat-value" id="stat-memories">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Users</h3>
+                    <p class="stat-value" id="stat-users">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Messages</h3>
+                    <p class="stat-value" id="stat-messages">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Uptime</h3>
+                    <p class="stat-value status-online" id="stat-uptime">0s</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Configuration Tab -->
+        <section id="config-tab" class="tab-content">
+            <h2>Configuration</h2>
+            
+            <div class="config-section">
+                <h3>Discord Settings</h3>
+                <form id="discord-config-form">
+                    <div class="form-group">
+                        <label for="bot-name">Bot Name</label>
+                        <input type="text" id="bot-name" name="bot_name" placeholder="EZyapper">
+                    </div>
+                    <div class="form-group">
+                        <label for="reply-percentage">Reply Probability (%)</label>
+                        <input type="number" id="reply-percentage" name="reply_percentage" min="0" max="100" step="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="cooldown">Cooldown (seconds)</label>
+                        <input type="number" id="cooldown" name="cooldown_seconds" min="0">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save Discord Settings</button>
+                </form>
+            </div>
+
+            <div class="config-section">
+                <h3>AI Settings</h3>
+                <form id="ai-config-form">
+                    <div class="form-group">
+                        <label for="model">Model</label>
+                        <input type="text" id="model" name="model" placeholder="gpt-4o-mini">
+                    </div>
+                    <div class="form-group">
+                        <label for="vision-model">Vision Model</label>
+                        <input type="text" id="vision-model" name="vision_model" placeholder="gpt-4o">
+                    </div>
+                    <div class="form-group">
+                        <label for="max-tokens">Max Tokens</label>
+                        <input type="number" id="max-tokens" name="max_tokens" min="1" max="8192">
+                    </div>
+                    <div class="form-group">
+                        <label for="temperature">Temperature</label>
+                        <input type="number" id="temperature" name="temperature" min="0" max="2" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label for="system-prompt">System Prompt</label>
+                        <textarea id="system-prompt" name="system_prompt" rows="6"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save AI Settings</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- Channels Tab -->
+        <section id="channels-tab" class="tab-content">
+            <h2>Channel Configuration</h2>
+            
+            <div class="channel-section">
+                <h3>Blacklist</h3>
+                <div class="list-container">
+                    <div id="user-blacklist" class="list-group">
+                        <h4>User Blacklist</h4>
+                        <ul id="user-blacklist-items"></ul>
+                        <div class="add-form">
+                            <input type="text" id="new-blacklist-user" placeholder="User ID">
+                            <button class="btn btn-sm" onclick="addToBlacklist('user')">Add</button>
+                        </div>
+                    </div>
+                    <div id="channel-blacklist" class="list-group">
+                        <h4>Channel Blacklist</h4>
+                        <ul id="channel-blacklist-items"></ul>
+                        <div class="add-form">
+                            <input type="text" id="new-blacklist-channel" placeholder="Channel ID">
+                            <button class="btn btn-sm" onclick="addToBlacklist('channel')">Add</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="channel-section">
+                <h3>Whitelist</h3>
+                <div class="list-group">
+                    <h4>Channel Whitelist (empty = all channels)</h4>
+                    <ul id="whitelist-items"></ul>
+                    <div class="add-form">
+                        <input type="text" id="new-whitelist-channel" placeholder="Channel ID">
+                        <button class="btn btn-sm" onclick="addToWhitelist()">Add</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Plugins Tab -->
+        <section id="plugins-tab" class="tab-content">
+            <h2>Plugins</h2>
+            <div id="plugins-list" class="plugins-grid">
+                <!-- Plugins will be loaded here -->
+            </div>
+        </section>
+
+        <!-- Logs Tab -->
+        <section id="logs-tab" class="tab-content">
+            <h2>Logs</h2>
+            <div class="logs-controls">
+                <label for="log-lines">Lines:</label>
+                <input type="number" id="log-lines" value="100" min="10" max="1000">
+                <button class="btn" onclick="loadLogs()">Refresh</button>
+            </div>
+            <div id="logs-container" class="logs-container">
+                <pre id="logs-content">Loading logs...</pre>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>EZyapper | Tag: <span id="build-tag">loading...</span> | <a href="/health">Health Check</a></p>
+    </footer>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

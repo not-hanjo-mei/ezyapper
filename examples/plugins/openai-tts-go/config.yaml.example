@@ -1,0 +1,58 @@
+# OpenAI-compatible TTS plugin configuration.
+# This plugin uses strict config validation with no implicit defaults.
+
+# Required: OpenAI-compatible API base URL.
+# Examples:
+# - https://api.openai.com/v1
+# - https://your-provider.example.com/v1
+api_base_url: "https://api.openai.com/v1"
+
+# Required: API key for your provider.
+api_key: "YOUR_API_KEY"
+
+# Required TTS generation parameters.
+model: "gpt-4o-mini-tts"
+voice: "alloy"
+format: "mp3" # mp3 | opus | aac | flac | wav | pcm
+speed: 1.0 # (0, 4]
+
+# Required: HTTP timeout in seconds.
+timeout_seconds: 60
+
+# Required: output directory for generated audio files.
+# Relative paths are resolved from the plugin directory.
+output_dir: "generated"
+
+# Required: maximum accepted text length for one tool call.
+max_text_chars: 4000
+
+# Required: before_send upload threshold.
+# Supports B/KB/MB/GB (for example: 512KB, 1MB, 4MB).
+# <= this threshold: plugin returns in-memory bytes.
+# > this threshold: plugin writes temp file and returns file path.
+upload_memory_threshold: "1MB"
+
+# Required block: rewriter.enabled must be explicitly true/false.
+rewriter:
+  enabled: false
+
+  # Required when enabled=true.
+  api_base_url: "https://api.openai.com/v1"
+  api_key: "YOUR_REWRITER_API_KEY"
+  model: "gpt-4o-mini"
+  timeout_seconds: 30
+  retry_count: 2
+  max_tokens: 512
+  temperature: 0.2
+  prompt: |
+    You are a text-to-speech rewriting assistant.
+    The user message is a JSON payload with keys: input, instructions.
+    Keep semantic meaning and speaking intent.
+    Return JSON only.
+    If instructions are needed, use: {"input":"...","instructions":"..."}
+    # If the target TTS model does not support instructions, use: {"input":"..."}
+    Do not output markdown or extra text.
+
+# Optional extra headers (must not override Authorization).
+# headers:
+#   OpenAI-Organization: "org_xxx"

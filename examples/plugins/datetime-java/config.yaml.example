@@ -1,0 +1,7 @@
+# Datetime Java plugin configuration
+# If omitted, plugin uses Java system timezone.
+
+# Fixed timezone label and offset.
+timezone: "Asia/Pyongyang"
+utc_offset_hours: 9
+# utc_offset_minutes: 540

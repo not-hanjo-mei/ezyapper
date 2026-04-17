@@ -1,0 +1,20 @@
+{
+  "runtime": "command",
+  "name": "datetime-java",
+  "version": "0.0.0",
+  "author": "EZyapper",
+  "description": "Java implementation of current datetime tool",
+  "priority": 10,
+  "tools": [
+    {
+      "name": "get_current_datetime",
+      "description": "Get the current date and time",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      },
+      "command": "java",
+      "args": ["-cp", "./datetime-java.jar", "DatetimeTool", "get_current_datetime"]
+    }
+  ]
+}

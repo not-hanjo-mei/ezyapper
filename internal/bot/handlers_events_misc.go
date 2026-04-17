@@ -1,0 +1,111 @@
+package bot
+
+import (
+	"context"
+
+	"ezyapper/internal/config"
+	"ezyapper/internal/logger"
+
+	"github.com/bwmarrin/discordgo"
+)
+
+// onMessageUpdate handles message edit events.
+func (b *Bot) onMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) {
+	if m == nil || m.Message == nil {
+		logger.Warnf("[edit] received nil MESSAGE_UPDATE payload, skipping")
+		return
+	}
+
+	if s == nil || s.State == nil || s.State.User == nil {
+		logger.Warnf("[edit] session user state unavailable for message=%s, skipping", m.ID)
+		return
+	}
+
+	if m.Author == nil {
+		logger.Warnf("[edit] MESSAGE_UPDATE missing author: id=%s channel=%s guild=%s, skipping", m.ID, m.ChannelID, m.GuildID)
+		return
+	}
+
+	// Ignore bot's own message edits.
+	if m.Author.ID == s.State.User.ID {
+		return
+	}
+
+	logger.Infof("[message edited] id=%s author=%s new_content=%q", m.ID, m.Author.Username, m.Content)
+
+	// Get the processing message.
+	oldPm := b.getProcessingMessage(m.ID)
+	if oldPm == nil {
+		// Message not being processed, ignore edit.
+		logger.Debugf("[edit] Message %s not in processing queue, ignoring", m.ID)
+		return
+	}
+
+	logger.Infof("[edit] Found processing message %s in phase %d, old_content=%q", m.ID, oldPm.GetPhase(), oldPm.GetContent())
+
+	if !b.handleEditedMessage(oldPm, m.Content) {
+		return
+	}
+	b.removeProcessingMessage(m.ID)
+
+	// Create new processing message for reprocessing.
+	// This ensures clean state and avoids race conditions with old goroutine.
+	ctx := context.Background()
+	messageCtx, cancel := context.WithCancel(ctx)
+	newPm := b.registerProcessingMessage(m.ID, m.ChannelID, m.Author.ID, m.Content)
+	newPm.CancelFunc = cancel
+	newPm.SetPhase(PhaseDeciding)
+
+	// Re-evaluate if we should respond.
+	// Create a temporary MessageCreate from MessageUpdate.
+	// Make sure to use the edited content.
+	tempMsg := &discordgo.MessageCreate{
+		Message: m.Message,
+	}
+	// Explicitly ensure Content is set from the edited message.
+	if tempMsg.Message != nil {
+		tempMsg.Message.Content = m.Content
+	}
+
+	logger.Infof("[reprocess] Re-evaluating message %s with content=%q", m.ID, tempMsg.Content)
+	shouldRespond, reason := b.ShouldRespond(messageCtx, tempMsg)
+	logger.Infof("[reprocess] Message %s re-decision: shouldRespond=%v, reason=%s", m.ID, shouldRespond, reason)
+
+	if !shouldRespond {
+		b.clearProcessingMessage(newPm, m.ID)
+		cancel()
+		return
+	}
+
+	// Re-process with updated content.
+	if b.config.AI.Vision.Mode == config.VisionModeTextOnly {
+		go b.processMessageWithoutImages(messageCtx, s, tempMsg, newPm)
+	} else {
+		go b.processMessage(messageCtx, s, tempMsg, newPm)
+	}
+}
+
+// onMessageReactionAdd handles reaction events.
+func (b *Bot) onMessageReactionAdd(s *discordgo.Session, r *discordgo.MessageReactionAdd) {
+	if r == nil || s == nil || s.State == nil || s.State.User == nil {
+		return
+	}
+
+	// Ignore bot's own reactions.
+	if r.UserID == s.State.User.ID {
+		return
+	}
+
+	// Maybe respond to certain reactions.
+	// This could be extended for interactive features.
+}
+
+// onGuildJoin handles joining a new guild.
+func (b *Bot) onGuildJoin(s *discordgo.Session, g *discordgo.GuildCreate) {
+	logger.Infof("Joined guild: %s (%d members)", g.Name, g.MemberCount)
+}
+
+// onGuildLeave handles leaving a guild.
+func (b *Bot) onGuildLeave(s *discordgo.Session, g *discordgo.GuildDelete) {
+	logger.Infof("Left guild: %s", g.ID)
+}

@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  ezyapper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ezyapper
+    restart: unless-stopped
+    
+    environment:
+      # Pass EZYAPPER_ prefixed variables directly from .env
+      - EZYAPPER_DISCORD_TOKEN=${EZYAPPER_DISCORD_TOKEN}
+      - EZYAPPER_AI_API_KEY=${EZYAPPER_AI_API_KEY}
+      - EZYAPPER_AI_API_BASE_URL=${EZYAPPER_AI_API_BASE_URL:-https://api.openai.com/v1}
+      - EZYAPPER_WEB_PASSWORD=${EZYAPPER_WEB_PASSWORD:-changeme123}
+      - EZYAPPER_DISCORD_BOT_NAME=${EZYAPPER_DISCORD_BOT_NAME:-EZyapper}
+      - TZ=${TZ:-UTC}
+    
+    volumes:
+      - ezyapper-logs:/app/logs
+      - ./config.yaml:/app/config.yaml:ro
+    
+    ports:
+      - "${EZYAPPER_WEB_PORT:-8080}:8080"
+    
+    depends_on:
+      - qdrant
+    
+    networks:
+      - bot-network
+    
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  qdrant:
+    image: qdrant/qdrant:v1.17.0
+    container_name: ezyapper-qdrant
+    restart: unless-stopped
+    
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    
+    networks:
+      - bot-network
+    
+    # Do not expose ports to host - internal access only
+    # The bot connects via the docker network
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+networks:
+  bot-network:
+    driver: bridge
+
+volumes:
+  ezyapper-logs:
+    driver: local
+  qdrant_storage:
+    driver: local

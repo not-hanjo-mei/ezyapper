@@ -1,0 +1,27 @@
+{
+  "runtime": "command",
+  "name": "clank-o-meter-zig",
+  "version": "0.0.0",
+  "author": "EZyapper",
+  "description": "Zig implementation of deterministic clank-o-meter scoring",
+  "priority": 10,
+  "tools": [
+    {
+      "name": "get_clank_o_meter",
+      "description": "Return deterministic score (0-100) for a Discord user ID",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "description": "Discord numeric user ID"
+          }
+        },
+        "required": ["user_id"]
+      },
+      "command": "./clank-o-meter-zig",
+      "args": ["get_clank_o_meter"],
+      "arg_keys": ["user_id"]
+    }
+  ]
+}
