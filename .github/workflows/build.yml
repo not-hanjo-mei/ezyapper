@@ -23,14 +23,26 @@ jobs:
             goarch: amd64
             artifact_name: ezyapper-linux-amd64
             binary_name: ezyapper-linux-amd64
+          - goos: linux
+            goarch: arm64
+            artifact_name: ezyapper-linux-arm64
+            binary_name: ezyapper-linux-arm64
           - goos: windows
             goarch: amd64
             artifact_name: ezyapper-windows-amd64
             binary_name: ezyapper-windows-amd64.exe
+          - goos: windows
+            goarch: arm64
+            artifact_name: ezyapper-windows-arm64
+            binary_name: ezyapper-windows-arm64.exe
           - goos: darwin
             goarch: amd64
             artifact_name: ezyapper-darwin-amd64
             binary_name: ezyapper-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            artifact_name: ezyapper-darwin-arm64
+            binary_name: ezyapper-darwin-arm64
 
     steps:
       - name: Checkout
@@ -54,4 +66,140 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.binary_name }}
+          if-no-files-found: error
+
+  build-go-plugins:
+    name: Build Go plugins ${{ matrix.goos }}-${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build Go plugin binaries
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+
+          ext=""
+          if [ "$GOOS" = "windows" ]; then
+            ext=".exe"
+          fi
+
+          out_dir="dist/go-plugins/${GOOS}-${GOARCH}"
+          mkdir -p "$out_dir"
+
+          go build -trimpath -o "$out_dir/antispam-plugin${ext}" ./examples/plugins/antispam-go
+          go build -trimpath -o "$out_dir/clank-o-meter-plugin${ext}" ./examples/plugins/clank-o-meter-go
+          go build -trimpath -o "$out_dir/datetime-plugin${ext}" ./examples/plugins/datetime-go
+          go build -trimpath -o "$out_dir/kimi-tools-plugin${ext}" ./examples/plugins/kimi-tools-go
+          go build -trimpath -o "$out_dir/openai-tts-plugin${ext}" ./examples/plugins/openai-tts-go
+          go build -trimpath -o "$out_dir/systemspec-plugin${ext}" ./examples/plugins/systemspec-go
+
+      - name: Upload Go plugin artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-plugins-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/go-plugins/${{ matrix.goos }}-${{ matrix.goarch }}
+          if-no-files-found: error
+
+  build-command-plugins:
+    name: Build command plugins ${{ matrix.target_name }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target_name: linux-amd64
+            zig_target: x86_64-linux-gnu
+            ext: ""
+            needs_advapi32: "false"
+          - target_name: linux-arm64
+            zig_target: aarch64-linux-gnu
+            ext: ""
+            needs_advapi32: "false"
+          - target_name: windows-amd64
+            zig_target: x86_64-windows-gnu
+            ext: .exe
+            needs_advapi32: "true"
+          - target_name: windows-arm64
+            zig_target: aarch64-windows-gnu
+            ext: .exe
+            needs_advapi32: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: "0.13.0"
+
+      - name: Build Zig/C command plugin binaries
+        run: |
+          set -euo pipefail
+
+          out_root="dist/command-plugins/${{ matrix.target_name }}"
+          mkdir -p "$out_root/clank-o-meter-zig" "$out_root/datetime-zig" "$out_root/systemspec-c"
+
+          cp ./examples/plugins/clank-o-meter-zig/plugin.json "$out_root/clank-o-meter-zig/plugin.json"
+          cp ./examples/plugins/datetime-zig/plugin.json "$out_root/datetime-zig/plugin.json"
+          cp ./examples/plugins/systemspec-c/plugin.json "$out_root/systemspec-c/plugin.json"
+
+          zig build-exe ./examples/plugins/clank-o-meter-zig/main.zig \
+            -O ReleaseSmall \
+            -fstrip \
+            -target ${{ matrix.zig_target }} \
+            -femit-bin="$out_root/clank-o-meter-zig/clank-o-meter-zig${{ matrix.ext }}"
+
+          zig build-exe ./examples/plugins/datetime-zig/main.zig \
+            -O ReleaseSmall \
+            -fstrip \
+            -target ${{ matrix.zig_target }} \
+            -femit-bin="$out_root/datetime-zig/datetime-zig${{ matrix.ext }}"
+
+          if [ "${{ matrix.needs_advapi32 }}" = "true" ]; then
+            zig cc -O2 -s -target ${{ matrix.zig_target }} \
+              -o "$out_root/systemspec-c/systemspec-c${{ matrix.ext }}" \
+              ./examples/plugins/systemspec-c/main.c \
+              -ladvapi32
+          else
+            zig cc -O2 -s -target ${{ matrix.zig_target }} \
+              -o "$out_root/systemspec-c/systemspec-c${{ matrix.ext }}" \
+              ./examples/plugins/systemspec-c/main.c
+          fi
+
+      - name: Upload command plugin artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: command-plugins-${{ matrix.target_name }}
+          path: dist/command-plugins/${{ matrix.target_name }}
           if-no-files-found: error
