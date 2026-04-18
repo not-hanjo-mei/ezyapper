@@ -7,7 +7,9 @@ bot
 *.dll
 *.so
 *.dylib
-./plugins/
+plugins/
+plugins_bak/
+!examples/plugins/
 
 # Test binary, built with `go test -c`
 *.test
