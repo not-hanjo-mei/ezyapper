@@ -311,249 +311,243 @@ func Load(configPath string) (*Config, error) {
 	return &cfg, nil
 }
 
-func validate(cfg *Config) error {
-	var errs []string
-
-	if cfg.Discord.Token == "" {
-		errs = append(errs, "discord.token is required")
+func requireNonEmpty(val string, path string, errs *[]string) {
+	if val == "" {
+		*errs = append(*errs, path+" is required")
 	}
+}
 
-	if cfg.Discord.BotName == "" {
-		errs = append(errs, "discord.bot_name is required")
+func requirePositive(val int, path string, errs *[]string) {
+	if val <= 0 {
+		*errs = append(*errs, path+" must be greater than 0")
 	}
+}
 
-	if cfg.Discord.ReplyPercentage < 0 || cfg.Discord.ReplyPercentage > 1 {
-		errs = append(errs, "discord.reply_percentage must be between 0 and 1")
-	}
+func validateCore(cfg *Config, errs *[]string) {
+	// Core validation is handled by individual validators (discord, ai, decision)
+}
 
-	if cfg.Discord.CooldownSeconds <= 0 {
-		errs = append(errs, "discord.cooldown_seconds must be greater than 0")
+func validateAI(cfg *Config, errs *[]string) {
+	requireNonEmpty(cfg.AI.APIBaseURL, "ai.api_base_url", errs)
+	requireNonEmpty(cfg.AI.APIKey, "ai.api_key", errs)
+	requireNonEmpty(cfg.AI.Model, "ai.model", errs)
+	requirePositive(cfg.AI.MaxTokens, "ai.max_tokens", errs)
+	if cfg.AI.Temperature < 0 || cfg.AI.Temperature > 2 {
+		*errs = append(*errs, "ai.temperature must be between 0 and 2")
 	}
+	requireNonEmpty(cfg.AI.SystemPrompt, "ai.system_prompt", errs)
+	requirePositive(cfg.AI.RetryCount, "ai.retry_count", errs)
+	requirePositive(cfg.AI.Timeout, "ai.timeout", errs)
+}
 
-	if cfg.Discord.MaxResponsesPerMin <= 0 {
-		errs = append(errs, "discord.max_responses_per_minute must be greater than 0")
-	}
-
-	if cfg.AI.APIBaseURL == "" {
-		errs = append(errs, "ai.api_base_url is required")
-	}
-
-	if cfg.AI.APIKey == "" {
-		errs = append(errs, "ai.api_key is required")
-	}
-
-	if cfg.AI.Model == "" {
-		errs = append(errs, "ai.model is required")
-	}
-
-	if cfg.AI.Vision.Mode == "" {
-		errs = append(errs, "ai.vision.mode is required (text_only, hybrid, or multimodal)")
-	}
+func validateVision(cfg *Config, errs *[]string) {
+	requireNonEmpty(string(cfg.AI.Vision.Mode), "ai.vision.mode", errs)
 	validVisionModes := map[VisionMode]bool{
 		VisionModeTextOnly:   true,
 		VisionModeHybrid:     true,
 		VisionModeMultimodal: true,
 	}
 	if !validVisionModes[cfg.AI.Vision.Mode] {
-		errs = append(errs, "ai.vision.mode must be one of: text_only, hybrid, multimodal")
+		*errs = append(*errs, "ai.vision.mode must be one of: text_only, hybrid, multimodal")
 	}
-
 	if cfg.AI.Vision.Mode != VisionModeTextOnly && cfg.AI.VisionModel == "" {
-		errs = append(errs, "ai.vision_model is required when vision.mode is not text_only")
+		*errs = append(*errs, "ai.vision_model is required when vision.mode is not text_only")
 	}
-
 	if cfg.AI.Vision.Mode != VisionModeTextOnly && cfg.AI.Vision.MaxImages <= 0 {
-		errs = append(errs, "ai.vision.max_images must be greater than 0")
+		*errs = append(*errs, "ai.vision.max_images must be greater than 0")
 	}
-
 	if cfg.AI.Vision.Mode == VisionModeHybrid && cfg.AI.Vision.DescriptionPrompt == "" {
-		errs = append(errs, "ai.vision.description_prompt is required when vision.mode is hybrid")
+		*errs = append(*errs, "ai.vision.description_prompt is required when vision.mode is hybrid")
 	}
+}
 
-	if cfg.AI.MaxTokens <= 0 {
-		errs = append(errs, "ai.max_tokens must be greater than 0")
+func validateDiscord(cfg *Config, errs *[]string) {
+	requireNonEmpty(cfg.Discord.Token, "discord.token", errs)
+	requireNonEmpty(cfg.Discord.BotName, "discord.bot_name", errs)
+	if cfg.Discord.ReplyPercentage < 0 || cfg.Discord.ReplyPercentage > 1 {
+		*errs = append(*errs, "discord.reply_percentage must be between 0 and 1")
 	}
+}
 
-	if cfg.AI.Temperature < 0 || cfg.AI.Temperature > 2 {
-		errs = append(errs, "ai.temperature must be between 0 and 2")
-	}
-
-	if cfg.AI.SystemPrompt == "" {
-		errs = append(errs, "ai.system_prompt is required")
-	}
-
-	if cfg.AI.RetryCount <= 0 {
-		errs = append(errs, "ai.retry_count must be greater than 0")
-	}
-
-	if cfg.AI.Timeout <= 0 {
-		errs = append(errs, "ai.timeout must be greater than 0")
-	}
-
-	if cfg.Memory.ConsolidationInterval <= 0 {
-		errs = append(errs, "memory.consolidation_interval must be greater than 0")
-	}
-
-	if cfg.Memory.ShortTermLimit <= 0 {
-		errs = append(errs, "memory.short_term_limit must be greater than 0")
-	}
-
-	if cfg.Memory.Retrieval.TopK < 0 {
-		errs = append(errs, "memory.retrieval.top_k must be greater than or equal to 0")
-	}
-
-	if cfg.Memory.Retrieval.MinScore < 0 || cfg.Memory.Retrieval.MinScore > 1 {
-		errs = append(errs, "memory.retrieval.min_score must be between 0 and 1")
-	}
-
-	if cfg.Memory.Consolidation.Enabled && cfg.Memory.Consolidation.MaxMessages <= 0 {
-		errs = append(errs, "memory.consolidation.max_messages must be greater than 0 when consolidation is enabled")
-	}
-	if cfg.Memory.Consolidation.Enabled && cfg.Memory.Consolidation.SystemPrompt == "" {
-		errs = append(errs, "memory.consolidation.system_prompt is required when consolidation is enabled")
-	}
-
+func validateQdrant(cfg *Config, errs *[]string) {
 	memoryEnabled := cfg.Memory.Retrieval.TopK > 0 || cfg.Memory.Consolidation.Enabled
-	if memoryEnabled {
-		if cfg.Embedding.Model == "" {
-			errs = append(errs, "embedding.model is required when memory retrieval or consolidation is enabled")
-		}
-		if cfg.Embedding.RetryCount < 0 {
-			errs = append(errs, "embedding.retry_count must be greater than or equal to 0")
-		}
-		if cfg.Embedding.Timeout <= 0 {
-			errs = append(errs, "embedding.timeout must be greater than 0 when memory retrieval or consolidation is enabled")
-		}
-
-		if cfg.Qdrant.Host == "" {
-			errs = append(errs, "qdrant.host is required when memory retrieval or consolidation is enabled")
-		}
-		if cfg.Qdrant.Port <= 0 {
-			errs = append(errs, "qdrant.port must be greater than 0 when memory retrieval or consolidation is enabled")
-		}
-		if cfg.Qdrant.VectorSize <= 0 {
-			errs = append(errs, "qdrant.vector_size must be greater than 0 when memory retrieval or consolidation is enabled")
-		}
-
-		expectedVectorSize := expectedEmbeddingVectorSize(cfg.Embedding.Model)
-		if expectedVectorSize > 0 && cfg.Qdrant.VectorSize > 0 && cfg.Qdrant.VectorSize != expectedVectorSize {
-			errs = append(errs, fmt.Sprintf("qdrant.vector_size (%d) must match embedding.model %q size (%d)", cfg.Qdrant.VectorSize, cfg.Embedding.Model, expectedVectorSize))
-		}
+	if !memoryEnabled {
+		return
 	}
+	requireNonEmpty(cfg.Embedding.Model, "embedding.model", errs)
+	if cfg.Embedding.RetryCount < 0 {
+		*errs = append(*errs, "embedding.retry_count must be greater than or equal to 0")
+	}
+	if cfg.Embedding.Timeout <= 0 {
+		*errs = append(*errs, "embedding.timeout must be greater than 0 when memory retrieval or consolidation is enabled")
+	}
+	requireNonEmpty(cfg.Qdrant.Host, "qdrant.host", errs)
+	if cfg.Qdrant.Port <= 0 {
+		*errs = append(*errs, "qdrant.port must be greater than 0 when memory retrieval or consolidation is enabled")
+	}
+	if cfg.Qdrant.VectorSize <= 0 {
+		*errs = append(*errs, "qdrant.vector_size must be greater than 0 when memory retrieval or consolidation is enabled")
+	}
+	expectedVectorSize := expectedEmbeddingVectorSize(cfg.Embedding.Model)
+	if expectedVectorSize > 0 && cfg.Qdrant.VectorSize > 0 && cfg.Qdrant.VectorSize != expectedVectorSize {
+		*errs = append(*errs, fmt.Sprintf("qdrant.vector_size (%d) must match embedding.model %q size (%d)", cfg.Qdrant.VectorSize, cfg.Embedding.Model, expectedVectorSize))
+	}
+}
 
-	// Check whitelist/blacklist mutual exclusivity
+func validateMemory(cfg *Config, errs *[]string) {
+	requirePositive(cfg.Memory.ConsolidationInterval, "memory.consolidation_interval", errs)
+	requirePositive(cfg.Memory.ShortTermLimit, "memory.short_term_limit", errs)
+	if cfg.Memory.Retrieval.TopK < 0 {
+		*errs = append(*errs, "memory.retrieval.top_k must be greater than or equal to 0")
+	}
+	if cfg.Memory.Retrieval.MinScore < 0 || cfg.Memory.Retrieval.MinScore > 1 {
+		*errs = append(*errs, "memory.retrieval.min_score must be between 0 and 1")
+	}
+}
+
+func validateRateLimit(cfg *Config, errs *[]string) {
+	requirePositive(cfg.Discord.CooldownSeconds, "discord.cooldown_seconds", errs)
+	requirePositive(cfg.Discord.MaxResponsesPerMin, "discord.max_responses_per_minute", errs)
+}
+
+func validateWeb(cfg *Config, errs *[]string) {
+	if !cfg.Web.Enabled {
+		return
+	}
+	if cfg.Web.Port <= 0 {
+		*errs = append(*errs, "web.port must be greater than 0 when web is enabled")
+	}
+	if cfg.Web.Username == "" {
+		*errs = append(*errs, "web.username is required when web is enabled")
+	}
+	if cfg.Web.Password == "" {
+		*errs = append(*errs, "web.password is required when web is enabled")
+	}
+}
+
+func validatePlugins(cfg *Config, errs *[]string) {
+	if !cfg.Plugins.Enabled {
+		return
+	}
+	requireNonEmpty(cfg.Plugins.PluginsDir, "plugins.plugins_dir", errs)
+}
+
+func validateBlacklist(cfg *Config, errs *[]string) {
+	// Blacklist/whitelist mutual exclusivity is handled by validateAccess
+}
+
+func validateOperations(cfg *Config, errs *[]string) {
+	requireNonEmpty(cfg.Logging.Level, "logging.level", errs)
+	requireNonEmpty(cfg.Logging.File, "logging.file", errs)
+	requirePositive(cfg.Logging.MaxSize, "logging.max_size", errs)
+	requirePositive(cfg.Logging.MaxBackups, "logging.max_backups", errs)
+	requirePositive(cfg.Logging.MaxAge, "logging.max_age", errs)
+}
+
+func validatePrompt(cfg *Config, errs *[]string) {
+	// System prompt validation is handled by validateAI, validateConsolidation, validateDecision
+}
+
+func validateAccess(cfg *Config, errs *[]string) {
 	if len(cfg.Blacklist.Users) > 0 && len(cfg.Whitelist.Users) > 0 {
-		errs = append(errs, "cannot have both blacklist.users and whitelist.users enabled")
+		*errs = append(*errs, "cannot have both blacklist.users and whitelist.users enabled")
 	}
 	if len(cfg.Blacklist.Guilds) > 0 && len(cfg.Whitelist.Guilds) > 0 {
-		errs = append(errs, "cannot have both blacklist.guilds and whitelist.guilds enabled")
+		*errs = append(*errs, "cannot have both blacklist.guilds and whitelist.guilds enabled")
 	}
 	if len(cfg.Blacklist.Channels) > 0 && len(cfg.Whitelist.Channels) > 0 {
-		errs = append(errs, "cannot have both blacklist.channels and whitelist.channels enabled")
+		*errs = append(*errs, "cannot have both blacklist.channels and whitelist.channels enabled")
 	}
+}
 
-	if cfg.Web.Enabled {
-		if cfg.Web.Port <= 0 {
-			errs = append(errs, "web.port must be greater than 0 when web is enabled")
+func validateConsolidation(cfg *Config, errs *[]string) {
+	if !cfg.Memory.Consolidation.Enabled {
+		return
+	}
+	if cfg.Memory.Consolidation.MaxMessages <= 0 {
+		*errs = append(*errs, "memory.consolidation.max_messages must be greater than 0 when consolidation is enabled")
+	}
+	if cfg.Memory.Consolidation.SystemPrompt == "" {
+		*errs = append(*errs, "memory.consolidation.system_prompt is required when consolidation is enabled")
+	}
+}
+
+func validateDecision(cfg *Config, errs *[]string) {
+	if !cfg.Decision.Enabled {
+		return
+	}
+	requireNonEmpty(cfg.Decision.Model, "decision.model", errs)
+	requireNonEmpty(cfg.Decision.APIBaseURL, "decision.api_base_url", errs)
+	requireNonEmpty(cfg.Decision.APIKey, "decision.api_key", errs)
+	requireNonEmpty(cfg.Decision.SystemPrompt, "decision.system_prompt", errs)
+	if cfg.Decision.MaxTokens <= 0 {
+		*errs = append(*errs, "decision.max_tokens must be greater than 0 when decision is enabled")
+	}
+	if cfg.Decision.Temperature < 0 || cfg.Decision.Temperature > 2 {
+		*errs = append(*errs, "decision.temperature must be between 0 and 2")
+	}
+	if cfg.Decision.Timeout <= 0 {
+		*errs = append(*errs, "decision.timeout must be greater than 0 when decision is enabled")
+	}
+	if cfg.Decision.RetryCount < 0 {
+		*errs = append(*errs, "decision.retry_count must be greater than or equal to 0")
+	}
+	if cfg.Decision.ContextMessages <= 0 {
+		*errs = append(*errs, "decision.context_messages must be greater than 0 when decision is enabled")
+	}
+}
+
+func validateSystem(cfg *Config, errs *[]string) {
+	if !cfg.MCP.Enabled {
+		return
+	}
+	if len(cfg.MCP.Servers) == 0 {
+		*errs = append(*errs, "mcp.servers must contain at least one server when mcp is enabled")
+		return
+	}
+	for i, server := range cfg.MCP.Servers {
+		prefix := fmt.Sprintf("mcp.servers[%d]", i)
+		requireNonEmpty(server.Name, prefix+".name", errs)
+		if server.Type == "" {
+			*errs = append(*errs, prefix+".type is required")
+			continue
 		}
-
-		if cfg.Web.Username == "" {
-			errs = append(errs, "web.username is required when web is enabled")
-		}
-
-		if cfg.Web.Password == "" {
-			errs = append(errs, "web.password is required when web is enabled")
-		}
-	}
-
-	if cfg.Logging.Level == "" {
-		errs = append(errs, "logging.level is required")
-	}
-
-	if cfg.Logging.File == "" {
-		errs = append(errs, "logging.file is required")
-	}
-
-	if cfg.Logging.MaxSize <= 0 {
-		errs = append(errs, "logging.max_size must be greater than 0")
-	}
-
-	if cfg.Logging.MaxBackups <= 0 {
-		errs = append(errs, "logging.max_backups must be greater than 0")
-	}
-
-	if cfg.Logging.MaxAge <= 0 {
-		errs = append(errs, "logging.max_age must be greater than 0")
-	}
-
-	if cfg.Plugins.Enabled && cfg.Plugins.PluginsDir == "" {
-		errs = append(errs, "plugins.plugins_dir is required when plugins are enabled")
-	}
-
-	if cfg.MCP.Enabled {
-		if len(cfg.MCP.Servers) == 0 {
-			errs = append(errs, "mcp.servers must contain at least one server when mcp is enabled")
-		}
-
-		for i, server := range cfg.MCP.Servers {
-			prefix := fmt.Sprintf("mcp.servers[%d]", i)
-			if server.Name == "" {
-				errs = append(errs, prefix+".name is required")
+		switch server.Type {
+		case "stdio":
+			if server.Command == "" {
+				*errs = append(*errs, prefix+".command is required when type is stdio")
 			}
-			if server.Type == "" {
-				errs = append(errs, prefix+".type is required")
-				continue
+		case "sse":
+			if server.URL == "" {
+				*errs = append(*errs, prefix+".url is required when type is sse")
 			}
-
-			switch server.Type {
-			case "stdio":
-				if server.Command == "" {
-					errs = append(errs, prefix+".command is required when type is stdio")
-				}
-			case "sse":
-				if server.URL == "" {
-					errs = append(errs, prefix+".url is required when type is sse")
-				}
-			default:
-				errs = append(errs, prefix+".type must be one of: stdio, sse")
-			}
+		default:
+			*errs = append(*errs, prefix+".type must be one of: stdio, sse")
 		}
 	}
+}
 
-	if cfg.Decision.Enabled {
-		if cfg.Decision.Model == "" {
-			errs = append(errs, "decision.model is required when decision is enabled")
-		}
-		if cfg.Decision.APIBaseURL == "" {
-			errs = append(errs, "decision.api_base_url is required when decision is enabled")
-		}
-		if cfg.Decision.APIKey == "" {
-			errs = append(errs, "decision.api_key is required when decision is enabled")
-		}
-		if cfg.Decision.SystemPrompt == "" {
-			errs = append(errs, "decision.system_prompt is required when decision is enabled")
-		}
-		if cfg.Decision.MaxTokens <= 0 {
-			errs = append(errs, "decision.max_tokens must be greater than 0 when decision is enabled")
-		}
-		if cfg.Decision.Temperature < 0 || cfg.Decision.Temperature > 2 {
-			errs = append(errs, "decision.temperature must be between 0 and 2")
-		}
-		if cfg.Decision.Timeout <= 0 {
-			errs = append(errs, "decision.timeout must be greater than 0 when decision is enabled")
-		}
-		if cfg.Decision.RetryCount < 0 {
-			errs = append(errs, "decision.retry_count must be greater than or equal to 0")
-		}
-		if cfg.Decision.ContextMessages <= 0 {
-			errs = append(errs, "decision.context_messages must be greater than 0 when decision is enabled")
-		}
-	}
-
+func validate(cfg *Config) error {
+	var errs []string
+	validateCore(cfg, &errs)
+	validateAI(cfg, &errs)
+	validateVision(cfg, &errs)
+	validateDiscord(cfg, &errs)
+	validateQdrant(cfg, &errs)
+	validateMemory(cfg, &errs)
+	validateRateLimit(cfg, &errs)
+	validateWeb(cfg, &errs)
+	validatePlugins(cfg, &errs)
+	validateBlacklist(cfg, &errs)
+	validateOperations(cfg, &errs)
+	validatePrompt(cfg, &errs)
+	validateAccess(cfg, &errs)
+	validateConsolidation(cfg, &errs)
+	validateDecision(cfg, &errs)
+	validateSystem(cfg, &errs)
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
-
 	return nil
 }
 

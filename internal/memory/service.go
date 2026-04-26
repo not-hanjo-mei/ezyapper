@@ -13,8 +13,8 @@ import (
 	"ezyapper/internal/utils"
 )
 
-// Service defines the interface for long-term memory operations
-type Service interface {
+// MemoryStore groups memory CRUD, search, and statistics operations.
+type MemoryStore interface {
 	// Store stores a memory in the vector database
 	Store(ctx context.Context, m *Record) error
 
@@ -30,18 +30,30 @@ type Service interface {
 	// GetMemory retrieves a single memory by ID
 	GetMemory(ctx context.Context, memoryID string) (*Record, error)
 
-	// GetProfile retrieves a user profile
-	GetProfile(ctx context.Context, userID string) (*Profile, error)
-
-	// UpdateProfile updates a user profile
-	UpdateProfile(ctx context.Context, p *Profile) error
-
 	// DeleteMemory deletes a single memory
 	DeleteMemory(ctx context.Context, memoryID string) error
 
 	// DeleteUserData deletes all data for a user
 	DeleteUserData(ctx context.Context, userID string) error
 
+	// GetStats retrieves global statistics
+	GetStats(ctx context.Context) (*GlobalStats, error)
+}
+
+// ProfileStore groups user profile operations.
+type ProfileStore interface {
+	// GetProfile retrieves a user profile
+	GetProfile(ctx context.Context, userID string) (*Profile, error)
+
+	// UpdateProfile updates a user profile
+	UpdateProfile(ctx context.Context, p *Profile) error
+
+	// GetUserStats retrieves user statistics
+	GetUserStats(ctx context.Context, userID string) (*UserStats, error)
+}
+
+// ConsolidationManager groups consolidation trigger and execution operations.
+type ConsolidationManager interface {
 	// Consolidate executes consolidation for a user
 	Consolidate(ctx context.Context, userID string) error
 
@@ -50,6 +62,15 @@ type Service interface {
 
 	// ConsolidateChannel executes batch consolidation for all users in a channel
 	ConsolidateChannel(ctx context.Context, channelID string, messages []*DiscordMessage) error
+}
+
+// Service defines the composite interface for long-term memory operations.
+// It embeds MemoryStore, ProfileStore, and ConsolidationManager for consumers
+// that need the full set of memory capabilities.
+type Service interface {
+	MemoryStore
+	ProfileStore
+	ConsolidationManager
 
 	// IncrementMessageCount increments the message counter for consolidation triggering
 	IncrementMessageCount(ctx context.Context, userID string) (int, error)
@@ -67,17 +88,11 @@ type Service interface {
 	// and returns the remaining count.
 	ConsumeChannelMessageCount(channelID string, consumed int) int
 
-	// GetStats retrieves global statistics
-	GetStats(ctx context.Context) (*GlobalStats, error)
-
-	// GetUserStats retrieves user statistics
-	GetUserStats(ctx context.Context, userID string) (*UserStats, error)
-
 	// Close closes the service and its connections
 	Close() error
 }
 
-// MemoryService implements the Service interface
+// MemoryService implements Service (comprising MemoryStore, ProfileStore, and ConsolidationManager).
 type MemoryService struct {
 	qdrant       *QdrantClient
 	consolidator *Consolidator
