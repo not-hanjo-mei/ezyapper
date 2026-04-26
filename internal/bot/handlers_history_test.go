@@ -281,3 +281,90 @@ func TestBuildConversationHistory_NoReply(t *testing.T) {
 		t.Error("no reply marker should appear when messages have no ReplyToID")
 	}
 }
+
+func TestBuildConversationHistory_WithRename(t *testing.T) {
+	b := &Bot{}
+
+	messages := []*memory.DiscordMessage{
+		{
+			ID:       "msg1",
+			AuthorID: "user1",
+			Username: "半条命",
+			Content:  "大家好",
+			IsBot:    false,
+		},
+		{
+			ID:       "msg2",
+			AuthorID: "user1",
+			Username: "xxx_半条命",
+			Content:  "我把名字改了",
+			IsBot:    false,
+			ReplyToID:       "msg0",
+			ReplyToUsername: "Mei",
+		},
+		{
+			ID:       "msg3",
+			AuthorID: "bot1",
+			Username: "EZyapper",
+			Content:  "I am a bot",
+			IsBot:    true,
+		},
+		{
+			ID:       "msg4",
+			AuthorID: "user2",
+			Username: "Alice",
+			Content:  "First message",
+			IsBot:    false,
+		},
+		{
+			ID:              "msg5",
+			AuthorID:        "user1",
+			Username:        "xxx_半条命",
+			Content:         "Same name again",
+			IsBot:           false,
+			ReplyToID:       "msgX",
+			ReplyToUsername: "(deleted message)",
+		},
+	}
+
+	result := b.buildConversationHistoryText(
+		context.Background(),
+		messages,
+		"",
+		"bot1",
+		false,
+		nil,
+		nil,
+	)
+
+	// First message should have NO rename marker (first appearance)
+	if !strings.Contains(result, "[User] 半条命 (ID:user1): 大家好") {
+		t.Error("expected first message of user1 without rename marker")
+	}
+
+	// Second message (user1 renamed to xxx_半条命) should have rename marker + reply marker
+	expectedLine := "[User] xxx_半条命 (ID:user1): 我把名字改了 (was @半条命) (replying to @Mei)"
+	if !strings.Contains(result, expectedLine) {
+		t.Errorf("expected rename marker before reply marker\n  want: %s\n  got:\n%s", expectedLine, result)
+	}
+
+	// Bot message should NOT have rename marker even though bot1 username hasn't changed
+	if strings.Contains(result, "EZyapper (was @") {
+		t.Error("bot's own messages should not get rename marker")
+	}
+
+	// Alice's first message should have no rename marker
+	if !strings.Contains(result, "[User] Alice (ID:user2): First message") {
+		t.Error("expected Alice's first message without rename marker")
+	}
+
+	// Third user1 message with same name should NOT have rename marker
+	if strings.Contains(result, "Same name again (was @") {
+		t.Error("same username should not trigger rename marker again")
+	}
+
+	// Deleted message reply marker should still appear
+	if !strings.Contains(result, "(replying to deleted message)") {
+		t.Error("expected '(replying to deleted message)' on msg5")
+	}
+}

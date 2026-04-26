@@ -209,6 +209,9 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*memo
 		}
 	}
 
+	// Track AuthorID -> most recent Username for rename detection
+	seenNames := make(map[string]string)
+
 	// Process messages and build history
 	for i, msg := range messages {
 		// Skip the current message being processed
@@ -278,9 +281,18 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*memo
 			}
 		}
 
+		// Detect rename: if AuthorID was seen before with a different Username
+		renameMarker := ""
+		if msg.AuthorID != botID && msg.Username != "(deleted message)" {
+			if oldName, seen := seenNames[msg.AuthorID]; seen && oldName != msg.Username {
+				renameMarker = " (was @" + oldName + ")"
+			}
+		}
+		seenNames[msg.AuthorID] = msg.Username
+
 		// Write formatted message with mention IDs replaced by readable usernames and channel names
 		displayContent := utils.ReplaceMentions(content, userMappings, channelMappings)
-		result.WriteString(fmt.Sprintf("  [%s] %s (ID:%s): %s%s\n", role, msg.Username, msg.AuthorID, displayContent, replyMarker))
+		result.WriteString(fmt.Sprintf("  [%s] %s (ID:%s): %s%s%s\n", role, msg.Username, msg.AuthorID, displayContent, renameMarker, replyMarker))
 	}
 
 	result.WriteString("</context>")

@@ -35,6 +35,13 @@ func (b *Bot) buildDynamicContext(authorName string, profile *memory.Profile, me
 	// User identification is included in <currentMessage> XML format.
 	// No need to repeat here.
 
+	// Add display name header.
+	if profile.DisplayName != "" {
+		context.WriteString(fmt.Sprintf("User profile for @%s:\n", profile.DisplayName))
+	} else {
+		context.WriteString("User profile:\n")
+	}
+
 	// Add profile information.
 	first := true
 	if len(profile.Traits) > 0 {

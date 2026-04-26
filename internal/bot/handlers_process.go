@@ -274,6 +274,7 @@ func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *disco
 		logger.Warnf("Failed to get profile: %v", err)
 		profile = &memory.Profile{UserID: m.Author.ID}
 	}
+	profile.DisplayName = m.Author.Username
 
 	// Start typing indicator before LLM processing
 	s.ChannelTyping(m.ChannelID)

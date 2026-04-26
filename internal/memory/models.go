@@ -55,6 +55,7 @@ type Profile struct {
 	UserID string `json:"user_id"`
 
 	// Profile data
+	DisplayName string            `json:"display_name"`
 	Traits      []string          `json:"traits"`
 	Facts       map[string]string `json:"facts"`
 	Preferences map[string]string `json:"preferences"`
