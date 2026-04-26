@@ -170,6 +170,7 @@ func (e *CachedEmbedder) evictOne() {
 	}
 }
 
+// Stop shuts down the eviction loop and releases resources.
 func (e *CachedEmbedder) Stop() {
 	close(e.stop)
 }

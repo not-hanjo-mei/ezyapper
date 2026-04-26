@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"strings"
 	"time"
 
@@ -52,47 +51,9 @@ func embedWithRetry(ctx context.Context, embedder Embedder, text string) ([]floa
 	const baseDelay = 1 * time.Second
 	const maxDelay = 30 * time.Second
 
-	var lastErr error
-
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		if err := ctx.Err(); err != nil {
-			return nil, fmt.Errorf("embedding cancelled before attempt %d: %w", attempt+1, err)
-		}
-
-		embedding, err := embedder.Embed(ctx, text)
-		if err == nil {
-			return embedding, nil
-		}
-		lastErr = err
-
-		if attempt == maxRetries {
-			return nil, fmt.Errorf("embedding exhausted after %d attempts: %w", maxRetries+1, lastErr)
-		}
-
-		delay := time.Duration(1<<uint(attempt)) * baseDelay
-		if delay > maxDelay {
-			delay = maxDelay
-		}
-		jitter := time.Duration(float64(delay) * 0.25 * (2.0*rand.Float64() - 1.0))
-		delay = delay + jitter
-
-		logger.Warnf("[consolidation] embedding attempt %d/%d failed: %v - retrying in %.1fs...",
-			attempt+1, maxRetries+1, err, delay.Seconds())
-
-		if embedSleep != nil {
-			embedSleep(delay)
-		} else {
-			timer := time.NewTimer(delay)
-			select {
-			case <-timer.C:
-			case <-ctx.Done():
-				timer.Stop()
-				return nil, fmt.Errorf("embedding cancelled: %w", ctx.Err())
-			}
-		}
-	}
-
-	return nil, fmt.Errorf("embedding failed: %w", lastErr)
+	return retry.Retry(ctx, maxRetries, func(ctx context.Context) ([]float32, error) {
+		return embedder.Embed(ctx, text)
+	}, retry.WithBaseDelay(baseDelay), retry.WithMaxDelay(maxDelay))
 }
 
 // NewConsolidator creates a new consolidator with the given Qdrant client, embedder, and AI configuration.

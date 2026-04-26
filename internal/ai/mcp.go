@@ -24,6 +24,7 @@ type MCPManager struct {
 	servers  []config.MCPServer
 }
 
+// NewMCPManager creates a new MCP manager for the given server configurations.
 func NewMCPManager(servers []config.MCPServer) *MCPManager {
 	return &MCPManager{
 		sessions: make(map[string]*mcp.ClientSession),
@@ -31,6 +32,7 @@ func NewMCPManager(servers []config.MCPServer) *MCPManager {
 	}
 }
 
+// Connect establishes connections to all configured MCP servers.
 func (m *MCPManager) Connect(ctx context.Context) error {
 	var errs []string
 	for _, server := range m.servers {
@@ -81,6 +83,7 @@ func (m *MCPManager) connectServer(ctx context.Context, server config.MCPServer)
 	return nil
 }
 
+// GetAllTools lists all tools from all connected MCP servers.
 func (m *MCPManager) GetAllTools(ctx context.Context) ([]MCPTool, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -111,6 +114,7 @@ func (m *MCPManager) getServerTools(ctx context.Context, serverName string, sess
 	return tools, nil
 }
 
+// CallTool invokes a tool on a specific MCP server with the given arguments.
 func (m *MCPManager) CallTool(ctx context.Context, serverName, toolName string, arguments map[string]interface{}) (string, error) {
 	m.mu.RLock()
 	session, exists := m.sessions[serverName]
@@ -170,6 +174,7 @@ func ToOpenAITools(tools []MCPTool) []openai.Tool {
 	return openaiTools
 }
 
+// Close shuts down all MCP server connections.
 func (m *MCPManager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

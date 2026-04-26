@@ -111,6 +111,7 @@ type MemoryService struct {
 	consolidationInterval int
 }
 
+// ServiceConfig holds configuration parameters for the memory service.
 type ServiceConfig struct {
 	ConsolidationInterval int
 	ShortTermLimit        int
