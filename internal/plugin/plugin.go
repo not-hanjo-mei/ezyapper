@@ -1197,7 +1197,7 @@ func executeCommandTool(plugin *Client, toolName string, args map[string]interfa
 		commandArgs = append(commandArgs, argText)
 	}
 
-	ctx, cancel := context.WithTimeout(context.TODO(), pluginCommandTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), pluginCommandTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, tool.CommandPath, commandArgs...)

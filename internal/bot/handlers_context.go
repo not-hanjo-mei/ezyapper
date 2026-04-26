@@ -1,6 +1,8 @@
 package bot
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -87,7 +89,7 @@ func shouldSendGenerationFallback(err error) bool {
 		return false
 	}
 
-	return strings.Contains(err.Error(), "context deadline exceeded")
+	return errors.Is(err, context.DeadlineExceeded)
 }
 
 func (b *Bot) addGenerationFailureReaction(s *discordgo.Session, m *discordgo.MessageCreate) {

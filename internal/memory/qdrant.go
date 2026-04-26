@@ -110,7 +110,7 @@ func NewQdrantClient(cfg *config.QdrantConfig) (*QdrantClient, error) {
 	}
 
 	// Initialize collections
-	ctx := context.TODO()
+	ctx := context.Background()
 	if err := qc.initializeCollections(ctx); err != nil {
 		return nil, fmt.Errorf("failed to initialize collections: %w", err)
 	}

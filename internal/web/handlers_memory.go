@@ -182,7 +182,7 @@ func (s *Server) triggerConsolidation(c *gin.Context) {
 			}
 		}()
 
-		ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 
 		if channelID != "" && s.discordFetcher != nil {

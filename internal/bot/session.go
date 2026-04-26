@@ -207,7 +207,7 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 	cooldownDuration := time.Duration(cfg.Discord.CooldownSeconds) * time.Second
 	limiter := ratelimit.NewLimiter(cfg.Discord.MaxResponsesPerMin, cooldownDuration)
 
-	rootCtx, rootCancel := context.WithCancel(context.TODO())
+	rootCtx, rootCancel := context.WithCancel(context.Background())
 	bot := &Bot{
 		session:                  session,
 		ctx:                      rootCtx,
