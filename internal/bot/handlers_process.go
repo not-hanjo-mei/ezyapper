@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"ezyapper/internal/ai"
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
@@ -151,7 +152,24 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 	go maintainTyping(typingCtx, s, m.ChannelID)
 	defer cancelTyping()
 
-	response, err := b.generateResponse(ctx, m, guildName, imageURLs, imageDescriptions, recentMessages, memories, profile)
+	mc := ModeContext{
+		AIClient:        ai.NewClient(&b.cfg().AI, b.toolRegistry),
+		UserContent:     m.Content,
+		Username:        m.Author.Username,
+		UserID:          m.Author.ID,
+		ReplyToUsername: extractReplyToUsername(m),
+		GuildID:         m.GuildID,
+		ChannelID:       m.ChannelID,
+		MessageID:       m.ID,
+		GuildName:       guildName,
+		Mentions:        m.Mentions,
+	}
+	gc := GenerateContext{
+		ImageURLs:         imageURLs,
+		ImageDescriptions: imageDescriptions,
+	}
+
+	response, err := b.generateResponse(ctx, mc, gc, recentMessages, memories, profile)
 	if err != nil {
 		if ctx.Err() == context.Canceled {
 			logger.Infof("[processing] Message %s generation cancelled", m.ID)

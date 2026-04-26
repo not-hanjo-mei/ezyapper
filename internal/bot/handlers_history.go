@@ -37,17 +37,18 @@ func formatMessageXML(username, userID, content string, timestamp time.Time, rep
 }
 
 // shouldEnrichRecentHistoricalImages checks if recent historical images should be enriched
-func shouldEnrichRecentHistoricalImages(m *discordgo.MessageCreate) bool {
-	if m == nil || m.Message == nil {
+// based on message content and whether the user is replying to a previous message.
+func shouldEnrichRecentHistoricalImages(userContent string, hasReference bool) bool {
+	if userContent == "" && !hasReference {
 		return false
 	}
 
 	// Replying to a previous message usually means the user is referring to it.
-	if m.Reference() != nil {
+	if hasReference {
 		return true
 	}
 
-	content := strings.ToLower(strings.TrimSpace(m.Content))
+	content := strings.ToLower(strings.TrimSpace(userContent))
 	if content == "" {
 		return false
 	}
