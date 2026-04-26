@@ -28,9 +28,9 @@ type Record struct {
 	ChannelID string `json:"channel_id,omitempty"`
 
 	// Record content
-	MemoryType Type `json:"memory_type"`
-	Content    string     `json:"content"`
-	Summary    string     `json:"summary"`
+	MemoryType Type   `json:"memory_type"`
+	Content    string `json:"content"`
+	Summary    string `json:"summary"`
 
 	// Vector embedding (1536 dimensions for text-embedding-3-small)
 	Embedding []float32 `json:"embedding"`
@@ -100,15 +100,15 @@ type Extract struct {
 
 // UserMemoryExtract represents extracted memories for a specific user
 type UserMemoryExtract struct {
-	UserID   string          `json:"user_id"`
+	UserID   string    `json:"user_id"`
 	Memories []Extract `json:"memories"`
 }
 
 // ConsolidationResult represents the result of a consolidation operation
 type ConsolidationResult struct {
-	Summary      string          `json:"summary"`
-	ProfileDelta ProfileDelta    `json:"profile_delta"`
-	Memories     []Extract `json:"memories"`
+	Summary      string       `json:"summary"`
+	ProfileDelta ProfileDelta `json:"profile_delta"`
+	Memories     []Extract    `json:"memories"`
 }
 
 // ProfileDelta represents changes to a user profile

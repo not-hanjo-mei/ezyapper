@@ -45,12 +45,6 @@ func (c *Compiler) SafeCompile(template string, vars map[string]string) string {
 	return strings.ReplaceAll(escaped, "{{}}", "{}")
 }
 
-// PartialCompile compiles only the variables that exist in the provided map.
-// This is useful for multi-stage compilation where some variables are not yet available.
-func (c *Compiler) PartialCompile(template string, vars map[string]string) string {
-	return c.Compile(template, vars)
-}
-
 // ExtractVariables finds all {variable} placeholders in a template.
 // Returns a slice of variable names without the braces.
 func (c *Compiler) ExtractVariables(template string) []string {

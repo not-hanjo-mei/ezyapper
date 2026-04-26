@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"context"
 	"fmt"
 
 	"ezyapper/internal/logger"
@@ -31,7 +32,7 @@ func validateLimit(limit int, funcName string) error {
 }
 
 // FetchRecentMessages fetches recent messages from a channel
-func (c *ShortTermClient) FetchRecentMessages(channelID string, limit int) ([]*DiscordMessage, error) {
+func (c *ShortTermClient) FetchRecentMessages(ctx context.Context, channelID string, limit int) ([]*DiscordMessage, error) {
 	if err := validateLimit(limit, "FetchRecentMessages"); err != nil {
 		return nil, err
 	}
@@ -45,7 +46,7 @@ func (c *ShortTermClient) FetchRecentMessages(channelID string, limit int) ([]*D
 }
 
 // FetchUserMessages fetches messages from a specific user in a channel
-func (c *ShortTermClient) FetchUserMessages(channelID string, userID string, limit int) ([]*DiscordMessage, error) {
+func (c *ShortTermClient) FetchUserMessages(ctx context.Context, channelID string, userID string, limit int) ([]*DiscordMessage, error) {
 	if err := validateLimit(limit, "FetchUserMessages"); err != nil {
 		return nil, err
 	}
@@ -66,7 +67,7 @@ func (c *ShortTermClient) FetchUserMessages(channelID string, userID string, lim
 }
 
 // FetchChannelMessages fetches all messages from a channel (for batch consolidation)
-func (c *ShortTermClient) FetchChannelMessages(channelID string, limit int) ([]*DiscordMessage, error) {
+func (c *ShortTermClient) FetchChannelMessages(ctx context.Context, channelID string, limit int) ([]*DiscordMessage, error) {
 	if err := validateLimit(limit, "FetchChannelMessages"); err != nil {
 		return nil, err
 	}

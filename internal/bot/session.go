@@ -207,7 +207,7 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 	cooldownDuration := time.Duration(cfg.Discord.CooldownSeconds) * time.Second
 	limiter := ratelimit.NewLimiter(cfg.Discord.MaxResponsesPerMin, cooldownDuration)
 
-	rootCtx, rootCancel := context.WithCancel(context.Background())
+	rootCtx, rootCancel := context.WithCancel(context.TODO())
 	bot := &Bot{
 		session:                  session,
 		ctx:                      rootCtx,
@@ -456,8 +456,8 @@ func (b *Bot) SetCooldown(userID string, duration time.Duration) {
 }
 
 // FetchUserMessages proxies Discord message retrieval for the Web server.
-func (b *Bot) FetchUserMessages(channelID string, userID string, limit int) ([]*memory.DiscordMessage, error) {
-	return b.discordClient.FetchUserMessages(channelID, userID, limit)
+func (b *Bot) FetchUserMessages(ctx context.Context, channelID string, userID string, limit int) ([]*memory.DiscordMessage, error) {
+	return b.discordClient.FetchUserMessages(ctx, channelID, userID, limit)
 }
 
 // ApplyRuntimeConfig reapplies hot-updateable runtime dependencies after config changes.
@@ -634,7 +634,7 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate) (bo
 		defer cancel()
 
 		imageCount := len(utils.ExtractImageURLs(m.Message))
-		recentMessages := b.getRecentMessagesForDecision(m.ChannelID, m.ID)
+		recentMessages := b.getRecentMessagesForDecision(ctx, m.ChannelID, m.ID)
 
 		// Build message info with author and reply metadata
 		msgInfo := ai.MessageInfo{
@@ -667,8 +667,8 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate) (bo
 	return true, "random engagement"
 }
 
-func (b *Bot) getRecentMessagesForDecision(channelID string, currentMessageID string) []ai.ContextMessage {
-	messages, err := b.discordClient.FetchRecentMessages(channelID, b.cfg().Decision.ContextMessages)
+func (b *Bot) getRecentMessagesForDecision(ctx context.Context, channelID string, currentMessageID string) []ai.ContextMessage {
+	messages, err := b.discordClient.FetchRecentMessages(ctx, channelID, b.cfg().Decision.ContextMessages)
 	if err != nil {
 		return nil
 	}

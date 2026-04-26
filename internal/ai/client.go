@@ -78,25 +78,27 @@ func (c *Client) processMessages(ctx context.Context, messages []openai.ChatComp
 	for i, msg := range messages {
 		processed[i] = msg
 
-		// Check if message has multi-content with images
-		if len(msg.MultiContent) > 0 {
-			newParts := make([]openai.ChatMessagePart, len(msg.MultiContent))
-			for j, part := range msg.MultiContent {
-				newParts[j] = part
-				if part.Type == openai.ChatMessagePartTypeImageURL && part.ImageURL != nil {
-					url := part.ImageURL.URL
-					// Convert to base64 if it's not already base64 data
-					if !strings.HasPrefix(url, "data:image") {
-						base64Data, err := c.downloadImageToBase64(ctx, url)
-						if err != nil {
-							return nil, fmt.Errorf("failed to convert image to base64: %w", err)
-						}
-						newParts[j].ImageURL.URL = base64Data
-					}
-				}
-			}
-			processed[i].MultiContent = newParts
+		if len(msg.MultiContent) == 0 {
+			continue
 		}
+
+		newParts := make([]openai.ChatMessagePart, len(msg.MultiContent))
+		for j, part := range msg.MultiContent {
+			newParts[j] = part
+			if part.Type != openai.ChatMessagePartTypeImageURL || part.ImageURL == nil {
+				continue
+			}
+			url := part.ImageURL.URL
+			if strings.HasPrefix(url, "data:image") {
+				continue
+			}
+			base64Data, err := c.downloadImageToBase64(ctx, url)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert image to base64: %w", err)
+			}
+			newParts[j].ImageURL.URL = base64Data
+		}
+		processed[i].MultiContent = newParts
 	}
 
 	return processed, nil
@@ -380,13 +382,11 @@ func setFieldValue(field reflect.Value, value interface{}) error {
 
 	valReflect := reflect.ValueOf(value)
 
-	// Direct assignment if types match
 	if valReflect.Type().ConvertibleTo(field.Type()) {
 		field.Set(valReflect.Convert(field.Type()))
 		return nil
 	}
 
-	// Handle pointer types (e.g., *int for Seed)
 	if field.Kind() == reflect.Ptr {
 		elemType := field.Type().Elem()
 		newVal := reflect.New(elemType)

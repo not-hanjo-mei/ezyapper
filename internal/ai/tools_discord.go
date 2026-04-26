@@ -6,7 +6,24 @@ import (
 	"fmt"
 	"strings"
 
+	"ezyapper/internal/logger"
+
 	"github.com/bwmarrin/discordgo"
+)
+
+const (
+	// defaultSearchLimit is the default number of members returned by searchGuildMembers.
+	defaultSearchLimit = 10
+	// maxSearchLimit is the maximum number of members searchGuildMembers can return.
+	maxSearchLimit = 50
+	// discordMemberFetchLimit is Discord's API limit for GuildMembers requests.
+	discordMemberFetchLimit = 1000
+	// maxChannelMemberLimit is the max number of members returned by getChannelMembers.
+	maxChannelMemberLimit = 100
+	// defaultChannelMemberLimit is the default number of members returned by getChannelMembers.
+	defaultChannelMemberLimit = 20
+	// maxRecentMessageLimit caps the number of recent messages that can be fetched.
+	maxRecentMessageLimit = 10
 )
 
 type DiscordTools struct {
@@ -424,7 +441,7 @@ func (d *DiscordTools) searchGuildMembers(ctx context.Context, args map[string]a
 		return "", err
 	}
 
-	limit := extractLimit(args, "limit", 10, 50)
+	limit := extractLimit(args, "limit", defaultSearchLimit, maxSearchLimit)
 
 	queryLower := strings.ToLower(query)
 	result := make([]map[string]any, 0, limit)
@@ -470,9 +487,9 @@ func (d *DiscordTools) searchGuildMembers(ctx context.Context, args map[string]a
 	// This handles large guilds where state might not have all members
 	if len(result) == 0 {
 		// Fetch up to 1000 members (Discord's max limit for GuildMembers)
-		allMembers, err := d.session.GuildMembers(guildID, "", 1000)
+		allMembers, err := d.session.GuildMembers(guildID, "", discordMemberFetchLimit)
 		if err != nil {
-			// API error, will fall back to Discord's search
+			logger.Warnf("[tools] GuildMembers API fetch failed for guild=%s: %v, falling back to Discord search", guildID, err)
 		} else {
 			for _, member := range allMembers {
 				if member.User == nil {
@@ -508,7 +525,6 @@ func (d *DiscordTools) searchGuildMembers(ctx context.Context, args map[string]a
 		}
 	}
 
-	// Final fallback: use Discord's search API (prefix match only)
 	if len(result) == 0 {
 		members, err := d.session.GuildMembersSearch(guildID, query, limit)
 		if err != nil {

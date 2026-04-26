@@ -1,3 +1,4 @@
+// Package web provides an HTTP API server and WebUI for managing the bot.
 package web
 
 import (
@@ -20,18 +21,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Server provides the WebUI HTTP server and API endpoints for bot management.
 type Server struct {
-	router            *gin.Engine
-	configStore       *atomic.Value // stores *config.Config
-	memoryStore       memory.MemoryStore
-	profileStore      memory.ProfileStore
-	consolidationMgr  memory.ConsolidationManager
-	pluginManager     *plugin.Manager
-	server            *http.Server
-	mu                sync.RWMutex
-	startTime         time.Time
-	discordFetcher    DiscordMessageFetcher
-	webDir            string
+	router           *gin.Engine
+	configStore      *atomic.Value // stores *config.Config
+	memoryStore      memory.MemoryStore
+	profileStore     memory.ProfileStore
+	consolidationMgr memory.ConsolidationManager
+	pluginManager    *plugin.Manager
+	server           *http.Server
+	mu               sync.RWMutex
+	startTime        time.Time
+	discordFetcher   DiscordMessageFetcher
+	webDir           string
 }
 
 func (s *Server) cfg() *config.Config {
@@ -39,7 +41,7 @@ func (s *Server) cfg() *config.Config {
 }
 
 type DiscordMessageFetcher interface {
-	FetchUserMessages(channelID string, userID string, limit int) ([]*memory.DiscordMessage, error)
+	FetchUserMessages(ctx context.Context, channelID string, userID string, limit int) ([]*memory.DiscordMessage, error)
 }
 
 type RuntimeConfigApplier interface {
@@ -74,6 +76,7 @@ func findWebDir() string {
 	return "./web"
 }
 
+// NewServer creates a new web server with the given stores and plugin manager.
 func NewServer(cfgStore *atomic.Value, memStore memory.MemoryStore, profileStore memory.ProfileStore, conMgr memory.ConsolidationManager, pluginManager *plugin.Manager, discordFetcher DiscordMessageFetcher) *Server {
 	cfg := cfgStore.Load().(*config.Config)
 	if cfg.Logging.Level == "debug" {
@@ -102,15 +105,15 @@ func NewServer(cfgStore *atomic.Value, memStore memory.MemoryStore, profileStore
 	})
 
 	server := &Server{
-		router:            router,
-		configStore:       cfgStore,
-		memoryStore:       memStore,
-		profileStore:      profileStore,
-		consolidationMgr:  conMgr,
-		pluginManager:     pluginManager,
-		startTime:         time.Now(),
-		discordFetcher:    discordFetcher,
-		webDir:            findWebDir(),
+		router:           router,
+		configStore:      cfgStore,
+		memoryStore:      memStore,
+		profileStore:     profileStore,
+		consolidationMgr: conMgr,
+		pluginManager:    pluginManager,
+		startTime:        time.Now(),
+		discordFetcher:   discordFetcher,
+		webDir:           findWebDir(),
 	}
 
 	server.setupRoutes()
@@ -176,6 +179,7 @@ func (s *Server) basicAuth() gin.HandlerFunc {
 	})
 }
 
+// Start begins listening on the configured port. No-op if web is disabled.
 func (s *Server) Start() error {
 	if !s.cfg().Web.Enabled {
 		logger.Info("WebUI is disabled")
@@ -204,6 +208,7 @@ func (s *Server) Start() error {
 	return nil
 }
 
+// Stop gracefully shuts down the web server.
 func (s *Server) Stop(ctx context.Context) error {
 	if s.server == nil {
 		return nil

@@ -47,13 +47,13 @@ func (b *Bot) triggerChannelConsolidation(ctx context.Context, channelID string,
 			}
 		}()
 
-		consolidationCtx, cancel := context.WithTimeout(context.Background(), consolidationTimeout)
+		consolidationCtx, cancel := context.WithTimeout(b.ctx, consolidationTimeout)
 		defer cancel()
 
 		channelMessages := b.getAndClearChannelMessageBuffer(channelID)
 		if len(channelMessages) == 0 {
 			logger.Infof("[consolidation] buffer empty for channel=%s, fetching from Discord", channelID)
-			fetchedMessages, err := b.discordClient.FetchChannelMessages(channelID, b.cfg().Memory.Consolidation.MaxMessages)
+			fetchedMessages, err := b.discordClient.FetchChannelMessages(consolidationCtx, channelID, b.cfg().Memory.Consolidation.MaxMessages)
 			if err != nil {
 				logger.Warnf("[consolidation] failed to fetch messages from Discord for channel=%s: %v", channelID, err)
 				return

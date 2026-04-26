@@ -1,3 +1,4 @@
+// Package ratelimit provides thread-safe per-user rate limiting with cooldown support.
 package ratelimit
 
 import (
@@ -5,6 +6,7 @@ import (
 	"time"
 )
 
+// Limiter provides thread-safe per-user rate limiting and cooldowns.
 type Limiter struct {
 	rateLimitCache map[string]*rateLimitInfo
 	cooldownCache  map[string]time.Time
@@ -18,6 +20,7 @@ type rateLimitInfo struct {
 	resetTime time.Time
 }
 
+// NewLimiter creates a new rate limiter with the specified max requests per minute and cooldown duration.
 func NewLimiter(maxPerMinute int, cooldownPeriod time.Duration) *Limiter {
 	return &Limiter{
 		rateLimitCache: make(map[string]*rateLimitInfo),
@@ -27,6 +30,8 @@ func NewLimiter(maxPerMinute int, cooldownPeriod time.Duration) *Limiter {
 	}
 }
 
+// Check tests whether the given user in the channel is allowed to send another message.
+// Returns false if rate-limited or in cooldown.
 func (l *Limiter) Check(channelID, userID string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -59,16 +64,19 @@ func (l *Limiter) Check(channelID, userID string) bool {
 	return true
 }
 
+// SetCooldown puts a user on cooldown for the specified duration.
 func (l *Limiter) SetCooldown(userID string, duration time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.cooldownCache[userID] = time.Now().Add(duration)
 }
 
+// SetCooldownDefault puts a user on cooldown using the configured default cooldown period.
 func (l *Limiter) SetCooldownDefault(userID string) {
 	l.SetCooldown(userID, l.cooldownPeriod)
 }
 
+// Cleanup removes expired rate limit entries and cooldowns.
 func (l *Limiter) Cleanup() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -88,6 +96,7 @@ func (l *Limiter) Cleanup() {
 	}
 }
 
+// UpdateConfig hot-updates the rate limit settings without restarting.
 func (l *Limiter) UpdateConfig(maxPerMinute int, cooldownPeriod time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

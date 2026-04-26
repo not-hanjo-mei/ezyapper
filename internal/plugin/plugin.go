@@ -1102,15 +1102,15 @@ func (pm *Manager) ListPluginsExt() []InfoExt {
 	infos := make([]InfoExt, 0, len(pm.plugins)+len(pm.disabled))
 	for _, p := range pm.plugins {
 		infos = append(infos, InfoExt{
-			Info: p.Info,
-			Enabled:    true,
+			Info:    p.Info,
+			Enabled: true,
 		})
 	}
 
 	for _, p := range pm.disabled {
 		infos = append(infos, InfoExt{
-			Info: p.Info,
-			Enabled:    false,
+			Info:    p.Info,
+			Enabled: false,
 		})
 	}
 	return infos
@@ -1197,7 +1197,7 @@ func executeCommandTool(plugin *Client, toolName string, args map[string]interfa
 		commandArgs = append(commandArgs, argText)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), pluginCommandTimeout)
+	ctx, cancel := context.WithTimeout(context.TODO(), pluginCommandTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, tool.CommandPath, commandArgs...)

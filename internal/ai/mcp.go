@@ -41,7 +41,7 @@ func (m *MCPManager) Connect(ctx context.Context) error {
 		}
 	}
 	if len(errs) > 0 {
-		return fmt.Errorf("MCP connect errors: %s", strings.Join(errs, "; "))
+		return fmt.Errorf("mcp connect errors: %s", strings.Join(errs, "; "))
 	}
 	return nil
 }
@@ -144,12 +144,20 @@ type MCPTool struct {
 	Tool       *mcp.Tool
 }
 
+// ToOpenAITools converts MCP tools to OpenAI-compatible format for use in LLM tool calling.
 func ToOpenAITools(tools []MCPTool) []openai.Tool {
 	openaiTools := make([]openai.Tool, 0, len(tools))
 	for _, tool := range tools {
-		schemaJSON, _ := json.Marshal(tool.Tool.InputSchema)
+		schemaJSON, err := json.Marshal(tool.Tool.InputSchema)
+		if err != nil {
+			logger.Warnf("[mcp] failed to marshal tool schema for '%s': %v", tool.Tool.Name, err)
+			continue
+		}
 		var schema map[string]interface{}
-		json.Unmarshal(schemaJSON, &schema)
+		if err := json.Unmarshal(schemaJSON, &schema); err != nil {
+			logger.Warnf("[mcp] failed to unmarshal tool schema for '%s': %v", tool.Tool.Name, err)
+			continue
+		}
 		openaiTools = append(openaiTools, openai.Tool{
 			Type: openai.ToolTypeFunction,
 			Function: &openai.FunctionDefinition{

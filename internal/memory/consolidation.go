@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"strings"
@@ -17,6 +18,11 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 )
 
+const (
+	// defaultMemorySearchLimit is the number of recent memories fetched during consolidation.
+	defaultMemorySearchLimit = 10
+)
+
 // qdrantStore is the subset of QdrantClient methods used by Consolidator.
 type qdrantStore interface {
 	UpsertMemory(ctx context.Context, memory *Record) error
@@ -28,6 +34,7 @@ type qdrantStore interface {
 // embedSleep overrides time.Sleep for retry tests. Nil means use real timers.
 var embedSleep func(time.Duration)
 
+// Consolidator extracts and stores memories from conversation context using LLM analysis.
 type Consolidator struct {
 	qdrant          qdrantStore
 	embedder        Embedder
@@ -88,6 +95,7 @@ func embedWithRetry(ctx context.Context, embedder Embedder, text string) ([]floa
 	return nil, fmt.Errorf("embedding failed: %w", lastErr)
 }
 
+// NewConsolidator creates a new consolidator with the given Qdrant client, embedder, and AI configuration.
 func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient *ai.Client, visionDescriber *ai.VisionDescriber, cfg *config.ConsolidationConfig, ownBotID string) *Consolidator {
 	return &Consolidator{
 		qdrant:          qdrant,
@@ -101,13 +109,14 @@ func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient *ai.Clien
 	}
 }
 
+// Process consolidates memories for a single user, updating their profile and storing extracted memories.
 func (c *Consolidator) Process(ctx context.Context, userID string) error {
 	start := time.Now()
 	logger.Infof("[consolidation] starting for user=%s", userID)
 
 	profile := c.getOrCreateProfile(ctx, userID)
 
-	memories, err := c.qdrant.GetMemoriesByUser(ctx, userID, 10)
+	memories, err := c.qdrant.GetMemoriesByUser(ctx, userID, defaultMemorySearchLimit)
 	if err != nil {
 		logger.Errorf("[consolidation] failed to get memories for user=%s: %v", userID, err)
 		return fmt.Errorf("failed to get memories: %w", err)
@@ -296,6 +305,7 @@ func (c *Consolidator) buildConversationText(ctx context.Context, messages []*Di
 	return conversation.String(), imageCount
 }
 
+// ProcessWithMessages consolidates memories for a user using the provided messages as context.
 func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, messages []*DiscordMessage) error {
 	start := time.Now()
 	logger.Infof("[consolidation] starting with messages for user=%s message_count=%d", userID, len(messages))
@@ -380,7 +390,7 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 		memory.Embedding = embedding
 
 		if err := c.qdrant.UpsertMemory(ctx, memory); err != nil {
-			logger.Errorf("[consolidation] failed to store memory %d for user=%s (Qdrant retries exhausted): %v", i+1, userID, err)
+			logger.Errorf("[consolidation] failed to store memory %d for user=%s: %v", i+1, userID, err)
 		} else {
 			stored++
 		}
@@ -389,6 +399,7 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 }
 
 // ProcessChannelMessages executes batch consolidation for all users in a channel
+// ProcessChannelMessages performs batch consolidation for all users identified in the channel messages.
 func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID string, messages []*DiscordMessage) error {
 	start := time.Now()
 
@@ -465,7 +476,11 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 func (c *Consolidator) getOrCreateProfile(ctx context.Context, userID string) *Profile {
 	profile, err := c.qdrant.GetProfile(ctx, userID)
 	if err != nil {
-		logger.Infof("[consolidation] creating new profile for user=%s", userID)
+		if errors.Is(err, ErrProfileNotFound) {
+			logger.Infof("[consolidation] creating new profile for user=%s", userID)
+		} else {
+			logger.Errorf("[consolidation] failed to get profile for user=%s: %v (creating default)", userID, err)
+		}
 		return &Profile{
 			UserID:      userID,
 			Traits:      []string{},

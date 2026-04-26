@@ -45,11 +45,6 @@ func Contains(slice []string, item string) bool {
 	return false
 }
 
-// ContainsString checks if a string contains a substring (case-sensitive)
-func ContainsString(s, substr string) bool {
-	return strings.Contains(s, substr)
-}
-
 // SplitMessage splits a long message into chunks at word boundaries
 // This is used for Discord's 2000 character limit
 func SplitMessage(content string, maxLen int) []string {

@@ -46,7 +46,7 @@ func (s *Server) getLogs(c *gin.Context) {
 }
 
 func (s *Server) getStats(c *gin.Context) {
-	stats, err := 	s.memoryStore.GetStats(c.Request.Context())
+	stats, err := s.memoryStore.GetStats(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -61,7 +61,7 @@ func (s *Server) getStats(c *gin.Context) {
 func (s *Server) getUserStats(c *gin.Context) {
 	userID := c.Param("userID")
 
-	stats, err := 	s.profileStore.GetUserStats(c.Request.Context(), userID)
+	stats, err := s.profileStore.GetUserStats(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

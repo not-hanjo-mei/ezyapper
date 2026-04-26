@@ -592,12 +592,19 @@ func (c *Config) Save() error {
 	return nil
 }
 
+const (
+	// openAISmallVector is the default vector dimension for text-embedding-3-small and text-embedding-ada-002.
+	openAISmallVector = 1536
+	// openAILargeVector is the default vector dimension for text-embedding-3-large.
+	openAILargeVector = 3072
+)
+
 func expectedEmbeddingVectorSize(model string) int {
 	switch strings.TrimSpace(strings.ToLower(model)) {
 	case "text-embedding-3-small", "text-embedding-ada-002":
-		return 1536
+		return openAISmallVector
 	case "text-embedding-3-large":
-		return 3072
+		return openAILargeVector
 	default:
 		return 0
 	}

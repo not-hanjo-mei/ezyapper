@@ -22,6 +22,7 @@ type VisionDescriber struct {
 	extraParams       map[string]interface{}
 }
 
+// NewVisionDescriber creates a new vision describer with the given client and vision configuration.
 func NewVisionDescriber(client *Client, visionConfig *config.VisionConfig, aiConfig *config.AIConfig) *VisionDescriber {
 	maxTokens := aiConfig.MaxTokens
 	if visionConfig.MaxTokens > 0 {
@@ -44,6 +45,7 @@ func NewVisionDescriber(client *Client, visionConfig *config.VisionConfig, aiCon
 	}
 }
 
+// DescribeImages generates text descriptions for all provided image URLs using a vision model.
 func (v *VisionDescriber) DescribeImages(ctx context.Context, imageURLs []string) ([]string, error) {
 	if len(imageURLs) == 0 {
 		return nil, fmt.Errorf("no images provided")
@@ -62,6 +64,7 @@ func (v *VisionDescriber) DescribeImages(ctx context.Context, imageURLs []string
 	return descriptions, nil
 }
 
+// DescribeSingleImage generates a text description for a single image URL.
 func (v *VisionDescriber) DescribeSingleImage(ctx context.Context, imageURL string) (string, error) {
 	imagePart := openai.ChatMessagePart{}
 

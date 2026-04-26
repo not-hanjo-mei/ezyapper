@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"ezyapper/internal/ai"
+
 	"golang.org/x/sync/singleflight"
 )
 
@@ -18,6 +19,7 @@ type AIEmbedder struct {
 }
 
 // NewAIEmbedder creates a new AI-based embedder
+// NewAIEmbedder creates a new AI-based embedder that uses the configured embedding model.
 func NewAIEmbedder(client *ai.Client, model string) (*AIEmbedder, error) {
 	if model == "" {
 		return nil, fmt.Errorf("embedding model is required")
@@ -55,10 +57,12 @@ type CachedEmbedder struct {
 	ttl      time.Duration
 	sf       singleflight.Group
 	now      func() time.Time
-	stopCh   chan struct{}
+	stopCh   <-chan struct{}
+	stop     chan struct{} // internal bidirectional channel for closing
 }
 
 func newCachedEmbedder(embedder Embedder, model string, maxSize int, ttl time.Duration) *CachedEmbedder {
+	stop := make(chan struct{})
 	e := &CachedEmbedder{
 		embedder: embedder,
 		model:    model,
@@ -67,7 +71,8 @@ func newCachedEmbedder(embedder Embedder, model string, maxSize int, ttl time.Du
 		maxSize:  maxSize,
 		ttl:      ttl,
 		now:      time.Now,
-		stopCh:   make(chan struct{}),
+		stopCh:   stop,
+		stop:     stop,
 	}
 	go e.evictLoop()
 	return e
@@ -166,5 +171,5 @@ func (e *CachedEmbedder) evictOne() {
 }
 
 func (e *CachedEmbedder) Stop() {
-	close(e.stopCh)
+	close(e.stop)
 }

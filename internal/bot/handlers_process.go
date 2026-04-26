@@ -104,7 +104,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		return
 	}
 
-	recentMessages, err := b.discordClient.FetchRecentMessages(m.ChannelID, b.cfg().Memory.ShortTermLimit)
+	recentMessages, err := b.discordClient.FetchRecentMessages(ctx, m.ChannelID, b.cfg().Memory.ShortTermLimit)
 	if err != nil {
 		logger.Warnf("Failed to fetch recent messages: %v", err)
 	}

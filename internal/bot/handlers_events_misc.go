@@ -87,17 +87,7 @@ func (b *Bot) onMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) 
 
 // onMessageReactionAdd handles reaction events.
 func (b *Bot) onMessageReactionAdd(s *discordgo.Session, r *discordgo.MessageReactionAdd) {
-	if r == nil || s == nil || s.State == nil || s.State.User == nil {
-		return
-	}
-
-	// Ignore bot's own reactions.
-	if r.UserID == s.State.User.ID {
-		return
-	}
-
-	// Maybe respond to certain reactions.
-	// This could be extended for interactive features.
+	// Reserved for future interactive features.
 }
 
 // onGuildJoin handles joining a new guild.

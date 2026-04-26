@@ -48,6 +48,7 @@ type ContextMessage struct {
 	Timestamp  time.Time
 }
 
+// NewDecisionService creates a new decision service for LLM-based reply decisions.
 func NewDecisionService(cfg *config.DecisionConfig) (*DecisionService, error) {
 	if cfg.APIKey == "" {
 		return nil, fmt.Errorf("decision.api_key is required when decision is enabled")
@@ -80,6 +81,7 @@ func (d *DecisionService) closeIdleConnections() {
 	}
 }
 
+// ShouldRespondWithInfo uses an LLM to decide whether the bot should respond to a message.
 func (d *DecisionService) ShouldRespondWithInfo(ctx context.Context, botName string, msgInfo MessageInfo, imageCount int, recentMessages []ContextMessage) (*DecisionResult, error) {
 	if !d.config.Enabled {
 		return &DecisionResult{ShouldRespond: false, Reason: "decision service disabled"}, nil

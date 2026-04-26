@@ -85,73 +85,72 @@ func (b *Bot) buildConversationHistory(ctx context.Context, messages []*memory.D
 			role = openai.ChatMessageRoleAssistant
 		}
 
-		// If message has images, handle based on vision mode
-		if len(msg.ImageURLs) > 0 {
-			switch b.cfg().AI.Vision.Mode {
-			case config.VisionModeHybrid:
-				// Hybrid mode: describe images with vision model
-				content := msg.Content
-				if visionDescriber != nil {
-					var descriptions []string
+		// If message has no images, add as text-only and continue
+		if len(msg.ImageURLs) == 0 {
+			result = append(result, openai.ChatCompletionMessage{
+				Role:    role,
+				Content: msg.Content,
+			})
+			continue
+		}
 
-					// Check if we have cached descriptions
-					if len(msg.ImageDescriptions) > 0 {
-						descriptions = msg.ImageDescriptions
-						logger.Debugf("[vision] using cached image descriptions for message %s count=%d", msg.ID, len(descriptions))
-					} else if cachedDescriptions, ok := b.getHistoricalImageDescriptions(msg.ID, msg.ImageURLs); ok {
-						descriptions = cachedDescriptions
-						msg.ImageDescriptions = cachedDescriptions
-						logger.Debugf("[vision] using bot cache image descriptions for message %s count=%d", msg.ID, len(descriptions))
-					} else {
-						// Avoid blocking reply generation on cold-start history scans.
-						// Historical images are enriched only when descriptions are already cached.
-						logger.Debugf("[vision] skipping uncached historical image descriptions for message %s", msg.ID)
+		// Handle images based on vision mode
+		switch b.cfg().AI.Vision.Mode {
+		case config.VisionModeHybrid:
+			content := msg.Content
+			if visionDescriber != nil {
+				var descriptions []string
+
+				// Check if we have cached descriptions
+				if len(msg.ImageDescriptions) > 0 {
+					descriptions = msg.ImageDescriptions
+					logger.Debugf("[vision] using cached image descriptions for message %s count=%d", msg.ID, len(descriptions))
+				} else if cachedDescriptions, ok := b.getHistoricalImageDescriptions(msg.ID, msg.ImageURLs); ok {
+					descriptions = cachedDescriptions
+					msg.ImageDescriptions = cachedDescriptions
+					logger.Debugf("[vision] using bot cache image descriptions for message %s count=%d", msg.ID, len(descriptions))
+				} else {
+					// Avoid blocking reply generation on cold-start history scans.
+					// Historical images are enriched only when descriptions are already cached.
+					logger.Debugf("[vision] skipping uncached historical image descriptions for message %s", msg.ID)
+				}
+
+				// Add descriptions to content
+				for j, desc := range descriptions {
+					if j < b.cfg().AI.Vision.MaxImages || b.cfg().AI.Vision.MaxImages == 0 {
+						content = fmt.Sprintf("%s\n[Image %d: %s]", content, j+1, desc)
 					}
-
-					// Add descriptions to content
-					for j, desc := range descriptions {
-						if j < b.cfg().AI.Vision.MaxImages || b.cfg().AI.Vision.MaxImages == 0 {
-							content = fmt.Sprintf("%s\n[Image %d: %s]", content, j+1, desc)
-						}
-					}
 				}
-				result = append(result, openai.ChatCompletionMessage{
-					Role:    role,
-					Content: content,
-				})
+			}
+			result = append(result, openai.ChatCompletionMessage{
+				Role:    role,
+				Content: content,
+			})
 
-			case config.VisionModeMultimodal:
-				// Multimodal mode: create multi-content message with images
-				var parts []openai.ChatMessagePart
-				if msg.Content != "" {
-					parts = append(parts, openai.ChatMessagePart{
-						Type: openai.ChatMessagePartTypeText,
-						Text: msg.Content,
-					})
-				}
-				for _, imgURL := range msg.ImageURLs {
-					parts = append(parts, openai.ChatMessagePart{
-						Type: openai.ChatMessagePartTypeImageURL,
-						ImageURL: &openai.ChatMessageImageURL{
-							URL:    imgURL,
-							Detail: openai.ImageURLDetailAuto,
-						},
-					})
-				}
-				result = append(result, openai.ChatCompletionMessage{
-					Role:         role,
-					MultiContent: parts,
-				})
-
-			default:
-				// Text-only mode or unknown mode: ignore images, keep text only
-				result = append(result, openai.ChatCompletionMessage{
-					Role:    role,
-					Content: msg.Content,
+		case config.VisionModeMultimodal:
+			var parts []openai.ChatMessagePart
+			if msg.Content != "" {
+				parts = append(parts, openai.ChatMessagePart{
+					Type: openai.ChatMessagePartTypeText,
+					Text: msg.Content,
 				})
 			}
-		} else {
-			// Text-only message
+			for _, imgURL := range msg.ImageURLs {
+				parts = append(parts, openai.ChatMessagePart{
+					Type: openai.ChatMessagePartTypeImageURL,
+					ImageURL: &openai.ChatMessageImageURL{
+						URL:    imgURL,
+						Detail: openai.ImageURLDetailAuto,
+					},
+				})
+			}
+			result = append(result, openai.ChatCompletionMessage{
+				Role:         role,
+				MultiContent: parts,
+			})
+
+		default:
+			// Text-only mode or unknown mode: ignore images, keep text only
 			result = append(result, openai.ChatCompletionMessage{
 				Role:    role,
 				Content: msg.Content,

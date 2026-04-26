@@ -26,7 +26,6 @@ func (qc *QdrantClient) memoryToPayload(memory *Record) map[string]*qdrant.Value
 	payload["updated_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(memory.UpdatedAt.Unix())}}
 	payload["access_count"] = &qdrant.Value{Kind: &qdrant.Value_IntegerValue{IntegerValue: int64(memory.AccessCount)}}
 
-	// Always persist keywords as a list (empty list allowed).
 	var keywordValues []*qdrant.Value
 	for _, kw := range memory.Keywords {
 		keywordValues = append(keywordValues, &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: kw}})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -249,7 +250,7 @@ func (s *MemoryService) filterByKeywords(memories []*Record, keywords []string) 
 	var filtered []*Record
 	for _, m := range memories {
 		for _, keyword := range keywords {
-			if utils.Contains(m.Keywords, keyword) || utils.ContainsString(m.Content, keyword) {
+			if utils.Contains(m.Keywords, keyword) || strings.Contains(m.Content, keyword) {
 				filtered = append(filtered, m)
 				break
 			}
