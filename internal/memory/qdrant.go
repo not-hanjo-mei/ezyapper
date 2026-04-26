@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"strconv"
 	"time"
 
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
+	"ezyapper/internal/retry"
 
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
@@ -36,56 +36,18 @@ const (
 	maxBackoff  = 30 * time.Second
 )
 
-// retryWithBackoff executes fn with exponential backoff on retryable gRPC errors.
-// UUID generation and metadata preparation MUST happen before calling this function
-// to prevent duplicate records on retry.
+// retryWithBackoff is a thin compatibility wrapper around retry.Retry,
+// preserved for backward compatibility with tests in this package.
 func retryWithBackoff(ctx context.Context, operation string, fn func() error) error {
-	var lastErr error
-
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("%s cancelled before attempt %d: %w", operation, attempt+1, err)
-		}
-
-		lastErr = fn()
-		if lastErr == nil {
-			return nil
-		}
-
-		if !isRetryableGrpc(lastErr) {
-			return fmt.Errorf("%s non-retryable error: %w", operation, lastErr)
-		}
-
-		if attempt == maxRetries {
-			return fmt.Errorf("%s exhausted after %d attempts: %w", operation, maxRetries+1, lastErr)
-		}
-
-		delay := computedDelay(attempt)
-
-		if retrySleep != nil {
-			retrySleep(delay)
-		} else {
-			timer := time.NewTimer(delay)
-			select {
-			case <-timer.C:
-			case <-ctx.Done():
-				timer.Stop()
-				return fmt.Errorf("%s cancelled: %w", operation, ctx.Err())
-			}
-		}
+	_, err := retry.Retry(ctx, maxRetries, func(ctx context.Context) (struct{}, error) {
+		return struct{}{}, fn()
+	}, retry.WithErrorClassifier(isRetryableGrpc),
+		retry.WithBaseDelay(baseBackoff),
+		retry.WithMaxDelay(maxBackoff))
+	if err != nil {
+		return fmt.Errorf("%s %w", operation, err)
 	}
-
-	return fmt.Errorf("%s exhausted: %w", operation, lastErr)
-}
-
-// computedDelay calculates exponential backoff with ±25% jitter.
-func computedDelay(attempt int) time.Duration {
-	baseDelay := time.Duration(1<<uint(attempt)) * baseBackoff
-	if baseDelay > maxBackoff {
-		baseDelay = maxBackoff
-	}
-	jitter := time.Duration(float64(baseDelay) * 0.25 * (2.0*rand.Float64() - 1.0))
-	return baseDelay + jitter
+	return nil
 }
 
 // isRetryableGrpc returns true for gRPC status codes that warrant a retry.
@@ -265,8 +227,9 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Memory) error 
 	memID := memory.ID
 	embedding := memory.Embedding
 
-	return retryWithBackoff(ctx, "upsert_memory", func() error {
-		_, err := qc.client.Upsert(ctx, &qdrant.UpsertPoints{
+	// UUID 必须在重试之前生成以防止重复记录
+	_, err := retry.Retry(ctx, maxRetries, func(ctx context.Context) (*qdrant.UpdateResult, error) {
+		return qc.client.Upsert(ctx, &qdrant.UpsertPoints{
 			CollectionName: CollectionMemories,
 			Points: []*qdrant.PointStruct{
 				{
@@ -276,13 +239,13 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Memory) error 
 				},
 			},
 		})
-		if err != nil {
-			logger.Errorf("[UpsertMemory] failed to upsert memory for userID=%s: %v", memory.UserID, err)
-			return fmt.Errorf("failed to upsert memory: %w", err)
-		}
-		logger.Debugf("[UpsertMemory] successfully stored memoryID=%s for userID=%s", memID, memory.UserID)
-		return nil
-	})
+	}, retry.WithErrorClassifier(isRetryableGrpc), retry.WithBaseDelay(baseBackoff), retry.WithMaxDelay(maxBackoff))
+	if err != nil {
+		logger.Errorf("[UpsertMemory] failed to upsert memory for userID=%s: %v", memory.UserID, err)
+		return fmt.Errorf("failed to upsert memory: %w", err)
+	}
+	logger.Debugf("[UpsertMemory] successfully stored memoryID=%s for userID=%s", memID, memory.UserID)
+	return nil
 }
 
 // SearchMemories searches for similar memories
@@ -472,8 +435,8 @@ func (qc *QdrantClient) UpsertProfile(ctx context.Context, profile *Profile) err
 		return fmt.Errorf("upsert profile: %w", err)
 	}
 
-	return retryWithBackoff(ctx, "upsert_profile", func() error {
-		_, err := qc.client.Upsert(ctx, &qdrant.UpsertPoints{
+	_, err = retry.Retry(ctx, maxRetries, func(ctx context.Context) (*qdrant.UpdateResult, error) {
+		return qc.client.Upsert(ctx, &qdrant.UpsertPoints{
 			CollectionName: CollectionProfiles,
 			Points: []*qdrant.PointStruct{
 				{
@@ -483,13 +446,13 @@ func (qc *QdrantClient) UpsertProfile(ctx context.Context, profile *Profile) err
 				},
 			},
 		})
-		if err != nil {
-			logger.Errorf("[UpsertProfile] failed to upsert profile for userID=%s: %v", profile.UserID, err)
-			return fmt.Errorf("failed to upsert profile: %w", err)
-		}
-		logger.Debugf("[UpsertProfile] successfully stored profile for userID=%s", profile.UserID)
-		return nil
-	})
+	}, retry.WithErrorClassifier(isRetryableGrpc), retry.WithBaseDelay(baseBackoff), retry.WithMaxDelay(maxBackoff))
+	if err != nil {
+		logger.Errorf("[UpsertProfile] failed to upsert profile for userID=%s: %v", profile.UserID, err)
+		return fmt.Errorf("failed to upsert profile: %w", err)
+	}
+	logger.Debugf("[UpsertProfile] successfully stored profile for userID=%s", profile.UserID)
+	return nil
 }
 
 // GetProfile retrieves a user profile

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"net"
 	"net/http"
 	"reflect"
@@ -16,6 +15,7 @@ import (
 
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
+	"ezyapper/internal/retry"
 
 	"github.com/sashabaranov/go-openai"
 )
@@ -123,17 +123,6 @@ func (c *Client) retryableError(err error) bool {
 	return false
 }
 
-// exponentialBackoff calculates delay with exponential backoff and jitter
-func exponentialBackoff(retryCount int) time.Duration {
-	// Base delay: 1 second, doubling each retry with +/- 25% jitter
-	baseDelay := time.Duration(1<<uint(retryCount)) * time.Second
-	if baseDelay > 30*time.Second {
-		baseDelay = 30 * time.Second
-	}
-	jitter := time.Duration(float64(baseDelay) * 0.25 * (2.0*rand.Float64() - 1.0))
-	return baseDelay + jitter
-}
-
 func (c *Client) requestTimeout() time.Duration {
 	if c.config != nil && c.config.Timeout > 0 {
 		return time.Duration(c.config.Timeout) * time.Second
@@ -168,96 +157,39 @@ func isTimeoutLikeError(err error) bool {
 	return strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline exceeded")
 }
 
-func executeWithRetry[T any](
-	c *Client,
-	ctx context.Context,
-	operation string,
-	call func(context.Context) (T, error),
-	nonRetryableFormatter func(error) error,
-	exhaustedFormatter func(error) error,
-) (T, error) {
-	var resp T
-	var lastErr error
-
-	for retry := 0; retry <= c.config.RetryCount; retry++ {
-		if err := ctx.Err(); err != nil {
-			return resp, fmt.Errorf("%s cancelled before attempt %d: %w", operation, retry+1, err)
-		}
-
+func (c *Client) createChatCompletionWithRetry(ctx context.Context, req openai.ChatCompletionRequest, operation string) (openai.ChatCompletionResponse, error) {
+	return retry.Retry(ctx, c.config.RetryCount, func(ctx context.Context) (openai.ChatCompletionResponse, error) {
 		attemptCtx, cancel := context.WithTimeout(ctx, c.requestTimeout())
-		logger.Debugf("[ai] calling %s API... (attempt %d/%d)", operation, retry+1, c.config.RetryCount+1)
-		resp, lastErr = call(attemptCtx)
-		cancel()
-
-		if lastErr == nil {
-			return resp, nil
-		}
-
-		if isTimeoutLikeError(lastErr) {
+		defer cancel()
+		logger.Debugf("[ai] calling %s API...", operation)
+		resp, err := c.client.CreateChatCompletion(attemptCtx, req)
+		if err != nil && isTimeoutLikeError(err) {
 			c.closeIdleConnections()
 		}
-
-		if !c.retryableError(lastErr) {
-			logger.Errorf("[ai] non-retryable %s error: %v", operation, lastErr)
-			return resp, nonRetryableFormatter(lastErr)
-		}
-
-		if retry == c.config.RetryCount {
-			logger.Errorf("[ai] all %d %s retries exhausted: %v", c.config.RetryCount, operation, lastErr)
-			return resp, exhaustedFormatter(lastErr)
-		}
-
-		delay := exponentialBackoff(retry)
-		logger.Warnf("[ai] retryable %s error (attempt %d/%d): %v - retrying in %.1fs...",
-			operation, retry+1, c.config.RetryCount+1, lastErr, delay.Seconds())
-
-		timer := time.NewTimer(delay)
-		select {
-		case <-timer.C:
-		case <-ctx.Done():
-			timer.Stop()
-			return resp, fmt.Errorf("%s cancelled: %w", operation, ctx.Err())
-		}
-	}
-
-	if lastErr == nil {
-		return resp, nil
-	}
-
-	return resp, exhaustedFormatter(lastErr)
-}
-
-func (c *Client) createChatCompletionWithRetry(ctx context.Context, req openai.ChatCompletionRequest, operation string) (openai.ChatCompletionResponse, error) {
-	return executeWithRetry(
-		c,
-		ctx,
-		operation,
-		func(attemptCtx context.Context) (openai.ChatCompletionResponse, error) {
-			return c.client.CreateChatCompletion(attemptCtx, req)
-		},
-		func(err error) error {
-			return fmt.Errorf("%s failed: %w", operation, err)
-		},
-		func(err error) error {
-			return fmt.Errorf("%s failed after %d retries: %w", operation, c.config.RetryCount, err)
-		},
+		return resp, err
+	},
+		retry.WithBaseDelay(1*time.Second),
+		retry.WithMaxDelay(30*time.Second),
+		retry.WithErrorClassifier(c.retryableError),
 	)
 }
 
 func (c *Client) createEmbeddingWithRetry(ctx context.Context, req openai.EmbeddingRequest, operation string) (openai.EmbeddingResponse, error) {
-	return executeWithRetry(
-		c,
-		ctx,
-		operation,
-		func(attemptCtx context.Context) (openai.EmbeddingResponse, error) {
-			return c.client.CreateEmbeddings(attemptCtx, req)
-		},
-		func(err error) error {
-			return fmt.Errorf("failed to %s: %w", operation, err)
-		},
-		func(err error) error {
-			return fmt.Errorf("failed to %s after %d retries: %w", operation, c.config.RetryCount, err)
-		},
+	return retry.Retry(ctx, c.config.RetryCount, func(ctx context.Context) (openai.EmbeddingResponse, error) {
+		attemptCtx, cancel := context.WithTimeout(ctx, c.requestTimeout())
+		defer cancel()
+		logger.Debugf("[ai] calling %s API...", operation)
+		resp, err := c.client.CreateEmbeddings(attemptCtx, req)
+		if err != nil && isTimeoutLikeError(err) {
+			c.closeIdleConnections()
+		}
+		return resp, err
+	},
+		retry.WithBaseDelay(1*time.Second),
+		retry.WithMaxDelay(30*time.Second),
+		retry.WithErrorClassifier(func(err error) bool {
+			return c.retryableError(err) && !isTimeoutLikeError(err)
+		}),
 	)
 }
 
