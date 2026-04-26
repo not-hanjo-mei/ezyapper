@@ -103,8 +103,8 @@ func absInt(v int) int {
 	return v
 }
 
-func (p *DateTimePlugin) Info() (plugin.PluginInfo, error) {
-	return plugin.PluginInfo{
+func (p *DateTimePlugin) Info() (plugin.Info, error) {
+	return plugin.Info{
 		Name:        "datetime",
 		Version:     "0.0.0",
 		Author:      "EZyapper",

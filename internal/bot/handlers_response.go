@@ -18,7 +18,7 @@ import (
 )
 
 // generateResponse generates an AI response for a message
-func (b *Bot) generateResponse(ctx context.Context, m *discordgo.MessageCreate, guildName string, imageURLs []string, imageDescriptions []string, recentMessages []*memory.DiscordMessage, memories []*memory.Memory, profile *memory.Profile) (string, error) {
+func (b *Bot) generateResponse(ctx context.Context, m *discordgo.MessageCreate, guildName string, imageURLs []string, imageDescriptions []string, recentMessages []*memory.DiscordMessage, memories []*memory.Record, profile *memory.Profile) (string, error) {
 	// Check if context is cancelled before starting
 	if err := ctx.Err(); err != nil {
 		return "", err

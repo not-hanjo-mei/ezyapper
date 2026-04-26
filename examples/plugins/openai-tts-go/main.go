@@ -407,8 +407,8 @@ func newOpenAITTSPlugin(cfg ttsConfig) (*openAITTSPlugin, error) {
 	}, nil
 }
 
-func (p *openAITTSPlugin) Info() (plugin.PluginInfo, error) {
-	return plugin.PluginInfo{
+func (p *openAITTSPlugin) Info() (plugin.Info, error) {
+	return plugin.Info{
 		Name:        "openai-tts",
 		Version:     "0.0.0",
 		Author:      "EZyapper",

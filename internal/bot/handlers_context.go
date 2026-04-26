@@ -29,7 +29,7 @@ func truncateString(s string, maxLen int) string {
 // buildDynamicContext builds the dynamic user context that changes each request.
 // This content is appended to the user message rather than the system prompt
 // to preserve prompt caching benefits.
-func (b *Bot) buildDynamicContext(authorName string, profile *memory.Profile, memories []*memory.Memory, recentMessages []*memory.DiscordMessage) string {
+func (b *Bot) buildDynamicContext(authorName string, profile *memory.Profile, memories []*memory.Record, recentMessages []*memory.DiscordMessage) string {
 	var context strings.Builder
 
 	// User identification is included in <currentMessage> XML format.

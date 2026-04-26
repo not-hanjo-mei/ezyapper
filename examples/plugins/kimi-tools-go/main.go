@@ -89,8 +89,8 @@ func newKimiToolsPlugin(cfg kimiConfig) (*kimiToolsPlugin, error) {
 	return p, nil
 }
 
-func (p *kimiToolsPlugin) Info() (plugin.PluginInfo, error) {
-	return plugin.PluginInfo{
+func (p *kimiToolsPlugin) Info() (plugin.Info, error) {
+	return plugin.Info{
 		Name:        "kimi-tools",
 		Version:     "0.0.0",
 		Author:      "EZyapper",

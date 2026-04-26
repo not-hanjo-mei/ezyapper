@@ -171,7 +171,7 @@ func writeJSONRPCResponse(enc *json.Encoder, id int64, result interface{}, err e
 
 // Serve starts a plugin and connects to the host process.
 // This should be called from the plugin's main function.
-func Serve(impl PluginInterface) error {
+func Serve(impl Interface) error {
 	if impl == nil {
 		return fmt.Errorf("plugin implementation is nil")
 	}

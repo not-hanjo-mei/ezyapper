@@ -14,8 +14,8 @@ import (
 
 type SystemSpecPlugin struct{}
 
-func (p *SystemSpecPlugin) Info() (plugin.PluginInfo, error) {
-	return plugin.PluginInfo{
+func (p *SystemSpecPlugin) Info() (plugin.Info, error) {
+	return plugin.Info{
 		Name:        "systemspec",
 		Version:     "0.0.0",
 		Author:      "EZyapper",

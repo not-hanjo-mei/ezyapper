@@ -44,7 +44,7 @@ func (m *forcedErrorEmbedder) Embed(ctx context.Context, text string) ([]float32
 
 // mockQdrantStore implements qdrantStore for consolidation tests.
 type mockQdrantStore struct {
-	memories map[string]*Memory
+	memories map[string]*Record
 	profiles map[string]*Profile
 	// upsertMemoryErr forces UpsertMemory to fail after retry exhaustion
 	upsertMemoryErr error
@@ -54,12 +54,12 @@ type mockQdrantStore struct {
 
 func newMockQdrantStore() *mockQdrantStore {
 	return &mockQdrantStore{
-		memories: make(map[string]*Memory),
+		memories: make(map[string]*Record),
 		profiles: make(map[string]*Profile),
 	}
 }
 
-func (m *mockQdrantStore) UpsertMemory(ctx context.Context, memory *Memory) error {
+func (m *mockQdrantStore) UpsertMemory(ctx context.Context, memory *Record) error {
 	if m.upsertMemoryErr != nil {
 		return m.upsertMemoryErr
 	}
@@ -93,8 +93,8 @@ func (m *mockQdrantStore) GetProfile(ctx context.Context, userID string) (*Profi
 	return p, nil
 }
 
-func (m *mockQdrantStore) GetMemoriesByUser(ctx context.Context, userID string, limit int) ([]*Memory, error) {
-	var result []*Memory
+func (m *mockQdrantStore) GetMemoriesByUser(ctx context.Context, userID string, limit int) ([]*Record, error) {
+	var result []*Record
 	for _, mem := range m.memories {
 		if mem.UserID == userID {
 			result = append(result, mem)
@@ -199,8 +199,8 @@ func TestConsolidationProcess_QdrantStoreError(t *testing.T) {
 	profile.Traits = []string{"friendly"}
 	profile.Facts = map[string]string{"name": "TestUser"}
 
-	memories := []*Memory{
-		{UserID: userID, MemoryType: MemoryTypeFact, Content: "User is friendly"},
+	memories := []*Record{
+		{UserID: userID, MemoryType: TypeFact, Content: "User is friendly"},
 	}
 
 	result, err := c.consolidateMemories(ctx, profile, memories)
@@ -211,9 +211,9 @@ func TestConsolidationProcess_QdrantStoreError(t *testing.T) {
 	// Call the storage loop — should not panic even when Qdrant fails every time
 	stored := 0
 	for i, extract := range result.Memories {
-		memory := &Memory{
+		memory := &Record{
 			UserID:     userID,
-			MemoryType: MemoryType(extract.Type),
+			MemoryType: Type(extract.Type),
 			Content:    extract.Content,
 			Summary:    extract.Content,
 			Keywords:   extract.Keywords,
@@ -276,17 +276,17 @@ func TestProfileMemoryCount_OnlyOnSuccess(t *testing.T) {
 		embedder: newRetryableEmbedder(0),
 	}
 
-	extracts := []MemoryExtract{
-		{Content: "memory one", Type: string(MemoryTypeFact), Confidence: 0.9},
-		{Content: "memory two", Type: string(MemoryTypeSummary), Confidence: 0.8},
-		{Content: "memory three", Type: string(MemoryTypeEpisode), Confidence: 0.7},
+	extracts := []Extract{
+		{Content: "memory one", Type: string(TypeFact), Confidence: 0.9},
+		{Content: "memory two", Type: string(TypeSummary), Confidence: 0.8},
+		{Content: "memory three", Type: string(TypeEpisode), Confidence: 0.7},
 	}
 
 	stored := 0
 	for _, extract := range extracts {
-		memory := &Memory{
+		memory := &Record{
 			UserID:     profile.UserID,
-			MemoryType: MemoryType(extract.Type),
+			MemoryType: Type(extract.Type),
 			Content:    extract.Content,
 			Summary:    extract.Content,
 			Keywords:   extract.Keywords,
@@ -346,19 +346,19 @@ func TestProfileMemoryCount_Consistent(t *testing.T) {
 		},
 	}
 
-	extracts := []MemoryExtract{
-		{Content: "memory alpha", Type: string(MemoryTypeFact), Confidence: 0.95},
-		{Content: "memory beta", Type: string(MemoryTypeSummary), Confidence: 0.85},
-		{Content: "memory gamma", Type: string(MemoryTypeEpisode), Confidence: 0.75},
-		{Content: "memory delta", Type: string(MemoryTypeFact), Confidence: 0.65},
-		{Content: "memory epsilon", Type: string(MemoryTypeSummary), Confidence: 0.55},
+	extracts := []Extract{
+		{Content: "memory alpha", Type: string(TypeFact), Confidence: 0.95},
+		{Content: "memory beta", Type: string(TypeSummary), Confidence: 0.85},
+		{Content: "memory gamma", Type: string(TypeEpisode), Confidence: 0.75},
+		{Content: "memory delta", Type: string(TypeFact), Confidence: 0.65},
+		{Content: "memory epsilon", Type: string(TypeSummary), Confidence: 0.55},
 	}
 
 	stored := 0
 	for _, extract := range extracts {
-		memory := &Memory{
+		memory := &Record{
 			UserID:     profile.UserID,
-			MemoryType: MemoryType(extract.Type),
+			MemoryType: Type(extract.Type),
 			Content:    extract.Content,
 			Summary:    extract.Content,
 			Keywords:   extract.Keywords,
@@ -410,10 +410,10 @@ func TestUpdateProfileFromResult_NoMemoryCount(t *testing.T) {
 			NewPreferences: map[string]string{},
 			NewInterests:   []string{},
 		},
-		Memories: []MemoryExtract{
-			{Content: "memory 1", Type: string(MemoryTypeFact), Confidence: 0.9},
-			{Content: "memory 2", Type: string(MemoryTypeSummary), Confidence: 0.8},
-			{Content: "memory 3", Type: string(MemoryTypeEpisode), Confidence: 0.7},
+		Memories: []Extract{
+			{Content: "memory 1", Type: string(TypeFact), Confidence: 0.9},
+			{Content: "memory 2", Type: string(TypeSummary), Confidence: 0.8},
+			{Content: "memory 3", Type: string(TypeEpisode), Confidence: 0.7},
 		},
 	}
 

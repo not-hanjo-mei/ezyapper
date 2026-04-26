@@ -112,7 +112,7 @@ type Bot struct {
 	memory          memory.Service
 	discordClient   *memory.ShortTermClient
 	toolRegistry    *ai.ToolRegistry
-	pluginManager   *plugin.PluginManager
+	pluginManager   *plugin.Manager
 	mcpManager      *ai.MCPManager
 	decisionService *ai.DecisionService
 	rateLimiter     *ratelimit.Limiter
@@ -154,7 +154,7 @@ const (
 )
 
 // New creates a new Discord bot instance
-func New(cfgStore *atomic.Value, mem memory.Service, pluginMgr *plugin.PluginManager) (*Bot, error) {
+func New(cfgStore *atomic.Value, mem memory.Service, pluginMgr *plugin.Manager) (*Bot, error) {
 	cfg := cfgStore.Load().(*config.Config)
 	// Create Discord session
 	session, err := discordgo.New("Bot " + cfg.Discord.Token)

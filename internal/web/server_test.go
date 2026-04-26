@@ -23,17 +23,17 @@ func init() {
 // mockMemoryService is a mock implementation of memory.Service for testing
 type mockMemoryService struct{}
 
-func (m *mockMemoryService) Store(ctx context.Context, mem *memory.Memory) error { return nil }
-func (m *mockMemoryService) Search(ctx context.Context, userID string, query string, opts *memory.SearchOptions) ([]*memory.Memory, error) {
+func (m *mockMemoryService) Store(ctx context.Context, mem *memory.Record) error { return nil }
+func (m *mockMemoryService) Search(ctx context.Context, userID string, query string, opts *memory.SearchOptions) ([]*memory.Record, error) {
 	return nil, nil
 }
-func (m *mockMemoryService) HybridSearch(ctx context.Context, userID string, query string, keywords []string, opts *memory.SearchOptions) ([]*memory.Memory, error) {
+func (m *mockMemoryService) HybridSearch(ctx context.Context, userID string, query string, keywords []string, opts *memory.SearchOptions) ([]*memory.Record, error) {
 	return nil, nil
 }
-func (m *mockMemoryService) GetMemories(ctx context.Context, userID string, limit int) ([]*memory.Memory, error) {
+func (m *mockMemoryService) GetMemories(ctx context.Context, userID string, limit int) ([]*memory.Record, error) {
 	return nil, nil
 }
-func (m *mockMemoryService) GetMemory(ctx context.Context, memoryID string) (*memory.Memory, error) {
+func (m *mockMemoryService) GetMemory(ctx context.Context, memoryID string) (*memory.Record, error) {
 	return nil, nil
 }
 func (m *mockMemoryService) GetProfile(ctx context.Context, userID string) (*memory.Profile, error) {
@@ -91,7 +91,7 @@ func setupTestServer(t *testing.T) (*Server, *httptest.Server) {
 	cfgStore.Store(cfg)
 
 	mem := &mockMemoryService{}
-	pluginManager := plugin.NewPluginManager()
+	pluginManager := plugin.NewManager()
 	server := NewServer(cfgStore, mem, pluginManager, nil)
 
 	gin.SetMode(gin.TestMode)
@@ -310,7 +310,7 @@ func TestNewServer(t *testing.T) {
 	}
 
 	mem := &mockMemoryService{}
-	pluginManager := plugin.NewPluginManager()
+	pluginManager := plugin.NewManager()
 	cfgStore := &atomic.Value{}
 	cfgStore.Store(cfg)
 	server := NewServer(cfgStore, mem, pluginManager, nil)
@@ -334,7 +334,7 @@ func TestServer_StartDisabled(t *testing.T) {
 	}
 
 	mem := &mockMemoryService{}
-	pluginManager := plugin.NewPluginManager()
+	pluginManager := plugin.NewManager()
 	cfgStore := &atomic.Value{}
 	cfgStore.Store(cfg)
 	server := NewServer(cfgStore, mem, pluginManager, nil)

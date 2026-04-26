@@ -19,10 +19,10 @@ import (
 
 // qdrantStore is the subset of QdrantClient methods used by Consolidator.
 type qdrantStore interface {
-	UpsertMemory(ctx context.Context, memory *Memory) error
+	UpsertMemory(ctx context.Context, memory *Record) error
 	UpsertProfile(ctx context.Context, profile *Profile) error
 	GetProfile(ctx context.Context, userID string) (*Profile, error)
-	GetMemoriesByUser(ctx context.Context, userID string, limit int) ([]*Memory, error)
+	GetMemoriesByUser(ctx context.Context, userID string, limit int) ([]*Record, error)
 }
 
 // embedSleep overrides time.Sleep for retry tests. Nil means use real timers.
@@ -133,9 +133,9 @@ func (c *Consolidator) Process(ctx context.Context, userID string) error {
 	for i, extract := range result.Memories {
 		logger.Debugf("[consolidation] processing memory %d/%d for user=%s: %s", i+1, len(result.Memories), userID, extract.Content)
 
-		memory := &Memory{
+		memory := &Record{
 			UserID:     userID,
-			MemoryType: MemoryType(extract.Type),
+			MemoryType: Type(extract.Type),
 			Content:    extract.Content,
 			Summary:    extract.Content,
 			Keywords:   extract.Keywords,
@@ -176,10 +176,10 @@ func (c *Consolidator) Process(ctx context.Context, userID string) error {
 	return nil
 }
 
-func (c *Consolidator) consolidateMemories(ctx context.Context, profile *Profile, memories []*Memory) (*ConsolidationResult, error) {
+func (c *Consolidator) consolidateMemories(ctx context.Context, profile *Profile, memories []*Record) (*ConsolidationResult, error) {
 	var memoryContext strings.Builder
 	for _, m := range memories {
-		if m.MemoryType == MemoryTypeSummary {
+		if m.MemoryType == TypeSummary {
 			memoryContext.WriteString(m.Content)
 			memoryContext.WriteString("\n")
 		}
@@ -230,31 +230,31 @@ func (c *Consolidator) generateSummary(profile *Profile, context string) string 
 	return strings.Join(parts, "; ")
 }
 
-func (c *Consolidator) extractMemories(profile *Profile, summary string) []MemoryExtract {
-	var extracts []MemoryExtract
+func (c *Consolidator) extractMemories(profile *Profile, summary string) []Extract {
+	var extracts []Extract
 
 	for _, trait := range profile.Traits {
-		extracts = append(extracts, MemoryExtract{
+		extracts = append(extracts, Extract{
 			Content:    fmt.Sprintf("User is %s", trait),
-			Type:       string(MemoryTypeFact),
+			Type:       string(TypeFact),
 			Confidence: 0.8,
 			Keywords:   []string{"trait", trait},
 		})
 	}
 
 	for key, value := range profile.Facts {
-		extracts = append(extracts, MemoryExtract{
+		extracts = append(extracts, Extract{
 			Content:    fmt.Sprintf("User's %s is %s", key, value),
-			Type:       string(MemoryTypeFact),
+			Type:       string(TypeFact),
 			Confidence: 0.9,
 			Keywords:   []string{"fact", key, value},
 		})
 	}
 
 	for key, value := range profile.Preferences {
-		extracts = append(extracts, MemoryExtract{
+		extracts = append(extracts, Extract{
 			Content:    fmt.Sprintf("User prefers %s: %s", key, value),
-			Type:       string(MemoryTypeFact),
+			Type:       string(TypeFact),
 			Confidence: 0.85,
 			Keywords:   []string{"preference", key, value},
 		})
@@ -356,9 +356,9 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 	for i, extract := range extracted {
 		logger.Debugf("[consolidation] storing memory %d/%d for user=%s", i+1, len(extracted), userID)
 
-		memory := &Memory{
+		memory := &Record{
 			UserID:     userID,
-			MemoryType: MemoryType(extract.Type),
+			MemoryType: Type(extract.Type),
 			Content:    extract.Content,
 			Summary:    extract.Content,
 			Keywords:   extract.Keywords,
@@ -491,9 +491,9 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 
 		stored := 0
 		for i, extract := range extracts {
-			memory := &Memory{
+			memory := &Record{
 				UserID:     userID,
-				MemoryType: MemoryType(extract.Type),
+				MemoryType: Type(extract.Type),
 				Content:    extract.Content,
 				Summary:    extract.Content,
 				Keywords:   extract.Keywords,
@@ -553,24 +553,24 @@ func (c *Consolidator) getOrCreateProfile(ctx context.Context, userID string) *P
 	return profile
 }
 
-func (c *Consolidator) analyzeConversation(ctx context.Context, conversation string, targetUserIDs []string) []MemoryExtract {
+func (c *Consolidator) analyzeConversation(ctx context.Context, conversation string, targetUserIDs []string) []Extract {
 	start := time.Now()
 
 	logger.Debugf("[consolidation] analyzeConversation called with conversation length=%d target_users=%d", len(conversation), len(targetUserIDs))
 
 	if c.aiClient == nil {
 		logger.Error("[consolidation] AI client not configured, cannot perform LLM extraction")
-		return []MemoryExtract{}
+		return []Extract{}
 	}
 
 	if strings.TrimSpace(conversation) == "" {
 		logger.Warn("[consolidation] empty conversation, skipping LLM analysis")
-		return []MemoryExtract{}
+		return []Extract{}
 	}
 
 	if c.prompt == "" {
 		logger.Error("[consolidation] consolidation prompt is empty, cannot perform LLM extraction")
-		return []MemoryExtract{}
+		return []Extract{}
 	}
 
 	logger.Debugf("[consolidation] preparing LLM prompt with conversation length=%d", len(conversation))
@@ -593,7 +593,7 @@ func (c *Consolidator) analyzeConversation(ctx context.Context, conversation str
 	resp, err := c.aiClient.CreateChatCompletion(ctx, req)
 	if err != nil {
 		logger.Errorf("[consolidation] LLM request failed: %v", err)
-		return []MemoryExtract{}
+		return []Extract{}
 	}
 
 	elapsed := time.Since(start)
@@ -610,11 +610,11 @@ func (c *Consolidator) analyzeConversation(ctx context.Context, conversation str
 		logger.Debug("[consolidation] stripped markdown code blocks from LLM response")
 	}
 
-	var extracts []MemoryExtract
+	var extracts []Extract
 	if err := json.Unmarshal([]byte(content), &extracts); err != nil {
 		logger.Errorf("[consolidation] failed to parse LLM response as JSON: %v", err)
 		logger.Debugf("[consolidation] raw LLM response: %s", resp.Content)
-		return []MemoryExtract{}
+		return []Extract{}
 	}
 
 	logger.Infof("[consolidation] successfully extracted %d memories from LLM response", len(extracts))
@@ -690,7 +690,7 @@ func (c *Consolidator) analyzeConversationBatch(ctx context.Context, conversatio
 	return batchExtracts
 }
 
-func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []MemoryExtract) {
+func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []Extract) {
 	interestsAdded := 0
 	factsAdded := 0
 
@@ -706,7 +706,7 @@ func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []
 		content := strings.ToLower(extract.Content)
 
 		switch extract.Type {
-		case string(MemoryTypeFact):
+		case string(TypeFact):
 			// Extract name
 			if strings.Contains(content, "name is") || strings.Contains(content, "user's name") {
 				if idx := strings.Index(extract.Content, "'"); idx != -1 {

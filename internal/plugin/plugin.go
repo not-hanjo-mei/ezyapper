@@ -25,10 +25,10 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-// PluginInterface defines the methods a plugin must implement
-type PluginInterface interface {
+// Interface defines the methods a plugin must implement
+type Interface interface {
 	// Info returns plugin metadata
-	Info() (PluginInfo, error)
+	Info() (Info, error)
 
 	// OnMessage is called for every message
 	// Returns: shouldContinue (bool), error
@@ -100,8 +100,8 @@ type BeforeSendProvider interface {
 	BeforeSend(msg DiscordMessage, response string) (BeforeSendResult, error)
 }
 
-// PluginInfo contains plugin metadata
-type PluginInfo struct {
+// Info contains plugin metadata
+type Info struct {
 	Name        string `json:"name"`
 	Version     string `json:"version"`
 	Author      string `json:"author"`
@@ -109,9 +109,9 @@ type PluginInfo struct {
 	Priority    int    `json:"priority"`
 }
 
-// PluginInfoExt extends PluginInfo with enabled status
-type PluginInfoExt struct {
-	PluginInfo
+// InfoExt extends Info with enabled status
+type InfoExt struct {
+	Info
 	Enabled bool `json:"enabled"`
 }
 
@@ -162,7 +162,7 @@ type ExecuteToolArgs struct {
 // Client represents a connection to a plugin
 type Client struct {
 	Name      string
-	Info      PluginInfo
+	Info      Info
 	jsonrpc   *stdioJSONRPCClient
 	process   *os.Process
 	priority  int
@@ -189,7 +189,7 @@ const (
 )
 
 type disabledPlugin struct {
-	Info      PluginInfo
+	Info      Info
 	Path      string
 	ConfigDir string
 }
@@ -199,28 +199,28 @@ type pluginLoadTarget struct {
 	configDir  string
 }
 
-// PluginManager manages all plugins
-type PluginManager struct {
+// Manager manages all plugins
+type Manager struct {
 	plugins  map[string]*Client
 	disabled map[string]disabledPlugin
 	mu       sync.RWMutex
 }
 
-// NewPluginManager creates a new plugin manager
-func NewPluginManager() *PluginManager {
-	return &PluginManager{
+// NewManager creates a new plugin manager
+func NewManager() *Manager {
+	return &Manager{
 		plugins:  make(map[string]*Client),
 		disabled: make(map[string]disabledPlugin),
 	}
 }
 
 // LoadPlugin loads a plugin from a binary path
-func (pm *PluginManager) LoadPlugin(pluginPath string) error {
+func (pm *Manager) LoadPlugin(pluginPath string) error {
 	absPath := toAbsolutePath(pluginPath)
 	return pm.loadPluginWithConfig(absPath, resolvePluginConfigDir(absPath))
 }
 
-func (pm *PluginManager) loadPluginWithConfig(pluginPath string, pluginConfigDir string) error {
+func (pm *Manager) loadPluginWithConfig(pluginPath string, pluginConfigDir string) error {
 	pluginPath = toAbsolutePath(pluginPath)
 	pluginConfigDir = toAbsolutePath(pluginConfigDir)
 
@@ -305,7 +305,7 @@ func (pm *PluginManager) loadPluginWithConfig(pluginPath string, pluginConfigDir
 	return pm.loadRPCPlugin(pluginPath, pluginConfigDir)
 }
 
-func (pm *PluginManager) loadRPCPlugin(pluginPath string, pluginConfigDir string) error {
+func (pm *Manager) loadRPCPlugin(pluginPath string, pluginConfigDir string) error {
 	cmd := exec.Command(pluginPath)
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("EZYAPPER_PLUGIN_PATH=%s", pluginConfigDir),
@@ -333,7 +333,7 @@ func (pm *PluginManager) loadRPCPlugin(pluginPath string, pluginConfigDir string
 
 	jsonClient := newStdioJSONRPCClient(stdin, stdout)
 
-	var info PluginInfo
+	var info Info
 	if err := callJSONRPCWithTimeout(jsonClient, "info", map[string]interface{}{}, &info, pluginStartupTimeout); err != nil {
 		jsonClient.Close()
 		cmd.Process.Kill()
@@ -373,7 +373,7 @@ func (pm *PluginManager) loadRPCPlugin(pluginPath string, pluginConfigDir string
 	return nil
 }
 
-func (pm *PluginManager) loadCommandPlugin(
+func (pm *Manager) loadCommandPlugin(
 	pluginPath string,
 	pluginConfigDir string,
 	manifest *pluginManifest,
@@ -444,7 +444,7 @@ func (pm *PluginManager) loadCommandPlugin(
 		})
 	}
 
-	info := PluginInfo{
+	info := Info{
 		Name:        pluginName,
 		Version:     strings.TrimSpace(manifest.Version),
 		Author:      strings.TrimSpace(manifest.Author),
@@ -621,7 +621,7 @@ func resolvePluginCommandPath(command string, pluginDir string) (string, error) 
 }
 
 // LoadPluginsFromDir loads all plugins from a directory
-func (pm *PluginManager) LoadPluginsFromDir(dir string) error {
+func (pm *Manager) LoadPluginsFromDir(dir string) error {
 	dir = toAbsolutePath(dir)
 
 	entries, err := os.ReadDir(dir)
@@ -762,7 +762,7 @@ func (pm *PluginManager) LoadPluginsFromDir(dir string) error {
 
 // OnMessage calls all plugins' OnMessage methods
 // Returns false if any plugin wants to block the message
-func (pm *PluginManager) OnMessage(ctx context.Context, m *discordgo.MessageCreate) (bool, error) {
+func (pm *Manager) OnMessage(ctx context.Context, m *discordgo.MessageCreate) (bool, error) {
 	pm.mu.RLock()
 	plugins := make([]*Client, 0, len(pm.plugins))
 	for _, p := range pm.plugins {
@@ -798,7 +798,7 @@ func (pm *PluginManager) OnMessage(ctx context.Context, m *discordgo.MessageCrea
 }
 
 // OnResponse calls all plugins' OnResponse methods
-func (pm *PluginManager) OnResponse(ctx context.Context, m *discordgo.MessageCreate, response string) error {
+func (pm *Manager) OnResponse(ctx context.Context, m *discordgo.MessageCreate, response string) error {
 	pm.mu.RLock()
 	plugins := make([]*Client, 0, len(pm.plugins))
 	for _, p := range pm.plugins {
@@ -828,7 +828,7 @@ func (pm *PluginManager) OnResponse(ctx context.Context, m *discordgo.MessageCre
 }
 
 // BeforeSend runs optional pre-send hooks and returns mutated response/upload files.
-func (pm *PluginManager) BeforeSend(
+func (pm *Manager) BeforeSend(
 	ctx context.Context,
 	m *discordgo.MessageCreate,
 	response string,
@@ -885,7 +885,7 @@ func (pm *PluginManager) BeforeSend(
 	return currentResponse, uploadFiles, false, nil
 }
 
-func (pm *PluginManager) shutdownPlugin(plugin *Client) error {
+func (pm *Manager) shutdownPlugin(plugin *Client) error {
 	if plugin == nil {
 		return nil
 	}
@@ -1025,7 +1025,7 @@ func callPluginShutdownWithTimeout(plugin *Client, timeout time.Duration) error 
 	return fmt.Errorf("plugin %s has no jsonrpc transport", plugin.Name)
 }
 
-func (pm *PluginManager) stopPluginProcess(plugin *Client, timeout time.Duration) {
+func (pm *Manager) stopPluginProcess(plugin *Client, timeout time.Duration) {
 	if plugin == nil {
 		return
 	}
@@ -1059,7 +1059,7 @@ func (pm *PluginManager) stopPluginProcess(plugin *Client, timeout time.Duration
 }
 
 // Shutdown gracefully stops all plugins
-func (pm *PluginManager) Shutdown(ctx context.Context) error {
+func (pm *Manager) Shutdown(ctx context.Context) error {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
@@ -1083,11 +1083,11 @@ func (pm *PluginManager) Shutdown(ctx context.Context) error {
 }
 
 // ListPlugins returns a list of loaded plugins
-func (pm *PluginManager) ListPlugins() []PluginInfo {
+func (pm *Manager) ListPlugins() []Info {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	infos := make([]PluginInfo, 0, len(pm.plugins))
+	infos := make([]Info, 0, len(pm.plugins))
 	for _, p := range pm.plugins {
 		infos = append(infos, p.Info)
 	}
@@ -1095,21 +1095,21 @@ func (pm *PluginManager) ListPlugins() []PluginInfo {
 }
 
 // ListPluginsExt returns a list of loaded plugins with extended info
-func (pm *PluginManager) ListPluginsExt() []PluginInfoExt {
+func (pm *Manager) ListPluginsExt() []InfoExt {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	infos := make([]PluginInfoExt, 0, len(pm.plugins)+len(pm.disabled))
+	infos := make([]InfoExt, 0, len(pm.plugins)+len(pm.disabled))
 	for _, p := range pm.plugins {
-		infos = append(infos, PluginInfoExt{
-			PluginInfo: p.Info,
+		infos = append(infos, InfoExt{
+			Info: p.Info,
 			Enabled:    true,
 		})
 	}
 
 	for _, p := range pm.disabled {
-		infos = append(infos, PluginInfoExt{
-			PluginInfo: p.Info,
+		infos = append(infos, InfoExt{
+			Info: p.Info,
 			Enabled:    false,
 		})
 	}
@@ -1117,7 +1117,7 @@ func (pm *PluginManager) ListPluginsExt() []PluginInfoExt {
 }
 
 // ListTools returns all tools exposed by currently enabled plugins.
-func (pm *PluginManager) ListTools() []PluginTool {
+func (pm *Manager) ListTools() []PluginTool {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
@@ -1132,7 +1132,7 @@ func (pm *PluginManager) ListTools() []PluginTool {
 }
 
 // ExecuteTool executes a named tool on a specific plugin.
-func (pm *PluginManager) ExecuteTool(pluginName string, toolName string, args map[string]interface{}) (string, error) {
+func (pm *Manager) ExecuteTool(pluginName string, toolName string, args map[string]interface{}) (string, error) {
 	pm.mu.RLock()
 	plugin, exists := pm.plugins[pluginName]
 	pm.mu.RUnlock()
@@ -1268,7 +1268,7 @@ func commandArgumentValue(value interface{}) (string, error) {
 }
 
 // EnablePlugin loads a disabled plugin back into memory.
-func (pm *PluginManager) EnablePlugin(name string) error {
+func (pm *Manager) EnablePlugin(name string) error {
 	pm.mu.RLock()
 	if _, exists := pm.plugins[name]; exists {
 		pm.mu.RUnlock()
@@ -1291,7 +1291,7 @@ func (pm *PluginManager) EnablePlugin(name string) error {
 }
 
 // DisablePlugin stops and removes a plugin
-func (pm *PluginManager) DisablePlugin(name string) error {
+func (pm *Manager) DisablePlugin(name string) error {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 

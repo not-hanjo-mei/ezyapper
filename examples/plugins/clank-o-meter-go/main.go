@@ -14,8 +14,8 @@ import (
 
 type ClankOMeterPlugin struct{}
 
-func (p *ClankOMeterPlugin) Info() (plugin.PluginInfo, error) {
-	return plugin.PluginInfo{
+func (p *ClankOMeterPlugin) Info() (plugin.Info, error) {
+	return plugin.Info{
 		Name:        "clank-o-meter",
 		Version:     "0.0.0",
 		Author:      "EZyapper",

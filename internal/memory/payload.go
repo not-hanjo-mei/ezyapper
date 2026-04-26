@@ -10,8 +10,8 @@ import (
 
 const payloadSchemaVersion = 2
 
-// memoryToPayload converts a Memory struct to Qdrant payload
-func (qc *QdrantClient) memoryToPayload(memory *Memory) map[string]*qdrant.Value {
+// memoryToPayload converts a Record struct to Qdrant payload
+func (qc *QdrantClient) memoryToPayload(memory *Record) map[string]*qdrant.Value {
 	payload := make(map[string]*qdrant.Value)
 	payload["schema_version"] = &qdrant.Value{Kind: &qdrant.Value_IntegerValue{IntegerValue: payloadSchemaVersion}}
 
@@ -50,9 +50,9 @@ func (qc *QdrantClient) memoryToPayload(memory *Memory) map[string]*qdrant.Value
 	return payload
 }
 
-// payloadToMemory converts Qdrant payload to a Memory struct
-func (qc *QdrantClient) payloadToMemory(payload map[string]*qdrant.Value, id string) (*Memory, error) {
-	memory := &Memory{ID: id}
+// payloadToMemory converts Qdrant payload to a Record struct
+func (qc *QdrantClient) payloadToMemory(payload map[string]*qdrant.Value, id string) (*Record, error) {
+	memory := &Record{ID: id}
 
 	if err := validatePayloadSchema(payload); err != nil {
 		return nil, fmt.Errorf("invalid memory payload schema: %w", err)
@@ -72,7 +72,7 @@ func (qc *QdrantClient) payloadToMemory(payload map[string]*qdrant.Value, id str
 	if err != nil {
 		return nil, err
 	}
-	memory.MemoryType = MemoryType(memoryType)
+	memory.MemoryType = Type(memoryType)
 	if memory.Content, err = getRequiredString(payload, "content"); err != nil {
 		return nil, err
 	}

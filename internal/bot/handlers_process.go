@@ -63,7 +63,7 @@ func (b *Bot) processMessageWithoutImages(ctx context.Context, s *discordgo.Sess
 		return
 	}
 
-	var memories []*memory.Memory
+	var memories []*memory.Record
 	if b.cfg().Memory.Retrieval.TopK > 0 {
 		memories, err = b.memory.Search(ctx, m.Author.ID, m.Content, nil)
 		if err != nil {
@@ -251,7 +251,7 @@ func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *disco
 		return
 	}
 
-	var memories []*memory.Memory
+	var memories []*memory.Record
 	if b.cfg().Memory.Retrieval.TopK > 0 {
 		memories, err = b.memory.Search(ctx, m.Author.ID, m.Content, nil)
 		if err != nil {

@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func TestPluginManagerHelperProcess(t *testing.T) {
+func TestManagerHelperProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_PLUGIN_HELPER_PROCESS") != "1" {
 		return
 	}
@@ -56,7 +56,7 @@ func TestPluginManagerHelperProcess(t *testing.T) {
 }
 
 func TestEnablePluginAlreadyEnabled(t *testing.T) {
-	pm := NewPluginManager()
+	pm := NewManager()
 	pm.plugins["demo"] = &Client{Name: "demo"}
 
 	if err := pm.EnablePlugin("demo"); err != nil {
@@ -65,7 +65,7 @@ func TestEnablePluginAlreadyEnabled(t *testing.T) {
 }
 
 func TestEnablePluginNotFound(t *testing.T) {
-	pm := NewPluginManager()
+	pm := NewManager()
 
 	err := pm.EnablePlugin("missing")
 	if err == nil {
@@ -77,10 +77,10 @@ func TestEnablePluginNotFound(t *testing.T) {
 }
 
 func TestEnablePluginLoadFailureFromDisabled(t *testing.T) {
-	pm := NewPluginManager()
+	pm := NewManager()
 	missingPath := filepath.Join(t.TempDir(), "missing-plugin")
 	pm.disabled["demo"] = disabledPlugin{
-		Info: PluginInfo{Name: "demo"},
+		Info: Info{Name: "demo"},
 		Path: missingPath,
 	}
 
@@ -94,7 +94,7 @@ func TestEnablePluginLoadFailureFromDisabled(t *testing.T) {
 }
 
 func TestDisablePluginNotFound(t *testing.T) {
-	pm := NewPluginManager()
+	pm := NewManager()
 
 	err := pm.DisablePlugin("missing")
 	if err == nil {
@@ -106,10 +106,10 @@ func TestDisablePluginNotFound(t *testing.T) {
 }
 
 func TestDisablePluginMovesToDisabledRegistry(t *testing.T) {
-	pm := NewPluginManager()
+	pm := NewManager()
 	pm.plugins["demo"] = &Client{
 		Name:      "demo",
-		Info:      PluginInfo{Name: "demo", Version: "1.0.0"},
+		Info:      Info{Name: "demo", Version: "1.0.0"},
 		path:      "plugins/demo",
 		configDir: "plugins/demo-config",
 	}
@@ -136,10 +136,10 @@ func TestDisablePluginMovesToDisabledRegistry(t *testing.T) {
 }
 
 func TestShutdownSkipsCommandRuntimePlugins(t *testing.T) {
-	pm := NewPluginManager()
+	pm := NewManager()
 	pm.plugins["command-plugin"] = &Client{
 		Name:    "command-plugin",
-		Info:    PluginInfo{Name: "command-plugin", Version: "1.0.0"},
+		Info:    Info{Name: "command-plugin", Version: "1.0.0"},
 		runtime: pluginRuntimeCommand,
 	}
 
@@ -314,7 +314,7 @@ func TestLoadPluginsFromDirCommandRuntimeWithoutLocalExecutable(t *testing.T) {
 					"required": []interface{}{"value"},
 				},
 				Command: os.Args[0],
-				Args:    []string{"-test.run=TestPluginManagerHelperProcess", "--", "emit"},
+				Args:    []string{"-test.run=TestManagerHelperProcess", "--", "emit"},
 				ArgKeys: []string{"value"},
 			},
 			{
@@ -325,7 +325,7 @@ func TestLoadPluginsFromDirCommandRuntimeWithoutLocalExecutable(t *testing.T) {
 					"properties": map[string]interface{}{},
 				},
 				Command: os.Args[0],
-				Args:    []string{"-test.run=TestPluginManagerHelperProcess", "--", "check-env"},
+				Args:    []string{"-test.run=TestManagerHelperProcess", "--", "check-env"},
 			},
 		},
 	}
@@ -340,7 +340,7 @@ func TestLoadPluginsFromDirCommandRuntimeWithoutLocalExecutable(t *testing.T) {
 		t.Fatalf("failed to write manifest: %v", err)
 	}
 
-	pm := NewPluginManager()
+	pm := NewManager()
 	if err := pm.LoadPluginsFromDir(pluginsRoot); err != nil {
 		t.Fatalf("LoadPluginsFromDir returned error: %v", err)
 	}

@@ -14,21 +14,21 @@ func NewNoopService() Service {
 // NoopService disables long-term memory behaviors while keeping API compatibility.
 type NoopService struct{}
 
-func (s *NoopService) Store(ctx context.Context, m *Memory) error { return nil }
+func (s *NoopService) Store(ctx context.Context, m *Record) error { return nil }
 
-func (s *NoopService) Search(ctx context.Context, userID string, query string, opts *SearchOptions) ([]*Memory, error) {
-	return []*Memory{}, nil
+func (s *NoopService) Search(ctx context.Context, userID string, query string, opts *SearchOptions) ([]*Record, error) {
+	return []*Record{}, nil
 }
 
-func (s *NoopService) HybridSearch(ctx context.Context, userID string, query string, keywords []string, opts *SearchOptions) ([]*Memory, error) {
-	return []*Memory{}, nil
+func (s *NoopService) HybridSearch(ctx context.Context, userID string, query string, keywords []string, opts *SearchOptions) ([]*Record, error) {
+	return []*Record{}, nil
 }
 
-func (s *NoopService) GetMemories(ctx context.Context, userID string, limit int) ([]*Memory, error) {
-	return []*Memory{}, nil
+func (s *NoopService) GetMemories(ctx context.Context, userID string, limit int) ([]*Record, error) {
+	return []*Record{}, nil
 }
 
-func (s *NoopService) GetMemory(ctx context.Context, memoryID string) (*Memory, error) {
+func (s *NoopService) GetMemory(ctx context.Context, memoryID string) (*Record, error) {
 	return nil, fmt.Errorf("memory not found")
 }
 

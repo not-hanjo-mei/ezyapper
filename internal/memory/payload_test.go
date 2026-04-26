@@ -12,12 +12,12 @@ func TestMemoryPayloadRoundTrip_PreservesExtendedFields(t *testing.T) {
 	qc := &QdrantClient{}
 	now := time.Now().UTC().Truncate(time.Second)
 
-	input := &Memory{
+	input := &Record{
 		ID:         "mem-1",
 		UserID:     "123",
 		GuildID:    "456",
 		ChannelID:  "789",
-		MemoryType: MemoryTypeFact,
+		MemoryType: TypeFact,
 		Content:    "user likes golang",
 		Summary:    "likes golang",
 		Keywords:   []string{"golang", "backend"},

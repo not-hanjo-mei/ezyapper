@@ -208,7 +208,7 @@ func (qc *QdrantClient) createPayloadIndexes(ctx context.Context, collectionName
 }
 
 // UpsertMemory stores or updates a memory
-func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Memory) error {
+func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error {
 	// Generate ID BEFORE retry loop to prevent duplicate records on retry
 	if memory.ID == "" {
 		memory.ID = uuid.New().String()
@@ -249,7 +249,7 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Memory) error 
 }
 
 // SearchMemories searches for similar memories
-func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embedding []float32, opts *SearchOptions) ([]*Memory, error) {
+func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embedding []float32, opts *SearchOptions) ([]*Record, error) {
 	if opts == nil {
 		opts = &SearchOptions{TopK: 5, MinScore: 0.75}
 	}
@@ -285,7 +285,7 @@ func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embed
 	}
 
 	// Convert results to memories
-	var memories []*Memory
+	var memories []*Record
 	logger.Debugf("[SearchMemories] got %d results, min_score=%.4f", len(results), opts.MinScore)
 	for i, result := range results {
 		logger.Debugf("[SearchMemories] result %d: score=%.4f", i+1, result.Score)
@@ -305,7 +305,7 @@ func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embed
 }
 
 // GetMemoriesByUser retrieves all memories for a user
-func (qc *QdrantClient) GetMemoriesByUser(ctx context.Context, userID string, limit int) ([]*Memory, error) {
+func (qc *QdrantClient) GetMemoriesByUser(ctx context.Context, userID string, limit int) ([]*Record, error) {
 	if limit <= 0 {
 		logger.Errorf("[GetMemoriesByUser] invalid limit=%d, must be greater than 0", limit)
 		return nil, fmt.Errorf("limit must be greater than 0, got: %d", limit)
@@ -332,7 +332,7 @@ func (qc *QdrantClient) GetMemoriesByUser(ctx context.Context, userID string, li
 		return nil, fmt.Errorf("failed to query memories: %w", err)
 	}
 
-	var memories []*Memory
+	var memories []*Record
 	for _, point := range results {
 		memory, err := qc.payloadToMemory(point.Payload, point.Id.GetUuid())
 		if err != nil {
@@ -347,7 +347,7 @@ func (qc *QdrantClient) GetMemoriesByUser(ctx context.Context, userID string, li
 }
 
 // GetMemory retrieves a single memory by ID
-func (qc *QdrantClient) GetMemory(ctx context.Context, memoryID string) (*Memory, error) {
+func (qc *QdrantClient) GetMemory(ctx context.Context, memoryID string) (*Record, error) {
 	logger.Debugf("[GetMemory] retrieving memoryID=%s", memoryID)
 
 	points, err := qc.client.Get(ctx, &qdrant.GetPoints{

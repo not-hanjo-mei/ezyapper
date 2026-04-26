@@ -24,7 +24,7 @@ type Server struct {
 	router         *gin.Engine
 	configStore    *atomic.Value // stores *config.Config
 	memory         memory.Service
-	pluginManager  *plugin.PluginManager
+	pluginManager  *plugin.Manager
 	server         *http.Server
 	mu             sync.RWMutex
 	startTime      time.Time
@@ -72,7 +72,7 @@ func findWebDir() string {
 	return "./web"
 }
 
-func NewServer(cfgStore *atomic.Value, mem memory.Service, pluginManager *plugin.PluginManager, discordFetcher DiscordMessageFetcher) *Server {
+func NewServer(cfgStore *atomic.Value, mem memory.Service, pluginManager *plugin.Manager, discordFetcher DiscordMessageFetcher) *Server {
 	cfg := cfgStore.Load().(*config.Config)
 	if cfg.Logging.Level == "debug" {
 		gin.SetMode(gin.DebugMode)

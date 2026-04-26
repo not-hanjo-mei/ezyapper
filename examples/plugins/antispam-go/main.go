@@ -57,8 +57,8 @@ type fileConfig struct {
 }
 
 // Info returns plugin metadata
-func (p *AntiSpamPlugin) Info() (plugin.PluginInfo, error) {
-	return plugin.PluginInfo{
+func (p *AntiSpamPlugin) Info() (plugin.Info, error) {
+	return plugin.Info{
 		Name:        "antispam",
 		Version:     "0.0.0",
 		Author:      "EZyapper",

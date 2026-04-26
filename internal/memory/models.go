@@ -5,20 +5,20 @@ import (
 	"time"
 )
 
-// MemoryType represents the type of memory being stored
-type MemoryType string
+// Type represents the type of memory being stored
+type Type string
 
 const (
-	// MemoryTypeSummary represents a conversation summary
-	MemoryTypeSummary MemoryType = "summary"
-	// MemoryTypeFact represents a factual memory
-	MemoryTypeFact MemoryType = "fact"
-	// MemoryTypeEpisode represents an episodic memory (specific event)
-	MemoryTypeEpisode MemoryType = "episode"
+	// TypeSummary represents a conversation summary
+	TypeSummary Type = "summary"
+	// TypeFact represents a factual memory
+	TypeFact Type = "fact"
+	// TypeEpisode represents an episodic memory (specific event)
+	TypeEpisode Type = "episode"
 )
 
-// Memory represents a stored memory in the vector database
-type Memory struct {
+// Record represents a stored memory in the vector database
+type Record struct {
 	// Unique identifier (UUID)
 	ID string `json:"id"`
 
@@ -27,8 +27,8 @@ type Memory struct {
 	GuildID   string `json:"guild_id,omitempty"`
 	ChannelID string `json:"channel_id,omitempty"`
 
-	// Memory content
-	MemoryType MemoryType `json:"memory_type"`
+	// Record content
+	MemoryType Type `json:"memory_type"`
 	Content    string     `json:"content"`
 	Summary    string     `json:"summary"`
 
@@ -90,8 +90,8 @@ type TimeRange struct {
 	End   time.Time
 }
 
-// MemoryExtract represents an extracted memory from consolidation
-type MemoryExtract struct {
+// Extract represents an extracted memory from consolidation
+type Extract struct {
 	Content    string   `json:"content"`
 	Type       string   `json:"type"`
 	Confidence float64  `json:"confidence"`
@@ -101,14 +101,14 @@ type MemoryExtract struct {
 // UserMemoryExtract represents extracted memories for a specific user
 type UserMemoryExtract struct {
 	UserID   string          `json:"user_id"`
-	Memories []MemoryExtract `json:"memories"`
+	Memories []Extract `json:"memories"`
 }
 
 // ConsolidationResult represents the result of a consolidation operation
 type ConsolidationResult struct {
 	Summary      string          `json:"summary"`
 	ProfileDelta ProfileDelta    `json:"profile_delta"`
-	Memories     []MemoryExtract `json:"memories"`
+	Memories     []Extract `json:"memories"`
 }
 
 // ProfileDelta represents changes to a user profile
