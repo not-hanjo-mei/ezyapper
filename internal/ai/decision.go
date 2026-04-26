@@ -10,6 +10,7 @@ import (
 
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
+	"ezyapper/internal/retry"
 
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -116,57 +117,37 @@ func (d *DecisionService) ShouldRespondWithInfo(ctx context.Context, botName str
 	// Apply extra parameters from config
 	ApplyExtraParams(&req, d.config.ExtraParams, "[decision]")
 
-	var lastErr error
-	for attempt := 0; attempt <= d.config.RetryCount; attempt++ {
-		// Check if parent context is explicitly cancelled before starting attempt
-		// Don't cancel on DeadlineExceeded - that's what we're trying to recover from with retries
-		if err := ctx.Err(); err != nil && err != context.DeadlineExceeded {
-			return nil, fmt.Errorf("decision cancelled before attempt %d: %w", attempt+1, err)
-		}
-
-		// Create a fresh context with timeout for each attempt, but inherit from parent ctx
-		// This ensures the request can be cancelled by the parent context
+	resp, err := retry.Retry(ctx, d.config.RetryCount, func(ctx context.Context) (openai.ChatCompletionResponse, error) {
 		attemptCtx, cancel := context.WithTimeout(ctx, time.Duration(d.config.Timeout)*time.Second)
+		defer cancel()
 
-		logger.Debugf("[decision] making LLM request (attempt %d/%d)", attempt+1, d.config.RetryCount+1)
+		logger.Debugf("[decision] making LLM request")
 		resp, err := d.client.CreateChatCompletion(attemptCtx, req)
-		cancel() // Clean up immediately after request completes
-
-		if err == nil {
-			if len(resp.Choices) == 0 {
-				return nil, fmt.Errorf("no response from decision llm")
-			}
-			if attempt > 0 {
-				logger.Infof("[decision] succeeded after %d retries", attempt)
-			}
-			result, parseErr := d.parseResponse(resp.Choices[0].Message.Content)
-			if parseErr == nil {
-				logger.Debugf("[decision] result: should_respond=%v, reason=%q, confidence=%.2f",
-					result.ShouldRespond, result.Reason, result.Confidence)
-			}
-			return result, parseErr
-		}
-
-		lastErr = err
-		if isTimeoutLikeError(err) {
+		if err != nil && isTimeoutLikeError(err) {
 			d.closeIdleConnections()
 		}
+		return resp, err
+	},
+		retry.WithBaseDelay(100*time.Millisecond),
+		retry.WithIgnoreDeadlineExceeded(),
+	)
 
-		// Check if the original context was cancelled
-		if ctx.Err() == context.Canceled {
-			return nil, fmt.Errorf("decision llm call cancelled: %w", err)
-		}
-
-		if attempt >= d.config.RetryCount {
-			break
-		}
-
-		logger.Warnf("[decision] attempt %d/%d failed: %v, will retry", attempt+1, d.config.RetryCount, err)
-		backoff := time.Duration(100*(1<<attempt)) * time.Millisecond
-		time.Sleep(backoff)
+	if err != nil {
+		return nil, fmt.Errorf("decision llm call failed: %w", err)
 	}
 
-	return nil, fmt.Errorf("decision llm call failed after %d attempts: %w", d.config.RetryCount+1, lastErr)
+	if len(resp.Choices) == 0 {
+		return nil, fmt.Errorf("no response from decision llm")
+	}
+
+	result, err := d.parseResponse(resp.Choices[0].Message.Content)
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Debugf("[decision] result: should_respond=%v, reason=%q, confidence=%.2f",
+		result.ShouldRespond, result.Reason, result.Confidence)
+	return result, nil
 }
 
 func (d *DecisionService) buildPromptsWithInfo(botName string, msgInfo MessageInfo, content string, recentMessages []ContextMessage) (string, string) {

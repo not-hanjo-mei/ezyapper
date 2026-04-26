@@ -11,6 +11,7 @@ import (
 	"ezyapper/internal/ai"
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
+	"ezyapper/internal/retry"
 	"ezyapper/internal/utils"
 
 	openai "github.com/sashabaranov/go-openai"
@@ -27,12 +28,6 @@ type qdrantStore interface {
 // embedSleep overrides time.Sleep for retry tests. Nil means use real timers.
 var embedSleep func(time.Duration)
 
-const (
-	maxEmbedRetries = 3
-	embedBaseDelay  = 1 * time.Second
-	embedMaxDelay   = 30 * time.Second
-)
-
 type Consolidator struct {
 	qdrant          qdrantStore
 	embedder        Embedder
@@ -44,21 +39,15 @@ type Consolidator struct {
 	ownBotID        string // Bot's own ID to distinguish from other bots
 }
 
-// computedEmbedDelay calculates exponential backoff with ±25% jitter for embedding retries.
-func computedEmbedDelay(attempt int) time.Duration {
-	baseDelay := time.Duration(1<<uint(attempt)) * embedBaseDelay
-	if baseDelay > embedMaxDelay {
-		baseDelay = embedMaxDelay
-	}
-	jitter := time.Duration(float64(baseDelay) * 0.25 * (2.0*rand.Float64() - 1.0))
-	return baseDelay + jitter
-}
-
 // embedWithRetry generates an embedding with exponential backoff retry on failure.
 func embedWithRetry(ctx context.Context, embedder Embedder, text string) ([]float32, error) {
+	const maxRetries = 3
+	const baseDelay = 1 * time.Second
+	const maxDelay = 30 * time.Second
+
 	var lastErr error
 
-	for attempt := 0; attempt <= maxEmbedRetries; attempt++ {
+	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("embedding cancelled before attempt %d: %w", attempt+1, err)
 		}
@@ -69,13 +58,19 @@ func embedWithRetry(ctx context.Context, embedder Embedder, text string) ([]floa
 		}
 		lastErr = err
 
-		if attempt == maxEmbedRetries {
-			return nil, fmt.Errorf("embedding exhausted after %d attempts: %w", maxEmbedRetries+1, lastErr)
+		if attempt == maxRetries {
+			return nil, fmt.Errorf("embedding exhausted after %d attempts: %w", maxRetries+1, lastErr)
 		}
 
-		delay := computedEmbedDelay(attempt)
+		delay := time.Duration(1<<uint(attempt)) * baseDelay
+		if delay > maxDelay {
+			delay = maxDelay
+		}
+		jitter := time.Duration(float64(delay) * 0.25 * (2.0*rand.Float64() - 1.0))
+		delay = delay + jitter
+
 		logger.Warnf("[consolidation] embedding attempt %d/%d failed: %v - retrying in %.1fs...",
-			attempt+1, maxEmbedRetries+1, err, delay.Seconds())
+			attempt+1, maxRetries+1, err, delay.Seconds())
 
 		if embedSleep != nil {
 			embedSleep(delay)
@@ -148,7 +143,12 @@ func (c *Consolidator) Process(ctx context.Context, userID string) error {
 			CreatedAt:  time.Now(),
 		}
 
-		embedding, err := embedWithRetry(ctx, c.embedder, memory.Content)
+		embedding, err := retry.Retry(ctx, 3, func(ctx context.Context) ([]float32, error) {
+			return c.embedder.Embed(ctx, memory.Content)
+		},
+			retry.WithBaseDelay(1*time.Second),
+			retry.WithMaxDelay(30*time.Second),
+		)
 		if err != nil {
 			logger.Errorf("[consolidation] embedding exhausted for memory %d for user=%s: %v", i+1, userID, err)
 			continue
@@ -366,7 +366,12 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 			CreatedAt:  time.Now(),
 		}
 
-		embedding, err := embedWithRetry(ctx, c.embedder, memory.Content)
+		embedding, err := retry.Retry(ctx, 3, func(ctx context.Context) ([]float32, error) {
+			return c.embedder.Embed(ctx, memory.Content)
+		},
+			retry.WithBaseDelay(1*time.Second),
+			retry.WithMaxDelay(30*time.Second),
+		)
 		if err != nil {
 			logger.Errorf("[consolidation] embedding exhausted for memory %d for user=%s: %v", i+1, userID, err)
 			continue
@@ -496,7 +501,12 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 				CreatedAt:  time.Now(),
 			}
 
-			embedding, err := embedWithRetry(ctx, c.embedder, memory.Content)
+			embedding, err := retry.Retry(ctx, 3, func(ctx context.Context) ([]float32, error) {
+				return c.embedder.Embed(ctx, memory.Content)
+			},
+				retry.WithBaseDelay(1*time.Second),
+				retry.WithMaxDelay(30*time.Second),
+			)
 			if err != nil {
 				logger.Errorf("[consolidation] embedding exhausted for memory %d for user=%s: %v", i+1, userID, err)
 				continue
