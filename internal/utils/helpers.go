@@ -2,10 +2,13 @@
 package utils
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
 )
+
+var channelMentionRe = regexp.MustCompile(`<#(\d+)>`)
 
 // ExtractImageURLs extracts image URLs from a Discord message
 // This consolidates the duplicate implementations from handlers.go and shortterm.go
@@ -79,11 +82,13 @@ func SplitMessage(content string, maxLen int) []string {
 	return parts
 }
 
-// RemoveFromSlice removes an item from a string slice
+// RemoveFromSlice removes an item from a string slice without mutating the input.
 func RemoveFromSlice(slice []string, item string) []string {
 	for i, v := range slice {
 		if v == item {
-			return append(slice[:i], slice[i+1:]...)
+			result := make([]string, 0, len(slice)-1)
+			result = append(result, slice[:i]...)
+			return append(result, slice[i+1:]...)
 		}
 	}
 	return slice
@@ -95,15 +100,38 @@ type UserMapping struct {
 	Username string
 }
 
-// ReplaceMentions replaces Discord mention IDs with readable usernames
-// Discord format: <@USER_ID> or <@!USER_ID> (for nickname mentions)
-// This function converts: <@123456> -> @Username
-func ReplaceMentions(content string, userMappings []UserMapping) string {
+// ChannelMapping represents a mapping from Discord channel ID to channel name
+type ChannelMapping struct {
+	ID   string
+	Name string
+}
+
+// ReplaceMentions replaces Discord mention IDs with readable names.
+// Handles user mentions (<@ID>, <@!ID>) and channel mentions (<#ID>).
+func ReplaceMentions(content string, userMappings []UserMapping, channelMappings []ChannelMapping) string {
 	result := content
+
 	for _, um := range userMappings {
-		// Replace both regular mention <@ID> and nickname mention <@!ID>
 		result = strings.ReplaceAll(result, "<@"+um.ID+">", "@"+um.Username)
 		result = strings.ReplaceAll(result, "<@!"+um.ID+">", "@"+um.Username)
 	}
+
+	if len(channelMappings) > 0 {
+		channelMap := make(map[string]string, len(channelMappings))
+		for _, cm := range channelMappings {
+			channelMap[cm.ID] = cm.Name
+		}
+		result = channelMentionRe.ReplaceAllStringFunc(result, func(match string) string {
+			matches := channelMentionRe.FindStringSubmatch(match)
+			if len(matches) < 2 {
+				return match
+			}
+			if name, ok := channelMap[matches[1]]; ok {
+				return "#" + name
+			}
+			return match
+		})
+	}
+
 	return result
 }

@@ -11,6 +11,7 @@ import (
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
+	"ezyapper/internal/utils"
 
 	"github.com/bwmarrin/discordgo"
 	openai "github.com/sashabaranov/go-openai"
@@ -24,11 +25,11 @@ func (b *Bot) generateResponse(ctx context.Context, m *discordgo.MessageCreate, 
 	}
 
 	// Create AI client for chat completion
-	aiClient := ai.NewClient(&b.config.AI, b.toolRegistry)
+	aiClient := ai.NewClient(&b.cfg().AI, b.toolRegistry)
 
 	// Build static system prompt (cacheable - does not change between requests)
 	// This includes persona definition and mention guidelines
-	systemPrompt := b.config.FormatSystemPrompt(m.Author.Username, guildName, m.GuildID, m.ChannelID)
+	systemPrompt := b.cfg().FormatSystemPrompt(m.Author.Username, guildName, m.GuildID, m.ChannelID)
 
 	// Build dynamic user context (not cacheable - changes every request)
 	// This is placed in the user message to preserve prompt caching of the system prompt
@@ -43,6 +44,16 @@ func (b *Bot) generateResponse(ctx context.Context, m *discordgo.MessageCreate, 
 		botID = b.session.State.User.ID
 	}
 
+	// Build channel mappings from state cache for resolving <#ID> mentions
+	var channelMappings []utils.ChannelMapping
+	if b.session != nil && b.session.State != nil {
+		for _, guild := range b.session.State.Guilds {
+			for _, ch := range guild.Channels {
+				channelMappings = append(channelMappings, utils.ChannelMapping{ID: ch.ID, Name: ch.Name})
+			}
+		}
+	}
+
 	// Build conversation history as formatted text to include in UserContext.
 	// Keep historical image enrichment fast by default, but allow limited on-demand
 	// enrichment when the user likely references recent images.
@@ -52,6 +63,8 @@ func (b *Bot) generateResponse(ctx context.Context, m *discordgo.MessageCreate, 
 		m.ID,
 		botID,
 		shouldEnrichRecentHistoricalImages(m),
+		m.Mentions,
+		channelMappings,
 	)
 
 	// Combine dynamic context with conversation history
@@ -70,27 +83,37 @@ func (b *Bot) generateResponse(ctx context.Context, m *discordgo.MessageCreate, 
 		UserContext:  fullContext,
 	}
 
+	// Extract reply info for current message so the LLM sees "who replied to whom"
+	replyToUsername := ""
+	if m.MessageReference != nil {
+		if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
+			replyToUsername = m.ReferencedMessage.Author.Username
+		} else {
+			replyToUsername = "(deleted message)"
+		}
+	}
+
 	var response string
 	var err error
 
-	logger.Infof("[vision] using mode: %s", b.config.AI.Vision.Mode)
+	logger.Infof("[vision] using mode: %s", b.cfg().AI.Vision.Mode)
 
-	switch b.config.AI.Vision.Mode {
+	switch b.cfg().AI.Vision.Mode {
 	case config.VisionModeTextOnly:
 		logger.Debugf("[vision] text-only mode - skipping image extraction")
-		response, err = b.handleTextOnlyMode(ctx, aiClient, req, m.Author.Username, m.Author.ID, m.Content)
+		response, err = b.handleTextOnlyMode(ctx, aiClient, req, m.Author.Username, m.Author.ID, m.Content, replyToUsername)
 
 	case config.VisionModeHybrid:
 		logger.Debugf("[vision] hybrid mode - describing images with vision model, then using text model with tools")
 		// Use cached image descriptions if available (from processMessage)
-		response, err = b.handleHybridMode(ctx, aiClient, req, m.Author.Username, m.Author.ID, m.Content, imageURLs, imageDescriptions)
+		response, err = b.handleHybridMode(ctx, aiClient, req, m.Author.Username, m.Author.ID, m.Content, imageURLs, imageDescriptions, replyToUsername)
 
 	case config.VisionModeMultimodal:
 		logger.Debugf("[vision] multimodal mode - using single model for both vision and tools")
-		response, err = b.handleMultimodalMode(ctx, aiClient, req, m.Author.Username, m.Author.ID, m.Content, imageURLs)
+		response, err = b.handleMultimodalMode(ctx, aiClient, req, m.Author.Username, m.Author.ID, m.Content, imageURLs, replyToUsername)
 
 	default:
-		return "", fmt.Errorf("unknown vision mode: %s", b.config.AI.Vision.Mode)
+		return "", fmt.Errorf("unknown vision mode: %s", b.cfg().AI.Vision.Mode)
 	}
 
 	if err != nil {
@@ -116,7 +139,7 @@ func (b *Bot) completeTextWithTools(ctx context.Context, aiClient *ai.Client, re
 }
 
 // handleTextOnlyMode handles text-only mode (no image processing)
-func (b *Bot) handleTextOnlyMode(ctx context.Context, aiClient *ai.Client, req ai.ChatCompletionRequest, username, userID, userContent string) (string, error) {
+func (b *Bot) handleTextOnlyMode(ctx context.Context, aiClient *ai.Client, req ai.ChatCompletionRequest, username, userID, userContent string, replyToUsername string) (string, error) {
 	// Build final content with XML formatting:
 	// UserContext contains <context> + dynamic context
 	// Current message wrapped in <currentMessage>
@@ -126,14 +149,14 @@ func (b *Bot) handleTextOnlyMode(ctx context.Context, aiClient *ai.Client, req a
 		fullContent.WriteString("\n\n")
 	}
 	fullContent.WriteString("<currentMessage>\n")
-	fullContent.WriteString(formatMessageXML(username, userID, userContent, time.Now()))
+	fullContent.WriteString(formatMessageXML(username, userID, userContent, time.Now(), replyToUsername))
 	fullContent.WriteString("\n</currentMessage>")
 
 	return b.completeTextWithTools(ctx, aiClient, req, fullContent.String())
 }
 
 // handleHybridMode handles hybrid mode (vision description + text model)
-func (b *Bot) handleHybridMode(ctx context.Context, aiClient *ai.Client, req ai.ChatCompletionRequest, username, userID, userContent string, imageURLs []string, cachedDescriptions []string) (string, error) {
+func (b *Bot) handleHybridMode(ctx context.Context, aiClient *ai.Client, req ai.ChatCompletionRequest, username, userID, userContent string, imageURLs []string, cachedDescriptions []string, replyToUsername string) (string, error) {
 	// Build full message content with XML formatting
 	// UserContext contains <context> + dynamic context
 	// Current message wrapped in <currentMessage>
@@ -150,7 +173,7 @@ func (b *Bot) handleHybridMode(ctx context.Context, aiClient *ai.Client, req ai.
 
 	if len(imageURLs) == 0 {
 		// No images - format and send
-		fullContent.WriteString(formatMessageXML(username, userID, currentMsgContent.String(), time.Now()))
+		fullContent.WriteString(formatMessageXML(username, userID, currentMsgContent.String(), time.Now(), replyToUsername))
 		fullContent.WriteString("\n</currentMessage>")
 		return b.completeTextWithTools(ctx, aiClient, req, fullContent.String())
 	}
@@ -164,7 +187,7 @@ func (b *Bot) handleHybridMode(ctx context.Context, aiClient *ai.Client, req ai.
 		visionDescriber := b.getVisionDescriber()
 		if visionDescriber == nil {
 			logger.Warnf("[hybrid] vision describer unavailable, continuing without image descriptions")
-			fullContent.WriteString(formatMessageXML(username, userID, currentMsgContent.String(), time.Now()))
+			fullContent.WriteString(formatMessageXML(username, userID, currentMsgContent.String(), time.Now(), replyToUsername))
 			fullContent.WriteString("\n</currentMessage>")
 			return b.completeTextWithTools(ctx, aiClient, req, fullContent.String())
 		}
@@ -175,7 +198,7 @@ func (b *Bot) handleHybridMode(ctx context.Context, aiClient *ai.Client, req ai.
 		if err != nil {
 			logger.Warnf("Failed to describe images: %v", err)
 			// Description failed - format without image descriptions
-			fullContent.WriteString(formatMessageXML(username, userID, currentMsgContent.String(), time.Now()))
+			fullContent.WriteString(formatMessageXML(username, userID, currentMsgContent.String(), time.Now(), replyToUsername))
 			fullContent.WriteString("\n</currentMessage>")
 			return b.completeTextWithTools(ctx, aiClient, req, fullContent.String())
 		}
@@ -184,20 +207,20 @@ func (b *Bot) handleHybridMode(ctx context.Context, aiClient *ai.Client, req ai.
 
 	// Add image descriptions to current message content
 	for i, desc := range descriptions {
-		if i < b.config.AI.Vision.MaxImages {
+		if i < b.cfg().AI.Vision.MaxImages {
 			currentMsgContent.WriteString(fmt.Sprintf(" [Image %d: %s]", i+1, desc))
 		}
 	}
 
-	fullContent.WriteString(formatMessageXML(username, userID, currentMsgContent.String(), time.Now()))
+	fullContent.WriteString(formatMessageXML(username, userID, currentMsgContent.String(), time.Now(), replyToUsername))
 	fullContent.WriteString("\n</currentMessage>")
 
 	return b.completeTextWithTools(ctx, aiClient, req, fullContent.String())
 }
 
 // handleMultimodalMode handles multimodal mode (single model for vision + tools)
-func (b *Bot) handleMultimodalMode(ctx context.Context, aiClient *ai.Client, req ai.ChatCompletionRequest, username, userID, userContent string, imageURLs []string) (string, error) {
-	maxImages := b.config.AI.Vision.MaxImages
+func (b *Bot) handleMultimodalMode(ctx context.Context, aiClient *ai.Client, req ai.ChatCompletionRequest, username, userID, userContent string, imageURLs []string, replyToUsername string) (string, error) {
+	maxImages := b.cfg().AI.Vision.MaxImages
 	if maxImages == 0 {
 		maxImages = len(imageURLs)
 	}
@@ -209,7 +232,7 @@ func (b *Bot) handleMultimodalMode(ctx context.Context, aiClient *ai.Client, req
 	}
 
 	// Wrap user content in XML format for multimodal mode
-	wrappedContent := "<currentMessage>\n" + formatMessageXML(username, userID, userContent, time.Now()) + "\n</currentMessage>"
+	wrappedContent := "<currentMessage>\n" + formatMessageXML(username, userID, userContent, time.Now(), replyToUsername) + "\n</currentMessage>"
 
 	resp, err := aiClient.CreateVisionCompletionWithTools(
 		ctx,

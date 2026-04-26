@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"ezyapper/internal/config"
@@ -20,7 +22,7 @@ import (
 
 type Server struct {
 	router         *gin.Engine
-	config         *config.Config
+	configStore    *atomic.Value // stores *config.Config
 	memory         memory.Service
 	pluginManager  *plugin.PluginManager
 	server         *http.Server
@@ -28,6 +30,10 @@ type Server struct {
 	startTime      time.Time
 	discordFetcher DiscordMessageFetcher
 	webDir         string
+}
+
+func (s *Server) cfg() *config.Config {
+	return s.configStore.Load().(*config.Config)
 }
 
 type DiscordMessageFetcher interface {
@@ -66,7 +72,8 @@ func findWebDir() string {
 	return "./web"
 }
 
-func NewServer(cfg *config.Config, mem memory.Service, pluginManager *plugin.PluginManager, discordFetcher DiscordMessageFetcher) *Server {
+func NewServer(cfgStore *atomic.Value, mem memory.Service, pluginManager *plugin.PluginManager, discordFetcher DiscordMessageFetcher) *Server {
+	cfg := cfgStore.Load().(*config.Config)
 	if cfg.Logging.Level == "debug" {
 		gin.SetMode(gin.DebugMode)
 	} else {
@@ -94,7 +101,7 @@ func NewServer(cfg *config.Config, mem memory.Service, pluginManager *plugin.Plu
 
 	server := &Server{
 		router:         router,
-		config:         cfg,
+		configStore:    cfgStore,
 		memory:         mem,
 		pluginManager:  pluginManager,
 		startTime:      time.Now(),
@@ -161,24 +168,30 @@ func (s *Server) setupRoutes() {
 
 func (s *Server) basicAuth() gin.HandlerFunc {
 	return gin.BasicAuth(gin.Accounts{
-		s.config.Web.Username: s.config.Web.Password,
+		s.cfg().Web.Username: s.cfg().Web.Password,
 	})
 }
 
 func (s *Server) Start() error {
-	if !s.config.Web.Enabled {
+	if !s.cfg().Web.Enabled {
 		logger.Info("WebUI is disabled")
 		return nil
 	}
 
 	s.server = &http.Server{
-		Addr:    ":" + strconv.Itoa(s.config.Web.Port),
+		Addr:    ":" + strconv.Itoa(s.cfg().Web.Port),
 		Handler: s.router,
 	}
 
-	logger.Infof("Starting WebUI on port %d", s.config.Web.Port)
+	logger.Infof("Starting WebUI on port %d", s.cfg().Web.Port)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Errorf("[web] panic recovered: %v\n%s", r, debug.Stack())
+			}
+		}()
+
 		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Errorf("Web server error: %v", err)
 		}

@@ -130,6 +130,13 @@ type DiscordMessage struct {
 	ImageDescriptions []string  `json:"image_descriptions,omitempty"` // Cached image descriptions to avoid redundant API calls
 	Timestamp         time.Time `json:"timestamp"`
 	IsBot             bool      `json:"is_bot"`
+
+	// ReplyToID is the ID of the message being replied to (from MessageReference)
+	ReplyToID string `json:"reply_to_id"`
+	// ReplyToUsername is the username of the author of the replied-to message
+	ReplyToUsername string `json:"reply_to_username"`
+	// ReplyToContent is the content of the replied-to message
+	ReplyToContent string `json:"reply_to_content"`
 }
 
 // UserStats represents statistics for a user

@@ -10,6 +10,7 @@ import (
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
+	"ezyapper/internal/utils"
 
 	"github.com/bwmarrin/discordgo"
 	openai "github.com/sashabaranov/go-openai"
@@ -22,7 +23,16 @@ type UserInfo struct {
 }
 
 // formatMessageXML formats a single message in XML style with UserID and timestamp (UTC)
-func formatMessageXML(username, userID, content string, timestamp time.Time) string {
+// If replyToUsername is set, appends an inline reply marker so the LLM sees "who replied to whom."
+// Special case "(deleted message)" renders without @ prefix.
+func formatMessageXML(username, userID, content string, timestamp time.Time, replyToUsername string) string {
+	if replyToUsername != "" {
+		if replyToUsername == "(deleted message)" {
+			content = content + " (replying to deleted message)"
+		} else {
+			content = content + " (replying to @" + replyToUsername + ")"
+		}
+	}
 	return fmt.Sprintf(`"%s"{UserID=%s,Time=%s}: "%s"`, username, userID, timestamp.UTC().Format(time.RFC3339), content)
 }
 
@@ -76,7 +86,7 @@ func (b *Bot) buildConversationHistory(ctx context.Context, messages []*memory.D
 
 		// If message has images, handle based on vision mode
 		if len(msg.ImageURLs) > 0 {
-			switch b.config.AI.Vision.Mode {
+			switch b.cfg().AI.Vision.Mode {
 			case config.VisionModeHybrid:
 				// Hybrid mode: describe images with vision model
 				content := msg.Content
@@ -99,7 +109,7 @@ func (b *Bot) buildConversationHistory(ctx context.Context, messages []*memory.D
 
 					// Add descriptions to content
 					for j, desc := range descriptions {
-						if j < b.config.AI.Vision.MaxImages || b.config.AI.Vision.MaxImages == 0 {
+						if j < b.cfg().AI.Vision.MaxImages || b.cfg().AI.Vision.MaxImages == 0 {
 							content = fmt.Sprintf("%s\n[Image %d: %s]", content, j+1, desc)
 						}
 					}
@@ -156,7 +166,7 @@ func (b *Bot) buildConversationHistory(ctx context.Context, messages []*memory.D
 // Filters out the current message being processed and marks only the current bot as "Assistant"
 // In hybrid mode, primarily uses cached historical image descriptions; optionally performs
 // tightly bounded on-demand enrichment for the most recent image message.
-func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*memory.DiscordMessage, currentMsgID, botID string, allowOnDemandRecentImageEnrichment bool) string {
+func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*memory.DiscordMessage, currentMsgID, botID string, allowOnDemandRecentImageEnrichment bool, mentions []*discordgo.User, channelMappings []utils.ChannelMapping) string {
 	if len(messages) == 0 {
 		return ""
 	}
@@ -179,6 +189,26 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*memo
 		}
 	}
 
+	// Build user mappings from history + current message mentions for ReplaceMentions.
+	// Current message mentions take precedence over history usernames.
+	historyUsers := b.collectRecentUsers(messages)
+	userMappings := make([]utils.UserMapping, 0, len(historyUsers))
+	userIdx := make(map[string]int)
+
+	for _, u := range historyUsers {
+		userIdx[u.ID] = len(userMappings)
+		userMappings = append(userMappings, utils.UserMapping{ID: u.ID, Username: u.Username})
+	}
+
+	for _, mention := range mentions {
+		if idx, ok := userIdx[mention.ID]; ok {
+			userMappings[idx].Username = mention.Username
+		} else {
+			userIdx[mention.ID] = len(userMappings)
+			userMappings = append(userMappings, utils.UserMapping{ID: mention.ID, Username: mention.Username})
+		}
+	}
+
 	// Process messages and build history
 	for i, msg := range messages {
 		// Skip the current message being processed
@@ -196,7 +226,7 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*memo
 		content := msg.Content
 
 		// Handle images based on vision mode
-		if len(msg.ImageURLs) > 0 && b.config.AI.Vision.Mode != config.VisionModeTextOnly {
+		if len(msg.ImageURLs) > 0 && b.cfg().AI.Vision.Mode != config.VisionModeTextOnly {
 			// Check if this is the most recent image message and on-demand enrichment is allowed
 			isMostRecentImage := (i == mostRecentImageIndex && allowOnDemandRecentImageEnrichment)
 
@@ -231,15 +261,26 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*memo
 			// Add image descriptions to content if available
 			if haveCachedDescriptions {
 				for j, desc := range descriptions {
-					if j < b.config.AI.Vision.MaxImages || b.config.AI.Vision.MaxImages == 0 {
+					if j < b.cfg().AI.Vision.MaxImages || b.cfg().AI.Vision.MaxImages == 0 {
 						content = fmt.Sprintf("%s\n[Image %d: %s]", content, j+1, desc)
 					}
 				}
 			}
 		}
 
-		// Write formatted message
-		result.WriteString(fmt.Sprintf("  [%s] %s (ID:%s): %s\n", role, msg.Username, msg.AuthorID, content))
+		// Build inline reply marker if this message is a reply
+		replyMarker := ""
+		if msg.ReplyToID != "" {
+			if msg.ReplyToUsername == "(deleted message)" {
+				replyMarker = " (replying to deleted message)"
+			} else {
+				replyMarker = " (replying to @" + msg.ReplyToUsername + ")"
+			}
+		}
+
+		// Write formatted message with mention IDs replaced by readable usernames and channel names
+		displayContent := utils.ReplaceMentions(content, userMappings, channelMappings)
+		result.WriteString(fmt.Sprintf("  [%s] %s (ID:%s): %s%s\n", role, msg.Username, msg.AuthorID, displayContent, replyMarker))
 	}
 
 	result.WriteString("</context>")

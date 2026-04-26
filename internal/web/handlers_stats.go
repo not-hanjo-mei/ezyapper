@@ -25,7 +25,7 @@ func (s *Server) getLogs(c *gin.Context) {
 		lines = 5000
 	}
 
-	logFile := s.config.Logging.File
+	logFile := s.cfg().Logging.File
 	if logFile == "" {
 		c.JSON(http.StatusOK, gin.H{"logs": []string{}})
 		return

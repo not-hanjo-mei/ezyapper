@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime/debug"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -61,8 +63,12 @@ func main() {
 	// Initialize plugin manager
 	pluginManager := plugin.NewPluginManager()
 
+	// Create shared config store (copy-on-write via atomic.Value)
+	cfgStore := &atomic.Value{}
+	cfgStore.Store(cfg)
+
 	// Initialize Discord bot
-	discordBot, err := bot.New(cfg, memoryService, pluginManager)
+	discordBot, err := bot.New(cfgStore, memoryService, pluginManager)
 	if err != nil {
 		logger.Fatalf("Failed to create Discord bot: %v", err)
 	}
@@ -74,13 +80,20 @@ func main() {
 	}
 
 	// Initialize web server
-	webServer := web.NewServer(cfg, memoryService, pluginManager, discordBot)
+	webServer := web.NewServer(cfgStore, memoryService, pluginManager, discordBot)
 	if err := webServer.Start(); err != nil {
 		logger.Warnf("Failed to start web server: %v", err)
 	}
 
 	// Start cleanup routine
-	go runCleanupRoutine(discordBot)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Errorf("[main] panic recovered: %v\n%s", r, debug.Stack())
+			}
+		}()
+		runCleanupRoutine(discordBot)
+	}()
 
 	logger.Info("Bot is now running. Press CTRL+C to exit.")
 

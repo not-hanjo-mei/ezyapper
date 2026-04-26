@@ -88,7 +88,7 @@ func (c *ShortTermClient) convertMessages(messages []*discordgo.Message) []*Disc
 
 // convertMessage converts a single discordgo message
 func (c *ShortTermClient) convertMessage(msg *discordgo.Message) *DiscordMessage {
-	return &DiscordMessage{
+	d := &DiscordMessage{
 		ID:        msg.ID,
 		ChannelID: msg.ChannelID,
 		GuildID:   msg.GuildID,
@@ -99,4 +99,20 @@ func (c *ShortTermClient) convertMessage(msg *discordgo.Message) *DiscordMessage
 		Timestamp: msg.Timestamp,
 		IsBot:     msg.Author.Bot,
 	}
+
+	if msg.MessageReference != nil {
+		d.ReplyToID = msg.MessageReference.MessageID
+		if msg.ReferencedMessage != nil && msg.ReferencedMessage.Author != nil {
+			d.ReplyToUsername = msg.ReferencedMessage.Author.Username
+			content := msg.ReferencedMessage.Content
+			if len(content) > 100 {
+				content = content[:100]
+			}
+			d.ReplyToContent = content
+		} else {
+			d.ReplyToUsername = "(deleted message)"
+		}
+	}
+
+	return d
 }

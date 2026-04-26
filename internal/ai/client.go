@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"reflect"
@@ -129,9 +130,7 @@ func exponentialBackoff(retryCount int) time.Duration {
 	if baseDelay > 30*time.Second {
 		baseDelay = 30 * time.Second
 	}
-	// Add jitter: +/- 25% random variation
-	randomFloat := float64(time.Now().UnixNano()%1000) / 1000.0
-	jitter := time.Duration(float64(baseDelay) * 0.25 * (2.0*randomFloat - 1.0))
+	jitter := time.Duration(float64(baseDelay) * 0.25 * (2.0*rand.Float64() - 1.0))
 	return baseDelay + jitter
 }
 
@@ -212,9 +211,11 @@ func executeWithRetry[T any](
 		logger.Warnf("[ai] retryable %s error (attempt %d/%d): %v - retrying in %.1fs...",
 			operation, retry+1, c.config.RetryCount+1, lastErr, delay.Seconds())
 
+		timer := time.NewTimer(delay)
 		select {
-		case <-time.After(delay):
+		case <-timer.C:
 		case <-ctx.Done():
+			timer.Stop()
 			return resp, fmt.Errorf("%s cancelled: %w", operation, ctx.Err())
 		}
 	}

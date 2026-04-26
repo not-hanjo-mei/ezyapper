@@ -10,72 +10,30 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type listConfig struct {
-	users    *[]string
-	channels *[]string
-	guilds   *[]string
-}
-
 type listEntryRequest struct {
 	Type string `json:"type" binding:"required"`
 	ID   string `json:"id" binding:"required"`
 }
 
-func (s *Server) getBlacklist(c *gin.Context) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+func copySlice(s []string) []string {
+	if len(s) == 0 {
+		return nil
+	}
+	c := make([]string, len(s))
+	copy(c, s)
+	return c
+}
 
+func (s *Server) getBlacklist(c *gin.Context) {
+	cfg := s.cfg()
 	c.JSON(http.StatusOK, gin.H{
-		"users":    s.config.Blacklist.Users,
-		"channels": s.config.Blacklist.Channels,
-		"guilds":   s.config.Blacklist.Guilds,
+		"users":    cfg.Blacklist.Users,
+		"channels": cfg.Blacklist.Channels,
+		"guilds":   cfg.Blacklist.Guilds,
 	})
 }
 
 func (s *Server) addToBlacklist(c *gin.Context) {
-	s.addToList(c, "blacklist", listConfig{
-		users:    &s.config.Blacklist.Users,
-		channels: &s.config.Blacklist.Channels,
-		guilds:   &s.config.Blacklist.Guilds,
-	})
-}
-
-func (s *Server) removeFromBlacklist(c *gin.Context) {
-	s.removeFromList(c, "blacklist", listConfig{
-		users:    &s.config.Blacklist.Users,
-		channels: &s.config.Blacklist.Channels,
-		guilds:   &s.config.Blacklist.Guilds,
-	})
-}
-
-func (s *Server) getWhitelist(c *gin.Context) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	c.JSON(http.StatusOK, gin.H{
-		"users":    s.config.Whitelist.Users,
-		"channels": s.config.Whitelist.Channels,
-		"guilds":   s.config.Whitelist.Guilds,
-	})
-}
-
-func (s *Server) addToWhitelist(c *gin.Context) {
-	s.addToList(c, "whitelist", listConfig{
-		users:    &s.config.Whitelist.Users,
-		channels: &s.config.Whitelist.Channels,
-		guilds:   &s.config.Whitelist.Guilds,
-	})
-}
-
-func (s *Server) removeFromWhitelist(c *gin.Context) {
-	s.removeFromList(c, "whitelist", listConfig{
-		users:    &s.config.Whitelist.Users,
-		channels: &s.config.Whitelist.Channels,
-		guilds:   &s.config.Whitelist.Guilds,
-	})
-}
-
-func (s *Server) addToList(c *gin.Context, listName string, cfg listConfig) {
 	var req listEntryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -85,52 +43,51 @@ func (s *Server) addToList(c *gin.Context, listName string, cfg listConfig) {
 	entryType := strings.ToLower(strings.TrimSpace(req.Type))
 	entryID := strings.TrimSpace(req.ID)
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	previous := *s.config
+	oldCfg := s.cfg()
+	newCfg := *oldCfg
 
 	switch entryType {
 	case "user":
-		if utils.Contains(*cfg.users, entryID) {
-			c.JSON(http.StatusOK, gin.H{"message": "already in " + listName})
+		if utils.Contains(oldCfg.Blacklist.Users, entryID) {
+			c.JSON(http.StatusOK, gin.H{"message": "already in blacklist"})
 			return
 		}
-		*cfg.users = append(*cfg.users, entryID)
+		newCfg.Blacklist.Users = append(copySlice(oldCfg.Blacklist.Users), entryID)
 	case "channel":
-		if utils.Contains(*cfg.channels, entryID) {
-			c.JSON(http.StatusOK, gin.H{"message": "already in " + listName})
+		if utils.Contains(oldCfg.Blacklist.Channels, entryID) {
+			c.JSON(http.StatusOK, gin.H{"message": "already in blacklist"})
 			return
 		}
-		*cfg.channels = append(*cfg.channels, entryID)
+		newCfg.Blacklist.Channels = append(copySlice(oldCfg.Blacklist.Channels), entryID)
 	case "guild":
-		if utils.Contains(*cfg.guilds, entryID) {
-			c.JSON(http.StatusOK, gin.H{"message": "already in " + listName})
+		if utils.Contains(oldCfg.Blacklist.Guilds, entryID) {
+			c.JSON(http.StatusOK, gin.H{"message": "already in blacklist"})
 			return
 		}
-		*cfg.guilds = append(*cfg.guilds, entryID)
+		newCfg.Blacklist.Guilds = append(copySlice(oldCfg.Blacklist.Guilds), entryID)
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid type: must be user, channel, or guild"})
 		return
 	}
 
-	if err := config.Validate(s.config); err != nil {
-		*s.config = previous
+	if err := config.Validate(&newCfg); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid list update: " + err.Error()})
 		return
 	}
 
-	if !s.saveConfigOrError(c) {
-		*s.config = previous
+	s.configStore.Store(&newCfg)
+
+	if !s.saveConfigOrError(c, &newCfg) {
+		s.configStore.Store(oldCfg)
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "added to " + listName,
+		"message": "added to blacklist",
 	})
 }
 
-func (s *Server) removeFromList(c *gin.Context, listName string, cfg listConfig) {
+func (s *Server) removeFromBlacklist(c *gin.Context) {
 	entryType := strings.ToLower(strings.TrimSpace(c.Param("type")))
 	id := strings.TrimSpace(c.Param("id"))
 	if entryType == "" || id == "" {
@@ -138,35 +95,137 @@ func (s *Server) removeFromList(c *gin.Context, listName string, cfg listConfig)
 		return
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	previous := *s.config
+	oldCfg := s.cfg()
+	newCfg := *oldCfg
 
 	switch entryType {
 	case "user":
-		*cfg.users = utils.RemoveFromSlice(*cfg.users, id)
+		newCfg.Blacklist.Users = utils.RemoveFromSlice(oldCfg.Blacklist.Users, id)
 	case "channel":
-		*cfg.channels = utils.RemoveFromSlice(*cfg.channels, id)
+		newCfg.Blacklist.Channels = utils.RemoveFromSlice(oldCfg.Blacklist.Channels, id)
 	case "guild":
-		*cfg.guilds = utils.RemoveFromSlice(*cfg.guilds, id)
+		newCfg.Blacklist.Guilds = utils.RemoveFromSlice(oldCfg.Blacklist.Guilds, id)
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid type: must be user, channel, or guild"})
 		return
 	}
 
-	if err := config.Validate(s.config); err != nil {
-		*s.config = previous
+	if err := config.Validate(&newCfg); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid list update: " + err.Error()})
 		return
 	}
 
-	if !s.saveConfigOrError(c) {
-		*s.config = previous
+	s.configStore.Store(&newCfg)
+
+	if !s.saveConfigOrError(c, &newCfg) {
+		s.configStore.Store(oldCfg)
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "removed from " + listName,
+		"message": "removed from blacklist",
+	})
+}
+
+func (s *Server) getWhitelist(c *gin.Context) {
+	cfg := s.cfg()
+	c.JSON(http.StatusOK, gin.H{
+		"users":    cfg.Whitelist.Users,
+		"channels": cfg.Whitelist.Channels,
+		"guilds":   cfg.Whitelist.Guilds,
+	})
+}
+
+func (s *Server) addToWhitelist(c *gin.Context) {
+	var req listEntryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	entryType := strings.ToLower(strings.TrimSpace(req.Type))
+	entryID := strings.TrimSpace(req.ID)
+
+	oldCfg := s.cfg()
+	newCfg := *oldCfg
+
+	switch entryType {
+	case "user":
+		if utils.Contains(oldCfg.Whitelist.Users, entryID) {
+			c.JSON(http.StatusOK, gin.H{"message": "already in whitelist"})
+			return
+		}
+		newCfg.Whitelist.Users = append(copySlice(oldCfg.Whitelist.Users), entryID)
+	case "channel":
+		if utils.Contains(oldCfg.Whitelist.Channels, entryID) {
+			c.JSON(http.StatusOK, gin.H{"message": "already in whitelist"})
+			return
+		}
+		newCfg.Whitelist.Channels = append(copySlice(oldCfg.Whitelist.Channels), entryID)
+	case "guild":
+		if utils.Contains(oldCfg.Whitelist.Guilds, entryID) {
+			c.JSON(http.StatusOK, gin.H{"message": "already in whitelist"})
+			return
+		}
+		newCfg.Whitelist.Guilds = append(copySlice(oldCfg.Whitelist.Guilds), entryID)
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid type: must be user, channel, or guild"})
+		return
+	}
+
+	if err := config.Validate(&newCfg); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid list update: " + err.Error()})
+		return
+	}
+
+	s.configStore.Store(&newCfg)
+
+	if !s.saveConfigOrError(c, &newCfg) {
+		s.configStore.Store(oldCfg)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "added to whitelist",
+	})
+}
+
+func (s *Server) removeFromWhitelist(c *gin.Context) {
+	entryType := strings.ToLower(strings.TrimSpace(c.Param("type")))
+	id := strings.TrimSpace(c.Param("id"))
+	if entryType == "" || id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "type and id are required"})
+		return
+	}
+
+	oldCfg := s.cfg()
+	newCfg := *oldCfg
+
+	switch entryType {
+	case "user":
+		newCfg.Whitelist.Users = utils.RemoveFromSlice(oldCfg.Whitelist.Users, id)
+	case "channel":
+		newCfg.Whitelist.Channels = utils.RemoveFromSlice(oldCfg.Whitelist.Channels, id)
+	case "guild":
+		newCfg.Whitelist.Guilds = utils.RemoveFromSlice(oldCfg.Whitelist.Guilds, id)
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid type: must be user, channel, or guild"})
+		return
+	}
+
+	if err := config.Validate(&newCfg); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid list update: " + err.Error()})
+		return
+	}
+
+	s.configStore.Store(&newCfg)
+
+	if !s.saveConfigOrError(c, &newCfg) {
+		s.configStore.Store(oldCfg)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "removed from whitelist",
 	})
 }

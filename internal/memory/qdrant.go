@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"strconv"
 	"time"
 
@@ -12,12 +13,96 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
-// discordIDToUint64 converts a Discord ID string to uint64 for Qdrant
-func discordIDToUint64(discordID string) uint64 {
-	id, _ := strconv.ParseUint(discordID, 10, 64)
-	return id
+// discordIDToUint64 converts a Discord ID string to uint64 for Qdrant.
+// Returns an error if the ID cannot be parsed (instead of silently returning 0).
+func discordIDToUint64(discordID string) (uint64, error) {
+	id, err := strconv.ParseUint(discordID, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid Discord ID %q: %w", discordID, err)
+	}
+	return id, nil
+}
+
+// retrySleep overrides time.Sleep for tests. Nil means use real time.Sleep.
+var retrySleep func(time.Duration)
+
+const (
+	maxRetries  = 3
+	baseBackoff = 1 * time.Second
+	maxBackoff  = 30 * time.Second
+)
+
+// retryWithBackoff executes fn with exponential backoff on retryable gRPC errors.
+// UUID generation and metadata preparation MUST happen before calling this function
+// to prevent duplicate records on retry.
+func retryWithBackoff(ctx context.Context, operation string, fn func() error) error {
+	var lastErr error
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("%s cancelled before attempt %d: %w", operation, attempt+1, err)
+		}
+
+		lastErr = fn()
+		if lastErr == nil {
+			return nil
+		}
+
+		if !isRetryableGrpc(lastErr) {
+			return fmt.Errorf("%s non-retryable error: %w", operation, lastErr)
+		}
+
+		if attempt == maxRetries {
+			return fmt.Errorf("%s exhausted after %d attempts: %w", operation, maxRetries+1, lastErr)
+		}
+
+		delay := computedDelay(attempt)
+
+		if retrySleep != nil {
+			retrySleep(delay)
+		} else {
+			timer := time.NewTimer(delay)
+			select {
+			case <-timer.C:
+			case <-ctx.Done():
+				timer.Stop()
+				return fmt.Errorf("%s cancelled: %w", operation, ctx.Err())
+			}
+		}
+	}
+
+	return fmt.Errorf("%s exhausted: %w", operation, lastErr)
+}
+
+// computedDelay calculates exponential backoff with ±25% jitter.
+func computedDelay(attempt int) time.Duration {
+	baseDelay := time.Duration(1<<uint(attempt)) * baseBackoff
+	if baseDelay > maxBackoff {
+		baseDelay = maxBackoff
+	}
+	jitter := time.Duration(float64(baseDelay) * 0.25 * (2.0*rand.Float64() - 1.0))
+	return baseDelay + jitter
+}
+
+// isRetryableGrpc returns true for gRPC status codes that warrant a retry.
+func isRetryableGrpc(err error) bool {
+	if err == nil {
+		return false
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	switch st.Code() {
+	case codes.Unavailable, codes.DeadlineExceeded, codes.ResourceExhausted:
+		return true
+	default:
+		return false
+	}
 }
 
 const (
@@ -162,7 +247,7 @@ func (qc *QdrantClient) createPayloadIndexes(ctx context.Context, collectionName
 
 // UpsertMemory stores or updates a memory
 func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Memory) error {
-	// Generate ID if not set
+	// Generate ID BEFORE retry loop to prevent duplicate records on retry
 	if memory.ID == "" {
 		memory.ID = uuid.New().String()
 	}
@@ -175,27 +260,29 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Memory) error 
 
 	logger.Debugf("[UpsertMemory] userID=%s type=%s content=%.50s", memory.UserID, memory.MemoryType, memory.Content)
 
-	// Convert memory to payload
+	// Prepare payload before retry loop (idempotent data only)
 	payload := qc.memoryToPayload(memory)
+	memID := memory.ID
+	embedding := memory.Embedding
 
-	// Upsert point
-	_, err := qc.client.Upsert(ctx, &qdrant.UpsertPoints{
-		CollectionName: CollectionMemories,
-		Points: []*qdrant.PointStruct{
-			{
-				Id:      qdrant.NewID(memory.ID),
-				Vectors: qdrant.NewVectors(memory.Embedding...),
-				Payload: payload,
+	return retryWithBackoff(ctx, "upsert_memory", func() error {
+		_, err := qc.client.Upsert(ctx, &qdrant.UpsertPoints{
+			CollectionName: CollectionMemories,
+			Points: []*qdrant.PointStruct{
+				{
+					Id:      qdrant.NewID(memID),
+					Vectors: qdrant.NewVectors(embedding...),
+					Payload: payload,
+				},
 			},
-		},
+		})
+		if err != nil {
+			logger.Errorf("[UpsertMemory] failed to upsert memory for userID=%s: %v", memory.UserID, err)
+			return fmt.Errorf("failed to upsert memory: %w", err)
+		}
+		logger.Debugf("[UpsertMemory] successfully stored memoryID=%s for userID=%s", memID, memory.UserID)
+		return nil
 	})
-	if err != nil {
-		logger.Errorf("[UpsertMemory] failed to upsert memory for userID=%s: %v", memory.UserID, err)
-		return fmt.Errorf("failed to upsert memory: %w", err)
-	}
-
-	logger.Debugf("[UpsertMemory] successfully stored memoryID=%s for userID=%s", memory.ID, memory.UserID)
-	return nil
 }
 
 // SearchMemories searches for similar memories
@@ -367,50 +454,57 @@ func (qc *QdrantClient) DeleteUserMemories(ctx context.Context, userID string) e
 
 // UpsertProfile stores or updates a user profile
 func (qc *QdrantClient) UpsertProfile(ctx context.Context, profile *Profile) error {
-	// Update timestamps
 	profile.LastActiveAt = time.Now()
 
 	logger.Debugf("[UpsertProfile] storing profile for userID=%s messageCount=%d memoryCount=%d",
 		profile.UserID, profile.MessageCount, profile.MemoryCount)
 
-	// Convert profile to payload
+	// Prepare all data before retry loop
 	payload := qc.profileToPayload(profile)
 
-	// Create embedding from profile summary if not set
 	embedding := profile.Embedding
 	if len(embedding) == 0 {
-		// Use a default zero embedding for profiles
 		embedding = make([]float32, qc.vectorSize)
 	}
 
-	// Upsert point with numeric ID
-	_, err := qc.client.Upsert(ctx, &qdrant.UpsertPoints{
-		CollectionName: CollectionProfiles,
-		Points: []*qdrant.PointStruct{
-			{
-				Id:      qdrant.NewIDNum(discordIDToUint64(profile.UserID)),
-				Vectors: qdrant.NewVectors(embedding...),
-				Payload: payload,
-			},
-		},
-	})
+	numID, err := discordIDToUint64(profile.UserID)
 	if err != nil {
-		logger.Errorf("[UpsertProfile] failed to upsert profile for userID=%s: %v", profile.UserID, err)
-		return fmt.Errorf("failed to upsert profile: %w", err)
+		return fmt.Errorf("upsert profile: %w", err)
 	}
 
-	logger.Debugf("[UpsertProfile] successfully stored profile for userID=%s", profile.UserID)
-	return nil
+	return retryWithBackoff(ctx, "upsert_profile", func() error {
+		_, err := qc.client.Upsert(ctx, &qdrant.UpsertPoints{
+			CollectionName: CollectionProfiles,
+			Points: []*qdrant.PointStruct{
+				{
+					Id:      qdrant.NewIDNum(numID),
+					Vectors: qdrant.NewVectors(embedding...),
+					Payload: payload,
+				},
+			},
+		})
+		if err != nil {
+			logger.Errorf("[UpsertProfile] failed to upsert profile for userID=%s: %v", profile.UserID, err)
+			return fmt.Errorf("failed to upsert profile: %w", err)
+		}
+		logger.Debugf("[UpsertProfile] successfully stored profile for userID=%s", profile.UserID)
+		return nil
+	})
 }
 
 // GetProfile retrieves a user profile
 func (qc *QdrantClient) GetProfile(ctx context.Context, userID string) (*Profile, error) {
-	logger.Debugf("[GetProfile] getting profile for userID=%s (numeric=%d)", userID, discordIDToUint64(userID))
+	logger.Debugf("[GetProfile] getting profile for userID=%s", userID)
+
+	numID, err := discordIDToUint64(userID)
+	if err != nil {
+		return nil, fmt.Errorf("get profile: %w", err)
+	}
 
 	points, err := qc.client.Get(ctx, &qdrant.GetPoints{
 		CollectionName: CollectionProfiles,
 		Ids: []*qdrant.PointId{
-			qdrant.NewIDNum(discordIDToUint64(userID)),
+			qdrant.NewIDNum(numID),
 		},
 		WithPayload: qdrant.NewWithPayload(true),
 	})
@@ -443,9 +537,14 @@ func getPayloadKeys(payload map[string]*qdrant.Value) []string {
 func (qc *QdrantClient) DeleteProfile(ctx context.Context, userID string) error {
 	logger.Warnf("[DeleteProfile] deleting profile for userID=%s", userID)
 
-	_, err := qc.client.Delete(ctx, &qdrant.DeletePoints{
+	numID, err := discordIDToUint64(userID)
+	if err != nil {
+		return fmt.Errorf("delete profile: %w", err)
+	}
+
+	_, err = qc.client.Delete(ctx, &qdrant.DeletePoints{
 		CollectionName: CollectionProfiles,
-		Points:         qdrant.NewPointsSelector(qdrant.NewIDNum(discordIDToUint64(userID))),
+		Points:         qdrant.NewPointsSelector(qdrant.NewIDNum(numID)),
 	})
 	if err != nil {
 		logger.Errorf("[DeleteProfile] failed to delete profile for userID=%s: %v", userID, err)

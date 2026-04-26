@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
 	"strings"
 	"time"
 
@@ -15,8 +16,25 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 )
 
+// qdrantStore is the subset of QdrantClient methods used by Consolidator.
+type qdrantStore interface {
+	UpsertMemory(ctx context.Context, memory *Memory) error
+	UpsertProfile(ctx context.Context, profile *Profile) error
+	GetProfile(ctx context.Context, userID string) (*Profile, error)
+	GetMemoriesByUser(ctx context.Context, userID string, limit int) ([]*Memory, error)
+}
+
+// embedSleep overrides time.Sleep for retry tests. Nil means use real timers.
+var embedSleep func(time.Duration)
+
+const (
+	maxEmbedRetries = 3
+	embedBaseDelay  = 1 * time.Second
+	embedMaxDelay   = 30 * time.Second
+)
+
 type Consolidator struct {
-	qdrant          *QdrantClient
+	qdrant          qdrantStore
 	embedder        Embedder
 	aiClient        *ai.Client
 	visionDescriber *ai.VisionDescriber
@@ -24,6 +42,55 @@ type Consolidator struct {
 	model           string
 	prompt          string
 	ownBotID        string // Bot's own ID to distinguish from other bots
+}
+
+// computedEmbedDelay calculates exponential backoff with ±25% jitter for embedding retries.
+func computedEmbedDelay(attempt int) time.Duration {
+	baseDelay := time.Duration(1<<uint(attempt)) * embedBaseDelay
+	if baseDelay > embedMaxDelay {
+		baseDelay = embedMaxDelay
+	}
+	jitter := time.Duration(float64(baseDelay) * 0.25 * (2.0*rand.Float64() - 1.0))
+	return baseDelay + jitter
+}
+
+// embedWithRetry generates an embedding with exponential backoff retry on failure.
+func embedWithRetry(ctx context.Context, embedder Embedder, text string) ([]float32, error) {
+	var lastErr error
+
+	for attempt := 0; attempt <= maxEmbedRetries; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("embedding cancelled before attempt %d: %w", attempt+1, err)
+		}
+
+		embedding, err := embedder.Embed(ctx, text)
+		if err == nil {
+			return embedding, nil
+		}
+		lastErr = err
+
+		if attempt == maxEmbedRetries {
+			return nil, fmt.Errorf("embedding exhausted after %d attempts: %w", maxEmbedRetries+1, lastErr)
+		}
+
+		delay := computedEmbedDelay(attempt)
+		logger.Warnf("[consolidation] embedding attempt %d/%d failed: %v - retrying in %.1fs...",
+			attempt+1, maxEmbedRetries+1, err, delay.Seconds())
+
+		if embedSleep != nil {
+			embedSleep(delay)
+		} else {
+			timer := time.NewTimer(delay)
+			select {
+			case <-timer.C:
+			case <-ctx.Done():
+				timer.Stop()
+				return nil, fmt.Errorf("embedding cancelled: %w", ctx.Err())
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("embedding failed: %w", lastErr)
 }
 
 func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient *ai.Client, visionDescriber *ai.VisionDescriber, cfg *config.ConsolidationConfig, ownBotID string) *Consolidator {
@@ -81,18 +148,25 @@ func (c *Consolidator) Process(ctx context.Context, userID string) error {
 			CreatedAt:  time.Now(),
 		}
 
-		embedding, err := c.embedder.Embed(ctx, memory.Content)
+		embedding, err := embedWithRetry(ctx, c.embedder, memory.Content)
 		if err != nil {
-			logger.Warnf("[consolidation] failed to generate embedding for memory %d for user=%s: %v", i+1, userID, err)
+			logger.Errorf("[consolidation] embedding exhausted for memory %d for user=%s: %v", i+1, userID, err)
 			continue
 		}
 		memory.Embedding = embedding
 
 		if err := c.qdrant.UpsertMemory(ctx, memory); err != nil {
-			logger.Warnf("[consolidation] failed to store memory %d for user=%s: %v", i+1, userID, err)
+			logger.Errorf("[consolidation] failed to store memory %d for user=%s (Qdrant retries exhausted): %v", i+1, userID, err)
 		} else {
 			stored++
 			logger.Debugf("[consolidation] stored memory %d for user=%s: %s", i+1, userID, extract.Content)
+		}
+	}
+
+	if stored > 0 {
+		profile.MemoryCount += stored
+		if err := c.qdrant.UpsertProfile(ctx, profile); err != nil {
+			logger.Warnf("[consolidation] failed to update memory_count for user=%s: %v", userID, err)
 		}
 	}
 
@@ -292,15 +366,15 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 			CreatedAt:  time.Now(),
 		}
 
-		embedding, err := c.embedder.Embed(ctx, memory.Content)
+		embedding, err := embedWithRetry(ctx, c.embedder, memory.Content)
 		if err != nil {
-			logger.Warnf("[consolidation] failed to generate embedding for memory %d for user=%s: %v", i+1, userID, err)
+			logger.Errorf("[consolidation] embedding exhausted for memory %d for user=%s: %v", i+1, userID, err)
 			continue
 		}
 		memory.Embedding = embedding
 
 		if err := c.qdrant.UpsertMemory(ctx, memory); err != nil {
-			logger.Warnf("[consolidation] failed to store memory %d for user=%s: %v", i+1, userID, err)
+			logger.Errorf("[consolidation] failed to store memory %d for user=%s (Qdrant retries exhausted): %v", i+1, userID, err)
 		} else {
 			stored++
 			logger.Debugf("[consolidation] successfully stored memory %d for user=%s", i+1, userID)
@@ -422,15 +496,15 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 				CreatedAt:  time.Now(),
 			}
 
-			embedding, err := c.embedder.Embed(ctx, memory.Content)
+			embedding, err := embedWithRetry(ctx, c.embedder, memory.Content)
 			if err != nil {
-				logger.Warnf("[consolidation] failed to generate embedding for memory %d for user=%s: %v", i+1, userID, err)
+				logger.Errorf("[consolidation] embedding exhausted for memory %d for user=%s: %v", i+1, userID, err)
 				continue
 			}
 			memory.Embedding = embedding
 
 			if err := c.qdrant.UpsertMemory(ctx, memory); err != nil {
-				logger.Warnf("[consolidation] failed to store memory %d for user=%s: %v", i+1, userID, err)
+				logger.Errorf("[consolidation] failed to store memory %d for user=%s (Qdrant retries exhausted): %v", i+1, userID, err)
 			} else {
 				stored++
 			}
@@ -707,7 +781,7 @@ func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []
 
 func (c *Consolidator) updateProfileFromResult(profile *Profile, result *ConsolidationResult) {
 	profile.LastSummary = result.Summary
-	profile.MemoryCount += len(result.Memories)
+	// MemoryCount is updated AFTER storage in Process() — not here
 
 	for _, trait := range result.ProfileDelta.NewTraits {
 		if !utils.Contains(profile.Traits, trait) {

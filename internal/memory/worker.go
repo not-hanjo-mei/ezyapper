@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -35,7 +36,14 @@ func NewWorker(consolidator *Consolidator) *Worker {
 
 // Start begins processing triggers in a background goroutine
 func (w *Worker) Start(ctx context.Context) {
-	go w.run(ctx)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Errorf("[consolidation] panic recovered: %v\n%s", r, debug.Stack())
+			}
+		}()
+		w.run(ctx)
+	}()
 }
 
 func (w *Worker) run(ctx context.Context) {

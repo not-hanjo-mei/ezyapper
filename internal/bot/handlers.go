@@ -40,7 +40,7 @@ func (b *Bot) onReady(s *discordgo.Session, r *discordgo.Ready) {
 
 // onMessageCreate handles new message events
 func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
-	ctx := context.Background()
+	ctx := b.ctx
 
 	if m == nil || m.Message == nil {
 		logger.Warnf("[message] received nil MESSAGE_CREATE event, skipping")
@@ -104,6 +104,20 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		IsBot:     m.Author.Bot,
 	}
 
+	if m.MessageReference != nil {
+		msg.ReplyToID = m.MessageReference.MessageID
+		if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
+			msg.ReplyToUsername = m.ReferencedMessage.Author.Username
+			content := m.ReferencedMessage.Content
+			if len(content) > 100 {
+				content = content[:100]
+			}
+			msg.ReplyToContent = content
+		} else {
+			msg.ReplyToUsername = "(deleted message)"
+		}
+	}
+
 	// Always add to channel buffer for complete conversation context in consolidation
 	// This ensures bot's own messages are included in batch consolidation
 	b.addMessageToChannelBuffer(m.ChannelID, msg)
@@ -138,7 +152,7 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		return
 	}
 
-	if b.config.AI.Vision.Mode == config.VisionModeTextOnly {
+	if b.cfg().AI.Vision.Mode == config.VisionModeTextOnly {
 		go b.processMessageWithoutImages(messageCtx, s, m, pm)
 		return
 	}

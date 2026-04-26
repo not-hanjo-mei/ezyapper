@@ -257,7 +257,7 @@ func (qc *QdrantClient) payloadToProfile(payload map[string]*qdrant.Value, userI
 
 func validatePayloadSchema(payload map[string]*qdrant.Value) error {
 	v, ok := payload["schema_version"]
-	if !ok {
+	if !ok || v == nil {
 		return fmt.Errorf("missing schema_version")
 	}
 	if v.GetIntegerValue() != payloadSchemaVersion {
@@ -268,7 +268,7 @@ func validatePayloadSchema(payload map[string]*qdrant.Value) error {
 
 func getRequiredString(payload map[string]*qdrant.Value, key string) (string, error) {
 	v, ok := payload[key]
-	if !ok {
+	if !ok || v == nil {
 		return "", fmt.Errorf("missing required payload key: %s", key)
 	}
 	return v.GetStringValue(), nil
@@ -276,7 +276,7 @@ func getRequiredString(payload map[string]*qdrant.Value, key string) (string, er
 
 func getRequiredDouble(payload map[string]*qdrant.Value, key string) (float64, error) {
 	v, ok := payload[key]
-	if !ok {
+	if !ok || v == nil {
 		return 0, fmt.Errorf("missing required payload key: %s", key)
 	}
 	return v.GetDoubleValue(), nil
@@ -284,7 +284,7 @@ func getRequiredDouble(payload map[string]*qdrant.Value, key string) (float64, e
 
 func getRequiredInt(payload map[string]*qdrant.Value, key string) (int64, error) {
 	v, ok := payload[key]
-	if !ok {
+	if !ok || v == nil {
 		return 0, fmt.Errorf("missing required payload key: %s", key)
 	}
 	return v.GetIntegerValue(), nil
@@ -292,8 +292,12 @@ func getRequiredInt(payload map[string]*qdrant.Value, key string) (int64, error)
 
 func getRequiredList(payload map[string]*qdrant.Value, key string) ([]*qdrant.Value, error) {
 	v, ok := payload[key]
-	if !ok {
+	if !ok || v == nil {
 		return nil, fmt.Errorf("missing required payload key: %s", key)
 	}
-	return v.GetListValue().GetValues(), nil
+	list := v.GetListValue()
+	if list == nil {
+		return nil, fmt.Errorf("payload key %q is not a list", key)
+	}
+	return list.GetValues(), nil
 }

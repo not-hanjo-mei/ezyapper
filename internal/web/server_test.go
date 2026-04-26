@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"ezyapper/internal/config"
@@ -86,9 +87,12 @@ func setupTestServer(t *testing.T) (*Server, *httptest.Server) {
 		},
 	}
 
+	cfgStore := &atomic.Value{}
+	cfgStore.Store(cfg)
+
 	mem := &mockMemoryService{}
 	pluginManager := plugin.NewPluginManager()
-	server := NewServer(cfg, mem, pluginManager, nil)
+	server := NewServer(cfgStore, mem, pluginManager, nil)
 
 	gin.SetMode(gin.TestMode)
 	router := server.router
@@ -307,13 +311,15 @@ func TestNewServer(t *testing.T) {
 
 	mem := &mockMemoryService{}
 	pluginManager := plugin.NewPluginManager()
-	server := NewServer(cfg, mem, pluginManager, nil)
+	cfgStore := &atomic.Value{}
+	cfgStore.Store(cfg)
+	server := NewServer(cfgStore, mem, pluginManager, nil)
 
 	if server == nil {
 		t.Error("Expected non-nil server")
 	}
 
-	if server.config != cfg {
+	if server.configStore.Load().(*config.Config) != cfg {
 		t.Error("Server config mismatch")
 	}
 }
@@ -329,7 +335,9 @@ func TestServer_StartDisabled(t *testing.T) {
 
 	mem := &mockMemoryService{}
 	pluginManager := plugin.NewPluginManager()
-	server := NewServer(cfg, mem, pluginManager, nil)
+	cfgStore := &atomic.Value{}
+	cfgStore.Store(cfg)
+	server := NewServer(cfgStore, mem, pluginManager, nil)
 
 	err := server.Start()
 	if err != nil {

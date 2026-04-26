@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -736,7 +737,12 @@ func (pm *PluginManager) LoadPluginsFromDir(dir string) error {
 		wg.Add(1)
 
 		go func(t pluginLoadTarget) {
-			defer wg.Done()
+			defer func() {
+				wg.Done()
+				if r := recover(); r != nil {
+					logger.Errorf("[plugin] panic recovered: %v\n%s", r, debug.Stack())
+				}
+			}()
 
 			semaphore <- struct{}{}
 			defer func() {
@@ -937,13 +943,20 @@ func callJSONRPCWithTimeout(
 
 	done := make(chan error, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Errorf("[plugin] panic recovered: %v\n%s", r, debug.Stack())
+			}
+		}()
 		done <- client.Call(method, params, reply)
 	}()
 
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 	select {
 	case err := <-done:
 		return err
-	case <-time.After(timeout):
+	case <-timer.C:
 		return fmt.Errorf("jsonrpc call timeout: %s", method)
 	}
 }
@@ -1027,15 +1040,20 @@ func (pm *PluginManager) stopPluginProcess(plugin *Client, timeout time.Duration
 
 	done := make(chan error, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Errorf("[plugin] panic recovered: %v\n%s", r, debug.Stack())
+			}
+		}()
 		_, err := plugin.process.Wait()
 		done <- err
 	}()
 
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 	select {
 	case <-done:
-		// Process exited
-	case <-time.After(timeout):
-		// Timeout, kill the process
+	case <-timer.C:
 		plugin.process.Kill()
 	}
 }

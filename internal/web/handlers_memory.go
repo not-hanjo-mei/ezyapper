@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"time"
 
@@ -168,6 +169,12 @@ func (s *Server) triggerConsolidation(c *gin.Context) {
 	}
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Errorf("[web] panic recovered: %v\n%s", r, debug.Stack())
+			}
+		}()
+
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 

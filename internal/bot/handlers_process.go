@@ -51,7 +51,7 @@ func (b *Bot) processMessageWithoutImages(ctx context.Context, s *discordgo.Sess
 	}
 
 	// Fetch recent messages from Discord for short-term context
-	recentMessages, err := b.discordClient.FetchRecentMessages(m.ChannelID, b.config.Memory.ShortTermLimit)
+	recentMessages, err := b.discordClient.FetchRecentMessages(m.ChannelID, b.cfg().Memory.ShortTermLimit)
 	if err != nil {
 		logger.Warnf("Failed to fetch recent messages: %v", err)
 	}
@@ -64,7 +64,7 @@ func (b *Bot) processMessageWithoutImages(ctx context.Context, s *discordgo.Sess
 	}
 
 	var memories []*memory.Memory
-	if b.config.Memory.Retrieval.TopK > 0 {
+	if b.cfg().Memory.Retrieval.TopK > 0 {
 		memories, err = b.memory.Search(ctx, m.Author.ID, m.Content, nil)
 		if err != nil {
 			logger.Warnf("Failed to search memories: %v", err)
@@ -138,7 +138,7 @@ func (b *Bot) processMessageWithoutImages(ctx context.Context, s *discordgo.Sess
 	}
 
 	// Set cooldown
-	b.SetCooldown(m.Author.ID, time.Duration(b.config.Discord.CooldownSeconds)*time.Second)
+	b.SetCooldown(m.Author.ID, time.Duration(b.cfg().Discord.CooldownSeconds)*time.Second)
 
 	// Increment channel message count and check for batch consolidation
 	count, err := b.memory.IncrementChannelMessageCount(ctx, m.ChannelID)
@@ -169,7 +169,7 @@ func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *disco
 	// For Hybrid mode, describe images now and cache descriptions to avoid redundant API calls later
 	var imageDescriptions []string
 	visionDescriber := b.getVisionDescriber()
-	if b.config.AI.Vision.Mode == config.VisionModeHybrid && len(imageURLs) > 0 && visionDescriber != nil {
+	if b.cfg().AI.Vision.Mode == config.VisionModeHybrid && len(imageURLs) > 0 && visionDescriber != nil {
 		descriptions, err := visionDescriber.DescribeImages(ctx, imageURLs)
 		if err != nil {
 			logger.Warnf("[process] failed to describe images for message %s: %v", m.ID, err)
@@ -191,6 +191,20 @@ func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *disco
 		ImageDescriptions: imageDescriptions, // Cache descriptions for consolidation
 		Timestamp:         m.Timestamp,
 		IsBot:             m.Author.Bot,
+	}
+
+	if m.MessageReference != nil {
+		msg.ReplyToID = m.MessageReference.MessageID
+		if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
+			msg.ReplyToUsername = m.ReferencedMessage.Author.Username
+			content := m.ReferencedMessage.Content
+			if len(content) > 100 {
+				content = content[:100]
+			}
+			msg.ReplyToContent = content
+		} else {
+			msg.ReplyToUsername = "(deleted message)"
+		}
 	}
 
 	// Check cancellation before expensive operations
@@ -217,7 +231,7 @@ func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *disco
 	}
 
 	// Fetch recent messages from Discord for short-term context
-	recentMessages, err := b.discordClient.FetchRecentMessages(m.ChannelID, b.config.Memory.ShortTermLimit)
+	recentMessages, err := b.discordClient.FetchRecentMessages(m.ChannelID, b.cfg().Memory.ShortTermLimit)
 	if err != nil {
 		logger.Warnf("Failed to fetch recent messages: %v", err)
 	}
@@ -238,7 +252,7 @@ func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *disco
 	}
 
 	var memories []*memory.Memory
-	if b.config.Memory.Retrieval.TopK > 0 {
+	if b.cfg().Memory.Retrieval.TopK > 0 {
 		memories, err = b.memory.Search(ctx, m.Author.ID, m.Content, nil)
 		if err != nil {
 			logger.Warnf("Failed to search memories: %v", err)
@@ -312,7 +326,7 @@ func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *disco
 	}
 
 	// Set cooldown
-	b.SetCooldown(m.Author.ID, time.Duration(b.config.Discord.CooldownSeconds)*time.Second)
+	b.SetCooldown(m.Author.ID, time.Duration(b.cfg().Discord.CooldownSeconds)*time.Second)
 
 	// Increment channel message count and check for batch consolidation
 	count, err := b.memory.IncrementChannelMessageCount(ctx, m.ChannelID)

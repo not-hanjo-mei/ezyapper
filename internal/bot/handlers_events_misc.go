@@ -50,7 +50,7 @@ func (b *Bot) onMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) 
 
 	// Create new processing message for reprocessing.
 	// This ensures clean state and avoids race conditions with old goroutine.
-	ctx := context.Background()
+	ctx := b.ctx
 	messageCtx, cancel := context.WithCancel(ctx)
 	newPm := b.registerProcessingMessage(m.ID, m.ChannelID, m.Author.ID, m.Content)
 	newPm.CancelFunc = cancel
@@ -78,7 +78,7 @@ func (b *Bot) onMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) 
 	}
 
 	// Re-process with updated content.
-	if b.config.AI.Vision.Mode == config.VisionModeTextOnly {
+	if b.cfg().AI.Vision.Mode == config.VisionModeTextOnly {
 		go b.processMessageWithoutImages(messageCtx, s, tempMsg, newPm)
 	} else {
 		go b.processMessage(messageCtx, s, tempMsg, newPm)

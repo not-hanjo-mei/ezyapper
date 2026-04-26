@@ -3,19 +3,20 @@ package bot
 
 import (
 	"context"
+	"runtime/debug"
 
 	"ezyapper/internal/logger"
 )
 
 // triggerChannelConsolidation triggers memory consolidation for a channel if needed
 func (b *Bot) triggerChannelConsolidation(ctx context.Context, channelID string, count int) {
-	if !b.config.Memory.Consolidation.Enabled {
+	if !b.cfg().Memory.Consolidation.Enabled {
 		logger.Debugf("[consolidation] skipped for channel=%s: consolidation is disabled", channelID)
 		return
 	}
 
-	if count < b.config.Memory.ConsolidationInterval {
-		logger.Debugf("[consolidation] not triggering for channel=%s: count=%d < interval=%d", channelID, count, b.config.Memory.ConsolidationInterval)
+	if count < b.cfg().Memory.ConsolidationInterval {
+		logger.Debugf("[consolidation] not triggering for channel=%s: count=%d < interval=%d", channelID, count, b.cfg().Memory.ConsolidationInterval)
 		return
 	}
 
@@ -24,19 +25,25 @@ func (b *Bot) triggerChannelConsolidation(ctx context.Context, channelID string,
 		return
 	}
 
-	logger.Infof("[consolidation] triggering for channel=%s: count=%d >= interval=%d", channelID, count, b.config.Memory.ConsolidationInterval)
+	logger.Infof("[consolidation] triggering for channel=%s: count=%d >= interval=%d", channelID, count, b.cfg().Memory.ConsolidationInterval)
 
 	triggerCount := count
-	if triggerCount < b.config.Memory.ConsolidationInterval {
-		triggerCount = b.config.Memory.ConsolidationInterval
+	if triggerCount < b.cfg().Memory.ConsolidationInterval {
+		triggerCount = b.cfg().Memory.ConsolidationInterval
 	}
 
 	go func(consumedCount int) {
 		defer func() {
+			if r := recover(); r != nil {
+				logger.Errorf("[consolidation] panic recovered: %v\n%s", r, debug.Stack())
+			}
+		}()
+
+		defer func() {
 			remaining := b.memory.ConsumeChannelMessageCount(channelID, consumedCount)
 			b.finishChannelConsolidation(channelID)
-			if remaining >= b.config.Memory.ConsolidationInterval {
-				b.triggerChannelConsolidation(context.Background(), channelID, remaining)
+			if remaining >= b.cfg().Memory.ConsolidationInterval {
+				b.triggerChannelConsolidation(b.ctx, channelID, remaining)
 			}
 		}()
 
@@ -46,7 +53,7 @@ func (b *Bot) triggerChannelConsolidation(ctx context.Context, channelID string,
 		channelMessages := b.getAndClearChannelMessageBuffer(channelID)
 		if len(channelMessages) == 0 {
 			logger.Infof("[consolidation] buffer empty for channel=%s, fetching from Discord", channelID)
-			fetchedMessages, err := b.discordClient.FetchChannelMessages(channelID, b.config.Memory.Consolidation.MaxMessages)
+			fetchedMessages, err := b.discordClient.FetchChannelMessages(channelID, b.cfg().Memory.Consolidation.MaxMessages)
 			if err != nil {
 				logger.Warnf("[consolidation] failed to fetch messages from Discord for channel=%s: %v", channelID, err)
 				return

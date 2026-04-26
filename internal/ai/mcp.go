@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
+	"sync"
 
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
@@ -17,6 +19,7 @@ import (
 // MCPManager manages connections to MCP (Model Context Protocol) servers.
 // It handles tool discovery and execution across multiple external tool providers.
 type MCPManager struct {
+	mu       sync.RWMutex
 	sessions map[string]*mcp.ClientSession
 	servers  []config.MCPServer
 }
@@ -29,11 +32,16 @@ func NewMCPManager(servers []config.MCPServer) *MCPManager {
 }
 
 func (m *MCPManager) Connect(ctx context.Context) error {
+	var errs []string
 	for _, server := range m.servers {
 		if err := m.connectServer(ctx, server); err != nil {
 			logger.Warnf("Failed to connect to MCP server '%s': %v", server.Name, err)
+			errs = append(errs, fmt.Sprintf("%s: %v", server.Name, err))
 			continue
 		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("MCP connect errors: %s", strings.Join(errs, "; "))
 	}
 	return nil
 }
@@ -66,12 +74,16 @@ func (m *MCPManager) connectServer(ctx context.Context, server config.MCPServer)
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 
+	m.mu.Lock()
 	m.sessions[server.Name] = session
+	m.mu.Unlock()
 	logger.Infof("Connected to MCP server '%s'", server.Name)
 	return nil
 }
 
 func (m *MCPManager) GetAllTools(ctx context.Context) ([]MCPTool, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	var allTools []MCPTool
 	for name, session := range m.sessions {
 		tools, err := m.getServerTools(ctx, name, session)
@@ -100,7 +112,9 @@ func (m *MCPManager) getServerTools(ctx context.Context, serverName string, sess
 }
 
 func (m *MCPManager) CallTool(ctx context.Context, serverName, toolName string, arguments map[string]interface{}) (string, error) {
+	m.mu.RLock()
 	session, exists := m.sessions[serverName]
+	m.mu.RUnlock()
 	if !exists {
 		return "", fmt.Errorf("mcp server '%s' not connected", serverName)
 	}
@@ -149,6 +163,8 @@ func ToOpenAITools(tools []MCPTool) []openai.Tool {
 }
 
 func (m *MCPManager) Close() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for name, session := range m.sessions {
 		if err := session.Close(); err != nil {
 			logger.Warnf("Error closing MCP session '%s': %v", name, err)

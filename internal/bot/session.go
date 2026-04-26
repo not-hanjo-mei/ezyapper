@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"ezyapper/internal/ai"
@@ -105,7 +106,9 @@ func (pm *ProcessingMessage) GetContent() string {
 
 type Bot struct {
 	session         *discordgo.Session
-	config          *config.Config
+	ctx             context.Context
+	cancel          context.CancelFunc
+	configStore     *atomic.Value // stores *config.Config
 	memory          memory.Service
 	discordClient   *memory.ShortTermClient
 	toolRegistry    *ai.ToolRegistry
@@ -134,6 +137,11 @@ type Bot struct {
 	processingMu       sync.RWMutex
 }
 
+// cfg returns the current config snapshot atomically
+func (b *Bot) cfg() *config.Config {
+	return b.configStore.Load().(*config.Config)
+}
+
 type historicalImageDescCacheEntry struct {
 	imageURLsKey string
 	descriptions []string
@@ -146,7 +154,8 @@ const (
 )
 
 // New creates a new Discord bot instance
-func New(cfg *config.Config, mem memory.Service, pluginMgr *plugin.PluginManager) (*Bot, error) {
+func New(cfgStore *atomic.Value, mem memory.Service, pluginMgr *plugin.PluginManager) (*Bot, error) {
+	cfg := cfgStore.Load().(*config.Config)
 	// Create Discord session
 	session, err := discordgo.New("Bot " + cfg.Discord.Token)
 	if err != nil {
@@ -188,9 +197,12 @@ func New(cfg *config.Config, mem memory.Service, pluginMgr *plugin.PluginManager
 	cooldownDuration := time.Duration(cfg.Discord.CooldownSeconds) * time.Second
 	limiter := ratelimit.NewLimiter(cfg.Discord.MaxResponsesPerMin, cooldownDuration)
 
+	rootCtx, rootCancel := context.WithCancel(context.Background())
 	bot := &Bot{
 		session:                  session,
-		config:                   cfg,
+		ctx:                      rootCtx,
+		cancel:                   rootCancel,
+		configStore:              cfgStore,
 		memory:                   mem,
 		discordClient:            discordClient,
 		toolRegistry:             toolRegistry,
@@ -237,7 +249,7 @@ func (b *Bot) Start(ctx context.Context) error {
 		b.session.State.User.Discriminator)
 
 	// Connect to MCP servers and register tools
-	if b.config.MCP.Enabled {
+	if b.cfg().MCP.Enabled {
 		if err := b.mcpManager.Connect(ctx); err != nil {
 			logger.Warnf("Failed to connect to MCP servers: %v", err)
 		} else {
@@ -246,8 +258,8 @@ func (b *Bot) Start(ctx context.Context) error {
 	}
 
 	// Load plugins
-	if b.config.Plugins.Enabled {
-		if err := b.pluginManager.LoadPluginsFromDir(b.config.Plugins.PluginsDir); err != nil {
+	if b.cfg().Plugins.Enabled {
+		if err := b.pluginManager.LoadPluginsFromDir(b.cfg().Plugins.PluginsDir); err != nil {
 			logger.Warnf("Failed to load plugins: %v", err)
 		}
 		b.registerPluginTools()
@@ -259,6 +271,8 @@ func (b *Bot) Start(ctx context.Context) error {
 // Stop stops the Discord bot
 func (b *Bot) Stop() error {
 	logger.Info("Stopping Discord bot...")
+
+	b.cancel()
 
 	// Close MCP connections
 	if b.mcpManager != nil {
@@ -375,15 +389,15 @@ func (b *Bot) IsBotMentioned(m *discordgo.MessageCreate) bool {
 // IsChannelAllowed checks if the bot should respond in a channel
 func (b *Bot) IsChannelAllowed(channelID string) bool {
 	// Check blacklist
-	for _, id := range b.config.Blacklist.Channels {
+	for _, id := range b.cfg().Blacklist.Channels {
 		if id == channelID {
 			return false
 		}
 	}
 
 	// Check whitelist (if set)
-	if len(b.config.Whitelist.Channels) > 0 {
-		for _, id := range b.config.Whitelist.Channels {
+	if len(b.cfg().Whitelist.Channels) > 0 {
+		for _, id := range b.cfg().Whitelist.Channels {
 			if id == channelID {
 				return true
 			}
@@ -396,7 +410,7 @@ func (b *Bot) IsChannelAllowed(channelID string) bool {
 
 // IsUserBlacklisted checks if a user is blacklisted
 func (b *Bot) IsUserBlacklisted(userID string) bool {
-	for _, id := range b.config.Blacklist.Users {
+	for _, id := range b.cfg().Blacklist.Users {
 		if id == userID {
 			return true
 		}
@@ -406,10 +420,10 @@ func (b *Bot) IsUserBlacklisted(userID string) bool {
 
 // IsUserWhitelisted checks if a user is whitelisted
 func (b *Bot) IsUserWhitelisted(userID string) bool {
-	if len(b.config.Whitelist.Users) == 0 {
+	if len(b.cfg().Whitelist.Users) == 0 {
 		return true
 	}
-	for _, id := range b.config.Whitelist.Users {
+	for _, id := range b.cfg().Whitelist.Users {
 		if id == userID {
 			return true
 		}
@@ -419,8 +433,8 @@ func (b *Bot) IsUserWhitelisted(userID string) bool {
 
 func (b *Bot) CheckRateLimit(channelID, userID string) bool {
 	b.rateLimiter.UpdateConfig(
-		b.config.Discord.MaxResponsesPerMin,
-		time.Duration(b.config.Discord.CooldownSeconds)*time.Second,
+		b.cfg().Discord.MaxResponsesPerMin,
+		time.Duration(b.cfg().Discord.CooldownSeconds)*time.Second,
 	)
 	return b.rateLimiter.Check(channelID, userID)
 }
@@ -437,28 +451,28 @@ func (b *Bot) FetchUserMessages(channelID string, userID string, limit int) ([]*
 // ApplyRuntimeConfig reapplies hot-updateable runtime dependencies after config changes.
 func (b *Bot) ApplyRuntimeConfig() error {
 	b.rateLimiter.UpdateConfig(
-		b.config.Discord.MaxResponsesPerMin,
-		time.Duration(b.config.Discord.CooldownSeconds)*time.Second,
+		b.cfg().Discord.MaxResponsesPerMin,
+		time.Duration(b.cfg().Discord.CooldownSeconds)*time.Second,
 	)
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if b.config.AI.Vision.Mode != config.VisionModeHybrid {
+	if b.cfg().AI.Vision.Mode != config.VisionModeHybrid {
 		b.visionDescriber = nil
 		return nil
 	}
 
-	visionAIConfig := b.config.AI
-	if b.config.AI.Vision.APIBaseURL != "" {
-		visionAIConfig.APIBaseURL = b.config.AI.Vision.APIBaseURL
+	visionAIConfig := b.cfg().AI
+	if b.cfg().AI.Vision.APIBaseURL != "" {
+		visionAIConfig.APIBaseURL = b.cfg().AI.Vision.APIBaseURL
 	}
-	if b.config.AI.Vision.APIKey != "" {
-		visionAIConfig.APIKey = b.config.AI.Vision.APIKey
+	if b.cfg().AI.Vision.APIKey != "" {
+		visionAIConfig.APIKey = b.cfg().AI.Vision.APIKey
 	}
 
 	clientWrapper := ai.NewClient(&visionAIConfig, b.toolRegistry)
-	b.visionDescriber = ai.NewVisionDescriber(clientWrapper, &b.config.AI.Vision, &visionAIConfig)
+	b.visionDescriber = ai.NewVisionDescriber(clientWrapper, &b.cfg().AI.Vision, &visionAIConfig)
 	return nil
 }
 
@@ -570,7 +584,7 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate) (bo
 	}
 
 	// Ignore other bot messages if not configured to reply
-	if m.Author.Bot && !b.config.Discord.ReplyToBots {
+	if m.Author.Bot && !b.cfg().Discord.ReplyToBots {
 		return false, "bot message"
 	}
 
@@ -600,10 +614,10 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate) (bo
 	}
 
 	// Use LLM decision if enabled
-	if b.decisionService != nil && b.config.Decision.Enabled {
+	if b.decisionService != nil && b.cfg().Decision.Enabled {
 		// Create a timeout context that accommodates all retries plus buffer
 		// Total timeout = (timeout per attempt) * (retry_count + 2) to allow for all retries plus overhead
-		totalTimeout := time.Duration(b.config.Decision.Timeout) * time.Second * time.Duration(b.config.Decision.RetryCount+2)
+		totalTimeout := time.Duration(b.cfg().Decision.Timeout) * time.Second * time.Duration(b.cfg().Decision.RetryCount+2)
 		decisionCtx, cancel := context.WithTimeout(ctx, totalTimeout)
 		defer cancel()
 
@@ -621,7 +635,7 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate) (bo
 			msgInfo.ReplyToID = m.ReferencedMessage.Author.ID
 		}
 
-		result, err := b.decisionService.ShouldRespondWithInfo(decisionCtx, b.config.Discord.BotName, msgInfo, imageCount, recentMessages)
+		result, err := b.decisionService.ShouldRespondWithInfo(decisionCtx, b.cfg().Discord.BotName, msgInfo, imageCount, recentMessages)
 		if err != nil {
 			logger.Warnf("decision service failed: %v, using fallback", err)
 			return b.ShouldRandomReply(), "llm decision failed, fallback"
@@ -642,7 +656,7 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate) (bo
 }
 
 func (b *Bot) getRecentMessagesForDecision(channelID string, currentMessageID string) []ai.ContextMessage {
-	messages, err := b.discordClient.FetchRecentMessages(channelID, b.config.Decision.ContextMessages)
+	messages, err := b.discordClient.FetchRecentMessages(channelID, b.cfg().Decision.ContextMessages)
 	if err != nil {
 		return nil
 	}
@@ -672,7 +686,7 @@ func (b *Bot) getRecentMessagesForDecision(channelID string, currentMessageID st
 
 // ShouldRandomReply determines if bot should reply randomly using crypto/rand
 func (b *Bot) ShouldRandomReply() bool {
-	if b.config.Discord.ReplyPercentage <= 0 {
+	if b.cfg().Discord.ReplyPercentage <= 0 {
 		return false
 	}
 
@@ -683,7 +697,7 @@ func (b *Bot) ShouldRandomReply() bool {
 		return false
 	}
 
-	return float64(n.Int64()) < b.config.Discord.ReplyPercentage*100
+	return float64(n.Int64()) < b.cfg().Discord.ReplyPercentage*100
 }
 
 func (b *Bot) CleanupCache() {
@@ -799,7 +813,7 @@ func (b *Bot) addMessageToChannelBuffer(channelID string, msg *memory.DiscordMes
 	b.channelMessageBuffer[channelID] = append(b.channelMessageBuffer[channelID], msg)
 	logger.Debugf("[channel_buffer] added message for channel=%s, buffer_size=%d", channelID, len(b.channelMessageBuffer[channelID]))
 
-	maxBuffer := b.config.Memory.Consolidation.MaxMessages * 2
+	maxBuffer := b.cfg().Memory.Consolidation.MaxMessages * 2
 	if len(b.channelMessageBuffer[channelID]) > maxBuffer {
 		b.channelMessageBuffer[channelID] = b.channelMessageBuffer[channelID][len(b.channelMessageBuffer[channelID])-maxBuffer:]
 		logger.Debugf("[channel_buffer] truncated buffer for channel=%s to %d messages", channelID, maxBuffer)
