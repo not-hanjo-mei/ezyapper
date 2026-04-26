@@ -20,7 +20,8 @@ func init() {
 	logger.Init(logger.Config{Level: "error"})
 }
 
-// mockMemoryService is a mock implementation of memory.Service for testing
+// mockMemoryService implements memory.MemoryStore, memory.ProfileStore,
+// memory.ConsolidationManager, and memory.Service for testing.
 type mockMemoryService struct{}
 
 func (m *mockMemoryService) Store(ctx context.Context, mem *memory.Record) error { return nil }
@@ -92,7 +93,7 @@ func setupTestServer(t *testing.T) (*Server, *httptest.Server) {
 
 	mem := &mockMemoryService{}
 	pluginManager := plugin.NewManager()
-	server := NewServer(cfgStore, mem, pluginManager, nil)
+	server := NewServer(cfgStore, mem, mem, mem, pluginManager, nil)
 
 	gin.SetMode(gin.TestMode)
 	router := server.router
@@ -313,7 +314,7 @@ func TestNewServer(t *testing.T) {
 	pluginManager := plugin.NewManager()
 	cfgStore := &atomic.Value{}
 	cfgStore.Store(cfg)
-	server := NewServer(cfgStore, mem, pluginManager, nil)
+	server := NewServer(cfgStore, mem, mem, mem, pluginManager, nil)
 
 	if server == nil {
 		t.Error("Expected non-nil server")
@@ -337,7 +338,7 @@ func TestServer_StartDisabled(t *testing.T) {
 	pluginManager := plugin.NewManager()
 	cfgStore := &atomic.Value{}
 	cfgStore.Store(cfg)
-	server := NewServer(cfgStore, mem, pluginManager, nil)
+	server := NewServer(cfgStore, mem, mem, mem, pluginManager, nil)
 
 	err := server.Start()
 	if err != nil {

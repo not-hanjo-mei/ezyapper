@@ -21,15 +21,17 @@ import (
 )
 
 type Server struct {
-	router         *gin.Engine
-	configStore    *atomic.Value // stores *config.Config
-	memory         memory.Service
-	pluginManager  *plugin.Manager
-	server         *http.Server
-	mu             sync.RWMutex
-	startTime      time.Time
-	discordFetcher DiscordMessageFetcher
-	webDir         string
+	router            *gin.Engine
+	configStore       *atomic.Value // stores *config.Config
+	memoryStore       memory.MemoryStore
+	profileStore      memory.ProfileStore
+	consolidationMgr  memory.ConsolidationManager
+	pluginManager     *plugin.Manager
+	server            *http.Server
+	mu                sync.RWMutex
+	startTime         time.Time
+	discordFetcher    DiscordMessageFetcher
+	webDir            string
 }
 
 func (s *Server) cfg() *config.Config {
@@ -72,7 +74,7 @@ func findWebDir() string {
 	return "./web"
 }
 
-func NewServer(cfgStore *atomic.Value, mem memory.Service, pluginManager *plugin.Manager, discordFetcher DiscordMessageFetcher) *Server {
+func NewServer(cfgStore *atomic.Value, memStore memory.MemoryStore, profileStore memory.ProfileStore, conMgr memory.ConsolidationManager, pluginManager *plugin.Manager, discordFetcher DiscordMessageFetcher) *Server {
 	cfg := cfgStore.Load().(*config.Config)
 	if cfg.Logging.Level == "debug" {
 		gin.SetMode(gin.DebugMode)
@@ -100,13 +102,15 @@ func NewServer(cfgStore *atomic.Value, mem memory.Service, pluginManager *plugin
 	})
 
 	server := &Server{
-		router:         router,
-		configStore:    cfgStore,
-		memory:         mem,
-		pluginManager:  pluginManager,
-		startTime:      time.Now(),
-		discordFetcher: discordFetcher,
-		webDir:         findWebDir(),
+		router:            router,
+		configStore:       cfgStore,
+		memoryStore:       memStore,
+		profileStore:      profileStore,
+		consolidationMgr:  conMgr,
+		pluginManager:     pluginManager,
+		startTime:         time.Now(),
+		discordFetcher:    discordFetcher,
+		webDir:            findWebDir(),
 	}
 
 	server.setupRoutes()

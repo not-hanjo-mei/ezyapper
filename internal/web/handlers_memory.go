@@ -26,7 +26,7 @@ func (s *Server) getMemories(c *gin.Context) {
 		limit = parsed
 	}
 
-	memories, err := s.memory.GetMemories(c.Request.Context(), userID, limit)
+	memories, err := 	s.memoryStore.GetMemories(c.Request.Context(), userID, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -47,7 +47,7 @@ func (s *Server) searchMemories(c *gin.Context) {
 		return
 	}
 
-	memories, err := s.memory.Search(c.Request.Context(), userID, query, nil)
+	memories, err := 	s.memoryStore.Search(c.Request.Context(), userID, query, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -65,7 +65,7 @@ func (s *Server) deleteMemory(c *gin.Context) {
 	userID := c.Param("userID")
 	memoryID := c.Param("id")
 
-	memory, err := s.memory.GetMemory(c.Request.Context(), memoryID)
+	memory, err := 	s.memoryStore.GetMemory(c.Request.Context(), memoryID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "memory not found"})
 		return
@@ -80,7 +80,7 @@ func (s *Server) deleteMemory(c *gin.Context) {
 		return
 	}
 
-	if err := s.memory.DeleteMemory(c.Request.Context(), memoryID); err != nil {
+	if err := 	s.memoryStore.DeleteMemory(c.Request.Context(), memoryID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -93,7 +93,7 @@ func (s *Server) deleteMemory(c *gin.Context) {
 func (s *Server) clearMemories(c *gin.Context) {
 	userID := c.Param("userID")
 
-	if err := s.memory.DeleteUserData(c.Request.Context(), userID); err != nil {
+	if err := 	s.memoryStore.DeleteUserData(c.Request.Context(), userID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -106,7 +106,7 @@ func (s *Server) clearMemories(c *gin.Context) {
 func (s *Server) getProfile(c *gin.Context) {
 	userID := c.Param("userID")
 
-	profile, err := s.memory.GetProfile(c.Request.Context(), userID)
+	profile, err := 	s.profileStore.GetProfile(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "profile not found"})
 		return
@@ -126,7 +126,7 @@ func (s *Server) updateProfile(c *gin.Context) {
 
 	profile.UserID = userID
 
-	if err := s.memory.UpdateProfile(c.Request.Context(), &profile); err != nil {
+	if err := 	s.profileStore.UpdateProfile(c.Request.Context(), &profile); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -140,7 +140,7 @@ func (s *Server) updateProfile(c *gin.Context) {
 func (s *Server) deleteProfile(c *gin.Context) {
 	userID := c.Param("userID")
 
-	if err := s.memory.DeleteUserData(c.Request.Context(), userID); err != nil {
+	if err := 	s.memoryStore.DeleteUserData(c.Request.Context(), userID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -182,22 +182,22 @@ func (s *Server) triggerConsolidation(c *gin.Context) {
 			messages, err := s.discordFetcher.FetchUserMessages(channelID, userID, maxMessages)
 			if err != nil {
 				logger.Errorf("Failed to fetch messages for consolidation: %v", err)
-				if err := s.memory.Consolidate(ctx, userID); err != nil {
-					logger.Errorf("Consolidation fallback failed for user %s: %v", userID, err)
-				}
-				return
+			if err := s.consolidationMgr.Consolidate(ctx, userID); err != nil {
+				logger.Errorf("Consolidation fallback failed for user %s: %v", userID, err)
 			}
-			if len(messages) == 0 {
-				logger.Warnf("No messages found for user %s in channel %s", userID, channelID)
-				return
-			}
-			logger.Infof("Consolidating %d messages for user %s from channel %s", len(messages), userID, channelID)
-			if err := s.memory.ConsolidateWithMessages(ctx, userID, messages); err != nil {
-				logger.Errorf("Consolidation with messages failed for user %s: %v", userID, err)
-			}
-		} else {
-			logger.Warnf("No channel_id provided or discord fetcher not available, using fallback consolidation for user %s", userID)
-			if err := s.memory.Consolidate(ctx, userID); err != nil {
+			return
+		}
+		if len(messages) == 0 {
+			logger.Warnf("No messages found for user %s in channel %s", userID, channelID)
+			return
+		}
+		logger.Infof("Consolidating %d messages for user %s from channel %s", len(messages), userID, channelID)
+		if err := s.consolidationMgr.ConsolidateWithMessages(ctx, userID, messages); err != nil {
+			logger.Errorf("Consolidation with messages failed for user %s: %v", userID, err)
+		}
+	} else {
+		logger.Warnf("No channel_id provided or discord fetcher not available, using fallback consolidation for user %s", userID)
+		if err := s.consolidationMgr.Consolidate(ctx, userID); err != nil {
 				logger.Errorf("Consolidation failed for user %s: %v", userID, err)
 			}
 		}

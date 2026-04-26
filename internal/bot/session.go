@@ -104,12 +104,22 @@ func (pm *ProcessingMessage) GetContent() string {
 	return pm.Content
 }
 
+// consolidationManager wraps memory.ConsolidationManager with channel-level
+// message counter methods used to trigger and schedule batch consolidation.
+type consolidationManager interface {
+	memory.ConsolidationManager
+	IncrementChannelMessageCount(ctx context.Context, channelID string) (int, error)
+	ConsumeChannelMessageCount(channelID string, consumed int) int
+}
+
 type Bot struct {
 	session         *discordgo.Session
 	ctx             context.Context
 	cancel          context.CancelFunc
 	configStore     *atomic.Value // stores *config.Config
-	memory          memory.Service
+	memoryStore     memory.MemoryStore
+	profileStore    memory.ProfileStore
+	consolidation   consolidationManager
 	discordClient   *memory.ShortTermClient
 	toolRegistry    *ai.ToolRegistry
 	pluginManager   *plugin.Manager
@@ -154,7 +164,7 @@ const (
 )
 
 // New creates a new Discord bot instance
-func New(cfgStore *atomic.Value, mem memory.Service, pluginMgr *plugin.Manager) (*Bot, error) {
+func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore memory.ProfileStore, conMgr consolidationManager, pluginMgr *plugin.Manager) (*Bot, error) {
 	cfg := cfgStore.Load().(*config.Config)
 	// Create Discord session
 	session, err := discordgo.New("Bot " + cfg.Discord.Token)
@@ -203,7 +213,9 @@ func New(cfgStore *atomic.Value, mem memory.Service, pluginMgr *plugin.Manager) 
 		ctx:                      rootCtx,
 		cancel:                   rootCancel,
 		configStore:              cfgStore,
-		memory:                   mem,
+		memoryStore:              memoryStore,
+		profileStore:             profileStore,
+		consolidation:            conMgr,
 		discordClient:            discordClient,
 		toolRegistry:             toolRegistry,
 		pluginManager:            pluginManager,
@@ -317,9 +329,9 @@ func (b *Bot) GetSession() *discordgo.Session {
 	return b.session
 }
 
-// GetMemory returns the memory service
-func (b *Bot) GetMemory() memory.Service {
-	return b.memory
+// GetMemory returns the memory store
+func (b *Bot) GetMemory() memory.MemoryStore {
+	return b.memoryStore
 }
 
 // GetDiscordClient returns the Discord short-term client

@@ -68,7 +68,7 @@ func main() {
 	cfgStore.Store(cfg)
 
 	// Initialize Discord bot
-	discordBot, err := bot.New(cfgStore, memoryService, pluginManager)
+	discordBot, err := bot.New(cfgStore, memoryService, memoryService, memoryService, pluginManager)
 	if err != nil {
 		logger.Fatalf("Failed to create Discord bot: %v", err)
 	}
@@ -80,7 +80,7 @@ func main() {
 	}
 
 	// Initialize web server
-	webServer := web.NewServer(cfgStore, memoryService, pluginManager, discordBot)
+	webServer := web.NewServer(cfgStore, memoryService, memoryService, memoryService, pluginManager, discordBot)
 	if err := webServer.Start(); err != nil {
 		logger.Warnf("Failed to start web server: %v", err)
 	}

@@ -65,7 +65,7 @@ func (b *Bot) processMessageWithoutImages(ctx context.Context, s *discordgo.Sess
 
 	var memories []*memory.Record
 	if b.cfg().Memory.Retrieval.TopK > 0 {
-		memories, err = b.memory.Search(ctx, m.Author.ID, m.Content, nil)
+		memories, err = b.memoryStore.Search(ctx, m.Author.ID, m.Content, nil)
 		if err != nil {
 			logger.Warnf("Failed to search memories: %v", err)
 		} else if len(memories) > 0 {
@@ -81,7 +81,7 @@ func (b *Bot) processMessageWithoutImages(ctx context.Context, s *discordgo.Sess
 	}
 
 	// Get user profile
-	profile, err := b.memory.GetProfile(ctx, m.Author.ID)
+	profile, err := b.profileStore.GetProfile(ctx, m.Author.ID)
 	if err != nil {
 		logger.Warnf("Failed to get profile: %v", err)
 		profile = &memory.Profile{UserID: m.Author.ID}
@@ -141,7 +141,7 @@ func (b *Bot) processMessageWithoutImages(ctx context.Context, s *discordgo.Sess
 	b.SetCooldown(m.Author.ID, time.Duration(b.cfg().Discord.CooldownSeconds)*time.Second)
 
 	// Increment channel message count and check for batch consolidation
-	count, err := b.memory.IncrementChannelMessageCount(ctx, m.ChannelID)
+	count, err := b.consolidation.IncrementChannelMessageCount(ctx, m.ChannelID)
 	if err != nil {
 		logger.Warnf("Failed to increment channel message count: %v", err)
 	} else {
@@ -253,7 +253,7 @@ func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *disco
 
 	var memories []*memory.Record
 	if b.cfg().Memory.Retrieval.TopK > 0 {
-		memories, err = b.memory.Search(ctx, m.Author.ID, m.Content, nil)
+		memories, err = b.memoryStore.Search(ctx, m.Author.ID, m.Content, nil)
 		if err != nil {
 			logger.Warnf("Failed to search memories: %v", err)
 		} else if len(memories) > 0 {
@@ -269,7 +269,7 @@ func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *disco
 	}
 
 	// Get user profile
-	profile, err := b.memory.GetProfile(ctx, m.Author.ID)
+	profile, err := b.profileStore.GetProfile(ctx, m.Author.ID)
 	if err != nil {
 		logger.Warnf("Failed to get profile: %v", err)
 		profile = &memory.Profile{UserID: m.Author.ID}
@@ -330,7 +330,7 @@ func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *disco
 	b.SetCooldown(m.Author.ID, time.Duration(b.cfg().Discord.CooldownSeconds)*time.Second)
 
 	// Increment channel message count and check for batch consolidation
-	count, err := b.memory.IncrementChannelMessageCount(ctx, m.ChannelID)
+	count, err := b.consolidation.IncrementChannelMessageCount(ctx, m.ChannelID)
 	if err != nil {
 		logger.Warnf("Failed to increment channel message count: %v", err)
 	} else {

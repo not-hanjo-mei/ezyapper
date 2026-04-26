@@ -40,7 +40,7 @@ func (b *Bot) triggerChannelConsolidation(ctx context.Context, channelID string,
 		}()
 
 		defer func() {
-			remaining := b.memory.ConsumeChannelMessageCount(channelID, consumedCount)
+			remaining := b.consolidation.ConsumeChannelMessageCount(channelID, consumedCount)
 			b.finishChannelConsolidation(channelID)
 			if remaining >= b.cfg().Memory.ConsolidationInterval {
 				b.triggerChannelConsolidation(b.ctx, channelID, remaining)
@@ -67,7 +67,7 @@ func (b *Bot) triggerChannelConsolidation(ctx context.Context, channelID string,
 		}
 
 		logger.Infof("[consolidation] starting batch for channel=%s with %d messages", channelID, len(channelMessages))
-		if err := b.memory.ConsolidateChannel(consolidationCtx, channelID, channelMessages); err != nil {
+		if err := b.consolidation.ConsolidateChannel(consolidationCtx, channelID, channelMessages); err != nil {
 			logger.Errorf("[consolidation] failed for channel=%s: %v", channelID, err)
 		} else {
 			logger.Infof("[consolidation] completed successfully for channel=%s", channelID)
