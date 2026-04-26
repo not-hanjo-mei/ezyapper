@@ -202,9 +202,9 @@ func (d *DiscordTools) RegisterTools(registry *ToolRegistry) {
 }
 
 func (d *DiscordTools) getServerInfo(ctx context.Context, args map[string]any) (string, error) {
-	guildID, ok := args["guild_id"].(string)
-	if !ok {
-		return "", fmt.Errorf("invalid guild_id")
+	guildID, err := getStringArg(args, "guild_id")
+	if err != nil {
+		return "", err
 	}
 
 	guild, err := d.session.Guild(guildID)
@@ -221,14 +221,13 @@ func (d *DiscordTools) getServerInfo(ctx context.Context, args map[string]any) (
 		"region":       guild.Region,
 	}
 
-	data, _ := json.MarshalIndent(result, "", "  ")
-	return string(data), nil
+	return marshalJSON(result), nil
 }
 
 func (d *DiscordTools) getChannelInfo(ctx context.Context, args map[string]any) (string, error) {
-	channelID, ok := args["channel_id"].(string)
-	if !ok {
-		return "", fmt.Errorf("invalid channel_id")
+	channelID, err := getStringArg(args, "channel_id")
+	if err != nil {
+		return "", err
 	}
 
 	channel, err := d.session.Channel(channelID)
@@ -244,19 +243,18 @@ func (d *DiscordTools) getChannelInfo(ctx context.Context, args map[string]any) 
 		"guild_id": channel.GuildID,
 	}
 
-	data, _ := json.MarshalIndent(result, "", "  ")
-	return string(data), nil
+	return marshalJSON(result), nil
 }
 
 func (d *DiscordTools) getUserInfo(ctx context.Context, args map[string]any) (string, error) {
-	guildID, ok := args["guild_id"].(string)
-	if !ok {
-		return "", fmt.Errorf("invalid guild_id")
+	guildID, err := getStringArg(args, "guild_id")
+	if err != nil {
+		return "", err
 	}
 
-	userID, ok := args["user_id"].(string)
-	if !ok {
-		return "", fmt.Errorf("invalid user_id")
+	userID, err := getStringArg(args, "user_id")
+	if err != nil {
+		return "", err
 	}
 
 	member, err := d.session.GuildMember(guildID, userID)
@@ -273,14 +271,13 @@ func (d *DiscordTools) getUserInfo(ctx context.Context, args map[string]any) (st
 		"roles":        member.Roles,
 	}
 
-	data, _ := json.MarshalIndent(result, "", "  ")
-	return string(data), nil
+	return marshalJSON(result), nil
 }
 
 func (d *DiscordTools) listChannels(ctx context.Context, args map[string]any) (string, error) {
-	guildID, ok := args["guild_id"].(string)
-	if !ok {
-		return "", fmt.Errorf("invalid guild_id")
+	guildID, err := getStringArg(args, "guild_id")
+	if err != nil {
+		return "", err
 	}
 
 	channels, err := d.session.GuildChannels(guildID)
@@ -297,23 +294,16 @@ func (d *DiscordTools) listChannels(ctx context.Context, args map[string]any) (s
 		})
 	}
 
-	data, _ := json.MarshalIndent(result, "", "  ")
-	return string(data), nil
+	return marshalJSON(result), nil
 }
 
 func (d *DiscordTools) getRecentMessages(ctx context.Context, args map[string]any) (string, error) {
-	channelID, ok := args["channel_id"].(string)
-	if !ok {
-		return "", fmt.Errorf("invalid channel_id")
+	channelID, err := getStringArg(args, "channel_id")
+	if err != nil {
+		return "", err
 	}
 
-	limit := 5
-	if l, ok := args["limit"].(float64); ok {
-		limit = int(l)
-		if limit > 10 {
-			limit = 10
-		}
-	}
+	limit := extractLimit(args, "limit", 5, 10)
 
 	messages, err := d.session.ChannelMessages(channelID, limit, "", "", "")
 	if err != nil {
@@ -330,25 +320,23 @@ func (d *DiscordTools) getRecentMessages(ctx context.Context, args map[string]an
 		})
 	}
 
-	data, _ := json.MarshalIndent(result, "", "  ")
-	return string(data), nil
+	return marshalJSON(result), nil
 }
 
 func (d *DiscordTools) createThread(ctx context.Context, args map[string]any) (string, error) {
-	channelID, ok := args["channel_id"].(string)
-	if !ok {
-		return "", fmt.Errorf("invalid channel_id")
+	channelID, err := getStringArg(args, "channel_id")
+	if err != nil {
+		return "", err
 	}
 
-	name, ok := args["name"].(string)
-	if !ok {
-		return "", fmt.Errorf("invalid name")
+	name, err := getStringArg(args, "name")
+	if err != nil {
+		return "", err
 	}
 
 	messageID, _ := args["message_id"].(string)
 
 	var thread *discordgo.Channel
-	var err error
 
 	if messageID != "" {
 		thread, err = d.session.MessageThreadStartComplex(channelID, messageID, &discordgo.ThreadStart{
@@ -368,27 +356,26 @@ func (d *DiscordTools) createThread(ctx context.Context, args map[string]any) (s
 		"name": thread.Name,
 	}
 
-	data, _ := json.MarshalIndent(result, "", "  ")
-	return string(data), nil
+	return marshalJSON(result), nil
 }
 
 func (d *DiscordTools) addReaction(ctx context.Context, args map[string]any) (string, error) {
-	channelID, ok := args["channel_id"].(string)
-	if !ok {
-		return "", fmt.Errorf("invalid channel_id")
+	channelID, err := getStringArg(args, "channel_id")
+	if err != nil {
+		return "", err
 	}
 
-	messageID, ok := args["message_id"].(string)
-	if !ok {
-		return "", fmt.Errorf("invalid message_id")
+	messageID, err := getStringArg(args, "message_id")
+	if err != nil {
+		return "", err
 	}
 
-	emoji, ok := args["emoji"].(string)
-	if !ok {
-		return "", fmt.Errorf("invalid emoji")
+	emoji, err := getStringArg(args, "emoji")
+	if err != nil {
+		return "", err
 	}
 
-	err := d.session.MessageReactionAdd(channelID, messageID, emoji)
+	err = d.session.MessageReactionAdd(channelID, messageID, emoji)
 	if err != nil {
 		return "", fmt.Errorf("failed to add reaction: %w", err)
 	}
@@ -397,18 +384,12 @@ func (d *DiscordTools) addReaction(ctx context.Context, args map[string]any) (st
 }
 
 func (d *DiscordTools) getChannelMembers(ctx context.Context, args map[string]any) (string, error) {
-	guildID, ok := args["guild_id"].(string)
-	if !ok {
-		return "", fmt.Errorf("invalid guild_id")
+	guildID, err := getStringArg(args, "guild_id")
+	if err != nil {
+		return "", err
 	}
 
-	limit := 20
-	if l, ok := args["limit"].(float64); ok {
-		limit = int(l)
-		if limit > 100 {
-			limit = 100
-		}
-	}
+	limit := extractLimit(args, "limit", 20, 100)
 
 	members, err := d.session.GuildMembers(guildID, "", limit)
 	if err != nil {
@@ -429,28 +410,21 @@ func (d *DiscordTools) getChannelMembers(ctx context.Context, args map[string]an
 		})
 	}
 
-	data, _ := json.MarshalIndent(result, "", "  ")
-	return string(data), nil
+	return marshalJSON(result), nil
 }
 
 func (d *DiscordTools) searchGuildMembers(ctx context.Context, args map[string]any) (string, error) {
-	guildID, ok := args["guild_id"].(string)
-	if !ok {
-		return "", fmt.Errorf("invalid guild_id")
+	guildID, err := getStringArg(args, "guild_id")
+	if err != nil {
+		return "", err
 	}
 
-	query, ok := args["query"].(string)
-	if !ok || query == "" {
-		return "", fmt.Errorf("invalid query")
+	query, err := getStringArg(args, "query")
+	if err != nil {
+		return "", err
 	}
 
-	limit := 10
-	if l, ok := args["limit"].(float64); ok {
-		limit = int(l)
-		if limit > 50 {
-			limit = 50
-		}
-	}
+	limit := extractLimit(args, "limit", 10, 50)
 
 	queryLower := strings.ToLower(query)
 	result := make([]map[string]any, 0, limit)
@@ -555,6 +529,44 @@ func (d *DiscordTools) searchGuildMembers(ctx context.Context, args map[string]a
 		}
 	}
 
-	data, _ := json.MarshalIndent(result, "", "  ")
-	return string(data), nil
+	data := marshalJSON(result)
+	return data, nil
+}
+
+// getStringArg extracts a required string argument from the args map.
+// Returns an error if the key is missing, the value is not a string, or it is empty.
+func getStringArg(args map[string]any, key string) (string, error) {
+	val, ok := args[key]
+	if !ok {
+		return "", fmt.Errorf("missing required argument: %s", key)
+	}
+	s, ok := val.(string)
+	if !ok {
+		return "", fmt.Errorf("argument %s must be a string", key)
+	}
+	if s == "" {
+		return "", fmt.Errorf("argument %s must not be empty", key)
+	}
+	return s, nil
+}
+
+// extractLimit extracts an optional integer limit from args with default and max bounds.
+func extractLimit(args map[string]any, key string, defaultVal, maxVal int) int {
+	limit := defaultVal
+	if l, ok := args[key].(float64); ok {
+		limit = int(l)
+		if limit > maxVal {
+			limit = maxVal
+		}
+	}
+	return limit
+}
+
+// marshalJSON marshals a value to indented JSON, returning an error string on failure.
+func marshalJSON(result any) string {
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return fmt.Sprintf(`{"error": "failed to marshal result: %s"}`, err.Error())
+	}
+	return string(data)
 }

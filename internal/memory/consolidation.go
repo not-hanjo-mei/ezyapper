@@ -240,6 +240,62 @@ func (c *Consolidator) buildProfileDelta(profile *Profile, summary string) Profi
 	}
 }
 
+// buildConversationText builds a conversation text from messages for LLM analysis.
+// userID is used for logging context; if empty, logs omit per-user details.
+func (c *Consolidator) buildConversationText(ctx context.Context, messages []*DiscordMessage, userID string) (string, int) {
+	var conversation strings.Builder
+	imageCount := 0
+	for i, msg := range messages {
+		timeStr := msg.Timestamp.UTC().Format(time.RFC3339)
+		botMarker := ""
+		if msg.AuthorID == c.ownBotID {
+			botMarker = ",BOT=2" // Own bot - completely ignore
+		} else if msg.IsBot {
+			botMarker = ",BOT=1" // Other bots - minimal extraction
+		}
+		conversation.WriteString(fmt.Sprintf(`"%s"{UserID=%s,Time=%s%s}: "%s"`+"\n", msg.Username, msg.AuthorID, timeStr, botMarker, msg.Content))
+
+		if userID != "" {
+			logger.Debugf("[consolidation] message %d [%s] for user=%s: %s%s: %s", i+1, timeStr, userID, msg.Username, botMarker, msg.Content)
+		} else {
+			logger.Debugf("[consolidation] message %d [%s]: %s (ID=%s)%s: %s", i+1, timeStr, msg.Username, msg.AuthorID, botMarker, msg.Content)
+		}
+
+		if len(msg.ImageURLs) > 0 && c.visionDescriber != nil {
+			var descriptions []string
+
+			// Use cached descriptions if available (to avoid redundant API calls)
+			if len(msg.ImageDescriptions) > 0 {
+				descriptions = msg.ImageDescriptions
+				if userID != "" {
+					logger.Debugf("[consolidation] using cached image descriptions for user=%s message=%d count=%d", userID, i+1, len(descriptions))
+				}
+			} else {
+				// No cache available, call vision API
+				var err error
+				descriptions, err = c.visionDescriber.DescribeImages(ctx, msg.ImageURLs)
+				if err != nil {
+					if userID != "" {
+						logger.Warnf("[consolidation] failed to describe images for user=%s message=%d: %v", userID, i+1, err)
+					} else {
+						logger.Warnf("[consolidation] failed to describe images for message %d: %v", i+1, err)
+					}
+					continue
+				}
+				if userID != "" {
+					logger.Debugf("[consolidation] generated fresh image descriptions for user=%s message=%d count=%d", userID, i+1, len(descriptions))
+				}
+			}
+
+			for j, desc := range descriptions {
+				conversation.WriteString(fmt.Sprintf("  [Attached Image %d: %s]\n", j+1, desc))
+				imageCount++
+			}
+		}
+	}
+	return conversation.String(), imageCount
+}
+
 func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, messages []*DiscordMessage) error {
 	start := time.Now()
 	logger.Infof("[consolidation] starting with messages for user=%s message_count=%d", userID, len(messages))
@@ -249,51 +305,12 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 		messages = messages[:c.maxMessages]
 	}
 
-	var conversation strings.Builder
-	imageCount := 0
-	for i, msg := range messages {
-		// Include timestamp and UserID for stable identification, distinguish own bot from others (UTC)
-		// Bot markers: BOT=2 (own bot/ME - ignore), BOT=1 (other bots - minimal), no marker (human - normal)
-		timeStr := msg.Timestamp.UTC().Format(time.RFC3339)
-		botMarker := ""
-		if msg.AuthorID == c.ownBotID {
-			botMarker = ",BOT=2" // Own bot - completely ignore
-		} else if msg.IsBot {
-			botMarker = ",BOT=1" // Other bots - minimal extraction
-		}
-		conversation.WriteString(fmt.Sprintf(`"%s"{UserID=%s,Time=%s%s}: "%s"`+"\n", msg.Username, msg.AuthorID, timeStr, botMarker, msg.Content))
-		logger.Debugf("[consolidation] message %d [%s] for user=%s: %s%s: %s", i+1, timeStr, userID, msg.Username, botMarker, msg.Content)
-
-		if len(msg.ImageURLs) > 0 && c.visionDescriber != nil {
-			var descriptions []string
-
-			// Use cached descriptions if available (to avoid redundant API calls)
-			if len(msg.ImageDescriptions) > 0 {
-				descriptions = msg.ImageDescriptions
-				logger.Debugf("[consolidation] using cached image descriptions for user=%s message=%d count=%d", userID, i+1, len(descriptions))
-			} else {
-				// No cache available, call vision API
-				var err error
-				descriptions, err = c.visionDescriber.DescribeImages(ctx, msg.ImageURLs)
-				if err != nil {
-					logger.Warnf("[consolidation] failed to describe images for user=%s message=%d: %v", userID, i+1, err)
-					continue
-				}
-				logger.Debugf("[consolidation] generated fresh image descriptions for user=%s message=%d count=%d", userID, i+1, len(descriptions))
-			}
-
-			for j, desc := range descriptions {
-				conversation.WriteString(fmt.Sprintf("  [Attached Image %d: %s]\n", j+1, desc))
-				imageCount++
-			}
-		}
-	}
-	conversationLength := conversation.Len()
-	logger.Infof("[consolidation] built conversation for user=%s length=%d chars images=%d", userID, conversationLength, imageCount)
+	conversation, imageCount := c.buildConversationText(ctx, messages, userID)
+	logger.Infof("[consolidation] built conversation for user=%s length=%d chars images=%d", userID, len(conversation), imageCount)
 
 	profile := c.getOrCreateProfile(ctx, userID)
 
-	extracted := c.analyzeConversation(ctx, conversation.String(), []string{userID})
+	extracted := c.analyzeConversation(ctx, conversation, []string{userID})
 	if len(extracted) == 0 {
 		elapsed := time.Since(start)
 		logger.Infof("[consolidation] no memories extracted for user=%s duration=%s", userID, elapsed)
@@ -394,45 +411,12 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 	}
 
 	// Build conversation with timestamp and user identification
-	var conversation strings.Builder
-	imageCount := 0
-	for i, msg := range messages {
-		// Format: "Username"{UserID=xxx,Time=2026-03-19T04:30:00Z,BOT=1}: "content" (UTC)
-		// BOT markers: BOT=2 (own bot - ignore), BOT=1 (other bots - minimal), no marker (human - normal)
-		timeStr := msg.Timestamp.UTC().Format(time.RFC3339)
-		botMarker := ""
-		if msg.AuthorID == c.ownBotID {
-			botMarker = ",BOT=2" // Own bot - completely ignore
-		} else if msg.IsBot {
-			botMarker = ",BOT=1" // Other bots - minimal extraction
-		}
-		conversation.WriteString(fmt.Sprintf(`"%s"{UserID=%s,Time=%s%s}: "%s"`+"\n", msg.Username, msg.AuthorID, timeStr, botMarker, msg.Content))
-		logger.Debugf("[consolidation] message %d [%s]: %s (ID=%s)%s: %s", i+1, timeStr, msg.Username, msg.AuthorID, botMarker, msg.Content)
+	conversation, imageCount := c.buildConversationText(ctx, messages, "")
 
-		if len(msg.ImageURLs) > 0 && c.visionDescriber != nil {
-			var descriptions []string
-			if len(msg.ImageDescriptions) > 0 {
-				descriptions = msg.ImageDescriptions
-			} else {
-				var err error
-				descriptions, err = c.visionDescriber.DescribeImages(ctx, msg.ImageURLs)
-				if err != nil {
-					logger.Warnf("[consolidation] failed to describe images for message %d: %v", i+1, err)
-					continue
-				}
-			}
-			// Append image descriptions inline with the message for better context
-			for j, desc := range descriptions {
-				conversation.WriteString(fmt.Sprintf("  [Attached Image %d: %s]\n", j+1, desc))
-				imageCount++
-			}
-		}
-	}
-
-	logger.Infof("[consolidation] built conversation length=%d chars images=%d users=%v", conversation.Len(), imageCount, targetUserIDs)
+	logger.Infof("[consolidation] built conversation length=%d chars images=%d users=%v", len(conversation), imageCount, targetUserIDs)
 
 	// Analyze conversation with batch extraction for all users
-	batchExtracts := c.analyzeConversationBatch(ctx, conversation.String(), targetUserIDs)
+	batchExtracts := c.analyzeConversationBatch(ctx, conversation, targetUserIDs)
 	if len(batchExtracts) == 0 {
 		elapsed := time.Since(start)
 		logger.Infof("[consolidation] no memories extracted for channel=%s duration=%s", channelID, elapsed)

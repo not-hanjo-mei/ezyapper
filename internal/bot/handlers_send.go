@@ -84,11 +84,13 @@ func (b *Bot) runBeforeSendPluginHooks(
 	return updatedResponse, pluginFilesToLocalUploadFiles(files), skipSend, nil
 }
 
-// closeAllClosers closes all closers
+// closeAllClosers closes all closers, logging any close errors.
 func closeAllClosers(closers []io.Closer) {
 	for _, closer := range closers {
 		if closer != nil {
-			_ = closer.Close()
+			if err := closer.Close(); err != nil {
+				logger.Warnf("[send] failed to close file: %v", err)
+			}
 		}
 	}
 }
@@ -207,6 +209,20 @@ func (b *Bot) sendMessageWithLocalFiles(
 	return s.ChannelMessageSendComplex(m.ChannelID, messageSend)
 }
 
+// buildBotMessage creates a DiscordMessage record for the bot's own sent message.
+func (b *Bot) buildBotMessage(sentMsg *discordgo.Message, m *discordgo.MessageCreate, s *discordgo.Session) *memory.DiscordMessage {
+	return &memory.DiscordMessage{
+		ID:        sentMsg.ID,
+		ChannelID: sentMsg.ChannelID,
+		GuildID:   m.GuildID,
+		AuthorID:  s.State.User.ID,
+		Username:  s.State.User.Username,
+		Content:   sentMsg.Content,
+		Timestamp: sentMsg.Timestamp,
+		IsBot:     true,
+	}
+}
+
 // sendResponse sends a response to a channel
 func (b *Bot) sendResponse(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, response string) error {
 	response, localFiles, skipSend, err := b.runBeforeSendPluginHooks(ctx, m, response)
@@ -238,16 +254,7 @@ func (b *Bot) sendResponse(ctx context.Context, s *discordgo.Session, m *discord
 
 	// Add bot's own message to channel buffer for complete conversation context
 	if sentMsg != nil {
-		botMsg := &memory.DiscordMessage{
-			ID:        sentMsg.ID,
-			ChannelID: sentMsg.ChannelID,
-			GuildID:   m.GuildID,
-			AuthorID:  s.State.User.ID,
-			Username:  s.State.User.Username,
-			Content:   sentMsg.Content,
-			Timestamp: sentMsg.Timestamp,
-			IsBot:     true,
-		}
+		botMsg := b.buildBotMessage(sentMsg, m, s)
 		b.addMessageToChannelBuffer(m.ChannelID, botMsg)
 	}
 
@@ -304,16 +311,7 @@ func (b *Bot) sendLongResponse(s *discordgo.Session, m *discordgo.MessageCreate,
 
 		// Add bot's own message to channel buffer
 		if sentMsg != nil {
-			botMsg := &memory.DiscordMessage{
-				ID:        sentMsg.ID,
-				ChannelID: sentMsg.ChannelID,
-				GuildID:   m.GuildID,
-				AuthorID:  s.State.User.ID,
-				Username:  s.State.User.Username,
-				Content:   sentMsg.Content,
-				Timestamp: sentMsg.Timestamp,
-				IsBot:     true,
-			}
+			botMsg := b.buildBotMessage(sentMsg, m, s)
 			b.addMessageToChannelBuffer(m.ChannelID, botMsg)
 		}
 	}
