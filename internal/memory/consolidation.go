@@ -129,39 +129,7 @@ func (c *Consolidator) Process(ctx context.Context, userID string) error {
 	}
 	logger.Infof("[consolidation] updated profile for user=%s", userID)
 
-	stored := 0
-	for i, extract := range result.Memories {
-		logger.Debugf("[consolidation] processing memory %d/%d for user=%s: %s", i+1, len(result.Memories), userID, extract.Content)
-
-		memory := &Record{
-			UserID:     userID,
-			MemoryType: Type(extract.Type),
-			Content:    extract.Content,
-			Summary:    extract.Content,
-			Keywords:   extract.Keywords,
-			Confidence: extract.Confidence,
-			CreatedAt:  time.Now(),
-		}
-
-		embedding, err := retry.Retry(ctx, 3, func(ctx context.Context) ([]float32, error) {
-			return c.embedder.Embed(ctx, memory.Content)
-		},
-			retry.WithBaseDelay(1*time.Second),
-			retry.WithMaxDelay(30*time.Second),
-		)
-		if err != nil {
-			logger.Errorf("[consolidation] embedding exhausted for memory %d for user=%s: %v", i+1, userID, err)
-			continue
-		}
-		memory.Embedding = embedding
-
-		if err := c.qdrant.UpsertMemory(ctx, memory); err != nil {
-			logger.Errorf("[consolidation] failed to store memory %d for user=%s (Qdrant retries exhausted): %v", i+1, userID, err)
-		} else {
-			stored++
-			logger.Debugf("[consolidation] stored memory %d for user=%s: %s", i+1, userID, extract.Content)
-		}
-	}
+	stored, _ := c.storeMemories(ctx, userID, result.Memories)
 
 	if stored > 0 {
 		profile.MemoryCount += stored
@@ -352,10 +320,26 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 	logger.Infof("[consolidation] updated profile for user=%s before=[%s] after=[%s]",
 		userID, profileBefore, profileAfter)
 
-	stored := 0
-	for i, extract := range extracted {
-		logger.Debugf("[consolidation] storing memory %d/%d for user=%s", i+1, len(extracted), userID)
+	stored, _ := c.storeMemories(ctx, userID, extracted)
 
+	if stored > 0 {
+		profile.MemoryCount += stored
+		if err := c.qdrant.UpsertProfile(ctx, profile); err != nil {
+			logger.Warnf("[consolidation] failed to update memory_count for user=%s: %v", userID, err)
+		}
+	}
+
+	elapsed := time.Since(start)
+	logger.Infof("[consolidation] completed for user=%s duration=%s messages_processed=%d memories_extracted=%d memories_stored=%d",
+		userID, elapsed, len(messages), len(extracted), stored)
+	return nil
+}
+
+// storeMemories creates Records from extracts, generates embeddings with retry,
+// upserts them into Qdrant, and returns the number successfully stored.
+func (c *Consolidator) storeMemories(ctx context.Context, userID string, extracts []Extract) (int, error) {
+	stored := 0
+	for i, extract := range extracts {
 		memory := &Record{
 			UserID:     userID,
 			MemoryType: Type(extract.Type),
@@ -382,21 +366,9 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 			logger.Errorf("[consolidation] failed to store memory %d for user=%s (Qdrant retries exhausted): %v", i+1, userID, err)
 		} else {
 			stored++
-			logger.Debugf("[consolidation] successfully stored memory %d for user=%s", i+1, userID)
 		}
 	}
-
-	if stored > 0 {
-		profile.MemoryCount += stored
-		if err := c.qdrant.UpsertProfile(ctx, profile); err != nil {
-			logger.Warnf("[consolidation] failed to update memory_count for user=%s: %v", userID, err)
-		}
-	}
-
-	elapsed := time.Since(start)
-	logger.Infof("[consolidation] completed for user=%s duration=%s messages_processed=%d memories_extracted=%d memories_stored=%d",
-		userID, elapsed, len(messages), len(extracted), stored)
-	return nil
+	return stored, nil
 }
 
 // ProcessChannelMessages executes batch consolidation for all users in a channel
@@ -489,36 +461,7 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 			continue
 		}
 
-		stored := 0
-		for i, extract := range extracts {
-			memory := &Record{
-				UserID:     userID,
-				MemoryType: Type(extract.Type),
-				Content:    extract.Content,
-				Summary:    extract.Content,
-				Keywords:   extract.Keywords,
-				Confidence: extract.Confidence,
-				CreatedAt:  time.Now(),
-			}
-
-			embedding, err := retry.Retry(ctx, 3, func(ctx context.Context) ([]float32, error) {
-				return c.embedder.Embed(ctx, memory.Content)
-			},
-				retry.WithBaseDelay(1*time.Second),
-				retry.WithMaxDelay(30*time.Second),
-			)
-			if err != nil {
-				logger.Errorf("[consolidation] embedding exhausted for memory %d for user=%s: %v", i+1, userID, err)
-				continue
-			}
-			memory.Embedding = embedding
-
-			if err := c.qdrant.UpsertMemory(ctx, memory); err != nil {
-				logger.Errorf("[consolidation] failed to store memory %d for user=%s (Qdrant retries exhausted): %v", i+1, userID, err)
-			} else {
-				stored++
-			}
-		}
+		stored, _ := c.storeMemories(ctx, userID, extracts)
 		if stored > 0 {
 			profile.MemoryCount += stored
 			if err := c.qdrant.UpsertProfile(ctx, profile); err != nil {
