@@ -165,7 +165,7 @@ memory_pipeline:
 
   memory:
     # Aggressive extraction style (similar to your setup): low interval + low short-term window
-    # Trigger consolidation every N bot-handled messages.
+    # Trigger consolidation every N bot-handled messages (also controls batch size).
     consolidation_interval: 3
     # Number of recent Discord messages to pull as short-term context.
     short_term_limit: 3
@@ -180,8 +180,6 @@ memory_pipeline:
     consolidation:
       # Enable writing new long-term memories.
       enabled: true
-      # Max messages consumed per consolidation batch.
-      max_messages: 3
 
       # Optional dedicated extraction model endpoint
       model: "gpt-4o-mini"
