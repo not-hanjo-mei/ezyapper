@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"time"
+
+	"ezyapper/internal/logger"
 )
 
 // retryConfig holds all configurable retry parameters.
@@ -103,6 +105,7 @@ func Retry[T any](ctx context.Context, maxRetries int, fn func(context.Context) 
 		}
 
 		delay := computeDelay(attempt, cfg.baseDelay, cfg.maxDelay)
+		logger.Debugf("[retry] attempt %d/%d failed, retrying in %s: %v", attempt+1, maxRetries+1, delay, lastErr)
 
 		timer := time.NewTimer(delay)
 		select {
