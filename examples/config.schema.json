@@ -153,17 +153,17 @@
         "blacklist": {
           "type": "object",
           "properties": {
-            "users": {"type": "array", "items": {"type": "string"}},
-            "guilds": {"type": "array", "items": {"type": "string"}},
-            "channels": {"type": "array", "items": {"type": "string"}}
+            "users": {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}},
+            "guilds": {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}},
+            "channels": {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}}
           }
         },
         "whitelist": {
           "type": "object",
           "properties": {
-            "users": {"type": "array", "items": {"type": "string"}},
-            "guilds": {"type": "array", "items": {"type": "string"}},
-            "channels": {"type": "array", "items": {"type": "string"}}
+            "users": {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}},
+            "guilds": {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}},
+            "channels": {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}}
           }
         }
       }
