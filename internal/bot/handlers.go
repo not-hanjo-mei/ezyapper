@@ -147,9 +147,14 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		logger.Warnf("Failed to fetch recent messages for decision: %v", fetchErr)
 	}
 
-	// Feed fetched messages into channel buffer so consolidation has warm context
-	for _, rm := range recentMessages {
-		b.addMessageToChannelBuffer(m.ChannelID, rm)
+	// Warm channel buffer on cold start.
+	b.channelBufferMu.Lock()
+	bufferEmpty := len(b.channelMessageBuffer[m.ChannelID]) == 0
+	b.channelBufferMu.Unlock()
+	if bufferEmpty {
+		for _, rm := range recentMessages {
+			b.addMessageToChannelBuffer(m.ChannelID, rm)
+		}
 	}
 
 	// Determine if we should respond

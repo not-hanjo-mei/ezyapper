@@ -165,7 +165,6 @@ type MemoryConfig struct {
 
 type ConsolidationConfig struct {
 	Enabled           bool                   `mapstructure:"enabled" yaml:"enabled"`
-	MaxMessages       int                    `mapstructure:"max_messages" yaml:"max_messages"`
 	Model             string                 `mapstructure:"model" yaml:"model"`
 	APIBaseURL        string                 `mapstructure:"api_base_url" yaml:"api_base_url"`
 	APIKey            string                 `mapstructure:"api_key" yaml:"api_key"`
@@ -462,9 +461,6 @@ func validateAccess(cfg *Config, errs *[]string) {
 func validateConsolidation(cfg *Config, errs *[]string) {
 	if !cfg.Memory.Consolidation.Enabled {
 		return
-	}
-	if cfg.Memory.Consolidation.MaxMessages <= 0 {
-		*errs = append(*errs, "memory.consolidation.max_messages must be greater than 0 when consolidation is enabled")
 	}
 	if cfg.Memory.Consolidation.SystemPrompt == "" {
 		*errs = append(*errs, "memory.consolidation.system_prompt is required when consolidation is enabled")

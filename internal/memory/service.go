@@ -156,10 +156,6 @@ func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedde
 		return nil, fmt.Errorf("consolidation config is required")
 	}
 
-	if cfg.Consolidation.MaxMessages <= 0 {
-		return nil, fmt.Errorf("consolidation max_messages must be greater than 0")
-	}
-
 	service := &MemoryService{
 		qdrant:                qdrantClient,
 		embedder:              embedder,
@@ -169,7 +165,7 @@ func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedde
 		consolidationInterval: cfg.ConsolidationInterval,
 	}
 
-	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, visionDescriber, cfg.Consolidation, cfg.OwnBotID)
+	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, visionDescriber, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval)
 
 	logger.Info("Memory service initialized")
 	return service, nil

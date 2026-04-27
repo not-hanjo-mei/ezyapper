@@ -1,31 +1,25 @@
 package config
-
 import (
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
-
 func TestLoad_MissingRequired(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-
 	emptyConfig := ``
 	if err := os.WriteFile(configPath, []byte(emptyConfig), 0644); err != nil {
 		t.Fatalf("Failed to write config: %v", err)
 	}
-
 	_, err := Load(configPath)
 	if err == nil {
 		t.Error("Expected error for missing config, got nil")
 	}
 }
-
 func TestLoad_MissingDiscordToken(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-
 	config := `schema_version: 3
 core:
 	discord:
@@ -89,17 +83,14 @@ operations:
 	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
 		t.Fatalf("Failed to write config: %v", err)
 	}
-
 	_, err := Load(configPath)
 	if err == nil {
 		t.Error("Expected error for missing discord token, got nil")
 	}
 }
-
 func TestLoad_MissingAPIKey(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-
 	config := `schema_version: 3
 core:
 	discord:
@@ -163,13 +154,11 @@ operations:
 	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
 		t.Fatalf("Failed to write config: %v", err)
 	}
-
 	_, err := Load(configPath)
 	if err == nil {
 		t.Error("Expected error for missing API key, got nil")
 	}
 }
-
 func TestValidate_InvalidReplyPercentage(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{
@@ -200,7 +189,6 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 			},
 			Consolidation: ConsolidationConfig{
 				Enabled:     true,
-				MaxMessages: 20,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -226,13 +214,11 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 			PluginsDir: "plugins",
 		},
 	}
-
 	err := validate(cfg)
 	if err == nil {
 		t.Error("Expected error for invalid reply_percentage, got nil")
 	}
 }
-
 func TestValidate_InvalidTemperature(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{
@@ -263,7 +249,6 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 			},
 			Consolidation: ConsolidationConfig{
 				Enabled:     true,
-				MaxMessages: 20,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -289,28 +274,22 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 			PluginsDir: "plugins",
 		},
 	}
-
 	err := validate(cfg)
 	if err == nil {
 		t.Error("Expected error for invalid temperature, got nil")
 	}
 }
-
 func TestFormatSystemPrompt(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{
 			BotName: "TestBot",
 		},
 	}
-
 	cfg.AI.SystemPrompt = "Hello {AuthorName}, I'm {BotName} in {ServerName} on {CurrentDate}"
-
 	result := cfg.FormatSystemPrompt("Alice", "MyServer", "123456789", "987654321")
-
 	if result == "" {
 		t.Error("Expected formatted prompt, got empty string")
 	}
-
 	if strings.Contains(result, "{AuthorName}") {
 		t.Error("{AuthorName} was not replaced")
 	}
@@ -321,7 +300,6 @@ func TestFormatSystemPrompt(t *testing.T) {
 		t.Error("{ServerName} was not replaced")
 	}
 }
-
 func TestValidate_MissingVisionMode(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{
@@ -355,7 +333,6 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 			},
 			Consolidation: ConsolidationConfig{
 				Enabled:     true,
-				MaxMessages: 20,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -381,7 +358,6 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 			PluginsDir: "plugins",
 		},
 	}
-
 	err := validate(cfg)
 	if err == nil {
 		t.Error("Expected error for missing vision.mode, got nil")
@@ -390,7 +366,6 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 		t.Errorf("Expected error about vision.mode, got: %v", err)
 	}
 }
-
 func TestValidate_MissingVisionMaxImages(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{
@@ -425,7 +400,6 @@ func TestValidate_MissingVisionMaxImages(t *testing.T) {
 			},
 			Consolidation: ConsolidationConfig{
 				Enabled:     true,
-				MaxMessages: 20,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -451,7 +425,6 @@ func TestValidate_MissingVisionMaxImages(t *testing.T) {
 			PluginsDir: "plugins",
 		},
 	}
-
 	err := validate(cfg)
 	if err == nil {
 		t.Error("Expected error for vision.max_images = 0, got nil")
@@ -460,7 +433,6 @@ func TestValidate_MissingVisionMaxImages(t *testing.T) {
 		t.Errorf("Expected error about vision.max_images, got: %v", err)
 	}
 }
-
 func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{
@@ -496,7 +468,6 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 			},
 			Consolidation: ConsolidationConfig{
 				Enabled:     true,
-				MaxMessages: 20,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -522,7 +493,6 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 			PluginsDir: "plugins",
 		},
 	}
-
 	err := validate(cfg)
 	if err == nil {
 		t.Error("Expected error for missing vision.description_prompt in hybrid mode, got nil")
@@ -531,7 +501,6 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 		t.Errorf("Expected error about vision.description_prompt, got: %v", err)
 	}
 }
-
 func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{
@@ -570,7 +539,6 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			},
 			Consolidation: ConsolidationConfig{
 				Enabled:      true,
-				MaxMessages:  20,
 				SystemPrompt: "extract",
 			},
 		},
@@ -597,13 +565,11 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			PluginsDir: "plugins",
 		},
 	}
-
 	err := validate(cfg)
 	if err != nil {
 		t.Errorf("Expected top_k=0 to be valid when on-demand memory is disabled, got: %v", err)
 	}
 }
-
 func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1},
@@ -618,20 +584,18 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false, MaxMessages: 1},
+			Consolidation:         ConsolidationConfig{Enabled: false},
 		},
 		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:     WebConfig{Enabled: false},
 		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
 		Plugins: PluginsConfig{Enabled: false},
 	}
-
 	err := validate(cfg)
 	if err != nil {
 		t.Fatalf("Expected validation to pass when web is disabled, got: %v", err)
 	}
 }
-
 func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1},
@@ -646,20 +610,18 @@ func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false, MaxMessages: 1},
+			Consolidation:         ConsolidationConfig{Enabled: false},
 		},
 		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:     WebConfig{Enabled: false},
 		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
 		Plugins: PluginsConfig{Enabled: false, PluginsDir: ""},
 	}
-
 	err := validate(cfg)
 	if err != nil {
 		t.Fatalf("Expected validation to pass when plugins are disabled, got: %v", err)
 	}
 }
-
 func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1},
@@ -674,7 +636,7 @@ func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false, MaxMessages: 1},
+			Consolidation:         ConsolidationConfig{Enabled: false},
 		},
 		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:     WebConfig{Enabled: false},
@@ -685,7 +647,6 @@ func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 			Servers: []MCPServer{{Name: "", Type: "stdio", Command: ""}},
 		},
 	}
-
 	err := validate(cfg)
 	if err == nil {
 		t.Fatal("Expected validation error for invalid MCP server config")
@@ -697,7 +658,6 @@ func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 		t.Fatalf("Expected MCP stdio command validation error, got: %v", err)
 	}
 }
-
 func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1},
@@ -712,20 +672,18 @@ func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *test
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false, MaxMessages: 0},
+			Consolidation:         ConsolidationConfig{Enabled: false},
 		},
 		Qdrant:  QdrantConfig{},
 		Web:     WebConfig{Enabled: false},
 		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
 		Plugins: PluginsConfig{Enabled: false},
 	}
-
 	err := validate(cfg)
 	if err != nil {
 		t.Fatalf("Expected validation to pass with memory features disabled, got: %v", err)
 	}
 }
-
 func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1},
@@ -740,14 +698,13 @@ func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false, MaxMessages: 0},
+			Consolidation:         ConsolidationConfig{Enabled: false},
 		},
 		Qdrant:  QdrantConfig{},
 		Web:     WebConfig{Enabled: false},
 		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
 		Plugins: PluginsConfig{Enabled: false},
 	}
-
 	err := validate(cfg)
 	if err == nil {
 		t.Fatal("Expected validation to fail when memory retrieval is enabled without embedding/qdrant config")
@@ -759,7 +716,6 @@ func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T
 		t.Fatalf("Expected qdrant requirement error, got: %v", err)
 	}
 }
-
 func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1},
@@ -774,14 +730,13 @@ func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false, MaxMessages: 0},
+			Consolidation:         ConsolidationConfig{Enabled: false},
 		},
 		Qdrant:  QdrantConfig{Host: "localhost", Port: 6334, VectorSize: 3072},
 		Web:     WebConfig{Enabled: false},
 		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
 		Plugins: PluginsConfig{Enabled: false},
 	}
-
 	err := validate(cfg)
 	if err == nil {
 		t.Fatal("Expected vector size relation validation error")
@@ -790,7 +745,6 @@ func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 		t.Fatalf("Expected vector size relation error, got: %v", err)
 	}
 }
-
 func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1},
@@ -805,7 +759,7 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false, MaxMessages: 0},
+			Consolidation:         ConsolidationConfig{Enabled: false},
 		},
 		Qdrant:  QdrantConfig{},
 		Web:     WebConfig{Enabled: false},
@@ -821,7 +775,6 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 			SystemPrompt:    "decide",
 		},
 	}
-
 	err := validate(cfg)
 	if err == nil {
 		t.Fatal("expected validation failure for missing decision credentials")
@@ -833,7 +786,6 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 		t.Fatalf("expected decision.api_key validation error, got: %v", err)
 	}
 }
-
 func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1},
@@ -848,7 +800,7 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false, MaxMessages: 0},
+			Consolidation:         ConsolidationConfig{Enabled: false},
 		},
 		Qdrant:  QdrantConfig{},
 		Web:     WebConfig{Enabled: false},
@@ -866,7 +818,6 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 			SystemPrompt:    "decide",
 		},
 	}
-
 	if err := validate(cfg); err != nil {
 		t.Fatalf("expected validation success with explicit decision credentials, got: %v", err)
 	}

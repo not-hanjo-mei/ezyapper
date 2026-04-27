@@ -57,13 +57,13 @@ func embedWithRetry(ctx context.Context, embedder Embedder, text string) ([]floa
 }
 
 // NewConsolidator creates a new consolidator with the given Qdrant client, embedder, and AI configuration.
-func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient *ai.Client, visionDescriber *ai.VisionDescriber, cfg *config.ConsolidationConfig, ownBotID string) *Consolidator {
+func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient *ai.Client, visionDescriber *ai.VisionDescriber, cfg *config.ConsolidationConfig, ownBotID string, consolidationInterval int) *Consolidator {
 	return &Consolidator{
 		qdrant:          qdrant,
 		embedder:        embedder,
 		aiClient:        aiClient,
 		visionDescriber: visionDescriber,
-		maxMessages:     cfg.MaxMessages,
+		maxMessages:     consolidationInterval,
 		model:           cfg.Model,
 		prompt:          cfg.SystemPrompt,
 		ownBotID:        ownBotID,
