@@ -20,20 +20,23 @@ func NewShortTermClient(session *discordgo.Session) *ShortTermClient {
 	return &ShortTermClient{session: session}
 }
 
-// validateLimit checks that limit is valid (>0) and warns if it's excessively large (>100).
-func validateLimit(limit int, funcName string) error {
+// validateLimit checks that limit is valid (>0) and caps it at Discord's API maximum of 100.
+// Returns the (possibly capped) valid limit.
+func validateLimit(limit int, funcName string) (int, error) {
 	if limit <= 0 {
-		return fmt.Errorf("limit must be greater than 0, got: %d", limit)
+		return 0, fmt.Errorf("limit must be greater than 0, got: %d", limit)
 	}
 	if limit > 100 {
-		logger.Warnf("[%s] large limit=%d may cause excessive API calls, consider reducing", funcName, limit)
+		logger.Warnf("[%s] limit=%d exceeds Discord API maximum of 100, capping to 100", funcName, limit)
+		return 100, nil
 	}
-	return nil
+	return limit, nil
 }
 
 // FetchRecentMessages fetches recent messages from a channel
 func (c *ShortTermClient) FetchRecentMessages(ctx context.Context, channelID string, limit int) ([]*DiscordMessage, error) {
-	if err := validateLimit(limit, "FetchRecentMessages"); err != nil {
+	limit, err := validateLimit(limit, "FetchRecentMessages")
+	if err != nil {
 		return nil, err
 	}
 
@@ -47,7 +50,8 @@ func (c *ShortTermClient) FetchRecentMessages(ctx context.Context, channelID str
 
 // FetchUserMessages fetches messages from a specific user in a channel
 func (c *ShortTermClient) FetchUserMessages(ctx context.Context, channelID string, userID string, limit int) ([]*DiscordMessage, error) {
-	if err := validateLimit(limit, "FetchUserMessages"); err != nil {
+	limit, err := validateLimit(limit, "FetchUserMessages")
+	if err != nil {
 		return nil, err
 	}
 
@@ -68,7 +72,8 @@ func (c *ShortTermClient) FetchUserMessages(ctx context.Context, channelID strin
 
 // FetchChannelMessages fetches all messages from a channel (for batch consolidation)
 func (c *ShortTermClient) FetchChannelMessages(ctx context.Context, channelID string, limit int) ([]*DiscordMessage, error) {
-	if err := validateLimit(limit, "FetchChannelMessages"); err != nil {
+	limit, err := validateLimit(limit, "FetchChannelMessages")
+	if err != nil {
 		return nil, err
 	}
 

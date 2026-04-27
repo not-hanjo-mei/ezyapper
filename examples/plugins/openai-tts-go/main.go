@@ -447,7 +447,8 @@ func (p *openAITTSPlugin) BeforeSend(msg plugin.DiscordMessage, response string)
 		fileName,
 	)
 	if err != nil {
-		return plugin.BeforeSendResult{}, fmt.Errorf("before_send tts failed: %w", err)
+		fmt.Fprintf(os.Stderr, "[OPENAI-TTS] before_send tts skipped: %v\n", err)
+		return plugin.BeforeSendResult{}, nil
 	}
 
 	return plugin.BeforeSendResult{
@@ -733,7 +734,8 @@ func (p *openAITTSPlugin) maybeRewriteInputAndInstructions(
 		}
 	}
 
-	return "", "", false, false, fmt.Errorf("rewriter failed: %w", lastErr)
+	fmt.Fprintf(os.Stderr, "[OPENAI-TTS] rewriter failed after %d attempts, using original text: %v\n", p.cfg.Rewriter.RetryCount+1, lastErr)
+	return originalText, originalInstructions, false, originalInstructions != "", nil
 }
 
 func (p *openAITTSPlugin) rewriteInputAndInstructionsOnce(
