@@ -14,19 +14,19 @@ import (
 )
 
 // processMessageWithoutImages processes a message without image handling (text-only mode).
-func (b *Bot) processMessageWithoutImages(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage) {
-	b.processMessageCore(ctx, s, m, pm, false)
+func (b *Bot) processMessageWithoutImages(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, recentMessages []*memory.DiscordMessage) {
+	b.processMessageCore(ctx, s, m, pm, false, recentMessages)
 }
 
 // processMessage processes a message and generates a response (with image handling).
-func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage) {
-	b.processMessageCore(ctx, s, m, pm, true)
+func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, recentMessages []*memory.DiscordMessage) {
+	b.processMessageCore(ctx, s, m, pm, true, recentMessages)
 }
 
 // processMessageCore is the shared processing pipeline used by both text-only and
 // image-capable paths. When withImages is false, image extraction and the
 // image-enriched DiscordMessage struct are skipped.
-func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, withImages bool) {
+func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, withImages bool, recentMessages []*memory.DiscordMessage) {
 	if err := ctx.Err(); err != nil {
 		logger.Infof("[processing] Message %s cancelled before starting", m.ID)
 		b.clearProcessingMessage(pm, m.ID)
@@ -104,9 +104,12 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		return
 	}
 
-	recentMessages, err := b.discordClient.FetchRecentMessages(ctx, m.ChannelID, b.cfg().Memory.ShortTermLimit)
-	if err != nil {
-		logger.Warnf("Failed to fetch recent messages: %v", err)
+	if len(recentMessages) == 0 {
+		var fetchErr error
+		recentMessages, fetchErr = b.discordClient.FetchRecentMessages(ctx, m.ChannelID, b.cfg().Memory.ShortTermLimit)
+		if fetchErr != nil {
+			logger.Warnf("Failed to fetch recent messages: %v", fetchErr)
+		}
 	}
 
 	if withImages && msg != nil {

@@ -115,7 +115,6 @@ type DecisionConfig struct {
 	Temperature     float32                `mapstructure:"temperature" yaml:"temperature"`
 	RetryCount      int                    `mapstructure:"retry_count" yaml:"retry_count"`
 	Timeout         int                    `mapstructure:"timeout" yaml:"timeout"`
-	ContextMessages int                    `mapstructure:"context_messages" yaml:"context_messages"`
 	SystemPrompt    string                 `mapstructure:"system_prompt" yaml:"system_prompt"`
 	ExtraParams     map[string]interface{} `mapstructure:"extra_params" yaml:"extra_params"`
 }
@@ -491,9 +490,6 @@ func validateDecision(cfg *Config, errs *[]string) {
 	}
 	if cfg.Decision.RetryCount < 0 {
 		*errs = append(*errs, "decision.retry_count must be greater than or equal to 0")
-	}
-	if cfg.Decision.ContextMessages <= 0 {
-		*errs = append(*errs, "decision.context_messages must be greater than 0 when decision is enabled")
 	}
 }
 

@@ -68,7 +68,7 @@ func (b *Bot) onMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) 
 	}
 
 	logger.Infof("[reprocess] Re-evaluating message %s with content=%q", m.ID, tempMsg.Content)
-	shouldRespond, reason := b.ShouldRespond(messageCtx, tempMsg)
+	shouldRespond, reason := b.ShouldRespond(messageCtx, tempMsg, nil)
 	logger.Infof("[reprocess] Message %s re-decision: shouldRespond=%v, reason=%s", m.ID, shouldRespond, reason)
 
 	if !shouldRespond {
@@ -79,9 +79,9 @@ func (b *Bot) onMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) 
 
 	// Re-process with updated content.
 	if b.cfg().AI.Vision.Mode == config.VisionModeTextOnly {
-		go b.processMessageWithoutImages(messageCtx, s, tempMsg, newPm)
+		go b.processMessageWithoutImages(messageCtx, s, tempMsg, newPm, nil)
 	} else {
-		go b.processMessage(messageCtx, s, tempMsg, newPm)
+		go b.processMessage(messageCtx, s, tempMsg, newPm, nil)
 	}
 }
 

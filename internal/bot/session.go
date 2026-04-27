@@ -589,7 +589,7 @@ func (b *Bot) registerPluginTools() {
 
 // ShouldRespond determines if the bot should respond to a message
 // The context is used to cancel the LLM decision if the message is edited
-func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate) (bool, string) {
+func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, recentMessages []*memory.DiscordMessage) (bool, string) {
 	// Ignore bot's own messages
 	if m.Author.ID == b.session.State.User.ID {
 		return false, "own message"
@@ -634,7 +634,7 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate) (bo
 		defer cancel()
 
 		imageCount := len(utils.ExtractImageURLs(m.Message))
-		recentMessages := b.getRecentMessagesForDecision(ctx, m.ChannelID, m.ID)
+		decisionMessages := b.getRecentMessagesForDecision(m.ID, recentMessages)
 
 		// Build message info with author and reply metadata
 		msgInfo := ai.MessageInfo{
@@ -647,7 +647,7 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate) (bo
 			msgInfo.ReplyToID = m.ReferencedMessage.Author.ID
 		}
 
-		result, err := b.decisionService.ShouldRespondWithInfo(decisionCtx, b.cfg().Discord.BotName, msgInfo, imageCount, recentMessages)
+		result, err := b.decisionService.ShouldRespondWithInfo(decisionCtx, b.cfg().Discord.BotName, msgInfo, imageCount, decisionMessages)
 		if err != nil {
 			logger.Warnf("decision service failed: %v, using fallback", err)
 			return b.ShouldRandomReply(), "llm decision failed, fallback"
@@ -667,21 +667,9 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate) (bo
 	return true, "random engagement"
 }
 
-func (b *Bot) getRecentMessagesForDecision(ctx context.Context, channelID string, currentMessageID string) []ai.ContextMessage {
-	messages, err := b.discordClient.FetchRecentMessages(ctx, channelID, b.cfg().Decision.ContextMessages)
-	if err != nil {
-		return nil
-	}
-
-	// Discord API returns messages in reverse chronological order (newest first)
-	// Reverse to proper chronological order for conversation context
-	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-		messages[i], messages[j] = messages[j], messages[i]
-	}
-
+func (b *Bot) getRecentMessagesForDecision(currentMessageID string, messages []*memory.DiscordMessage) []ai.ContextMessage {
 	var result []ai.ContextMessage
 	for _, msg := range messages {
-		// Skip the current message being decided (only include context history)
 		if msg.ID == currentMessageID {
 			continue
 		}

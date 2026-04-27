@@ -64,7 +64,7 @@ func TestProcessMessageCore_CancelledContext(t *testing.T) {
 	b.processingMessages["msg-1"] = pm
 
 	assertNoPanic(t, func() {
-		b.processMessageCore(ctx, nil, m, pm, false)
+		b.processMessageCore(ctx, nil, m, pm, false, nil)
 	})
 
 	b.processingMu.RLock()
@@ -92,7 +92,7 @@ func TestProcessMessageCore_CancelledAfterPhaseSet(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	assertNoPanic(t, func() {
-		b.processMessageCore(ctx, nil, m, pm, false)
+		b.processMessageCore(ctx, nil, m, pm, false, nil)
 	})
 
 	b.processingMu.RLock()
@@ -115,7 +115,7 @@ func TestProcessMessageCore_NilPM(t *testing.T) {
 	m := newTestMessage("msg-3", "chan-1", "guild-1", "user-3", "carol", "hi")
 
 	assertNoPanic(t, func() {
-		b.processMessageCore(ctx, nil, m, nil, false)
+		b.processMessageCore(ctx, nil, m, nil, false, nil)
 	})
 }
 
@@ -139,7 +139,7 @@ func TestProcessMessageCore_GuildLookupError(t *testing.T) {
 	b.processingMessages["msg-4"] = pm
 
 	assertNoPanic(t, func() {
-		b.processMessageCore(ctx, s, m, pm, false)
+		b.processMessageCore(ctx, s, m, pm, false, nil)
 	})
 
 	b.processingMu.RLock()
@@ -166,7 +166,7 @@ func TestProcessMessageCore_WithImagesFlag(t *testing.T) {
 	b.processingMessages["msg-5"] = pm1
 
 	assertNoPanic(t, func() {
-		b.processMessageCore(ctx, nil, m1, pm1, false)
+		b.processMessageCore(ctx, nil, m1, pm1, false, nil)
 	})
 
 	b.processingMu.RLock()
@@ -181,7 +181,7 @@ func TestProcessMessageCore_WithImagesFlag(t *testing.T) {
 	b.processingMessages["msg-6"] = pm2
 
 	assertNoPanic(t, func() {
-		b.processMessageCore(ctx, nil, m2, pm2, true)
+		b.processMessageCore(ctx, nil, m2, pm2, true, nil)
 	})
 
 	b.processingMu.RLock()
@@ -209,7 +209,7 @@ func TestProcessMessageCore_DisplayNameAlwaysSet(t *testing.T) {
 	b.processingMessages["msg-7"] = pm
 
 	assertNoPanic(t, func() {
-		b.processMessageWithoutImages(ctx, nil, m, pm)
+		b.processMessageWithoutImages(ctx, nil, m, pm, nil)
 	})
 
 	m2 := newTestMessage("msg-7b", "chan-1", "guild-1", "user-7b", "grace", "structural test 2")
@@ -217,7 +217,7 @@ func TestProcessMessageCore_DisplayNameAlwaysSet(t *testing.T) {
 	b.processingMessages["msg-7b"] = pm2
 
 	assertNoPanic(t, func() {
-		b.processMessage(ctx, nil, m2, pm2)
+		b.processMessage(ctx, nil, m2, pm2, nil)
 	})
 }
 
@@ -236,7 +236,7 @@ func TestProcessMessageWithoutImages_DelegatesToCore(t *testing.T) {
 	b.processingMessages["msg-8"] = pm
 
 	assertNoPanic(t, func() {
-		b.processMessageWithoutImages(ctx, nil, m, pm)
+		b.processMessageWithoutImages(ctx, nil, m, pm, nil)
 	})
 
 	b.processingMu.RLock()
@@ -262,8 +262,7 @@ func TestProcessMessage_DelegatesToCore(t *testing.T) {
 	b.processingMessages["msg-9"] = pm
 
 	assertNoPanic(t, func() {
-		b.processMessage(ctx, nil, m, pm)
-	})
+		b.processMessage(ctx, nil, m, pm, nil)	})
 
 	b.processingMu.RLock()
 	_, exists := b.processingMessages["msg-9"]
@@ -288,7 +287,7 @@ func TestProcessMessageCore_BothPathsConverge(t *testing.T) {
 	pm1 := &ProcessingMessage{MessageID: "msg-10"}
 	b.processingMessages["msg-10"] = pm1
 
-	b.processMessageWithoutImages(ctx, nil, m1, pm1)
+	b.processMessageWithoutImages(ctx, nil, m1, pm1, nil)
 
 	b.processingMu.RLock()
 	_, exists1 := b.processingMessages["msg-10"]
@@ -298,7 +297,7 @@ func TestProcessMessageCore_BothPathsConverge(t *testing.T) {
 	pm2 := &ProcessingMessage{MessageID: "msg-11"}
 	b.processingMessages["msg-11"] = pm2
 
-	b.processMessage(ctx, nil, m2, pm2)
+	b.processMessage(ctx, nil, m2, pm2, nil)
 
 	b.processingMu.RLock()
 	_, exists2 := b.processingMessages["msg-11"]

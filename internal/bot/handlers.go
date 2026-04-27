@@ -141,9 +141,15 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 	messageCtx, cancel := context.WithCancel(ctx)
 	pm.CancelFunc = cancel
 
+	// Fetch recent messages once for both decision and response paths
+	recentMessages, fetchErr := b.discordClient.FetchRecentMessages(ctx, m.ChannelID, b.cfg().Memory.ShortTermLimit)
+	if fetchErr != nil {
+		logger.Warnf("Failed to fetch recent messages for decision: %v", fetchErr)
+	}
+
 	// Determine if we should respond
 	pm.SetPhase(PhaseDeciding)
-	shouldRespond, reason := b.ShouldRespond(messageCtx, m)
+	shouldRespond, reason := b.ShouldRespond(messageCtx, m, recentMessages)
 	logger.Infof("Message from %s: shouldRespond=%v, reason=%s", m.Author.Username, shouldRespond, reason)
 
 	if !shouldRespond {
@@ -153,10 +159,10 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 	}
 
 	if b.cfg().AI.Vision.Mode == config.VisionModeTextOnly {
-		go b.processMessageWithoutImages(messageCtx, s, m, pm)
+		go b.processMessageWithoutImages(messageCtx, s, m, pm, recentMessages)
 		return
 	}
 
 	// Process message in goroutine to not block
-	go b.processMessage(messageCtx, s, m, pm)
+	go b.processMessage(messageCtx, s, m, pm, recentMessages)
 }

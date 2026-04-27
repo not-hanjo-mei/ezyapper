@@ -818,7 +818,6 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 			Temperature:     0.1,
 			RetryCount:      1,
 			Timeout:         10,
-			ContextMessages: 4,
 			SystemPrompt:    "decide",
 		},
 	}
@@ -864,7 +863,6 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 			Temperature:     0.1,
 			RetryCount:      1,
 			Timeout:         10,
-			ContextMessages: 4,
 			SystemPrompt:    "decide",
 		},
 	}
