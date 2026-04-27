@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/not-hanjo-mei/ezyapper/main/examples/config.schema.json",
   "title": "EZyapper Configuration",
-  "description": "JSON Schema for EZyapper config.yaml (v3 grouped format)",
+  "description": "JSON Schema for config.yaml v3. Mirrors internal/config validation constraints.",
   "type": "object",
   "required": ["schema_version", "core", "memory_pipeline", "operations"],
   "additionalProperties": false,
@@ -23,7 +23,7 @@
             "bot_name":                 { "type": "string" },
             "own_bot_id":               { "type": "string" },
             "reply_percentage":         { "type": "number", "minimum": 0, "maximum": 1 },
-            "cooldown_seconds":         { "type": "integer", "minimum": 0 },
+            "cooldown_seconds":         { "type": "integer", "minimum": 1 },
             "max_responses_per_minute": { "type": "integer", "minimum": 1 },
             "reply_to_bots":            { "type": "boolean" }
           }
@@ -40,7 +40,7 @@
             "vision_base64":  { "type": "boolean" },
             "max_tokens":     { "type": "integer", "minimum": 1 },
             "temperature":    { "type": "number", "minimum": 0, "maximum": 2 },
-            "retry_count":    { "type": "integer", "minimum": 0 },
+            "retry_count":    { "type": "integer", "minimum": 1 },
             "timeout":        { "type": "integer", "minimum": 1 },
             "system_prompt":  { "type": "string" },
             "extra_params":   { "type": "object" },
@@ -54,10 +54,10 @@
                 "max_images":         { "type": "integer", "minimum": 1 },
                 "api_base_url":       { "type": "string" },
                 "api_key":            { "type": "string" },
-                "max_tokens":         { "type": "integer" },
-                "temperature":        { "type": "number" },
-                "retry_count":        { "type": "integer" },
-                "timeout":            { "type": "integer" },
+                "max_tokens":         { "type": "integer", "minimum": 1 },
+                "temperature":        { "type": "number", "minimum": 0, "maximum": 2 },
+                "retry_count":        { "type": "integer", "minimum": 1 },
+                "timeout":            { "type": "integer", "minimum": 1 },
                 "extra_params":       { "type": "object" }
               }
             }
@@ -107,7 +107,7 @@
           "additionalProperties": false,
           "properties": {
             "consolidation_interval": { "type": "integer", "minimum": 1 },
-            "short_term_limit":       { "type": "integer", "minimum": 1 },
+            "short_term_limit":       { "type": "integer", "minimum": 1, "maximum": 500 },
             "retrieval": {
               "type": "object",
               "required": ["top_k", "min_score"],
@@ -123,22 +123,22 @@
               "additionalProperties": false,
               "properties": {
                 "enabled":             { "type": "boolean" },
-                "max_messages":        { "type": "integer", "minimum": 1 },
+                "max_messages":        { "type": "integer", "minimum": 1, "maximum": 500 },
                 "model":               { "type": "string" },
                 "api_base_url":        { "type": "string" },
                 "api_key":             { "type": "string" },
-                "max_tokens":          { "type": "integer" },
-                "temperature":         { "type": "number" },
-                "retry_count":         { "type": "integer" },
-                "timeout":             { "type": "integer" },
+                "max_tokens":          { "type": "integer", "minimum": 1 },
+                "temperature":         { "type": "number", "minimum": 0, "maximum": 2 },
+                "retry_count":         { "type": "integer", "minimum": 0 },
+                "timeout":             { "type": "integer", "minimum": 1 },
                 "vision_model":        { "type": "string" },
                 "vision_base64":       { "type": "boolean" },
                 "vision_api_base_url": { "type": "string" },
                 "vision_api_key":      { "type": "string" },
-                "vision_max_tokens":   { "type": "integer" },
-                "vision_temperature":  { "type": "number" },
-                "vision_retry_count":  { "type": "integer" },
-                "vision_timeout":      { "type": "integer" },
+                "vision_max_tokens":   { "type": "integer", "minimum": 1 },
+                "vision_temperature":  { "type": "number", "minimum": 0, "maximum": 2 },
+                "vision_retry_count":  { "type": "integer", "minimum": 0 },
+                "vision_timeout":      { "type": "integer", "minimum": 1 },
                 "system_prompt":       { "type": "string" },
                 "extra_params":        { "type": "object" }
               }
@@ -207,9 +207,9 @@
           "properties": {
             "level":       { "type": "string", "enum": ["debug", "info", "warn", "error"] },
             "file":        { "type": "string" },
-            "max_size":    { "type": "integer" },
-            "max_backups": { "type": "integer" },
-            "max_age":     { "type": "integer" }
+            "max_size":    { "type": "integer", "minimum": 1 },
+            "max_backups": { "type": "integer", "minimum": 1 },
+            "max_age":     { "type": "integer", "minimum": 1 }
           }
         },
         "plugins": {
@@ -230,15 +230,15 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["name"],
+                "required": ["name", "type"],
                 "additionalProperties": false,
                 "properties": {
                   "name":    { "type": "string" },
+                  "type":    { "type": "string", "enum": ["stdio", "sse"] },
                   "command": { "type": "string" },
                   "args":    { "type": "array", "items": {"type": "string"} },
                   "env":     { "type": "object" },
-                  "url":     { "type": "string" },
-                  "type":    { "type": "string" }
+                  "url":     { "type": "string" }
                 }
               }
             }
