@@ -1,4 +1,5 @@
-# EZyapper config template (new grouped schema)
+# yaml-language-server: $schema=https://raw.githubusercontent.com/not-hanjo-mei/ezyapper/main/examples/config.schema.json
+# EZyapper config template (v3 grouped schema)
 # ------------------------------------------------
 # Required format: schema_version 3
 #

@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/not-hanjo-mei/ezyapper/main/examples/config.schema.json",
+  "title": "EZyapper Configuration",
+  "description": "JSON Schema for EZyapper config.yaml (v3 grouped format)",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 3,
+      "description": "Config format version (must be 3)"
+    },
+    "core": {
+      "type": "object",
+      "required": ["discord", "ai"],
+      "properties": {
+        "discord": {
+          "type": "object",
+          "required": ["token", "bot_name", "own_bot_id", "reply_percentage", "cooldown_seconds", "max_responses_per_minute"],
+          "properties": {
+            "token": {"type": "string", "description": "Discord bot token"},
+            "bot_name": {"type": "string", "description": "Bot display name"},
+            "own_bot_id": {"type": "string", "description": "Bot's own Discord user ID"},
+            "reply_percentage": {"type": "number", "minimum": 0, "maximum": 1},
+            "cooldown_seconds": {"type": "integer", "minimum": 0},
+            "max_responses_per_minute": {"type": "integer", "minimum": 1},
+            "reply_to_bots": {"type": "boolean", "default": false}
+          }
+        },
+        "ai": {
+          "type": "object",
+          "required": ["api_base_url", "api_key", "model", "vision_model", "max_tokens", "temperature", "system_prompt", "vision"],
+          "properties": {
+            "api_base_url": {"type": "string"},
+            "api_key": {"type": "string"},
+            "model": {"type": "string"},
+            "vision_model": {"type": "string"},
+            "vision_base64": {"type": "boolean"},
+            "max_tokens": {"type": "integer", "minimum": 1},
+            "temperature": {"type": "number", "minimum": 0, "maximum": 2},
+            "retry_count": {"type": "integer", "minimum": 0},
+            "timeout": {"type": "integer", "minimum": 1},
+            "system_prompt": {"type": "string"},
+            "extra_params": {"type": "object"},
+            "vision": {
+              "type": "object",
+              "required": ["mode", "max_images"],
+              "properties": {
+                "mode": {"type": "string", "enum": ["text_only", "hybrid", "multimodal"]},
+                "description_prompt": {"type": "string"},
+                "max_images": {"type": "integer", "minimum": 1},
+                "api_base_url": {"type": "string"},
+                "api_key": {"type": "string"},
+                "max_tokens": {"type": "integer"},
+                "temperature": {"type": "number"},
+                "retry_count": {"type": "integer"},
+                "timeout": {"type": "integer"},
+                "extra_params": {"type": "object"}
+              }
+            }
+          }
+        },
+        "decision": {
+          "type": "object",
+          "required": ["enabled"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "model": {"type": "string"},
+            "api_base_url": {"type": "string"},
+            "api_key": {"type": "string"},
+            "max_tokens": {"type": "integer", "minimum": 1},
+            "temperature": {"type": "number", "minimum": 0, "maximum": 2},
+            "retry_count": {"type": "integer", "minimum": 0},
+            "timeout": {"type": "integer", "minimum": 1},
+            "system_prompt": {"type": "string"},
+            "extra_params": {"type": "object"}
+          }
+        }
+      }
+    },
+    "memory_pipeline": {
+      "type": "object",
+      "required": ["embedding", "memory", "qdrant"],
+      "properties": {
+        "embedding": {
+          "type": "object",
+          "required": ["api_base_url", "api_key", "model"],
+          "properties": {
+            "api_base_url": {"type": "string"},
+            "api_key": {"type": "string"},
+            "model": {"type": "string"},
+            "retry_count": {"type": "integer", "minimum": 0},
+            "timeout": {"type": "integer", "minimum": 1},
+            "extra_params": {"type": "object"}
+          }
+        },
+        "memory": {
+          "type": "object",
+          "required": ["consolidation_interval", "short_term_limit", "retrieval", "consolidation"],
+          "properties": {
+            "consolidation_interval": {"type": "integer", "minimum": 1, "description": "Messages before triggering consolidation"},
+            "short_term_limit": {"type": "integer", "minimum": 1, "description": "Recent messages for context (shared by decision and response)"},
+            "retrieval": {
+              "type": "object",
+              "required": ["top_k", "min_score"],
+              "properties": {
+                "top_k": {"type": "integer", "minimum": 0},
+                "min_score": {"type": "number", "minimum": 0, "maximum": 1}
+              }
+            },
+            "consolidation": {
+              "type": "object",
+              "required": ["enabled"],
+              "properties": {
+                "enabled": {"type": "boolean"},
+                "max_messages": {"type": "integer", "minimum": 1, "description": "Messages to analyze per consolidation run"},
+                "model": {"type": "string"},
+                "api_base_url": {"type": "string"},
+                "api_key": {"type": "string"},
+                "max_tokens": {"type": "integer"},
+                "temperature": {"type": "number"},
+                "retry_count": {"type": "integer"},
+                "timeout": {"type": "integer"},
+                "vision_model": {"type": "string"},
+                "vision_base64": {"type": "boolean"},
+                "vision_api_base_url": {"type": "string"},
+                "vision_api_key": {"type": "string"},
+                "vision_max_tokens": {"type": "integer"},
+                "vision_temperature": {"type": "number"},
+                "vision_retry_count": {"type": "integer"},
+                "vision_timeout": {"type": "integer"},
+                "system_prompt": {"type": "string"},
+                "extra_params": {"type": "object"}
+              }
+            }
+          }
+        },
+        "qdrant": {
+          "type": "object",
+          "required": ["host", "port", "vector_size"],
+          "properties": {
+            "host": {"type": "string"},
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+            "api_key": {"type": "string"},
+            "vector_size": {"type": "integer", "minimum": 1}
+          }
+        }
+      }
+    },
+    "access_control": {
+      "type": "object",
+      "properties": {
+        "blacklist": {
+          "type": "object",
+          "properties": {
+            "users": {"type": "array", "items": {"type": "string"}},
+            "guilds": {"type": "array", "items": {"type": "string"}},
+            "channels": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "whitelist": {
+          "type": "object",
+          "properties": {
+            "users": {"type": "array", "items": {"type": "string"}},
+            "guilds": {"type": "array", "items": {"type": "string"}},
+            "channels": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "operations": {
+      "type": "object",
+      "required": ["web", "logging", "plugins"],
+      "properties": {
+        "web": {
+          "type": "object",
+          "required": ["port", "username", "password", "enabled"],
+          "properties": {
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+            "username": {"type": "string"},
+            "password": {"type": "string"},
+            "enabled": {"type": "boolean"}
+          }
+        },
+        "logging": {
+          "type": "object",
+          "required": ["level", "file", "max_size", "max_backups", "max_age"],
+          "properties": {
+            "level": {"type": "string", "enum": ["debug", "info", "warn", "error"]},
+            "file": {"type": "string"},
+            "max_size": {"type": "integer"},
+            "max_backups": {"type": "integer"},
+            "max_age": {"type": "integer"}
+          }
+        },
+        "plugins": {
+          "type": "object",
+          "required": ["enabled", "plugins_dir"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "plugins_dir": {"type": "string"}
+          }
+        },
+        "mcp": {
+          "type": "object",
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "servers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                  "name": {"type": "string"},
+                  "command": {"type": "string"},
+                  "args": {"type": "array", "items": {"type": "string"}},
+                  "env": {"type": "object"},
+                  "url": {"type": "string"},
+                  "type": {"type": "string"}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "required": ["schema_version", "core", "memory_pipeline", "operations"],
+  "additionalProperties": false
+}
