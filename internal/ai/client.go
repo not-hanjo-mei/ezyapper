@@ -189,9 +189,7 @@ func (c *Client) createEmbeddingWithRetry(ctx context.Context, req openai.Embedd
 	},
 		retry.WithBaseDelay(1*time.Second),
 		retry.WithMaxDelay(30*time.Second),
-		retry.WithErrorClassifier(func(err error) bool {
-			return c.retryableError(err) && !isTimeoutLikeError(err)
-		}),
+		retry.WithErrorClassifier(c.retryableError),
 	)
 }
 

@@ -107,16 +107,16 @@ func toFileConfig(cfg *Config) fileConfig {
 
 // DecisionConfig holds LLM-based reply decision settings
 type DecisionConfig struct {
-	Enabled         bool                   `mapstructure:"enabled" yaml:"enabled"`
-	Model           string                 `mapstructure:"model" yaml:"model"`
-	APIBaseURL      string                 `mapstructure:"api_base_url" yaml:"api_base_url"`
-	APIKey          string                 `mapstructure:"api_key" yaml:"api_key"`
-	MaxTokens       int                    `mapstructure:"max_tokens" yaml:"max_tokens"`
-	Temperature     float32                `mapstructure:"temperature" yaml:"temperature"`
-	RetryCount      int                    `mapstructure:"retry_count" yaml:"retry_count"`
-	Timeout         int                    `mapstructure:"timeout" yaml:"timeout"`
-	SystemPrompt    string                 `mapstructure:"system_prompt" yaml:"system_prompt"`
-	ExtraParams     map[string]interface{} `mapstructure:"extra_params" yaml:"extra_params"`
+	Enabled      bool                   `mapstructure:"enabled" yaml:"enabled"`
+	Model        string                 `mapstructure:"model" yaml:"model"`
+	APIBaseURL   string                 `mapstructure:"api_base_url" yaml:"api_base_url"`
+	APIKey       string                 `mapstructure:"api_key" yaml:"api_key"`
+	MaxTokens    int                    `mapstructure:"max_tokens" yaml:"max_tokens"`
+	Temperature  float32                `mapstructure:"temperature" yaml:"temperature"`
+	RetryCount   int                    `mapstructure:"retry_count" yaml:"retry_count"`
+	Timeout      int                    `mapstructure:"timeout" yaml:"timeout"`
+	SystemPrompt string                 `mapstructure:"system_prompt" yaml:"system_prompt"`
+	ExtraParams  map[string]interface{} `mapstructure:"extra_params" yaml:"extra_params"`
 }
 
 // DiscordConfig holds Discord bot specific settings

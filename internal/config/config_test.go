@@ -1,10 +1,12 @@
 package config
+
 import (
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
 func TestLoad_MissingRequired(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
@@ -188,7 +190,7 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 				MinScore: 0.75,
 			},
 			Consolidation: ConsolidationConfig{
-				Enabled:     true,
+				Enabled: true,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -248,7 +250,7 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 				MinScore: 0.75,
 			},
 			Consolidation: ConsolidationConfig{
-				Enabled:     true,
+				Enabled: true,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -332,7 +334,7 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 				MinScore: 0.75,
 			},
 			Consolidation: ConsolidationConfig{
-				Enabled:     true,
+				Enabled: true,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -399,7 +401,7 @@ func TestValidate_MissingVisionMaxImages(t *testing.T) {
 				MinScore: 0.75,
 			},
 			Consolidation: ConsolidationConfig{
-				Enabled:     true,
+				Enabled: true,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -467,7 +469,7 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 				MinScore: 0.75,
 			},
 			Consolidation: ConsolidationConfig{
-				Enabled:     true,
+				Enabled: true,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -766,13 +768,13 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
 		Plugins: PluginsConfig{Enabled: false},
 		Decision: DecisionConfig{
-			Enabled:         true,
-			Model:           "gpt-4o-mini",
-			MaxTokens:       64,
-			Temperature:     0.1,
-			RetryCount:      1,
-			Timeout:         10,
-			SystemPrompt:    "decide",
+			Enabled:      true,
+			Model:        "gpt-4o-mini",
+			MaxTokens:    64,
+			Temperature:  0.1,
+			RetryCount:   1,
+			Timeout:      10,
+			SystemPrompt: "decide",
 		},
 	}
 	err := validate(cfg)
@@ -807,15 +809,15 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
 		Plugins: PluginsConfig{Enabled: false},
 		Decision: DecisionConfig{
-			Enabled:         true,
-			Model:           "gpt-4o-mini",
-			APIBaseURL:      "https://decision.example.com/v1",
-			APIKey:          "decision-key",
-			MaxTokens:       64,
-			Temperature:     0.1,
-			RetryCount:      1,
-			Timeout:         10,
-			SystemPrompt:    "decide",
+			Enabled:      true,
+			Model:        "gpt-4o-mini",
+			APIBaseURL:   "https://decision.example.com/v1",
+			APIKey:       "decision-key",
+			MaxTokens:    64,
+			Temperature:  0.1,
+			RetryCount:   1,
+			Timeout:      10,
+			SystemPrompt: "decide",
 		},
 	}
 	if err := validate(cfg); err != nil {

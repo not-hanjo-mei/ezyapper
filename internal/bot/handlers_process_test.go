@@ -262,7 +262,8 @@ func TestProcessMessage_DelegatesToCore(t *testing.T) {
 	b.processingMessages["msg-9"] = pm
 
 	assertNoPanic(t, func() {
-		b.processMessage(ctx, nil, m, pm, nil)	})
+		b.processMessage(ctx, nil, m, pm, nil)
+	})
 
 	b.processingMu.RLock()
 	_, exists := b.processingMessages["msg-9"]
