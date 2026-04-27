@@ -443,7 +443,6 @@ The decision system uses an LLM to intelligently decide whether the bot should r
 | `temperature` | Response randomness (0.0-2.0) | No |
 | `retry_count` | API retry attempts | No |
 | `timeout` | Request timeout (seconds) | Yes (if enabled) |
-| `context_messages` | Number of recent messages for context | Yes (if enabled) |
 | `system_prompt` | System prompt with role and rules | Yes (if enabled) |
 
 ### Decision Prompt Structure
@@ -476,7 +475,6 @@ decision:
   temperature: 0.8
   retry_count: 5
   timeout: 30
-  context_messages: 8        # Include 8 recent messages
   system_prompt: |
     You are a decision classifier for a Discord bot named "{BotName}".
     Your job is to decide if the bot should respond to the latest message.

@@ -117,8 +117,6 @@ core:
     retry_count: 3
     # Decision timeout (seconds).
     timeout: 10
-    # How many recent messages are used in decision context.
-    context_messages: 8
     system_prompt: |
       You are a decision classifier for a Discord bot named "{BotName}". Your job is to decide if the bot should respond to the latest message.
 
