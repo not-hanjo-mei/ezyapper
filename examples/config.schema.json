@@ -4,58 +4,61 @@
   "title": "EZyapper Configuration",
   "description": "JSON Schema for EZyapper config.yaml (v3 grouped format)",
   "type": "object",
+  "required": ["schema_version", "core", "memory_pipeline", "operations"],
+  "additionalProperties": false,
   "properties": {
-    "schema_version": {
-      "type": "integer",
-      "const": 3,
-      "description": "Config format version (must be 3)"
-    },
+    "schema_version": { "type": "integer", "const": 3 },
+
     "core": {
       "type": "object",
       "required": ["discord", "ai"],
+      "additionalProperties": false,
       "properties": {
         "discord": {
           "type": "object",
           "required": ["token", "bot_name", "own_bot_id", "reply_percentage", "cooldown_seconds", "max_responses_per_minute"],
+          "additionalProperties": false,
           "properties": {
-            "token": {"type": "string", "description": "Discord bot token"},
-            "bot_name": {"type": "string", "description": "Bot display name"},
-            "own_bot_id": {"type": "string", "description": "Bot's own Discord user ID"},
-            "reply_percentage": {"type": "number", "minimum": 0, "maximum": 1},
-            "cooldown_seconds": {"type": "integer", "minimum": 0},
-            "max_responses_per_minute": {"type": "integer", "minimum": 1},
-            "reply_to_bots": {"type": "boolean", "default": false}
+            "token":                    { "type": "string" },
+            "bot_name":                 { "type": "string" },
+            "own_bot_id":               { "type": "string" },
+            "reply_percentage":         { "type": "number", "minimum": 0, "maximum": 1 },
+            "cooldown_seconds":         { "type": "integer", "minimum": 0 },
+            "max_responses_per_minute": { "type": "integer", "minimum": 1 },
+            "reply_to_bots":            { "type": "boolean" }
           }
         },
         "ai": {
           "type": "object",
           "required": ["api_base_url", "api_key", "model", "vision_model", "max_tokens", "temperature", "system_prompt", "vision"],
+          "additionalProperties": false,
           "properties": {
-            "api_base_url": {"type": "string"},
-            "api_key": {"type": "string"},
-            "model": {"type": "string"},
-            "vision_model": {"type": "string"},
-            "vision_base64": {"type": "boolean"},
-            "max_tokens": {"type": "integer", "minimum": 1},
-            "temperature": {"type": "number", "minimum": 0, "maximum": 2},
-            "retry_count": {"type": "integer", "minimum": 0},
-            "timeout": {"type": "integer", "minimum": 1},
-            "system_prompt": {"type": "string"},
-            "extra_params": {"type": "object"},
+            "api_base_url":   { "type": "string" },
+            "api_key":        { "type": "string" },
+            "model":          { "type": "string" },
+            "vision_model":   { "type": "string" },
+            "vision_base64":  { "type": "boolean" },
+            "max_tokens":     { "type": "integer", "minimum": 1 },
+            "temperature":    { "type": "number", "minimum": 0, "maximum": 2 },
+            "retry_count":    { "type": "integer", "minimum": 0 },
+            "timeout":        { "type": "integer", "minimum": 1 },
+            "system_prompt":  { "type": "string" },
+            "extra_params":   { "type": "object" },
             "vision": {
               "type": "object",
               "required": ["mode", "max_images"],
+              "additionalProperties": false,
               "properties": {
-                "mode": {"type": "string", "enum": ["text_only", "hybrid", "multimodal"]},
-                "description_prompt": {"type": "string"},
-                "max_images": {"type": "integer", "minimum": 1},
-                "api_base_url": {"type": "string"},
-                "api_key": {"type": "string"},
-                "max_tokens": {"type": "integer"},
-                "temperature": {"type": "number"},
-                "retry_count": {"type": "integer"},
-                "timeout": {"type": "integer"},
-                "extra_params": {"type": "object"}
+                "mode":               { "type": "string", "enum": ["text_only", "hybrid", "multimodal"] },
+                "description_prompt": { "type": "string" },
+                "max_images":         { "type": "integer", "minimum": 1 },
+                "api_base_url":       { "type": "string" },
+                "api_key":            { "type": "string" },
+                "max_tokens":         { "type": "integer" },
+                "temperature":        { "type": "number" },
+                "retry_count":        { "type": "integer" },
+                "timeout":            { "type": "integer" },
+                "extra_params":       { "type": "object" }
               }
             }
           }
@@ -63,74 +66,81 @@
         "decision": {
           "type": "object",
           "required": ["enabled"],
+          "additionalProperties": false,
           "properties": {
-            "enabled": {"type": "boolean"},
-            "model": {"type": "string"},
-            "api_base_url": {"type": "string"},
-            "api_key": {"type": "string"},
-            "max_tokens": {"type": "integer", "minimum": 1},
-            "temperature": {"type": "number", "minimum": 0, "maximum": 2},
-            "retry_count": {"type": "integer", "minimum": 0},
-            "timeout": {"type": "integer", "minimum": 1},
-            "system_prompt": {"type": "string"},
-            "extra_params": {"type": "object"}
+            "enabled":       { "type": "boolean" },
+            "model":         { "type": "string" },
+            "api_base_url":  { "type": "string" },
+            "api_key":       { "type": "string" },
+            "max_tokens":    { "type": "integer", "minimum": 1 },
+            "temperature":   { "type": "number", "minimum": 0, "maximum": 2 },
+            "retry_count":   { "type": "integer", "minimum": 0 },
+            "timeout":       { "type": "integer", "minimum": 1 },
+            "system_prompt": { "type": "string" },
+            "extra_params":  { "type": "object" }
           }
         }
       }
     },
+
     "memory_pipeline": {
       "type": "object",
       "required": ["embedding", "memory", "qdrant"],
+      "additionalProperties": false,
       "properties": {
         "embedding": {
           "type": "object",
           "required": ["api_base_url", "api_key", "model"],
+          "additionalProperties": false,
           "properties": {
-            "api_base_url": {"type": "string"},
-            "api_key": {"type": "string"},
-            "model": {"type": "string"},
-            "retry_count": {"type": "integer", "minimum": 0},
-            "timeout": {"type": "integer", "minimum": 1},
-            "extra_params": {"type": "object"}
+            "api_base_url": { "type": "string" },
+            "api_key":      { "type": "string" },
+            "model":        { "type": "string" },
+            "retry_count":  { "type": "integer", "minimum": 0 },
+            "timeout":      { "type": "integer", "minimum": 1 },
+            "extra_params": { "type": "object" }
           }
         },
         "memory": {
           "type": "object",
           "required": ["consolidation_interval", "short_term_limit", "retrieval", "consolidation"],
+          "additionalProperties": false,
           "properties": {
-            "consolidation_interval": {"type": "integer", "minimum": 1, "description": "Messages before triggering consolidation"},
-            "short_term_limit": {"type": "integer", "minimum": 1, "description": "Recent messages for context (shared by decision and response)"},
+            "consolidation_interval": { "type": "integer", "minimum": 1 },
+            "short_term_limit":       { "type": "integer", "minimum": 1 },
             "retrieval": {
               "type": "object",
               "required": ["top_k", "min_score"],
+              "additionalProperties": false,
               "properties": {
-                "top_k": {"type": "integer", "minimum": 0},
-                "min_score": {"type": "number", "minimum": 0, "maximum": 1}
+                "top_k":    { "type": "integer", "minimum": 0 },
+                "min_score": { "type": "number", "minimum": 0, "maximum": 1 }
               }
             },
             "consolidation": {
               "type": "object",
               "required": ["enabled"],
+              "additionalProperties": false,
               "properties": {
-                "enabled": {"type": "boolean"},
-                "max_messages": {"type": "integer", "minimum": 1, "description": "Messages to analyze per consolidation run"},
-                "model": {"type": "string"},
-                "api_base_url": {"type": "string"},
-                "api_key": {"type": "string"},
-                "max_tokens": {"type": "integer"},
-                "temperature": {"type": "number"},
-                "retry_count": {"type": "integer"},
-                "timeout": {"type": "integer"},
-                "vision_model": {"type": "string"},
-                "vision_base64": {"type": "boolean"},
-                "vision_api_base_url": {"type": "string"},
-                "vision_api_key": {"type": "string"},
-                "vision_max_tokens": {"type": "integer"},
-                "vision_temperature": {"type": "number"},
-                "vision_retry_count": {"type": "integer"},
-                "vision_timeout": {"type": "integer"},
-                "system_prompt": {"type": "string"},
-                "extra_params": {"type": "object"}
+                "enabled":             { "type": "boolean" },
+                "max_messages":        { "type": "integer", "minimum": 1 },
+                "model":               { "type": "string" },
+                "api_base_url":        { "type": "string" },
+                "api_key":             { "type": "string" },
+                "max_tokens":          { "type": "integer" },
+                "temperature":         { "type": "number" },
+                "retry_count":         { "type": "integer" },
+                "timeout":             { "type": "integer" },
+                "vision_model":        { "type": "string" },
+                "vision_base64":       { "type": "boolean" },
+                "vision_api_base_url": { "type": "string" },
+                "vision_api_key":      { "type": "string" },
+                "vision_max_tokens":   { "type": "integer" },
+                "vision_temperature":  { "type": "number" },
+                "vision_retry_count":  { "type": "integer" },
+                "vision_timeout":      { "type": "integer" },
+                "system_prompt":       { "type": "string" },
+                "extra_params":        { "type": "object" }
               }
             }
           }
@@ -138,85 +148,97 @@
         "qdrant": {
           "type": "object",
           "required": ["host", "port", "vector_size"],
+          "additionalProperties": false,
           "properties": {
-            "host": {"type": "string"},
-            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
-            "api_key": {"type": "string"},
-            "vector_size": {"type": "integer", "minimum": 1}
+            "host":        { "type": "string" },
+            "port":        { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "api_key":     { "type": "string" },
+            "vector_size": { "type": "integer", "minimum": 1 }
           }
         }
       }
     },
+
     "access_control": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "blacklist": {
           "type": "object",
+          "additionalProperties": false,
           "properties": {
-            "users": {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}},
-            "guilds": {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}},
-            "channels": {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}}
+            "users":    { "type": "array", "items": { "anyOf": [{"type": "string"}, {"type": "integer"}] } },
+            "guilds":   { "type": "array", "items": { "anyOf": [{"type": "string"}, {"type": "integer"}] } },
+            "channels": { "type": "array", "items": { "anyOf": [{"type": "string"}, {"type": "integer"}] } }
           }
         },
         "whitelist": {
           "type": "object",
+          "additionalProperties": false,
           "properties": {
-            "users": {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}},
-            "guilds": {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}},
-            "channels": {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}}
+            "users":    { "type": "array", "items": { "anyOf": [{"type": "string"}, {"type": "integer"}] } },
+            "guilds":   { "type": "array", "items": { "anyOf": [{"type": "string"}, {"type": "integer"}] } },
+            "channels": { "type": "array", "items": { "anyOf": [{"type": "string"}, {"type": "integer"}] } }
           }
         }
       }
     },
+
     "operations": {
       "type": "object",
       "required": ["web", "logging", "plugins"],
+      "additionalProperties": false,
       "properties": {
         "web": {
           "type": "object",
           "required": ["port", "username", "password", "enabled"],
+          "additionalProperties": false,
           "properties": {
-            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
-            "username": {"type": "string"},
-            "password": {"type": "string"},
-            "enabled": {"type": "boolean"}
+            "port":     { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "username": { "type": "string" },
+            "password": { "type": "string" },
+            "enabled":  { "type": "boolean" }
           }
         },
         "logging": {
           "type": "object",
           "required": ["level", "file", "max_size", "max_backups", "max_age"],
+          "additionalProperties": false,
           "properties": {
-            "level": {"type": "string", "enum": ["debug", "info", "warn", "error"]},
-            "file": {"type": "string"},
-            "max_size": {"type": "integer"},
-            "max_backups": {"type": "integer"},
-            "max_age": {"type": "integer"}
+            "level":       { "type": "string", "enum": ["debug", "info", "warn", "error"] },
+            "file":        { "type": "string" },
+            "max_size":    { "type": "integer" },
+            "max_backups": { "type": "integer" },
+            "max_age":     { "type": "integer" }
           }
         },
         "plugins": {
           "type": "object",
           "required": ["enabled", "plugins_dir"],
+          "additionalProperties": false,
           "properties": {
-            "enabled": {"type": "boolean"},
-            "plugins_dir": {"type": "string"}
+            "enabled":     { "type": "boolean" },
+            "plugins_dir": { "type": "string" }
           }
         },
         "mcp": {
           "type": "object",
+          "additionalProperties": false,
           "properties": {
-            "enabled": {"type": "boolean"},
+            "enabled": { "type": "boolean" },
             "servers": {
               "type": "array",
               "items": {
                 "type": "object",
                 "required": ["name"],
+                "additionalProperties": false,
                 "properties": {
-                  "name": {"type": "string"},
-                  "command": {"type": "string"},
-                  "args": {"type": "array", "items": {"type": "string"}},
-                  "env": {"type": "object"},
-                  "url": {"type": "string"},
-                  "type": {"type": "string"}
+                  "name":    { "type": "string" },
+                  "command": { "type": "string" },
+                  "args":    { "type": "array", "items": {"type": "string"} },
+                  "env":     { "type": "object" },
+                  "url":     { "type": "string" },
+                  "type":    { "type": "string" }
                 }
               }
             }
@@ -224,7 +246,5 @@
         }
       }
     }
-  },
-  "required": ["schema_version", "core", "memory_pipeline", "operations"],
-  "additionalProperties": false
+  }
 }
