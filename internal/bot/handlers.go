@@ -18,6 +18,7 @@ func (b *Bot) registerHandlers() {
 	b.session.AddHandler(b.onMessageCreate)
 	b.session.AddHandler(b.onMessageUpdate)
 	b.session.AddHandler(b.onMessageReactionAdd)
+	b.session.AddHandler(b.onMessageDelete)
 	b.session.AddHandler(b.onGuildJoin)
 	b.session.AddHandler(b.onGuildLeave)
 }

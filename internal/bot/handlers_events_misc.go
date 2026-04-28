@@ -90,6 +90,39 @@ func (b *Bot) onMessageReactionAdd(s *discordgo.Session, r *discordgo.MessageRea
 	// Reserved for future interactive features.
 }
 
+// onMessageDelete handles message deletion events.
+// When a message being processed is deleted, cancels the processing context
+// to abort AI generation and skip sending the reply.
+func (b *Bot) onMessageDelete(s *discordgo.Session, m *discordgo.MessageDelete) {
+	if m == nil || m.Message == nil {
+		logger.Warnf("[delete] received nil MESSAGE_DELETE payload, skipping")
+		return
+	}
+
+	if s == nil || s.State == nil || s.State.User == nil {
+		logger.Warnf("[delete] session user state unavailable for message=%s, skipping", m.ID)
+		return
+	}
+
+	// Ignore bot's own deleted messages — they're never in processingMessages.
+	if m.Author != nil && m.Author.ID == s.State.User.ID {
+		return
+	}
+
+	logger.Infof("[message deleted] id=%s channel=%s guild=%s", m.ID, m.ChannelID, m.GuildID)
+
+	pm := b.getProcessingMessage(m.ID)
+	if pm == nil {
+		return // Not being processed, nothing to cancel.
+	}
+
+	if pm.CancelFunc != nil {
+		pm.CancelFunc()
+		logger.Infof("[delete] cancelled processing for message=%s", m.ID)
+	}
+	b.removeProcessingMessage(m.ID)
+}
+
 // onGuildJoin handles joining a new guild.
 func (b *Bot) onGuildJoin(s *discordgo.Session, g *discordgo.GuildCreate) {
 	logger.Infof("Joined guild: %s (%d members)", g.Name, g.MemberCount)

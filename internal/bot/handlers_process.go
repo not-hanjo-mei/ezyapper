@@ -195,6 +195,12 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		pm.SetPhase(PhaseSending)
 	}
 
+	if err := ctx.Err(); err != nil {
+		logger.Infof("[processing] Message %s cancelled before sending", m.ID)
+		b.clearProcessingMessage(pm, m.ID)
+		return
+	}
+
 	if err := b.sendResponse(ctx, s, m, response); err != nil {
 		logger.Errorf("Failed to send response: %v", err)
 		b.clearProcessingMessage(pm, m.ID)
