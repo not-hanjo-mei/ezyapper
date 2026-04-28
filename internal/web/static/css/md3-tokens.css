@@ -1,0 +1,321 @@
+/**
+ * Material Design 3 Design Tokens - Dark Theme
+ * Generated for ezyapper WebUI
+ * 
+ * All MD3 tokens use --md-sys-* prefix per MD3 specification.
+ * Dark theme only (no light theme toggle in MVP).
+ * 
+ * @link https://m3.material.io/styles
+ */
+
+/* ============================================
+   COLOR TOKENS (--md-sys-color-*)
+   ============================================ */
+:root {
+	/* Primary palette */
+	--md-sys-color-primary: rgb(177 209 138);
+	--md-sys-color-surface-tint: rgb(177 209 138);
+	--md-sys-color-on-primary: rgb(31 55 1);
+	--md-sys-color-primary-container: rgb(53 78 22);
+	--md-sys-color-on-primary-container: rgb(205 237 163);
+
+	/* Secondary palette */
+	--md-sys-color-secondary: rgb(191 203 173);
+	--md-sys-color-on-secondary: rgb(42 51 30);
+	--md-sys-color-secondary-container: rgb(64 74 51);
+	--md-sys-color-on-secondary-container: rgb(220 231 200);
+
+	/* Tertiary palette */
+	--md-sys-color-tertiary: rgb(160 208 203);
+	--md-sys-color-on-tertiary: rgb(0 55 53);
+	--md-sys-color-tertiary-container: rgb(31 78 75);
+	--md-sys-color-on-tertiary-container: rgb(188 236 231);
+
+	/* Error palette */
+	--md-sys-color-error: rgb(255 180 171);
+	--md-sys-color-on-error: rgb(105 0 5);
+	--md-sys-color-error-container: rgb(147 0 10);
+	--md-sys-color-on-error-container: rgb(255 218 214);
+
+	/* Surface palette */
+	--md-sys-color-background: rgb(18 20 14);
+	--md-sys-color-on-background: rgb(226 227 216);
+	--md-sys-color-surface: rgb(18 20 14);
+	--md-sys-color-on-surface: rgb(226 227 216);
+	--md-sys-color-surface-variant: rgb(68 72 61);
+	--md-sys-color-on-surface-variant: rgb(197 200 186);
+
+	/* Outline colors */
+	--md-sys-color-outline: rgb(143 146 133);
+	--md-sys-color-outline-variant: rgb(68 72 61);
+
+	/* Shadow & scrim */
+	--md-sys-color-shadow: rgb(0 0 0);
+	--md-sys-color-scrim: rgb(0 0 0);
+
+	/* Inverse colors (snackbars, toasts) */
+	--md-sys-color-inverse-surface: rgb(226 227 216);
+	--md-sys-color-inverse-on-surface: rgb(47 49 42);
+	--md-sys-color-inverse-primary: rgb(76 102 43);
+
+	/* Fixed colors (for date pickers, etc.) */
+	--md-sys-color-primary-fixed: rgb(205 237 163);
+	--md-sys-color-on-primary-fixed: rgb(16 32 0);
+	--md-sys-color-primary-fixed-dim: rgb(177 209 138);
+	--md-sys-color-on-primary-fixed-variant: rgb(53 78 22);
+	--md-sys-color-secondary-fixed: rgb(220 231 200);
+	--md-sys-color-on-secondary-fixed: rgb(21 30 11);
+	--md-sys-color-secondary-fixed-dim: rgb(191 203 173);
+	--md-sys-color-on-secondary-fixed-variant: rgb(64 74 51);
+	--md-sys-color-tertiary-fixed: rgb(188 236 231);
+	--md-sys-color-on-tertiary-fixed: rgb(0 32 30);
+	--md-sys-color-tertiary-fixed-dim: rgb(160 208 203);
+	--md-sys-color-on-tertiary-fixed-variant: rgb(31 78 75);
+
+	/* Surface dim/bright for contrast */
+	--md-sys-color-surface-dim: rgb(18 20 14);
+	--md-sys-color-surface-bright: rgb(56 58 50);
+
+	/* Surface containers (tonal elevation) */
+	--md-sys-color-surface-container-lowest: rgb(12 15 9);
+	--md-sys-color-surface-container-low: rgb(26 28 22);
+	--md-sys-color-surface-container: rgb(30 32 26);
+	--md-sys-color-surface-container-high: rgb(40 43 36);
+	--md-sys-color-surface-container-highest: rgb(51 54 46);
+
+	/* ============================================
+	   TYPOGRAPHY TOKENS (--md-sys-typescale-*)
+	   ============================================ */
+	
+	/* Font family */
+	--md-sys-typescale-font-family: 'Google Sans Flex', 'Google Sans', 'Roboto', system-ui, sans-serif;
+
+	/* Display - Hero text, large numbers */
+	--md-sys-typescale-display-large-font: var(--md-sys-typescale-font-family);
+	--md-sys-typescale-display-large-size: 57px;
+	--md-sys-typescale-display-large-line-height: 64px;
+	--md-sys-typescale-display-large-weight: 400;
+	
+	--md-sys-typescale-display-medium-font: var(--md-sys-typescale-font-family);
+	--md-sys-typescale-display-medium-size: 45px;
+	--md-sys-typescale-display-medium-line-height: 52px;
+	--md-sys-typescale-display-medium-weight: 400;
+	
+	--md-sys-typescale-display-small-font: var(--md-sys-typescale-font-family);
+	--md-sys-typescale-display-small-size: 36px;
+	--md-sys-typescale-display-small-line-height: 44px;
+	--md-sys-typescale-display-small-weight: 400;
+
+	/* Headline - Section headers */
+	--md-sys-typescale-headline-large-font: var(--md-sys-typescale-font-family);
+	--md-sys-typescale-headline-large-size: 32px;
+	--md-sys-typescale-headline-large-line-height: 40px;
+	--md-sys-typescale-headline-large-weight: 400;
+	
+	--md-sys-typescale-headline-medium-font: var(--md-sys-typescale-font-family);
+	--md-sys-typescale-headline-medium-size: 28px;
+	--md-sys-typescale-headline-medium-line-height: 36px;
+	--md-sys-typescale-headline-medium-weight: 400;
+	
+	--md-sys-typescale-headline-small-font: var(--md-sys-typescale-font-family);
+	--md-sys-typescale-headline-small-size: 24px;
+	--md-sys-typescale-headline-small-line-height: 32px;
+	--md-sys-typescale-headline-small-weight: 400;
+
+	/* Title - Smaller headers, card titles */
+	--md-sys-typescale-title-large-font: var(--md-sys-typescale-font-family);
+	--md-sys-typescale-title-large-size: 22px;
+	--md-sys-typescale-title-large-line-height: 28px;
+	--md-sys-typescale-title-large-weight: 400;
+	
+	--md-sys-typescale-title-medium-font: var(--md-sys-typescale-font-family);
+	--md-sys-typescale-title-medium-size: 16px;
+	--md-sys-typescale-title-medium-line-height: 24px;
+	--md-sys-typescale-title-medium-weight: 500;
+	
+	--md-sys-typescale-title-small-font: var(--md-sys-typescale-font-family);
+	--md-sys-typescale-title-small-size: 14px;
+	--md-sys-typescale-title-small-line-height: 20px;
+	--md-sys-typescale-title-small-weight: 500;
+
+	/* Body - Paragraph text, descriptions */
+	--md-sys-typescale-body-large-font: var(--md-sys-typescale-font-family);
+	--md-sys-typescale-body-large-size: 16px;
+	--md-sys-typescale-body-large-line-height: 24px;
+	--md-sys-typescale-body-large-weight: 400;
+	
+	--md-sys-typescale-body-medium-font: var(--md-sys-typescale-font-family);
+	--md-sys-typescale-body-medium-size: 14px;
+	--md-sys-typescale-body-medium-line-height: 20px;
+	--md-sys-typescale-body-medium-weight: 400;
+	
+	--md-sys-typescale-body-small-font: var(--md-sys-typescale-font-family);
+	--md-sys-typescale-body-small-size: 12px;
+	--md-sys-typescale-body-small-line-height: 16px;
+	--md-sys-typescale-body-small-weight: 400;
+
+	/* Label - Buttons, chips, captions */
+	--md-sys-typescale-label-large-font: var(--md-sys-typescale-font-family);
+	--md-sys-typescale-label-large-size: 14px;
+	--md-sys-typescale-label-large-line-height: 20px;
+	--md-sys-typescale-label-large-weight: 500;
+	
+	--md-sys-typescale-label-medium-font: var(--md-sys-typescale-font-family);
+	--md-sys-typescale-label-medium-size: 12px;
+	--md-sys-typescale-label-medium-line-height: 16px;
+	--md-sys-typescale-label-medium-weight: 500;
+	
+	--md-sys-typescale-label-small-font: var(--md-sys-typescale-font-family);
+	--md-sys-typescale-label-small-size: 11px;
+	--md-sys-typescale-label-small-line-height: 16px;
+	--md-sys-typescale-label-small-weight: 500;
+
+	/* ============================================
+	   SHAPE TOKENS (--md-sys-shape-corner-*)
+	   ============================================ */
+	--md-sys-shape-corner-none: 0;
+	--md-sys-shape-corner-extra-small: 4px;
+	--md-sys-shape-corner-small: 8px;
+	--md-sys-shape-corner-medium: 12px;
+	--md-sys-shape-corner-large: 16px;
+	--md-sys-shape-corner-extra-large: 28px;
+	--md-sys-shape-corner-full: 9999px;
+
+	/* ============================================
+	   ELEVATION TOKENS (--md-sys-elevation-*)
+	   ============================================ */
+	--md-sys-elevation-level0: none;
+	--md-sys-elevation-level1: 0 1px 2px rgba(0, 0, 0, 0.3);
+	--md-sys-elevation-level2: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.15);
+	--md-sys-elevation-level3: 0 4px 8px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.15);
+	--md-sys-elevation-level4: 0 6px 10px rgba(0, 0, 0, 0.3), 0 4px 8px rgba(0, 0, 0, 0.15);
+	--md-sys-elevation-level5: 0 8px 12px rgba(0, 0, 0, 0.3), 0 6px 10px rgba(0, 0, 0, 0.15);
+
+	/* ============================================
+	   MOTION TOKENS (--md-sys-motion-*)
+	   ============================================ */
+	/* Duration */
+	--md-sys-motion-duration-short: 200ms;
+	--md-sys-motion-duration-medium: 300ms;
+	--md-sys-motion-duration-long: 500ms;
+
+	/* Easing */
+	--md-sys-motion-easing-emphasized: cubic-bezier(0.2, 0, 0, 1);
+	--md-sys-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+	--md-sys-motion-easing-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+	--md-sys-motion-easing-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
+}
+
+/* ============================================
+   GOOGLE SANS FLEX VARIABLE FONT SETTINGS
+   ============================================ */
+body {
+	font-variation-settings: "slnt" 0, "wdth" 100, "GRAD" 0, "ROND" 0;
+}
+
+/* ============================================
+   BASE STYLES (using tokens only)
+   ============================================ */
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	font-family: var(--md-sys-typescale-font-family);
+	font-size: 16px;
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+body {
+	margin: 0;
+	padding: 0;
+	background-color: var(--md-sys-color-surface);
+	color: var(--md-sys-color-on-surface);
+	font: var(--md-sys-typescale-body-medium-font) var(--md-sys-typescale-body-medium-size) / var(--md-sys-typescale-body-medium-line-height) var(--md-sys-typescale-font-family);
+}
+
+/* Typography utility classes */
+.md3-typescale-display-large {
+	font: var(--md-sys-typescale-display-large-weight) var(--md-sys-typescale-display-large-size) / var(--md-sys-typescale-display-large-line-height) var(--md-sys-typescale-font-family);
+}
+
+.md3-typescale-display-medium {
+	font: var(--md-sys-typescale-display-medium-weight) var(--md-sys-typescale-display-medium-size) / var(--md-sys-typescale-display-medium-line-height) var(--md-sys-typescale-font-family);
+}
+
+.md3-typescale-display-small {
+	font: var(--md-sys-typescale-display-small-weight) var(--md-sys-typescale-display-small-size) / var(--md-sys-typescale-display-small-line-height) var(--md-sys-typescale-font-family);
+}
+
+.md3-typescale-headline-large {
+	font: var(--md-sys-typescale-headline-large-weight) var(--md-sys-typescale-headline-large-size) / var(--md-sys-typescale-headline-large-line-height) var(--md-sys-typescale-font-family);
+}
+
+.md3-typescale-headline-medium {
+	font: var(--md-sys-typescale-headline-medium-weight) var(--md-sys-typescale-headline-medium-size) / var(--md-sys-typescale-headline-medium-line-height) var(--md-sys-typescale-font-family);
+}
+
+.md3-typescale-headline-small {
+	font: var(--md-sys-typescale-headline-small-weight) var(--md-sys-typescale-headline-small-size) / var(--md-sys-typescale-headline-small-line-height) var(--md-sys-typescale-font-family);
+}
+
+.md3-typescale-title-large {
+	font: var(--md-sys-typescale-title-large-weight) var(--md-sys-typescale-title-large-size) / var(--md-sys-typescale-title-large-line-height) var(--md-sys-typescale-font-family);
+}
+
+.md3-typescale-title-medium {
+	font: var(--md-sys-typescale-title-medium-weight) var(--md-sys-typescale-title-medium-size) / var(--md-sys-typescale-title-medium-line-height) var(--md-sys-typescale-font-family);
+}
+
+.md3-typescale-title-small {
+	font: var(--md-sys-typescale-title-small-weight) var(--md-sys-typescale-title-small-size) / var(--md-sys-typescale-title-small-line-height) var(--md-sys-typescale-font-family);
+}
+
+.md3-typescale-body-large {
+	font: var(--md-sys-typescale-body-large-weight) var(--md-sys-typescale-body-large-size) / var(--md-sys-typescale-body-large-line-height) var(--md-sys-typescale-font-family);
+}
+
+.md3-typescale-body-medium {
+	font: var(--md-sys-typescale-body-medium-weight) var(--md-sys-typescale-body-medium-size) / var(--md-sys-typescale-body-medium-line-height) var(--md-sys-typescale-font-family);
+}
+
+.md3-typescale-body-small {
+	font: var(--md-sys-typescale-body-small-weight) var(--md-sys-typescale-body-small-size) / var(--md-sys-typescale-body-small-line-height) var(--md-sys-typescale-font-family);
+}
+
+.md3-typescale-label-large {
+	font: var(--md-sys-typescale-label-large-weight) var(--md-sys-typescale-label-large-size) / var(--md-sys-typescale-label-large-line-height) var(--md-sys-typescale-font-family);
+}
+
+.md3-typescale-label-medium {
+	font: var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size) / var(--md-sys-typescale-label-medium-line-height) var(--md-sys-typescale-font-family);
+}
+
+.md3-typescale-label-small {
+	font: var(--md-sys-typescale-label-small-weight) var(--md-sys-typescale-label-small-size) / var(--md-sys-typescale-label-small-line-height) var(--md-sys-typescale-font-family);
+}
+
+/* Material Symbols Outlined font class */
+.md3-icon {
+	font-family: 'Material Symbols Outlined', sans-serif;
+	font-weight: normal;
+	font-style: normal;
+	font-size: 24px;
+	line-height: 1;
+	letter-spacing: normal;
+	text-transform: none;
+	display: inline-block;
+	white-space: nowrap;
+	word-wrap: normal;
+	direction: ltr;
+	-webkit-font-smoothing: antialiased;
+	font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.material-symbols-outlined {
+	font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}

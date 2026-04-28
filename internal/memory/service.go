@@ -472,11 +472,29 @@ func (s *MemoryService) ConsolidateChannel(ctx context.Context, channelID string
 }
 
 func (s *MemoryService) GetStats(ctx context.Context) (*GlobalStats, error) {
-	// This would require implementing aggregation queries in Qdrant
-	// For now, return placeholder stats
+	memories, err := s.CountMemories(ctx)
+	if err != nil {
+		logger.Warnf("[MemoryService.GetStats] failed to count memories: %v", err)
+	}
+	users, err := s.CountProfiles(ctx)
+	if err != nil {
+		logger.Warnf("[MemoryService.GetStats] failed to count profiles: %v", err)
+	}
 	return &GlobalStats{
+		TotalMemories:    memories,
+		TotalUsers:       users,
 		LastConsolidated: time.Now(),
 	}, nil
+}
+
+func (s *MemoryService) CountMemories(ctx context.Context) (int64, error) {
+	count, err := s.qdrant.CountCollection(ctx, CollectionMemories)
+	return int64(count), err
+}
+
+func (s *MemoryService) CountProfiles(ctx context.Context) (int64, error) {
+	count, err := s.qdrant.CountCollection(ctx, CollectionProfiles)
+	return int64(count), err
 }
 
 // GetUserStats retrieves user statistics

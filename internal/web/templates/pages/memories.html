@@ -1,0 +1,68 @@
+{{define "content"}}
+<div class="md3-card md3-card--elevated">
+	<div class="md3-card__content">
+		<div class="memories-search">
+			<form method="GET" action="/memories" class="memories-search__form">
+				<div class="memories-search__field">
+					<label for="memories-userid">User ID</label>
+					<input type="text" id="memories-userid" name="userID" value="{{.Data.UserID}}" placeholder="Enter a Discord User ID" class="md3-text-field" required>
+				</div>
+				<button type="submit" class="md3-btn md3-btn--filled">Search</button>
+				{{if .Data.UserID}}<a href="/memories" class="md3-btn md3-btn--text">Clear</a>{{end}}
+			</form>
+		</div>
+
+		{{if not .Data.Searched}}
+		<div class="md3-empty-state">
+			<span class="md3-empty-state__icon material-symbols-outlined">psychology</span>
+			<p class="md3-empty-state__title">Enter a User ID to browse memories</p>
+			<p class="md3-empty-state__description">Memories are keyed by Discord User ID</p>
+		</div>
+		{{else if not .Data.Memories}}
+		<div class="md3-empty-state">
+			<span class="md3-empty-state__icon material-symbols-outlined">inbox</span>
+			<p class="md3-empty-state__title">No memories found for this user</p>
+			<p class="md3-empty-state__description">User ID: {{.Data.UserID}}</p>
+		</div>
+		{{else}}
+		<div class="memories-list">
+			{{range .Data.Memories}}
+			<div class="memories-card">
+				<div class="memories-card__main">
+					<div class="memories-card__header">
+						<span class="md3-chip">{{.MemoryType}}</span>
+						<span class="memories-card__id">{{.ID}}</span>
+					</div>
+					<div class="memories-card__content">{{.Content}}</div>
+					{{if .Summary}}
+					<div class="memories-card__content memories-card__content--truncated">{{.Summary}}</div>
+					{{end}}
+					<div class="memories-card__meta">
+						<span>{{.CreatedAt}}</span>
+						<span class="memories-card__confidence">
+							{{if ge .Confidence 0.8}}<span class="confidence-high"></span>{{else if ge .Confidence 0.5}}<span class="confidence-medium"></span>{{else}}<span class="confidence-low"></span>{{end}}
+							{{printf "%.0f" (multiply .Confidence 100)}}%
+						</span>
+						{{if .Keywords}}
+						<span class="memories-card__keywords">
+							{{range .Keywords}}<span class="memories-card__chip">{{.}}</span>{{end}}
+						</span>
+						{{end}}
+					</div>
+				</div>
+				<div class="memories-card__delete">
+					<form method="POST" action="/memories/delete" onsubmit="return confirm('Delete this memory?')" style="margin: 0;">
+						<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+						<input type="hidden" name="userID" value="{{$.Data.UserID}}">
+						<input type="hidden" name="memoryID" value="{{.ID}}">
+						<button type="submit" class="md3-btn md3-btn--text md3-btn--danger">Delete</button>
+					</form>
+				</div>
+			</div>
+			{{end}}
+		</div>
+		<div class="stats-footer">Showing {{.Data.Count}} memories</div>
+		{{end}}
+	</div>
+</div>
+{{end}}

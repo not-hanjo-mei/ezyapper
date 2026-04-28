@@ -1,0 +1,164 @@
+{{define "content"}}
+<div class="md3-card md3-card--elevated">
+	<div class="md3-card__content">
+		<div class="profiles-search">
+			<form method="GET" action="/profiles" class="profiles-search__form">
+				<div class="profiles-search__field">
+					<label for="profiles-userid">User ID</label>
+					<input type="text" id="profiles-userid" name="userID" value="{{.Data.UserID}}" placeholder="Enter a Discord User ID" class="md3-text-field" required>
+				</div>
+				<button type="submit" class="md3-btn md3-btn--filled">Search</button>
+				{{if .Data.UserID}}<a href="/profiles" class="md3-btn md3-btn--text">Clear</a>{{end}}
+			</form>
+		</div>
+
+		{{if not .Data.Searched}}
+		<div class="md3-empty-state">
+			<span class="md3-empty-state__icon material-symbols-outlined">person</span>
+			<p class="md3-empty-state__title">Enter a User ID to view their profile</p>
+			<p class="md3-empty-state__description">Profiles are keyed by Discord User ID</p>
+		</div>
+
+		{{else if not .Data.Found}}
+		<div class="md3-empty-state">
+			<span class="md3-empty-state__icon material-symbols-outlined">inbox</span>
+			<p class="md3-empty-state__title">No profile found</p>
+			<p class="md3-empty-state__description">Profile will be auto-created on next bot interaction. User ID: {{.Data.UserID}}</p>
+		</div>
+
+		{{else if .Data.EditMode}}
+		<div class="profile-header">
+			<div>
+				<div class="profile-header__name">{{.Data.Profile.DisplayName}}</div>
+				<div class="profile-header__id">{{.Data.Profile.UserID}}</div>
+			</div>
+		</div>
+
+		<form method="POST" action="/profiles/update" class="profile-edit-form">
+			<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+			<input type="hidden" name="userID" value="{{.Data.Profile.UserID}}">
+
+			<div class="profile-edit-form__field">
+				<label for="display-name">Display Name</label>
+				<input type="text" id="display-name" name="display_name" value="{{.Data.Profile.DisplayName}}" class="md3-text-field" placeholder="Enter display name">
+			</div>
+
+			<div class="profile-noedit-section">
+				<div class="profile-noedit-section__title">Traits</div>
+				<div class="profile-chips">
+					{{range .Data.Profile.Traits}}<span class="profile-chip">{{.}}</span>{{else}}<span class="md3-body-small md3-text-muted">None</span>{{end}}
+				</div>
+			</div>
+
+			<div class="profile-noedit-section">
+				<div class="profile-noedit-section__title">Facts</div>
+				{{if .Data.Profile.Facts}}
+				<div class="profile-kv">
+					{{range $key, $value := .Data.Profile.Facts}}<span class="profile-kv__key">{{$key}}</span><span class="profile-kv__value">{{$value}}</span>{{end}}
+				</div>
+				{{else}}
+				<span class="md3-body-small md3-text-muted">None</span>
+				{{end}}
+			</div>
+
+			<div class="profile-noedit-section">
+				<div class="profile-noedit-section__title">Preferences</div>
+				{{if .Data.Profile.Preferences}}
+				<div class="profile-kv">
+					{{range $key, $value := .Data.Profile.Preferences}}<span class="profile-kv__key">{{$key}}</span><span class="profile-kv__value">{{$value}}</span>{{end}}
+				</div>
+				{{else}}
+				<span class="md3-body-small md3-text-muted">None</span>
+				{{end}}
+			</div>
+
+			<div class="profile-noedit-section">
+				<div class="profile-noedit-section__title">Interests</div>
+				<div class="profile-chips">
+					{{range .Data.Profile.Interests}}<span class="profile-chip">{{.}}</span>{{else}}<span class="md3-body-small md3-text-muted">None</span>{{end}}
+				</div>
+			</div>
+
+			<div class="profile-edit-form__actions">
+				<button type="submit" class="md3-btn md3-btn--filled">Save</button>
+				<a href="/profiles?userID={{.Data.Profile.UserID}}" class="md3-btn md3-btn--text">Cancel</a>
+			</div>
+		</form>
+
+		{{else}}
+		<div class="profile-header">
+			<div>
+				<div class="profile-header__name">{{.Data.Profile.DisplayName}}</div>
+				<div class="profile-header__id">{{.Data.Profile.UserID}}</div>
+			</div>
+			<a href="/profiles?userID={{.Data.Profile.UserID}}&edit=true" class="md3-btn md3-btn--text">
+				<span class="material-symbols-outlined" style="font-size: 20px;">edit</span>
+				Edit
+			</a>
+		</div>
+
+		<div class="profile-stats">
+			<div class="profile-stat">
+				<div class="profile-stat__label">Messages</div>
+				<div class="profile-stat__value">{{.Data.Profile.MessageCount}}</div>
+			</div>
+			<div class="profile-stat">
+				<div class="profile-stat__label">Memories</div>
+				<div class="profile-stat__value">{{.Data.Profile.MemoryCount}}</div>
+			</div>
+			{{if .Data.Profile.FirstSeenAt}}<div class="profile-stat">
+				<div class="profile-stat__label">First Seen</div>
+				<div class="profile-stat__value profile-stat__value--small">{{.Data.Profile.FirstSeenAt}}</div>
+			</div>{{end}}
+			{{if .Data.Profile.LastActiveAt}}<div class="profile-stat">
+				<div class="profile-stat__label">Last Active</div>
+				<div class="profile-stat__value profile-stat__value--small">{{.Data.Profile.LastActiveAt}}</div>
+			</div>{{end}}
+		</div>
+
+		<div class="profile-section">
+			<div class="profile-section__title">Traits</div>
+			<div class="profile-chips">
+				{{range .Data.Profile.Traits}}<span class="profile-chip">{{.}}</span>{{else}}<span class="md3-body-small md3-text-muted">None</span>{{end}}
+			</div>
+		</div>
+
+		<div class="profile-section">
+			<div class="profile-section__title">Facts</div>
+			{{if .Data.Profile.Facts}}
+			<div class="profile-kv">
+				{{range $key, $value := .Data.Profile.Facts}}<span class="profile-kv__key">{{$key}}</span><span class="profile-kv__value">{{$value}}</span>{{end}}
+			</div>
+			{{else}}
+			<span class="md3-body-small md3-text-muted">None</span>
+			{{end}}
+		</div>
+
+		<div class="profile-section">
+			<div class="profile-section__title">Preferences</div>
+			{{if .Data.Profile.Preferences}}
+			<div class="profile-kv">
+				{{range $key, $value := .Data.Profile.Preferences}}<span class="profile-kv__key">{{$key}}</span><span class="profile-kv__value">{{$value}}</span>{{end}}
+			</div>
+			{{else}}
+			<span class="md3-body-small md3-text-muted">None</span>
+			{{end}}
+		</div>
+
+		<div class="profile-section">
+			<div class="profile-section__title">Interests</div>
+			<div class="profile-chips">
+				{{range .Data.Profile.Interests}}<span class="profile-chip">{{.}}</span>{{else}}<span class="md3-body-small md3-text-muted">None</span>{{end}}
+			</div>
+		</div>
+
+		{{if .Data.Profile.PersonalitySummary}}
+		<div class="profile-section">
+			<div class="profile-section__title">Personality Summary</div>
+			<div class="profile-summary">{{.Data.Profile.PersonalitySummary}}</div>
+		</div>
+		{{end}}
+		{{end}}
+	</div>
+</div>
+{{end}}

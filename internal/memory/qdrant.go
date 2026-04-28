@@ -496,6 +496,19 @@ func getPayloadKeys(payload map[string]*qdrant.Value) []string {
 	return keys
 }
 
+// CountCollection returns the exact point count for a collection.
+func (qc *QdrantClient) CountCollection(ctx context.Context, collectionName string) (uint64, error) {
+	exact := true
+	count, err := qc.client.Count(ctx, &qdrant.CountPoints{
+		CollectionName: collectionName,
+		Exact:          &exact,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to count collection %s: %w", collectionName, err)
+	}
+	return count, nil
+}
+
 // DeleteProfile deletes a user profile
 func (qc *QdrantClient) DeleteProfile(ctx context.Context, userID string) error {
 	logger.Warnf("[DeleteProfile] deleting profile for userID=%s", userID)

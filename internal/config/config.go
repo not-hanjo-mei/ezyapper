@@ -270,6 +270,7 @@ func Load(configPath string) (*Config, error) {
 
 	if configPath != "" {
 		v.SetConfigFile(configPath)
+		v.SetConfigType("yaml")
 	} else {
 		v.SetConfigName("config")
 		v.SetConfigType("yaml")
@@ -564,6 +565,10 @@ func (c *Config) FormatSystemPrompt(authorName, serverName, guildID, channelID s
 	}
 
 	return prompt
+}
+
+func (c *Config) SetConfigPath(path string) {
+	c.configPath = path
 }
 
 func (c *Config) Save() error {

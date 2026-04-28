@@ -1,0 +1,28 @@
+{{define "content"}}
+<div class="md3-card-grid">
+	<div class="md3-card md3-card--elevated md3-stat-card">
+		<div class="md3-card__content">
+			<p class="md3-stat-label">Total Memories</p>
+			<p class="md3-stat-value">{{.Data.TotalMemories}}</p>
+		</div>
+	</div>
+	<div class="md3-card md3-card--elevated md3-stat-card">
+		<div class="md3-card__content">
+			<p class="md3-stat-label">Total Users</p>
+			<p class="md3-stat-value">{{.Data.TotalUsers}}</p>
+		</div>
+	</div>
+	<div class="md3-card md3-card--elevated md3-stat-card">
+		<div class="md3-card__content">
+			<p class="md3-stat-label">Total Messages</p>
+			<p class="md3-stat-value">{{.Data.TotalMessages}}</p>
+		</div>
+	</div>
+	<div class="md3-card md3-card--elevated md3-stat-card">
+		<div class="md3-card__content">
+			<p class="md3-stat-label">Uptime</p>
+			<p class="md3-stat-value">{{formatDuration .Data.Uptime}}</p>
+		</div>
+	</div>
+</div>
+{{end}}

@@ -3,6 +3,7 @@ package web
 
 import (
 	"context"
+	"crypto/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,23 +17,25 @@ import (
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
 	"ezyapper/internal/plugin"
-
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
 )
 
 // Server provides the WebUI HTTP server and API endpoints for bot management.
 type Server struct {
-	router           *gin.Engine
+	router           http.Handler
 	configStore      *atomic.Value // stores *config.Config
 	memoryStore      memory.MemoryStore
 	profileStore     memory.ProfileStore
 	consolidationMgr memory.ConsolidationManager
 	pluginManager    *plugin.Manager
 	server           *http.Server
+	sessionStore     *SessionStore
+	csrfSecret       []byte
+	runtimeApplier   RuntimeConfigApplier
+	toolRefresher    PluginToolRefresher
 	mu               sync.RWMutex
 	startTime        time.Time
 	discordFetcher   DiscordMessageFetcher
+	discordInfo      DiscordInfoProvider
 	webDir           string
 }
 
@@ -42,6 +45,14 @@ func (s *Server) cfg() *config.Config {
 
 type DiscordMessageFetcher interface {
 	FetchUserMessages(ctx context.Context, channelID string, userID string, limit int) ([]*memory.DiscordMessage, error)
+}
+
+// DiscordInfoProvider provides read-only access to Discord metadata (channel names, user names, guild names).
+// All methods are non-blocking — they read from Discord's in-memory state cache only.
+type DiscordInfoProvider interface {
+	GetChannelName(channelID string) string
+	GetUserName(guildID, userID string) string
+	GetGuildName(guildID string) string
 }
 
 type RuntimeConfigApplier interface {
@@ -68,7 +79,8 @@ func findWebDir() string {
 	}
 
 	for _, dir := range candidates {
-		if _, err := os.Stat(filepath.Join(dir, "index.html")); err == nil {
+		staticDir := filepath.Join(dir, "static")
+		if info, err := os.Stat(staticDir); err == nil && info.IsDir() {
 			return dir
 		}
 	}
@@ -76,36 +88,75 @@ func findWebDir() string {
 	return "./web"
 }
 
-// NewServer creates a new web server with the given stores and plugin manager.
-func NewServer(cfgStore *atomic.Value, memStore memory.MemoryStore, profileStore memory.ProfileStore, conMgr memory.ConsolidationManager, pluginManager *plugin.Manager, discordFetcher DiscordMessageFetcher) *Server {
-	cfg := cfgStore.Load().(*config.Config)
-	if cfg.Logging.Level == "debug" {
-		gin.SetMode(gin.DebugMode)
-	} else {
-		gin.SetMode(gin.ReleaseMode)
+func findTemplateDir() string {
+	candidates := []string{
+		"./internal/web/templates",
+		"../internal/web/templates",
+		"../../internal/web/templates",
+		"./templates",
 	}
 
-	router := gin.New()
-	router.Use(gin.Recovery())
-	router.Use(gin.Logger())
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		candidates = append(candidates,
+			filepath.Join(exeDir, "internal", "web", "templates"),
+			filepath.Join(exeDir, "templates"),
+		)
+	}
 
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
+	for _, dir := range candidates {
+		layoutsDir := filepath.Join(dir, "layouts")
+		if info, err := os.Stat(layoutsDir); err == nil && info.IsDir() {
+			return dir
+		}
+	}
 
-	router.Use(func(c *gin.Context) {
-		c.Header("X-Frame-Options", "DENY")
-		c.Header("X-Content-Type-Options", "nosniff")
-		c.Header("X-XSS-Protection", "1; mode=block")
-		c.Next()
-	})
+	return "./internal/web/templates"
+}
+
+func findStaticDir() string {
+	candidates := []string{
+		"./internal/web/static",
+		"../internal/web/static",
+		"./web/static",
+		"./static",
+	}
+
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		candidates = append(candidates,
+			filepath.Join(exeDir, "internal", "web", "static"),
+			filepath.Join(exeDir, "static"),
+		)
+	}
+
+	for _, dir := range candidates {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			return dir
+		}
+	}
+
+	return "./internal/web/static"
+}
+
+// NewServer creates a new web server with the given stores, plugin manager, and Discord info provider.
+func NewServer(cfgStore *atomic.Value, memStore memory.MemoryStore, profileStore memory.ProfileStore, conMgr memory.ConsolidationManager, pluginManager *plugin.Manager, discordFetcher DiscordMessageFetcher, discordInfo DiscordInfoProvider) *Server {
+	// Extract optional interfaces from the concrete implementations passed in
+	var runtimeApplier RuntimeConfigApplier
+	if ra, ok := discordFetcher.(RuntimeConfigApplier); ok {
+		runtimeApplier = ra
+	}
+	var toolRefresher PluginToolRefresher
+	if tr, ok := discordFetcher.(PluginToolRefresher); ok {
+		toolRefresher = tr
+	}
+
+	csrfSecret := make([]byte, 32)
+	if _, err := rand.Read(csrfSecret); err != nil {
+		logger.Fatalf("[web] failed to generate CSRF secret: %v", err)
+	}
 
 	server := &Server{
-		router:           router,
 		configStore:      cfgStore,
 		memoryStore:      memStore,
 		profileStore:     profileStore,
@@ -113,7 +164,12 @@ func NewServer(cfgStore *atomic.Value, memStore memory.MemoryStore, profileStore
 		pluginManager:    pluginManager,
 		startTime:        time.Now(),
 		discordFetcher:   discordFetcher,
+		discordInfo:      discordInfo,
 		webDir:           findWebDir(),
+		sessionStore:     NewSessionStore(),
+		csrfSecret:       csrfSecret,
+		runtimeApplier:   runtimeApplier,
+		toolRefresher:    toolRefresher,
 	}
 
 	server.setupRoutes()
@@ -121,62 +177,72 @@ func NewServer(cfgStore *atomic.Value, memStore memory.MemoryStore, profileStore
 	return server
 }
 
-func (s *Server) setupRoutes() {
-	s.router.GET("/health", s.healthCheck)
-
-	api := s.router.Group("/api", s.basicAuth())
-	{
-		api.GET("/config", s.getConfig)
-		api.PUT("/config", s.updateConfig)
-
-		api.GET("/config/discord", s.getDiscordConfig)
-		api.PUT("/config/discord", s.updateDiscordConfig)
-
-		api.GET("/config/ai", s.getAIConfig)
-		api.PUT("/config/ai", s.updateAIConfig)
-
-		api.GET("/blacklist", s.getBlacklist)
-		api.POST("/blacklist", s.addToBlacklist)
-		api.DELETE("/blacklist/:type/:id", s.removeFromBlacklist)
-
-		api.GET("/whitelist", s.getWhitelist)
-		api.POST("/whitelist", s.addToWhitelist)
-		api.DELETE("/whitelist/:type/:id", s.removeFromWhitelist)
-
-		api.GET("/memories/:userID", s.getMemories)
-		api.GET("/memories/:userID/search", s.searchMemories)
-		api.DELETE("/memories/:userID/:id", s.deleteMemory)
-		api.DELETE("/memories/:userID", s.clearMemories)
-
-		api.GET("/profiles/:userID", s.getProfile)
-		api.PUT("/profiles/:userID", s.updateProfile)
-		api.DELETE("/profiles/:userID", s.deleteProfile)
-
-		api.POST("/consolidate/:userID", s.triggerConsolidation)
-
-		api.GET("/logs", s.getLogs)
-
-		api.GET("/plugins", s.listPlugins)
-		api.POST("/plugins/:name/enable", s.enablePlugin)
-		api.POST("/plugins/:name/disable", s.disablePlugin)
-
-		api.GET("/stats", s.getStats)
-		api.GET("/stats/:userID", s.getUserStats)
-	}
-
-	s.router.Static("/static", filepath.Join(s.webDir, "static"))
-	s.router.StaticFile("/", filepath.Join(s.webDir, "index.html"))
-	s.router.StaticFile("/favicon.ico", filepath.Join(s.webDir, "favicon.ico"))
-
-	s.router.NoRoute(func(c *gin.Context) {
-		c.File(filepath.Join(s.webDir, "index.html"))
+// securityHeaders wraps an http.Handler to inject security-related HTTP headers.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		next.ServeHTTP(w, r)
 	})
 }
 
-func (s *Server) basicAuth() gin.HandlerFunc {
-	return gin.BasicAuth(gin.Accounts{
-		s.cfg().Web.Username: s.cfg().Web.Password,
-	})
+func (s *Server) setupRoutes() {
+	mux := http.NewServeMux()
+
+	tmpl, err := LoadTemplates(findTemplateDir())
+	if err != nil {
+		logger.Fatalf("[web] Failed to load templates: %v", err)
+	}
+	ts := tmpl
+
+	// Static files
+	staticDir := findStaticDir()
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
+
+	// Auth routes (excluded from session requirement via SessionMiddleware)
+	mux.HandleFunc("/login", LoginHandler(s.sessionStore, s.cfg().Web.Username, s.cfg().Web.Password, ts.Login()))
+	mux.HandleFunc("/logout", LogoutHandler(s.sessionStore))
+
+	// Dashboard
+	stats := NewStatsProvider(s.memoryStore, s.profileStore)
+	mux.HandleFunc("/", DashboardHandler(stats, s.startTime, ts))
+
+	// Configuration
+	mux.HandleFunc("/config", ConfigHandler(s.configStore, ts, s.runtimeApplier))
+
+	// Channels (exact + sub-paths for blacklist/whitelist CRUD)
+	chHandler := ChannelsHandler(s.configStore, s.discordInfo, ts)
+	mux.HandleFunc("/channels", chHandler)
+	mux.HandleFunc("/channels/blacklist/add", chHandler)
+	mux.HandleFunc("/channels/blacklist/remove", chHandler)
+	mux.HandleFunc("/channels/whitelist/add", chHandler)
+	mux.HandleFunc("/channels/whitelist/remove", chHandler)
+
+	// Memories
+	memHandler := MemoriesHandler(s.memoryStore, ts)
+	mux.HandleFunc("/memories", memHandler)
+	mux.HandleFunc("/memories/delete", memHandler)
+
+	// Profiles
+	profHandler := ProfilesHandler(s.profileStore, ts)
+	mux.HandleFunc("/profiles", profHandler)
+	mux.HandleFunc("/profiles/update", profHandler)
+
+	// Plugins
+	plugHandler := PluginsHandler(s.pluginManager, s.toolRefresher, ts)
+	mux.HandleFunc("/plugins", plugHandler)
+	mux.HandleFunc("/plugins/toggle", plugHandler)
+
+	// Logs
+	mux.HandleFunc("/logs", LogsHandler(s.cfg().Logging.File, ts))
+
+	// Chain middleware: Security → CSRF → Session → mux
+	s.router = Chain(mux,
+		securityHeaders,
+		CSRFMiddleware(s.csrfSecret),
+		SessionMiddleware(s.sessionStore),
+	)
 }
 
 // Start begins listening on the configured port. No-op if web is disabled.
@@ -216,11 +282,4 @@ func (s *Server) Stop(ctx context.Context) error {
 
 	logger.Info("Stopping web server...")
 	return s.server.Shutdown(ctx)
-}
-
-func (s *Server) healthCheck(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"status":    "ok",
-		"timestamp": time.Now().Unix(),
-	})
 }

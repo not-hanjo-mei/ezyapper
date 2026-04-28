@@ -1,0 +1,15 @@
+{{define "form_field"}}
+<div class="md3-form-field{{if .Error}} md3-form-field--error{{end}}">
+	<label class="md3-form-field__label" for="field_{{.Name}}">{{.Label}}{{if .Required}} <span class="md3-form-field__required">*</span>{{end}}</label>
+	{{if eq .Type "textarea"}}
+	<textarea id="field_{{.Name}}" name="{{.Name}}" class="md3-text-field" {{if .Placeholder}}placeholder="{{.Placeholder}}"{{end}} {{if .Required}}required{{end}} rows="{{or .Rows 4}}">{{.Value}}</textarea>
+	{{else if eq .Type "select"}}
+	<select id="field_{{.Name}}" name="{{.Name}}" class="md3-select" {{if .Required}}required{{end}}>
+		{{if .Options}}{{range .Options}}<option value="{{.Value}}"{{if eq .Value $.Value}} selected{{end}}>{{.Label}}</option>{{end}}{{end}}
+	</select>
+	{{else}}
+	<input id="field_{{.Name}}" name="{{.Name}}" type="{{or .Type "text"}}" class="md3-text-field" value="{{.Value}}" {{if .Placeholder}}placeholder="{{.Placeholder}}"{{end}} {{if .Step}}step="{{.Step}}"{{end}} {{if .Required}}required{{end}}>
+	{{end}}
+	{{if .Error}}<span class="md3-form-field__error">{{.Error}}</span>{{end}}
+</div>
+{{end}}

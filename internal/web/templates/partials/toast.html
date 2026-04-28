@@ -1,0 +1,6 @@
+{{define "toast"}}
+<div class="md3-toast md3-toast--{{.Type}}" role="alert">
+	<span class="material-symbols-outlined">{{if eq .Type "success"}}check_circle{{else if eq .Type "error"}}error{{else if eq .Type "warning"}}warning{{else}}info{{end}}</span>
+	<span class="md3-toast__message">{{.Message}}</span>
+</div>
+{{end}}

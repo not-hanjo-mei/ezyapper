@@ -1,0 +1,45 @@
+{{define "content"}}
+{{if .Data.Plugins}}
+<div class="plugin-grid">
+	{{range .Data.Plugins}}
+	<div class="md3-card md3-card--elevated plugin-card">
+		<div class="md3-card__content plugin-card__content">
+			<div class="plugin-card__header">
+				<h3 class="plugin-card__name">{{.Name}}</h3>
+				<span class="md3-chip plugin-card__version">{{.Version}}</span>
+			</div>
+			<p class="plugin-card__description">{{.Description}}</p>
+			<div class="plugin-card__meta">
+				<span>{{.Author}}</span>
+				<span>Priority: {{.Priority}}</span>
+			</div>
+			<div class="plugin-card__actions">
+				{{if .Enabled}}
+				<span class="md3-chip md3-chip--enabled">Enabled</span>
+				{{else}}
+				<span class="md3-chip md3-chip--disabled">Disabled</span>
+				{{end}}
+				<form method="POST" action="/plugins/toggle" style="margin: 0;">
+					<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+					<input type="hidden" name="name" value="{{.Name}}">
+					{{if .Enabled}}
+					<input type="hidden" name="action" value="disable">
+					<button type="submit" class="md3-btn md3-btn--text md3-btn--danger">Disable</button>
+					{{else}}
+					<input type="hidden" name="action" value="enable">
+					<button type="submit" class="md3-btn md3-btn--filled">Enable</button>
+					{{end}}
+				</form>
+			</div>
+		</div>
+	</div>
+	{{end}}
+</div>
+{{else}}
+<div class="md3-empty-state">
+	<span class="md3-empty-state__icon material-symbols-outlined">extension</span>
+	<p class="md3-empty-state__title">No plugins installed</p>
+	<p class="md3-empty-state__description">Add plugins to plugins_dir in config.yaml.</p>
+</div>
+{{end}}
+{{end}}

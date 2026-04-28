@@ -1,0 +1,59 @@
+{{define "content"}}
+<div class="md3-card-grid--wide">
+	<div class="md3-card md3-card--elevated">
+		<div class="md3-card__content">
+			<h2 class="md3-section-title">Blacklist</h2>
+			<p class="md3-body-medium md3-text-muted md3-mb-16">
+				Blocked users, channels, and guilds are ignored by the bot.
+			</p>
+
+			{{template "channelSubsection" dict "Title" "Users" "Type" "user" "Entries" .Data.Blacklist.Users "CSRFToken" $.CSRFToken "Prefix" "blacklist"}}
+			{{template "channelSubsection" dict "Title" "Channels" "Type" "channel" "Entries" .Data.Blacklist.Channels "CSRFToken" $.CSRFToken "Prefix" "blacklist"}}
+			{{template "channelSubsection" dict "Title" "Guilds" "Type" "guild" "Entries" .Data.Blacklist.Guilds "CSRFToken" $.CSRFToken "Prefix" "blacklist"}}
+		</div>
+	</div>
+
+	<div class="md3-card md3-card--elevated">
+		<div class="md3-card__content">
+			<h2 class="md3-section-title">Whitelist</h2>
+			<p class="md3-body-medium md3-text-muted md3-mb-16">
+				Whitelisted users, channels, and guilds override the blacklist.
+			</p>
+
+			{{template "channelSubsection" dict "Title" "Users" "Type" "user" "Entries" .Data.Whitelist.Users "CSRFToken" $.CSRFToken "Prefix" "whitelist"}}
+			{{template "channelSubsection" dict "Title" "Channels" "Type" "channel" "Entries" .Data.Whitelist.Channels "CSRFToken" $.CSRFToken "Prefix" "whitelist"}}
+			{{template "channelSubsection" dict "Title" "Guilds" "Type" "guild" "Entries" .Data.Whitelist.Guilds "CSRFToken" $.CSRFToken "Prefix" "whitelist"}}
+		</div>
+	</div>
+</div>
+{{end}}
+
+{{define "channelSubsection"}}
+<div class="channel-subsection">
+	<h3 class="md3-config-section-title">{{.Title}}</h3>
+	{{if .Entries}}
+	{{range .Entries}}
+	<div class="channel-item">
+		<div>
+			<span>{{.Name}}</span>
+			<span class="channel-item__id">({{.ID}})</span>
+		</div>
+		<form method="POST" action="/channels/{{$.Prefix}}/remove" style="display: inline; margin: 0;">
+			<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+			<input type="hidden" name="type" value="{{.Type}}">
+			<input type="hidden" name="id" value="{{.ID}}">
+			<button type="submit" class="md3-btn md3-btn--text md3-btn--danger">Remove</button>
+		</form>
+	</div>
+	{{end}}
+	{{else}}
+	<p class="md3-body-medium md3-text-muted">No entries.</p>
+	{{end}}
+	<form method="POST" action="/channels/{{.Prefix}}/add" class="channel-add-form">
+		<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+		<input type="hidden" name="type" value="{{.Type}}">
+		<input type="text" name="id" placeholder="Enter {{.Type}} ID" class="md3-text-field" required>
+		<button type="submit" class="md3-btn md3-btn--filled">Add</button>
+	</form>
+</div>
+{{end}}

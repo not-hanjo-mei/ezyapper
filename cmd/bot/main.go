@@ -80,7 +80,7 @@ func main() {
 	}
 
 	// Initialize web server
-	webServer := web.NewServer(cfgStore, memoryService, memoryService, memoryService, pluginManager, discordBot)
+	webServer := web.NewServer(cfgStore, memoryService, memoryService, memoryService, pluginManager, discordBot, web.NewDiscordAdapter(discordBot.GetSession()))
 	if err := webServer.Start(); err != nil {
 		logger.Warnf("Failed to start web server: %v", err)
 	}

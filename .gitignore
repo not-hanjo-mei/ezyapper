@@ -53,9 +53,8 @@ temp.json
 test-image.png
 build.ps1
 
-# Local tool/runtime scratch
-.sisyphus/
-
 # AI
 AGENTS.md
 README_FIELDTEST.md
+.*/
+!.github/

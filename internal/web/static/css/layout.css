@@ -1,0 +1,488 @@
+/**
+ * Material Design 3 Application Shell & Layout
+ * Responsive layout with MD3 breakpoints
+ * 
+ * Breakpoints:
+ * - Compact: < 600px (mobile)
+ * - Medium: 600px - 839px (tablet portrait)
+ * - Expanded: 840px - 1199px (tablet landscape / small desktop)
+ * - Large: 1200px - 1599px (desktop)
+ * - Extra Large: >= 1600px (large desktop)
+ * 
+ * @link https://m3.material.io/foundations/layout/applying-layout
+ */
+
+/* ============================================
+   APP SHELL (.md3-app)
+   ============================================ */
+.md3-app {
+	display: flex;
+	min-height: 100vh;
+	background-color: var(--md-sys-color-surface);
+	color: var(--md-sys-color-on-surface);
+}
+
+.md3-sidebar {
+	flex-shrink: 0;
+}
+
+.md3-main {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	min-height: 100vh;
+	transition: margin-left var(--md-sys-motion-duration-medium) var(--md-sys-motion-easing-standard);
+}
+
+.md3-sidebar-toggle {
+	display: none;
+}
+
+.md3-sidebar-toggle-label {
+	display: none;
+}
+
+.md3-sidebar-overlay {
+	display: none;
+}
+
+/* ============================================
+   PAGE HEADER (.md3-page-header)
+   ============================================ */
+.md3-page-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 24px;
+	gap: 16px;
+	flex-wrap: wrap;
+}
+
+.md3-page-header__title {
+	font: var(--md-sys-typescale-headline-medium-weight) var(--md-sys-typescale-headline-medium-size) / var(--md-sys-typescale-headline-medium-line-height) var(--md-sys-typescale-font-family);
+	color: var(--md-sys-color-on-surface);
+	margin: 0 0 24px 0;
+}
+
+.md3-page-header__actions {
+	display: flex;
+	gap: 8px;
+}
+
+/* ============================================
+   CARD GRID (.md3-card-grid)
+   ============================================ */
+.md3-card-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+	gap: 16px;
+}
+
+.md3-card-grid--dense {
+	grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+	gap: 12px;
+}
+
+.md3-card-grid--wide {
+	grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+	gap: 24px;
+}
+
+/* ============================================
+   FORM LAYOUT (.md3-form)
+   ============================================ */
+.md3-form {
+	max-width: 640px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.md3-form--wide {
+	max-width: 900px;
+}
+
+.md3-form__section {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.md3-form__row {
+	display: flex;
+	gap: 16px;
+}
+
+.md3-form__row > * {
+	flex: 1;
+}
+
+.md3-form__actions {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+	margin-top: 8px;
+	padding-top: 16px;
+	border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+/* ============================================
+   CONTAINER (.md3-container)
+   ============================================ */
+.md3-container {
+	width: 100%;
+	max-width: 1200px;
+	margin: 0 auto;
+	padding: 0 24px;
+}
+
+.md3-container--narrow {
+	max-width: 640px;
+}
+
+.md3-container--wide {
+	max-width: 1400px;
+}
+
+.md3-container--full {
+	max-width: none;
+}
+
+/* ============================================
+   RESPONSIVE BREAKPOINTS
+   MD3: compact <600, medium 600-839, expanded 840-1199, large 1200-1600
+   ============================================ */
+
+@media (max-width: 599px) {
+	.md3-app {
+		flex-direction: column;
+	}
+
+	.md3-sidebar-toggle-label {
+		display: flex;
+		position: fixed;
+		top: 12px;
+		left: 12px;
+		z-index: 1001;
+		width: 48px;
+		height: 48px;
+		align-items: center;
+		justify-content: center;
+		background: var(--md-sys-color-surface-container);
+		border-radius: var(--md-sys-shape-corner-full);
+		cursor: pointer;
+		box-shadow: var(--md-sys-elevation-level2);
+		color: var(--md-sys-color-on-surface);
+	}
+
+	.md3-sidebar-toggle-label:hover {
+		background: var(--md-sys-color-surface-container-high);
+	}
+
+	.md3-sidebar-toggle-label .material-symbols-outlined {
+		font-size: 24px;
+	}
+
+	.md3-sidebar {
+		position: fixed;
+		left: -240px;
+		top: 0;
+		height: 100vh;
+		width: 240px;
+		z-index: 1000;
+		transition: left var(--md-sys-motion-duration-medium) var(--md-sys-motion-easing-decelerate);
+		box-shadow: var(--md-sys-elevation-level3);
+	}
+
+	.md3-sidebar-toggle:checked ~ .md3-sidebar {
+		left: 0;
+	}
+
+	.md3-sidebar-overlay {
+		display: block;
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0.5);
+		z-index: 999;
+		opacity: 0;
+		visibility: hidden;
+		pointer-events: none;
+		transition: opacity var(--md-sys-motion-duration-short) var(--md-sys-motion-easing-standard), visibility var(--md-sys-motion-duration-short);
+	}
+
+	.md3-sidebar-toggle:checked ~ .md3-sidebar-overlay {
+		opacity: 1;
+		visibility: visible;
+		pointer-events: auto;
+		cursor: pointer;
+	}
+
+	.md3-main {
+		margin-left: 0;
+		padding: 24px;
+		padding-top: 72px;
+	}
+
+	.md3-page-header {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 12px;
+	}
+
+	.md3-page-header__actions {
+		width: 100%;
+		justify-content: flex-end;
+	}
+
+	.md3-form__row {
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.md3-card-grid,
+	.md3-card-grid--dense,
+	.md3-card-grid--wide {
+		grid-template-columns: 1fr;
+	}
+
+	.md3-container {
+		padding: 0 16px;
+	}
+}
+
+@media (min-width: 600px) and (max-width: 839px) {
+	.md3-sidebar {
+		width: 240px;
+	}
+
+	.md3-main {
+		margin-left: 240px;
+		padding: 24px;
+	}
+
+	.md3-sidebar-toggle-label,
+	.md3-sidebar-overlay {
+		display: none !important;
+	}
+
+	.md3-card-grid {
+		grid-template-columns: repeat(2, 1fr);
+	}
+
+	.md3-card-grid--dense {
+		grid-template-columns: repeat(2, 1fr);
+	}
+
+	.md3-card-grid--wide {
+		grid-template-columns: repeat(2, 1fr);
+	}
+}
+
+@media (min-width: 840px) and (max-width: 1199px) {
+	.md3-sidebar {
+		width: 240px;
+	}
+
+	.md3-main {
+		margin-left: 240px;
+		padding: 24px;
+	}
+
+	.md3-sidebar-toggle-label,
+	.md3-sidebar-overlay {
+		display: none !important;
+	}
+
+	.md3-card-grid {
+		grid-template-columns: repeat(3, 1fr);
+	}
+
+	.md3-card-grid--dense {
+		grid-template-columns: repeat(3, 1fr);
+	}
+
+	.md3-card-grid--wide {
+		grid-template-columns: repeat(2, 1fr);
+	}
+}
+
+@media (min-width: 1200px) and (max-width: 1599px) {
+	.md3-sidebar {
+		width: 240px;
+	}
+
+	.md3-main {
+		margin-left: 240px;
+		padding: 24px;
+	}
+
+	.md3-sidebar-toggle-label,
+	.md3-sidebar-overlay {
+		display: none !important;
+	}
+
+	.md3-card-grid {
+		grid-template-columns: repeat(4, 1fr);
+	}
+
+	.md3-card-grid--dense {
+		grid-template-columns: repeat(4, 1fr);
+	}
+
+	.md3-card-grid--wide {
+		grid-template-columns: repeat(3, 1fr);
+	}
+}
+
+@media (min-width: 1600px) {
+	.md3-sidebar {
+		width: 240px;
+	}
+
+	.md3-main {
+		margin-left: 240px;
+		padding: 24px;
+	}
+
+	.md3-sidebar-toggle-label,
+	.md3-sidebar-overlay {
+		display: none !important;
+	}
+
+	.md3-card-grid {
+		grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+	}
+
+	.md3-card-grid--dense {
+		grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+	}
+
+	.md3-card-grid--wide {
+		grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+	}
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+/* Visibility */
+.md3-hidden {
+	display: none !important;
+}
+
+.md3-visible {
+	display: block !important;
+}
+
+.md3-sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+/* Margins */
+.md3-m-0 { margin: 0; }
+.md3-m-4 { margin: 4px; }
+.md3-m-8 { margin: 8px; }
+.md3-m-12 { margin: 12px; }
+.md3-m-16 { margin: 16px; }
+.md3-m-24 { margin: 24px; }
+
+.md3-mt-0 { margin-top: 0; }
+.md3-mt-4 { margin-top: 4px; }
+.md3-mt-8 { margin-top: 8px; }
+.md3-mt-12 { margin-top: 12px; }
+.md3-mt-16 { margin-top: 16px; }
+.md3-mt-24 { margin-top: 24px; }
+
+.md3-mb-0 { margin-bottom: 0; }
+.md3-mb-4 { margin-bottom: 4px; }
+.md3-mb-8 { margin-bottom: 8px; }
+.md3-mb-12 { margin-bottom: 12px; }
+.md3-mb-16 { margin-bottom: 16px; }
+.md3-mb-24 { margin-bottom: 24px; }
+
+/* Padding */
+.md3-p-0 { padding: 0; }
+.md3-p-4 { padding: 4px; }
+.md3-p-8 { padding: 8px; }
+.md3-p-12 { padding: 12px; }
+.md3-p-16 { padding: 16px; }
+.md3-p-24 { padding: 24px; }
+
+/* Flexbox utilities */
+.md3-flex { display: flex; }
+.md3-flex-col { flex-direction: column; }
+.md3-flex-row { flex-direction: row; }
+.md3-flex-wrap { flex-wrap: wrap; }
+.md3-flex-nowrap { flex-wrap: nowrap; }
+.md3-items-center { align-items: center; }
+.md3-items-start { align-items: flex-start; }
+.md3-items-end { align-items: flex-end; }
+.md3-justify-center { justify-content: center; }
+.md3-justify-between { justify-content: space-between; }
+.md3-justify-end { justify-content: flex-end; }
+.md3-gap-4 { gap: 4px; }
+.md3-gap-8 { gap: 8px; }
+.md3-gap-12 { gap: 12px; }
+.md3-gap-16 { gap: 16px; }
+.md3-gap-24 { gap: 24px; }
+
+/* Text alignment */
+.md3-text-left { text-align: left; }
+.md3-text-center { text-align: center; }
+.md3-text-right { text-align: right; }
+
+/* Text truncation */
+.md3-truncate {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Full width */
+.md3-w-full { width: 100%; }
+
+/* ============================================
+   SCROLLBAR STYLING
+   ============================================ */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+::-webkit-scrollbar-track {
+	background-color: var(--md-sys-color-surface-container-lowest);
+}
+
+::-webkit-scrollbar-thumb {
+	background-color: var(--md-sys-color-outline-variant);
+	border-radius: var(--md-sys-shape-corner-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background-color: var(--md-sys-color-outline);
+}
+
+/* ============================================
+   FOCUS & SELECTION
+   ============================================ */
+*:focus-visible {
+	outline: 2px solid var(--md-sys-color-primary);
+	outline-offset: 2px;
+}
+
+::selection {
+	background-color: var(--md-sys-color-primary-container);
+	color: var(--md-sys-color-on-primary-container);
+}

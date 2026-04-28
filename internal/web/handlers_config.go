@@ -1,291 +1,220 @@
 package web
 
 import (
+	"encoding/base64"
 	"net/http"
+	"strconv"
+	"sync/atomic"
 
 	"ezyapper/internal/config"
-
-	"github.com/gin-gonic/gin"
 )
 
-func (s *Server) saveConfigOrError(c *gin.Context, cfg *config.Config) bool {
-	if err := cfg.Save(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to persist config: " + err.Error()})
-		return false
-	}
+func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier RuntimeConfigApplier) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
 
-	return true
-}
+		switch r.Method {
+		case http.MethodGet:
+			cfg := cfgStore.Load().(*config.Config)
+			data := cfg
+			csrfToken := CSRFTokenFromContext(ctx)
+			flash := flashFromCookie(r)
 
-func (s *Server) applyRuntimeConfigOrError(c *gin.Context) bool {
-	updater, ok := s.discordFetcher.(RuntimeConfigApplier)
-	if !ok || updater == nil {
-		return true
-	}
-
-	if err := updater.ApplyRuntimeConfig(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to apply runtime config: " + err.Error()})
-		return false
-	}
-
-	return true
-}
-
-func (s *Server) getConfig(c *gin.Context) {
-	cfg := s.cfg()
-	c.JSON(http.StatusOK, gin.H{
-		"discord": gin.H{
-			"bot_name":         cfg.Discord.BotName,
-			"reply_percentage": cfg.Discord.ReplyPercentage,
-			"cooldown_seconds": cfg.Discord.CooldownSeconds,
-		},
-		"ai": gin.H{
-			"model":         cfg.AI.Model,
-			"vision_model":  cfg.AI.VisionModel,
-			"vision_base64": cfg.AI.VisionBase64,
-			"max_tokens":    cfg.AI.MaxTokens,
-			"temperature":   cfg.AI.Temperature,
-			"vision": gin.H{
-				"mode":               cfg.AI.Vision.Mode,
-				"description_prompt": cfg.AI.Vision.DescriptionPrompt,
-				"max_images":         cfg.AI.Vision.MaxImages,
-			},
-		},
-		"memory": gin.H{
-			"consolidation_interval": cfg.Memory.ConsolidationInterval,
-			"short_term_limit":       cfg.Memory.ShortTermLimit,
-			"retrieval": gin.H{
-				"top_k":     cfg.Memory.Retrieval.TopK,
-				"min_score": cfg.Memory.Retrieval.MinScore,
-			},
-		},
-		"web": gin.H{
-			"port": cfg.Web.Port,
-		},
-	})
-}
-
-func (s *Server) updateConfig(c *gin.Context) {
-	var updates map[string]any
-	if err := c.ShouldBindJSON(&updates); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	oldCfg := s.cfg()
-	newCfg := *oldCfg
-
-	updatedSections := []string{}
-
-	if discordUpdates, ok := updates["discord"].(map[string]any); ok {
-		if name, ok := discordUpdates["bot_name"].(string); ok && name != "" {
-			newCfg.Discord.BotName = name
-		}
-		if replyPct, ok := discordUpdates["reply_percentage"].(float64); ok {
-			newCfg.Discord.ReplyPercentage = replyPct
-		}
-		if cooldown, ok := discordUpdates["cooldown_seconds"].(float64); ok {
-			newCfg.Discord.CooldownSeconds = int(cooldown)
-		}
-		if maxResp, ok := discordUpdates["max_responses_per_minute"].(float64); ok {
-			newCfg.Discord.MaxResponsesPerMin = int(maxResp)
-		}
-		updatedSections = append(updatedSections, "discord")
-	}
-
-	if aiUpdates, ok := updates["ai"].(map[string]any); ok {
-		if model, ok := aiUpdates["model"].(string); ok && model != "" {
-			newCfg.AI.Model = model
-		}
-		if visionModel, ok := aiUpdates["vision_model"].(string); ok && visionModel != "" {
-			newCfg.AI.VisionModel = visionModel
-		}
-		if visionBase64, ok := aiUpdates["vision_base64"].(bool); ok {
-			newCfg.AI.VisionBase64 = visionBase64
-		}
-		if maxTokens, ok := aiUpdates["max_tokens"].(float64); ok {
-			newCfg.AI.MaxTokens = int(maxTokens)
-		}
-		if temp, ok := aiUpdates["temperature"].(float64); ok {
-			newCfg.AI.Temperature = float32(temp)
-		}
-
-		if visionUpdates, ok := aiUpdates["vision"].(map[string]any); ok {
-			if mode, ok := visionUpdates["mode"].(string); ok && mode != "" {
-				newCfg.AI.Vision.Mode = config.VisionMode(mode)
+			navItems := []NavItem{
+				{Label: "Dashboard", Href: "/", Icon: "dashboard"},
+				{Label: "Configuration", Href: "/config", Icon: "settings", Active: true},
+				{Label: "Memories", Href: "/memories", Icon: "memory"},
+				{Label: "Profiles", Href: "/profiles", Icon: "person"},
+				{Label: "Channels", Href: "/channels", Icon: "forum"},
+				{Label: "Plugins", Href: "/plugins", Icon: "extension"},
+				{Label: "Logs", Href: "/logs", Icon: "description"},
 			}
-			if descPrompt, ok := visionUpdates["description_prompt"].(string); ok {
-				newCfg.AI.Vision.DescriptionPrompt = descPrompt
+
+			RenderPage(w, ts, "config", &PageData{
+				Title:        "Configuration",
+				ActiveNav:    "config",
+				CSRFToken:    csrfToken,
+				Flash:        flash,
+				Data:         data,
+				NavItems:  navItems,
+			})
+
+		case http.MethodPost:
+			if err := r.ParseForm(); err != nil {
+				renderConfigError(w, r, ts, cfgStore, "Failed to parse form data")
+				return
 			}
-			if maxImages, ok := visionUpdates["max_images"].(float64); ok {
-				newCfg.AI.Vision.MaxImages = int(maxImages)
+
+			oldCfg := cfgStore.Load().(*config.Config)
+			newCfg := *oldCfg
+
+			if v := r.FormValue("bot_name"); v != "" {
+				newCfg.Discord.BotName = v
 			}
+			if v := r.FormValue("reply_percentage"); v != "" {
+				if pct, err := strconv.ParseFloat(v, 64); err == nil {
+					newCfg.Discord.ReplyPercentage = pct / 100.0
+				}
+			}
+			if v := r.FormValue("cooldown_seconds"); v != "" {
+				if sec, err := strconv.Atoi(v); err == nil {
+					newCfg.Discord.CooldownSeconds = sec
+				}
+			}
+			if v := r.FormValue("max_responses_per_minute"); v != "" {
+				if max, err := strconv.Atoi(v); err == nil {
+					newCfg.Discord.MaxResponsesPerMin = max
+				}
+			}
+
+			if v := r.FormValue("model"); v != "" {
+				newCfg.AI.Model = v
+			}
+			if v := r.FormValue("vision_model"); v != "" {
+				newCfg.AI.VisionModel = v
+			}
+			if v := r.FormValue("max_tokens"); v != "" {
+				if tok, err := strconv.Atoi(v); err == nil {
+					newCfg.AI.MaxTokens = tok
+				}
+			}
+			if v := r.FormValue("temperature"); v != "" {
+				if temp, err := strconv.ParseFloat(v, 32); err == nil {
+					newCfg.AI.Temperature = float32(temp)
+				}
+			}
+			if v := r.FormValue("system_prompt"); v != "" {
+				newCfg.AI.SystemPrompt = v
+			}
+
+			if v := r.FormValue("vision_mode"); v != "" {
+				newCfg.AI.Vision.Mode = config.VisionMode(v)
+			}
+			if v := r.FormValue("vision_description_prompt"); v != "" {
+				newCfg.AI.Vision.DescriptionPrompt = v
+			}
+			if v := r.FormValue("vision_max_images"); v != "" {
+				if max, err := strconv.Atoi(v); err == nil {
+					newCfg.AI.Vision.MaxImages = max
+				}
+			}
+
+			if v := r.FormValue("consolidation_interval"); v != "" {
+				if val, err := strconv.Atoi(v); err == nil {
+					newCfg.Memory.ConsolidationInterval = val
+				}
+			}
+			if v := r.FormValue("short_term_limit"); v != "" {
+				if val, err := strconv.Atoi(v); err == nil {
+					newCfg.Memory.ShortTermLimit = val
+				}
+			}
+			if v := r.FormValue("retrieval_top_k"); v != "" {
+				if val, err := strconv.Atoi(v); err == nil {
+					newCfg.Memory.Retrieval.TopK = val
+				}
+			}
+			if v := r.FormValue("retrieval_min_score"); v != "" {
+				if val, err := strconv.ParseFloat(v, 64); err == nil {
+					newCfg.Memory.Retrieval.MinScore = val
+				}
+			}
+
+			// Validate FIRST — before any persistence
+			if err := config.Validate(&newCfg); err != nil {
+				http.Error(w, "Validation failed: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			// Save to YAML AFTER validation passes
+			if err := newCfg.Save(); err != nil {
+				http.Error(w, "Failed to save config: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			cfgStore.Store(&newCfg)
+
+			flashMsg := "Settings saved successfully"
+			flashType := "success"
+			if runtimeApplier != nil {
+				if err := runtimeApplier.ApplyRuntimeConfig(); err != nil {
+					cfgStore.Store(oldCfg) // rollback: restore previous config in memory
+					flashMsg = "Settings saved but runtime apply failed"
+					flashType = "warning"
+				}
+			}
+
+			setFlashCookie(w, flashType, flashMsg)
+			http.Redirect(w, r, "/config", http.StatusSeeOther)
+
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
+	}
+}
 
-		if prompt, ok := aiUpdates["system_prompt"].(string); ok {
-			newCfg.AI.SystemPrompt = prompt
-		}
-		updatedSections = append(updatedSections, "ai")
+func renderConfigError(w http.ResponseWriter, r *http.Request, ts *TemplateSet, cfgStore *atomic.Value, message string) {
+	cfg := cfgStore.Load().(*config.Config)
+	ctx := r.Context()
+	csrfToken := CSRFTokenFromContext(ctx)
+
+	navItems := []NavItem{
+		{Label: "Dashboard", Href: "/", Icon: "dashboard"},
+		{Label: "Configuration", Href: "/config", Icon: "settings", Active: true},
+		{Label: "Memories", Href: "/memories", Icon: "memory"},
+		{Label: "Profiles", Href: "/profiles", Icon: "person"},
+		{Label: "Channels", Href: "/channels", Icon: "forum"},
+		{Label: "Plugins", Href: "/plugins", Icon: "extension"},
+		{Label: "Logs", Href: "/logs", Icon: "description"},
 	}
 
-	if memoryUpdates, ok := updates["memory"].(map[string]any); ok {
-		if interval, ok := memoryUpdates["consolidation_interval"].(float64); ok {
-			newCfg.Memory.ConsolidationInterval = int(interval)
-		}
-		if limit, ok := memoryUpdates["short_term_limit"].(float64); ok {
-			newCfg.Memory.ShortTermLimit = int(limit)
-		}
-		updatedSections = append(updatedSections, "memory")
-	}
-
-	if err := config.Validate(&newCfg); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid config update: " + err.Error()})
-		return
-	}
-
-	s.configStore.Store(&newCfg)
-
-	if !s.applyRuntimeConfigOrError(c) {
-		s.configStore.Store(oldCfg)
-		return
-	}
-
-	if !s.saveConfigOrError(c, &newCfg) {
-		s.configStore.Store(oldCfg)
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message":          "config updated",
-		"updated_sections": updatedSections,
+	RenderPage(w, ts, "config", &PageData{
+		Title:        "Configuration",
+		ActiveNav:    "config",
+		CSRFToken:    csrfToken,
+		Flash: &FlashMessage{
+			Type:    "error",
+			Message: message,
+		},
+		Data:         cfg,
+		NavItems:  navItems,
 	})
 }
 
-func (s *Server) getDiscordConfig(c *gin.Context) {
-	cfg := s.cfg()
-	c.JSON(http.StatusOK, gin.H{
-		"bot_name":                 cfg.Discord.BotName,
-		"reply_percentage":         cfg.Discord.ReplyPercentage,
-		"cooldown_seconds":         cfg.Discord.CooldownSeconds,
-		"max_responses_per_minute": cfg.Discord.MaxResponsesPerMin,
+func setFlashCookie(w http.ResponseWriter, flashType, message string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "flash_type",
+		Value:    flashType,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   60,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     "flash_msg",
+		Value:    base64.URLEncoding.EncodeToString([]byte(message)),
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   60,
 	})
 }
 
-func (s *Server) updateDiscordConfig(c *gin.Context) {
-	var updates struct {
-		BotName            string   `json:"bot_name"`
-		ReplyPercentage    *float64 `json:"reply_percentage"`
-		CooldownSeconds    *int     `json:"cooldown_seconds"`
-		MaxResponsesPerMin *int     `json:"max_responses_per_minute"`
+func flashFromCookie(r *http.Request) *FlashMessage {
+	typeCookie, err := r.Cookie("flash_type")
+	if err != nil {
+		return nil
 	}
-
-	if err := c.ShouldBindJSON(&updates); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+	msgCookie, err := r.Cookie("flash_msg")
+	if err != nil {
+		return nil
 	}
-
-	oldCfg := s.cfg()
-	newCfg := *oldCfg
-
-	if updates.BotName != "" {
-		newCfg.Discord.BotName = updates.BotName
+	msgBytes, err := base64.URLEncoding.DecodeString(msgCookie.Value)
+	if err != nil {
+		return nil
 	}
-	if updates.ReplyPercentage != nil {
-		newCfg.Discord.ReplyPercentage = *updates.ReplyPercentage
+	return &FlashMessage{
+		Type:    typeCookie.Value,
+		Message: string(msgBytes),
 	}
-	if updates.CooldownSeconds != nil {
-		newCfg.Discord.CooldownSeconds = *updates.CooldownSeconds
-	}
-	if updates.MaxResponsesPerMin != nil {
-		newCfg.Discord.MaxResponsesPerMin = *updates.MaxResponsesPerMin
-	}
-
-	if err := config.Validate(&newCfg); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid config update: " + err.Error()})
-		return
-	}
-
-	s.configStore.Store(&newCfg)
-
-	if !s.applyRuntimeConfigOrError(c) {
-		s.configStore.Store(oldCfg)
-		return
-	}
-
-	if !s.saveConfigOrError(c, &newCfg) {
-		s.configStore.Store(oldCfg)
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "discord config updated",
-		"config":  newCfg.Discord,
-	})
-}
-
-func (s *Server) getAIConfig(c *gin.Context) {
-	cfg := s.cfg()
-	c.JSON(http.StatusOK, gin.H{
-		"model":         cfg.AI.Model,
-		"vision_model":  cfg.AI.VisionModel,
-		"max_tokens":    cfg.AI.MaxTokens,
-		"temperature":   cfg.AI.Temperature,
-		"system_prompt": cfg.AI.SystemPrompt,
-	})
-}
-
-func (s *Server) updateAIConfig(c *gin.Context) {
-	var updates struct {
-		Model        string   `json:"model"`
-		VisionModel  string   `json:"vision_model"`
-		MaxTokens    *int     `json:"max_tokens"`
-		Temperature  *float32 `json:"temperature"`
-		SystemPrompt string   `json:"system_prompt"`
-	}
-
-	if err := c.ShouldBindJSON(&updates); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	oldCfg := s.cfg()
-	newCfg := *oldCfg
-
-	if updates.Model != "" {
-		newCfg.AI.Model = updates.Model
-	}
-	if updates.VisionModel != "" {
-		newCfg.AI.VisionModel = updates.VisionModel
-	}
-	if updates.MaxTokens != nil {
-		newCfg.AI.MaxTokens = *updates.MaxTokens
-	}
-	if updates.Temperature != nil {
-		newCfg.AI.Temperature = *updates.Temperature
-	}
-	if updates.SystemPrompt != "" {
-		newCfg.AI.SystemPrompt = updates.SystemPrompt
-	}
-
-	if err := config.Validate(&newCfg); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid config update: " + err.Error()})
-		return
-	}
-
-	s.configStore.Store(&newCfg)
-
-	if !s.applyRuntimeConfigOrError(c) {
-		s.configStore.Store(oldCfg)
-		return
-	}
-
-	if !s.saveConfigOrError(c, &newCfg) {
-		s.configStore.Store(oldCfg)
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "ai config updated",
-		"config":  newCfg.AI,
-	})
 }

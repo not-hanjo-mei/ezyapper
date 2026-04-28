@@ -1,0 +1,94 @@
+{{define "login"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>{{.Title}} — EZyapper</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,1..1000&amp;family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&amp;family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&amp;display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="/static/css/md3-tokens.css">
+	<link rel="stylesheet" href="/static/css/md3-components.css">
+	<link rel="stylesheet" href="/static/css/layout.css">
+	<link rel="icon" href="/static/favicon.ico" type="image/svg+xml">
+	<style>
+		.md3-login-page {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			min-height: 100vh;
+			background: var(--md-sys-color-surface);
+			padding: 16px;
+		}
+		.md3-login-card {
+			width: 100%;
+			max-width: 400px;
+			border-radius: var(--md-sys-shape-corner-large);
+		}
+		.md3-login__header {
+			text-align: center;
+			margin-bottom: 24px;
+		}
+		.md3-login__logo {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 56px;
+			height: 56px;
+			border-radius: var(--md-sys-shape-corner-medium);
+			background: var(--md-sys-color-primary-container);
+			color: var(--md-sys-color-on-primary-container);
+			font-weight: 700;
+			font-size: 24px;
+			margin-bottom: 16px;
+		}
+		.md3-login__title {
+			margin: 0;
+			font: var(--md-sys-typescale-headline-medium-weight) var(--md-sys-typescale-headline-medium-size) / var(--md-sys-typescale-headline-medium-line-height) var(--md-sys-typescale-font-family);
+			color: var(--md-sys-color-on-surface);
+		}
+		.md3-login__subtitle {
+			margin: 8px 0 0;
+			font: var(--md-sys-typescale-body-medium-weight) var(--md-sys-typescale-body-medium-size) / var(--md-sys-typescale-body-medium-line-height) var(--md-sys-typescale-font-family);
+			color: var(--md-sys-color-on-surface-variant);
+		}
+		.md3-login__form .md3-form-field {
+			margin-bottom: 16px;
+		}
+		.md3-login__form .md3-btn {
+			width: 100%;
+			margin-top: 8px;
+		}
+	</style>
+</head>
+<body>
+	<div class="md3-login-page">
+		<div class="md3-card md3-card--outlined md3-login-card">
+			<div class="md3-card__content">
+				<div class="md3-login__header">
+					<span class="md3-login__logo">EZ</span>
+					<h1 class="md3-login__title">EZyapper</h1>
+					<p class="md3-login__subtitle">WebUI Management</p>
+				</div>
+				{{if .Flash}}
+				<div class="md3-toast md3-toast--{{.Flash.Type}}" role="alert">
+					<span>{{.Flash.Message}}</span>
+				</div>
+				{{end}}
+				<form method="POST" action="/login" class="md3-login__form">
+					<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+					<div class="md3-form-field">
+						<label class="md3-form-field__label" for="field_username">Username</label>
+						<input id="field_username" name="username" type="text" class="md3-text-field" required autofocus>
+					</div>
+					<div class="md3-form-field">
+						<label class="md3-form-field__label" for="field_password">Password</label>
+						<input id="field_password" name="password" type="password" class="md3-text-field" required>
+					</div>
+					<button type="submit" class="md3-btn md3-btn--filled">Login</button>
+				</form>
+			</div>
+		</div>
+	</div>
+</body>
+</html>{{end}}

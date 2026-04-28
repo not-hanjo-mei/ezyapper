@@ -1,0 +1,30 @@
+{{define "sidebar"}}
+<input type="checkbox" id="sidebar-toggle" class="md3-sidebar-toggle" aria-label="Toggle navigation">
+<label for="sidebar-toggle" class="md3-sidebar-toggle-label" aria-label="Toggle sidebar">
+	<span class="material-symbols-outlined">menu</span>
+</label>
+<label for="sidebar-toggle" class="md3-sidebar-overlay" aria-label="Close sidebar"></label>
+<nav class="md3-sidebar" role="navigation" aria-label="Main navigation">
+	<div class="md3-sidebar__brand">
+		<span class="md3-sidebar__logo">EZ</span>
+		<span class="md3-sidebar__title">EZyapper</span>
+	</div>
+	<div class="md3-sidebar__nav">
+		{{range .NavItems}}
+		<a href="{{.Href}}" class="md3-nav-item{{if .Active}} md3-nav-item--active{{end}}"{{if .Active}} aria-current="page"{{end}}>
+			<span class="material-symbols-outlined md3-nav-item__icon">{{.Icon}}</span>
+			<span class="md3-nav-item__label">{{.Label}}</span>
+		</a>
+		{{end}}
+	</div>
+	<div class="md3-sidebar__footer">
+		<form action="/logout" method="POST" style="margin: 0;">
+			<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+			<button type="submit" class="md3-btn md3-btn--text md3-sidebar__logout" style="width: 100%; justify-content: flex-start;">
+				<span class="material-symbols-outlined md3-nav-item__icon">logout</span>
+				<span class="md3-nav-item__label">Logout</span>
+			</button>
+		</form>
+	</div>
+</nav>
+{{end}}

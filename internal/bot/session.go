@@ -339,6 +339,36 @@ func (b *Bot) GetDiscordClient() *memory.ShortTermClient {
 	return b.discordClient
 }
 
+// GetChannelName returns the name of a Discord channel, or the channelID if not found.
+func (b *Bot) GetChannelName(channelID string) string {
+	ch, err := b.GetChannel(channelID)
+	if err != nil {
+		return channelID
+	}
+	return ch.Name
+}
+
+// GetUserName returns the display name of a guild member, or the userID if not found.
+func (b *Bot) GetUserName(guildID, userID string) string {
+	member, err := b.GetMember(guildID, userID)
+	if err != nil {
+		return userID
+	}
+	if member.Nick != "" {
+		return member.Nick
+	}
+	return member.User.Username
+}
+
+// GetGuildName returns the name of a guild, or the guildID if not found.
+func (b *Bot) GetGuildName(guildID string) string {
+	guild, err := b.GetGuild(guildID)
+	if err != nil {
+		return guildID
+	}
+	return guild.Name
+}
+
 // GetGuild retrieves guild information
 func (b *Bot) GetGuild(guildID string) (*discordgo.Guild, error) {
 	// Try state cache first

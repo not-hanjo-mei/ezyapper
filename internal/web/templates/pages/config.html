@@ -1,0 +1,104 @@
+{{define "content"}}
+<form method="POST" action="/config" class="md3-form md3-form--wide">
+	<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+	<div class="md3-tabs" role="tablist">
+		<button type="button" class="md3-tab md3-tab--active" role="tab" data-tab="discord">Discord</button>
+		<button type="button" class="md3-tab" role="tab" data-tab="ai">AI</button>
+		<button type="button" class="md3-tab" role="tab" data-tab="vision">Vision</button>
+		<button type="button" class="md3-tab" role="tab" data-tab="memory">Memory</button>
+		<button type="button" class="md3-tab" role="tab" data-tab="ratelimit">Rate Limit</button>
+		<button type="button" class="md3-tab" role="tab" data-tab="mcp">MCP</button>
+	</div>
+
+	<div class="md3-tab-panel md3-tab-panel--active" id="tab-discord">
+		<div class="md3-card md3-card--outlined md3-mb-16">
+			<div class="md3-card__content">
+				<h3 class="md3-config-section-title">Discord Settings</h3>
+				{{template "form_field" (dict "Label" "Bot Name" "Name" "bot_name" "Type" "text" "Value" .Data.Discord.BotName "Required" true)}}
+				{{template "form_field" (dict "Label" "Reply Percentage (%)" "Name" "reply_percentage" "Type" "number" "Value" (multiply .Data.Discord.ReplyPercentage 100) "Required" true)}}
+				{{template "form_field" (dict "Label" "Cooldown (seconds)" "Name" "cooldown_seconds" "Type" "number" "Value" .Data.Discord.CooldownSeconds)}}
+				{{template "form_field" (dict "Label" "Max Responses/Minute" "Name" "max_responses_per_minute" "Type" "number" "Value" .Data.Discord.MaxResponsesPerMin)}}
+			</div>
+		</div>
+	</div>
+
+	<div class="md3-tab-panel" id="tab-ai">
+		<div class="md3-card md3-card--outlined md3-mb-16">
+			<div class="md3-card__content">
+				<h3 class="md3-config-section-title">AI Settings</h3>
+				{{template "form_field" (dict "Label" "Model" "Name" "model" "Type" "text" "Value" .Data.AI.Model "Required" true)}}
+				{{template "form_field" (dict "Label" "Vision Model" "Name" "vision_model" "Type" "text" "Value" .Data.AI.VisionModel)}}
+				{{template "form_field" (dict "Label" "Max Tokens" "Name" "max_tokens" "Type" "number" "Value" .Data.AI.MaxTokens)}}
+				{{template "form_field" (dict "Label" "Temperature" "Name" "temperature" "Type" "number" "Value" .Data.AI.Temperature "Placeholder" "0.8")}}
+				{{template "form_field" (dict "Label" "System Prompt" "Name" "system_prompt" "Type" "textarea" "Value" .Data.AI.SystemPrompt "Rows" 6)}}
+			</div>
+		</div>
+	</div>
+
+	<div class="md3-tab-panel" id="tab-vision">
+		<div class="md3-card md3-card--outlined md3-mb-16">
+			<div class="md3-card__content">
+				<h3 class="md3-config-section-title">Vision Settings</h3>
+				{{template "form_field" (dict "Label" "Vision Mode" "Name" "vision_mode" "Type" "select" "Value" .Data.AI.Vision.Mode "Options" (list (dict "Value" "text_only" "Label" "Text Only") (dict "Value" "hybrid" "Label" "Hybrid") (dict "Value" "multimodal" "Label" "Multimodal")) )}}
+				{{template "form_field" (dict "Label" "Description Prompt" "Name" "vision_description_prompt" "Type" "textarea" "Value" .Data.AI.Vision.DescriptionPrompt "Rows" 3)}}
+				{{template "form_field" (dict "Label" "Max Images" "Name" "vision_max_images" "Type" "number" "Value" .Data.AI.Vision.MaxImages)}}
+			</div>
+		</div>
+	</div>
+
+	<div class="md3-tab-panel" id="tab-memory">
+		<div class="md3-card md3-card--outlined md3-mb-16">
+			<div class="md3-card__content">
+				<h3 class="md3-config-section-title">Memory Settings</h3>
+				{{template "form_field" (dict "Label" "Consolidation Interval (messages)" "Name" "consolidation_interval" "Type" "number" "Value" .Data.Memory.ConsolidationInterval)}}
+				{{template "form_field" (dict "Label" "Short Term Memory Limit" "Name" "short_term_limit" "Type" "number" "Value" .Data.Memory.ShortTermLimit)}}
+				{{template "form_field" (dict "Label" "Retrieval Top-K" "Name" "retrieval_top_k" "Type" "number" "Value" .Data.Memory.Retrieval.TopK)}}
+				{{template "form_field" (dict "Label" "Min Score (0.0-1.0)" "Name" "retrieval_min_score" "Type" "number" "Value" .Data.Memory.Retrieval.MinScore "Placeholder" "0.0" "Step" "0.01")}}
+			</div>
+		</div>
+	</div>
+
+	<div class="md3-tab-panel" id="tab-ratelimit">
+		<div class="md3-card md3-card--outlined md3-mb-16">
+			<div class="md3-card__content">
+				<h3 class="md3-config-section-title">Rate Limit Configuration</h3>
+				<p class="md3-body-medium md3-text-muted md3-mb-16">Rate limit settings are read-only. Edit config.yaml directly to make changes.</p>
+				<table class="md3-table">
+					<tr><th>Setting</th><th>Value</th></tr>
+					<tr><td>Cooldown (seconds)</td><td>{{.Data.Discord.CooldownSeconds}}</td></tr>
+					<tr><td>Max Responses/Minute</td><td>{{.Data.Discord.MaxResponsesPerMin}}</td></tr>
+				</table>
+			</div>
+		</div>
+	</div>
+
+	<div class="md3-tab-panel" id="tab-mcp">
+		<div class="md3-card md3-card--outlined md3-mb-16">
+			<div class="md3-card__content">
+				<h3 class="md3-config-section-title">MCP Servers</h3>
+				<p class="md3-body-medium md3-text-muted md3-mb-16">MCP server configuration is managed via config.yaml. Restart required for changes.</p>
+				{{if .Data.MCP.Servers}}
+				<table class="md3-table">
+					<thead><tr><th>Name</th><th>Type</th><th>Command / URL</th></tr></thead>
+					<tbody>
+					{{range .Data.MCP.Servers}}
+					<tr><td>{{.Name}}</td><td>{{.Type}}</td><td>{{or .Command .URL}}</td></tr>
+					{{end}}
+					</tbody>
+				</table>
+				{{else}}
+				<div class="md3-empty-state">
+					<span class="md3-empty-state__icon material-symbols-outlined">dns</span>
+					<p class="md3-empty-state__title">No MCP servers configured</p>
+				</div>
+				{{end}}
+			</div>
+		</div>
+	</div>
+
+	<div class="md3-form__actions">
+		<button type="submit" class="md3-btn md3-btn--filled">Save Settings</button>
+	</div>
+</form>
+{{end}}
