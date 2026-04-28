@@ -86,7 +86,7 @@
 
 .md3-card-grid--wide {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+	grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
 	gap: 24px;
 }
 
@@ -264,10 +264,6 @@
 
 	.md3-form {
 		max-width: 100%;
-	}
-
-	.md3-tabs {
-		touch-action: pan-y;
 	}
 
 	.md3-tab {
