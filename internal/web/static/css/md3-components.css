@@ -769,12 +769,13 @@ textarea.md3-text-field {
 
 /* Table (.md3-table) */
 .md3-table {
+	display: block;
+	overflow-x: auto;
 	width: 100%;
 	border-collapse: separate;
 	border-spacing: 0;
 	background-color: var(--md-sys-color-surface-container-low);
 	border-radius: var(--md-sys-shape-corner-medium);
-	overflow: hidden;
 }
 
 .md3-table__header {
@@ -822,6 +823,15 @@ textarea.md3-text-field {
 	gap: 8px;
 	border-bottom: 1px solid var(--md-sys-color-outline-variant);
 	margin-bottom: 24px;
+	overflow-x: auto;
+	flex-wrap: nowrap;
+	scrollbar-width: none; /* Firefox */
+	-ms-overflow-style: none; /* IE/Edge */
+}
+
+/* Hide scrollbar on .md3-tabs for WebKit browsers */
+.md3-tabs::-webkit-scrollbar {
+	display: none;
 }
 
 /* Individual tab button */

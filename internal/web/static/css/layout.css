@@ -79,11 +79,13 @@
 }
 
 .md3-card-grid--dense {
+	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
 	gap: 12px;
 }
 
 .md3-card-grid--wide {
+	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
 	gap: 24px;
 }
@@ -164,19 +166,51 @@
 		top: 12px;
 		left: 12px;
 		z-index: 1001;
-		width: 48px;
-		height: 48px;
+		width: 56px;
+		height: 56px;
 		align-items: center;
 		justify-content: center;
-		background: var(--md-sys-color-surface-container);
-		border-radius: var(--md-sys-shape-corner-full);
+		background-color: var(--md-sys-color-surface-container-high);
+		border-radius: var(--md-sys-shape-corner-large);
 		cursor: pointer;
-		box-shadow: var(--md-sys-elevation-level2);
-		color: var(--md-sys-color-on-surface);
+		box-shadow: var(--md-sys-elevation-level3);
+		color: var(--md-sys-color-primary);
+		overflow: hidden;
+		transition: left var(--md-sys-motion-duration-medium) var(--md-sys-motion-easing-standard),
+		            box-shadow var(--md-sys-motion-duration-short) var(--md-sys-motion-easing-standard);
+	}
+
+	/* State layer */
+	.md3-sidebar-toggle-label::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: currentColor;
+		opacity: 0;
+		border-radius: inherit;
+		transition: opacity var(--md-sys-motion-duration-short) var(--md-sys-motion-easing-standard);
 	}
 
 	.md3-sidebar-toggle-label:hover {
-		background: var(--md-sys-color-surface-container-high);
+		box-shadow: var(--md-sys-elevation-level4);
+	}
+
+	.md3-sidebar-toggle-label:hover::before {
+		opacity: 0.08;
+	}
+
+	.md3-sidebar-toggle-label:focus-visible::before,
+	.md3-sidebar-toggle-label:active::before {
+		opacity: 0.12;
+	}
+
+	.md3-sidebar-toggle-label:active {
+		box-shadow: var(--md-sys-elevation-level3);
+	}
+
+	/* Slide FAB off-screen when sidebar is open */
+	.md3-sidebar-toggle:checked ~ .md3-sidebar-toggle-label {
+		left: -72px;
 	}
 
 	.md3-sidebar-toggle-label .material-symbols-outlined {
@@ -224,6 +258,20 @@
 		margin-left: 0;
 		padding: 24px;
 		padding-top: 72px;
+		overflow-x: hidden;
+		overscroll-behavior-x: none;
+	}
+
+	.md3-form {
+		max-width: 100%;
+	}
+
+	.md3-tabs {
+		touch-action: pan-y;
+	}
+
+	.md3-tab {
+		padding: 14px 16px;
 	}
 
 	.md3-page-header {
