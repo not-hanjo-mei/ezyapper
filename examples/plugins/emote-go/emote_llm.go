@@ -96,8 +96,10 @@ func (c *EmoteLLMClient) Match(query string, emotes []EmoteEntry) ([]MatchResult
 
 func buildSystemPrompt() string {
 	return "You are a search engine for an emote library.\n" +
-		"Given a user's intent and a list of available emotes, find the best matches.\n" +
-		"Return ONLY a JSON object with the format specified below."
+		"Given a user's intent and a list of available emotes, find the best matches.\n\n" +
+		"Return JSON: {\"matches\":[{\"id\":\"MD5\",\"reason\":\"why this matches\"}],\"no_match\":false}\n" +
+		"If no emote matches, return {\"matches\":[],\"no_match\":true}\n" +
+		"Only return the JSON object, nothing else."
 }
 
 func buildUserPrompt(query string, emotes []EmoteEntry) string {
@@ -113,10 +115,7 @@ func buildUserPrompt(query string, emotes []EmoteEntry) string {
 		sb.WriteString(fmt.Sprintf("    <tags>%s</tags>\n", strings.Join(e.Tags, ", ")))
 		sb.WriteString("  </emote>\n")
 	}
-	sb.WriteString("</emotes>\n\n")
-	sb.WriteString("Return JSON: {\"matches\":[{\"id\":\"MD5\",\"reason\":\"why this matches\"}],\"no_match\":false}\n")
-	sb.WriteString("If no emote matches, return {\"matches\":[],\"no_match\":true}\n")
-	sb.WriteString("Only return the JSON object, nothing else.")
+	sb.WriteString("</emotes>")
 	return sb.String()
 }
 

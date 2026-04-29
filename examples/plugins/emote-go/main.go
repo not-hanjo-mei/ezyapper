@@ -44,6 +44,8 @@ func (p *EmotePlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
 		return true, nil
 	}
 
+	fmt.Fprintf(os.Stderr, "[EMOTE] OnMessage: %d attachments from channel=%s\n", len(msg.AttachmentURLs), msg.ChannelID)
+
 	guildID := msg.GuildID
 	if guildID == "" {
 		guildID = "global"
@@ -71,6 +73,7 @@ func (p *EmotePlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
 			CreatedAt: time.Now().Format(time.RFC3339),
 		}
 		_ = p.storage.AddEmote(guildID, entry)
+		fmt.Fprintf(os.Stderr, "[EMOTE] recorded URL: %s (guild=%s)\n", bare, guildID)
 	}
 
 	return true, nil
@@ -100,6 +103,7 @@ func (p *EmotePlugin) OnResponse(msg plugin.DiscordMessage, response string) err
 	} else {
 		_ = p.discord.SendMessage(msg.ChannelID, content)
 	}
+	fmt.Fprintf(os.Stderr, "[EMOTE] OnResponse: sent URL to channel=%s\n", msg.ChannelID)
 	return nil
 }
 
@@ -186,6 +190,8 @@ func (p *EmotePlugin) ExecuteTool(name string, args map[string]interface{}) (str
 			}
 		}
 
+		fmt.Fprintf(os.Stderr, "[EMOTE] search_emote: query=%q guild=%s emotes=%d\n", query, guildID, len(allEmotes))
+
 		if p.emoteLLM == nil {
 			return "", fmt.Errorf("emote LLM not configured")
 		}
@@ -194,6 +200,8 @@ func (p *EmotePlugin) ExecuteTool(name string, args map[string]interface{}) (str
 		if err != nil {
 			return "", fmt.Errorf("emote search failed: %w", err)
 		}
+		fmt.Fprintf(os.Stderr, "[EMOTE] search_emote: %d matches for %q\n", len(matches), query)
+
 		if len(matches) == 0 {
 			return "no matching emotes found", nil
 		}
@@ -274,6 +282,8 @@ func (p *EmotePlugin) ExecuteTool(name string, args map[string]interface{}) (str
 			p.sendQueue[p.lastChannelID] = sendContent
 		}
 		p.mu.Unlock()
+
+		fmt.Fprintf(os.Stderr, "[EMOTE] send_emote: %s -> channel=%s\n", entry.Name, p.lastChannelID)
 
 		return fmt.Sprintf("sent %s", entry.Name), nil
 
