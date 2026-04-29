@@ -4,7 +4,7 @@
 
 # Storage configuration
 storage:
-  data_dir: "data"  # relative to plugin directory
+  data_dir: "plugins/emote-go/data"  # relative to plugin directory
   max_image_size_kb: 512  # max image file size in KB
   allowed_formats: ["png", "jpg", "jpeg", "webp", "gif"]  # allowed image formats
 
