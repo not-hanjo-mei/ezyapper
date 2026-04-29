@@ -176,7 +176,7 @@ Wave FINAL（4 并行审查）:
   **Evidence**: task-2-structure.txt, task-2-config.txt
   **Commit**: `feat(emote-plugin): create plugin structure`
 
-- [ ] 3. 插件框架 + 配置加载
+- [x] 3. 插件框架 + 配置加载
 
   **What**: 实现 `Info/OnMessage/OnResponse/Shutdown`，`ListTools/ExecuteTool`，从 `EZYAPPER_PLUGIN_CONFIG` 加载配置
   **Category**: `unspecified-high` | **Parallel**: Wave 1 (with 1,2,4,5)
@@ -190,7 +190,7 @@ Wave FINAL（4 并行审查）:
   **Evidence**: task-3-info.txt, task-3-tools.txt
   **Commit**: `feat(emote-plugin): implement framework`
 
-- [ ] 4. 存储层
+- [x] 4. 存储层
 
   **What**: 原子写入（temp→rename），metadata.json 读写，SHA256去重，黑白名单检查，频率限制
   **Category**: `unspecified-high` | **Parallel**: Wave 1 (with 1-3,5)
