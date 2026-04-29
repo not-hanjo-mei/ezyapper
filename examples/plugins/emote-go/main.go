@@ -40,7 +40,7 @@ func (p *EmotePlugin) Info() (plugin.Info, error) {
 func (p *EmotePlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
 	p.lastChannelID = msg.ChannelID
 
-	if !p.config.AutoStealEnabled || p.storage == nil || len(msg.AttachmentURLs) == 0 {
+	if !p.config.AutoStealEnabled || p.storage == nil || len(msg.AttachmentURLs) == 0 || msg.IsBot {
 		return true, nil
 	}
 
