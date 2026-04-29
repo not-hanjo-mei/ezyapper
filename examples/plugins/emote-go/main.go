@@ -262,9 +262,6 @@ func (p *EmotePlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
 			FileName:    filepath.Base(filePath),
 			URL:         "",
 			Source:      "auto_steal",
-			AddedBy:     msg.AuthorID,
-			GuildID:     guildID,
-			ChannelID:   msg.ChannelID,
 			SHA256:      sha256Hash,
 			CreatedAt:   time.Now().Format(time.RFC3339),
 		}

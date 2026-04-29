@@ -173,9 +173,6 @@ is done by directly modifying the storage files on disk.
      "file_name": "my-emote.png",
      "url": "",
      "source": "file",
-     "added_by": "admin",
-     "guild_id": "<guild_id>",
-     "channel_id": "",
      "sha256": "<sha256-of-file>",
      "created_at": "2026-04-30T12:00:00+08:00"
    }
@@ -194,9 +191,6 @@ For emotes that only have a URL (no local file):
   "file_name": "",
   "url": "https://example.com/sad-cat.png",
   "source": "file",
-  "added_by": "admin",
-  "guild_id": "<guild_id>",
-  "channel_id": "",
   "sha256": "",
   "created_at": "2026-04-30T12:00:00+08:00"
 }
