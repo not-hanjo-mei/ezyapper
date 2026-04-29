@@ -43,12 +43,11 @@ func (c *EmoteLLMClient) Match(query string, emotes []EmoteEntry) ([]MatchResult
 		return nil, nil
 	}
 
-	prompt := buildSearchPrompt(query, emotes)
-
 	reqBody := map[string]interface{}{
 		"model": c.model,
 		"messages": []map[string]interface{}{
-			{"role": "user", "content": prompt},
+			{"role": "system", "content": buildSystemPrompt()},
+			{"role": "user", "content": buildUserPrompt(query, emotes)},
 		},
 		"max_tokens":  500,
 		"temperature": 0.1,
@@ -95,18 +94,28 @@ func (c *EmoteLLMClient) Match(query string, emotes []EmoteEntry) ([]MatchResult
 	return result.Matches, nil
 }
 
-func buildSearchPrompt(query string, emotes []EmoteEntry) string {
+func buildSystemPrompt() string {
+	return "You are a search engine for an emote library.\n" +
+		"Given a user's intent and a list of available emotes, find the best matches.\n" +
+		"Return ONLY a JSON object with the format specified below."
+}
+
+func buildUserPrompt(query string, emotes []EmoteEntry) string {
 	var sb strings.Builder
-	sb.WriteString("You are a search engine for an emote library.\n\n")
-	sb.WriteString(fmt.Sprintf("Find emotes matching this request: %q\n\n", query))
-	sb.WriteString("Available emotes:\n")
+	sb.WriteString("<request>")
+	sb.WriteString(query)
+	sb.WriteString("</request>\n\n")
+	sb.WriteString("<emotes>\n")
 	for _, e := range emotes {
-		sb.WriteString(fmt.Sprintf("- [%s] %s: %s (tags: %s)\n",
-			e.ID, e.Name, e.Description, strings.Join(e.Tags, ", ")))
+		sb.WriteString(fmt.Sprintf("  <emote id=\"%s\">\n", e.ID))
+		sb.WriteString(fmt.Sprintf("    <name>%s</name>\n", e.Name))
+		sb.WriteString(fmt.Sprintf("    <desc>%s</desc>\n", e.Description))
+		sb.WriteString(fmt.Sprintf("    <tags>%s</tags>\n", strings.Join(e.Tags, ", ")))
+		sb.WriteString("  </emote>\n")
 	}
-	sb.WriteString("\nReturn a JSON array of up to 5 most relevant matches:\n")
-	sb.WriteString(`{"matches":[{"id":"MD5_ID","reason":"why this matches"}],"no_match":false}`)
-	sb.WriteString("\n\nIf no emote matches, return {\"matches\":[], \"no_match\":true}\n")
+	sb.WriteString("</emotes>\n\n")
+	sb.WriteString("Return JSON: {\"matches\":[{\"id\":\"MD5\",\"reason\":\"why this matches\"}],\"no_match\":false}\n")
+	sb.WriteString("If no emote matches, return {\"matches\":[],\"no_match\":true}\n")
 	sb.WriteString("Only return the JSON object, nothing else.")
 	return sb.String()
 }
