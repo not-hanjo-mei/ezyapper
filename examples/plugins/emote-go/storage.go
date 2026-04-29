@@ -21,6 +21,7 @@ type EmoteEntry struct {
 	Description string   `json:"description"` // 1-2 sentence description
 	Tags        []string `json:"tags"`        // searchable tags
 	FileName    string   `json:"file_name"`   // filename on disk
+	URL         string   `json:"url,omitempty"` // image URL (for URL-only emotes, no local file)
 	Source      string   `json:"source"`      // "auto_steal" or "file"
 	AddedBy     string   `json:"added_by"`    // user ID who triggered
 	GuildID     string   `json:"guild_id"`    // guild or "global"

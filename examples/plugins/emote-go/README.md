@@ -152,6 +152,75 @@ plugins/emote-plugin/data/
 Each guild (or `"global"` for DMs) gets its own directory with atomic metadata
 writes (temp file + rename) to prevent corruption on crash.
 
+## Manual Management
+
+Since the plugin has no `add_emote` tool, adding, removing, or editing emotes
+is done by directly modifying the storage files on disk.
+
+### Adding a Local Image Emote
+
+1. Place the image file in the guild's `images/` directory:
+   ```
+   data/<guild_id>/images/my-emote.png
+   ```
+2. Add an entry to the guild's `metadata.json`:
+   ```json
+   {
+     "id": "550e8400-e29b-41d4-a716-446655440000",
+     "name": "my_emote",
+     "description": "A custom emote added manually",
+     "tags": ["custom", "manual"],
+     "file_name": "my-emote.png",
+     "url": "",
+     "source": "file",
+     "added_by": "admin",
+     "guild_id": "<guild_id>",
+     "channel_id": "",
+     "sha256": "<sha256-of-file>",
+     "created_at": "2026-04-30T12:00:00+08:00"
+   }
+   ```
+   Get SHA256: `sha256sum data/<guild_id>/images/my-emote.png`
+
+### Adding a URL Emote
+
+For emotes that only have a URL (no local file):
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440001",
+  "name": "sad_cat",
+  "description": "A sad cat reaction image",
+  "tags": ["cat", "sad", "cry"],
+  "file_name": "",
+  "url": "https://example.com/sad-cat.png",
+  "source": "file",
+  "added_by": "admin",
+  "guild_id": "<guild_id>",
+  "channel_id": "",
+  "sha256": "",
+  "created_at": "2026-04-30T12:00:00+08:00"
+}
+```
+Set `file_name` to `""` and `url` to the image URL. The plugin will skip the
+local file check for URL-only emotes.
+
+### Removing an Emote
+
+Delete the image file from `data/<guild_id>/images/` (if local), then remove the
+entry from `data/<guild_id>/metadata.json`.
+
+### Editing Metadata
+
+Edit `data/<guild_id>/metadata.json` directly — change `name`, `description`,
+or `tags` at any time. Changes take effect immediately.
+
+### Bulk Import
+
+```bash
+cp /path/to/emotes/*.png data/<guild_id>/images/
+# Then generate metadata.json entries for each file
+```
+
 ## Troubleshooting
 
 **Plugin doesn't appear in bot logs** — Check that `plugins_dir` is correct and

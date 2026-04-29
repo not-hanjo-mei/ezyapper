@@ -260,6 +260,7 @@ func (p *EmotePlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
 			Description: result.Description,
 			Tags:        result.Tags,
 			FileName:    filepath.Base(filePath),
+			URL:         "",
 			Source:      "auto_steal",
 			AddedBy:     msg.AuthorID,
 			GuildID:     guildID,
@@ -515,9 +516,12 @@ func (p *EmotePlugin) ExecuteTool(name string, args map[string]interface{}) (str
 			return "", fmt.Errorf("emote not found: id=%s name=%s", id, name)
 		}
 
-		filePath := filepath.Join(p.config.DataDir, guildID, "images", entry.FileName)
-		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			return "", fmt.Errorf("emote file not found on disk: %s", entry.FileName)
+		// Skip file check for URL-only emotes (no local file).
+		if entry.URL == "" {
+			filePath := filepath.Join(p.config.DataDir, guildID, "images", entry.FileName)
+			if _, err := os.Stat(filePath); os.IsNotExist(err) {
+				return "", fmt.Errorf("emote file not found on disk: %s", entry.FileName)
+			}
 		}
 
 		data, _ := json.MarshalIndent(entry, "", "  ")

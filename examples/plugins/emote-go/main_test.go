@@ -51,9 +51,9 @@ func TestListEmotes(t *testing.T) {
 	guildID := "global"
 
 	entries := []EmoteEntry{
-		{ID: "id-1", Name: "happy_cat", Description: "A happy cat", Tags: []string{"cat", "happy"}},
-		{ID: "id-2", Name: "sad_dog", Description: "A sad dog", Tags: []string{"dog", "sad"}},
-		{ID: "id-3", Name: "angry_bird", Description: "An angry bird", Tags: []string{"bird", "angry"}},
+		{ID: "id-1", Name: "happy_cat", Description: "A happy cat", Tags: []string{"cat", "happy"}, URL: ""},
+		{ID: "id-2", Name: "sad_dog", Description: "A sad dog", Tags: []string{"dog", "sad"}, URL: ""},
+		{ID: "id-3", Name: "angry_bird", Description: "An angry bird", Tags: []string{"bird", "angry"}, URL: ""},
 	}
 	addTestEmotes(t, p.storage, guildID, entries)
 
@@ -101,6 +101,7 @@ func TestListEmotes_Limit(t *testing.T) {
 		entry := EmoteEntry{
 			ID:   "id-" + string(rune('a'+i)),
 			Name: "emote_" + string(rune('a'+i)),
+			URL:  "",
 		}
 		if err := p.storage.AddEmote(guildID, entry); err != nil {
 			t.Fatalf("AddEmote failed: %v", err)
@@ -135,7 +136,7 @@ func TestListEmotes_Limit(t *testing.T) {
 func TestListEmotes_DefaultGuild(t *testing.T) {
 	p := newTestPlugin(t)
 
-	entry := EmoteEntry{ID: "global-only", Name: "global_emote"}
+	entry := EmoteEntry{ID: "global-only", Name: "global_emote", URL: ""}
 	if err := p.storage.AddEmote("global", entry); err != nil {
 		t.Fatalf("AddEmote failed: %v", err)
 	}
@@ -162,9 +163,9 @@ func TestSearchEmote(t *testing.T) {
 	guildID := "global"
 
 	entries := []EmoteEntry{
-		{ID: "s1", Name: "happy_cat", Description: "cat being happy", Tags: []string{"cat", "joy"}},
-		{ID: "s2", Name: "grumpy_cat", Description: "cat being grumpy", Tags: []string{"cat", "grumpy"}},
-		{ID: "s3", Name: "sad_dog", Description: "dog looking sad", Tags: []string{"dog", "sad"}},
+		{ID: "s1", Name: "happy_cat", Description: "cat being happy", Tags: []string{"cat", "joy"}, URL: ""},
+		{ID: "s2", Name: "grumpy_cat", Description: "cat being grumpy", Tags: []string{"cat", "grumpy"}, URL: ""},
+		{ID: "s3", Name: "sad_dog", Description: "dog looking sad", Tags: []string{"dog", "sad"}, URL: ""},
 	}
 	addTestEmotes(t, p.storage, guildID, entries)
 
@@ -224,7 +225,7 @@ func TestSearchEmote(t *testing.T) {
 func TestSearchEmote_NoMatch(t *testing.T) {
 	p := newTestPlugin(t)
 
-	entry := EmoteEntry{ID: "nm1", Name: "happy_cat", Tags: []string{"cat"}}
+	entry := EmoteEntry{ID: "nm1", Name: "happy_cat", Tags: []string{"cat"}, URL: ""}
 	addTestEmotes(t, p.storage, "global", []EmoteEntry{entry})
 
 	result, err := p.ExecuteTool("search_emote", map[string]interface{}{
@@ -270,6 +271,7 @@ func TestGetEmote_ByID(t *testing.T) {
 		Description: "A test emote",
 		Tags:        []string{"test", "sample"},
 		FileName:    fileName,
+		URL:         "",
 	}
 	addTestEmotes(t, p.storage, guildID, []EmoteEntry{entry})
 
@@ -308,6 +310,7 @@ func TestGetEmote_ByName(t *testing.T) {
 		Name:        "cool_frog",
 		Description: "A cool frog emote",
 		FileName:    fileName,
+		URL:         "",
 	}
 	addTestEmotes(t, p.storage, guildID, []EmoteEntry{entry})
 
@@ -362,6 +365,7 @@ func TestGetEmote_FileNotFound(t *testing.T) {
 		ID:       "file-missing-id",
 		Name:     "missing_file_emote",
 		FileName: "nonexistent.png",
+		URL:      "",
 	}
 	addTestEmotes(t, p.storage, guildID, []EmoteEntry{entry})
 
