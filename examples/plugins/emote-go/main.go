@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"ezyapper/internal/plugin"
@@ -14,9 +14,14 @@ import (
 
 // EmotePlugin is the main plugin struct.
 type EmotePlugin struct {
-	config  Config
-	storage *Storage
-	vision  *VisionClient
+	config     Config
+	storage    *Storage
+	vision     *VisionClient
+	emoteLLM   *EmoteLLMClient
+	cdnRefresh *CDNRefreshClient
+	discord    *DiscordSession
+	sendQueue  map[string]string
+	mu         sync.Mutex
 }
 
 // Info returns plugin metadata.
@@ -82,59 +87,39 @@ func (p *EmotePlugin) Shutdown() error {
 func (p *EmotePlugin) ListTools() ([]plugin.ToolSpec, error) {
 	return []plugin.ToolSpec{
 		{
-			Name:        "list_emotes",
-			Description: "List available emotes with optional filtering",
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"guild_id": map[string]interface{}{
-						"type":        "string",
-						"description": "Guild ID to filter emotes (empty = global emotes)",
-					},
-					"limit": map[string]interface{}{
-						"type":        "integer",
-						"description": "Maximum number of emotes to return (default 20, max 50)",
-					},
-				},
-			},
-		},
-		{
 			Name:        "search_emote",
-			Description: "Search for emotes by name, description, or tags",
+			Description: "Search for emotes by describing what you want",
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"query": map[string]interface{}{
 						"type":        "string",
-						"description": "Search query — matches against name, description, and tags",
+						"description": "What kind of emote the user wants (describe the emotion/situation)",
 					},
 					"guild_id": map[string]interface{}{
 						"type":        "string",
-						"description": "Guild ID to filter emotes",
-					},
-					"limit": map[string]interface{}{
-						"type":        "integer",
-						"description": "Maximum results (default 10, max 50)",
+						"description": "Guild ID to search (searches global + this guild)",
 					},
 				},
 				"required": []string{"query"},
 			},
 		},
 		{
-			Name:        "get_emote",
-			Description: "Get a specific emote by ID or name",
+			Name:        "send_emote",
+			Description: "Send an emote to the channel",
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"id": map[string]interface{}{
 						"type":        "string",
-						"description": "Emote ID (UUID) to look up",
+						"description": "Emote ID (MD5 hash) to send",
 					},
-					"name": map[string]interface{}{
+					"guild_id": map[string]interface{}{
 						"type":        "string",
-						"description": "Emote name to look up (alternative to id)",
+						"description": "Guild ID context",
 					},
 				},
+				"required": []string{"id"},
 			},
 		},
 	}, nil
@@ -143,168 +128,81 @@ func (p *EmotePlugin) ListTools() ([]plugin.ToolSpec, error) {
 // ExecuteTool dispatches tool calls by name.
 func (p *EmotePlugin) ExecuteTool(name string, args map[string]interface{}) (string, error) {
 	switch name {
-	case "list_emotes":
-		guildID, _ := args["guild_id"].(string)
-		if guildID == "" {
-			guildID = "global"
-		}
-		limit := 20
-		if l, ok := args["limit"].(float64); ok {
-			limit = int(l)
-		}
-		if limit > 50 {
-			limit = 50
-		}
-
-		mf, err := p.storage.LoadMetadata(guildID)
-		if err != nil {
-			return "", fmt.Errorf("failed to load emotes: %w", err)
-		}
-
-		end := limit
-		if end > len(mf.Emotes) {
-			end = len(mf.Emotes)
-		}
-
-		type EmoteSummary struct {
-			ID          string   `json:"id"`
-			Name        string   `json:"name"`
-			Description string   `json:"description"`
-			Tags        []string `json:"tags"`
-		}
-		summaries := make([]EmoteSummary, 0, end)
-		for i := 0; i < end; i++ {
-			e := mf.Emotes[i]
-			summaries = append(summaries, EmoteSummary{
-				ID: e.ID, Name: e.Name, Description: e.Description, Tags: e.Tags,
-			})
-		}
-		result := map[string]interface{}{
-			"emotes":   summaries,
-			"total":    len(mf.Emotes),
-			"guild_id": guildID,
-		}
-		data, _ := json.MarshalIndent(result, "", "  ")
-		return string(data), nil
-
 	case "search_emote":
-		query, _ := args["query"].(string)
-		if query == "" {
+		query, ok := args["query"].(string)
+		if !ok || query == "" {
 			return "", fmt.Errorf("query is required")
 		}
-		query = strings.ToLower(query)
 		guildID, _ := args["guild_id"].(string)
 		if guildID == "" {
 			guildID = "global"
 		}
-		limit := 10
-		if l, ok := args["limit"].(float64); ok {
-			limit = int(l)
-		}
-		if limit > 50 {
-			limit = 50
-		}
 
-		mf, err := p.storage.LoadMetadata(guildID)
+		// Load emotes from global + guild
+		global, err := p.storage.LoadMetadata("global")
 		if err != nil {
-			return "", fmt.Errorf("failed to search emotes: %w", err)
+			return "", fmt.Errorf("failed to load global emotes: %w", err)
+		}
+		guild, err := p.storage.LoadMetadata(guildID)
+		if err != nil {
+			return "", fmt.Errorf("failed to load guild emotes: %w", err)
 		}
 
+		// Merge and dedup by ID
+		allEmotes := global.Emotes
+		seen := make(map[string]bool)
+		for _, e := range global.Emotes {
+			seen[e.ID] = true
+		}
+		for _, e := range guild.Emotes {
+			if !seen[e.ID] {
+				allEmotes = append(allEmotes, e)
+				seen[e.ID] = true
+			}
+		}
+
+		if p.emoteLLM == nil {
+			return "", fmt.Errorf("emote LLM not configured")
+		}
+
+		matches, err := p.emoteLLM.Match(query, allEmotes)
+		if err != nil {
+			return "", fmt.Errorf("emote search failed: %w", err)
+		}
+		if len(matches) == 0 {
+			return "no matching emotes found", nil
+		}
+
+		// Build response with emote details
 		type SearchResult struct {
 			ID          string   `json:"id"`
 			Name        string   `json:"name"`
 			Description string   `json:"description"`
 			Tags        []string `json:"tags"`
-			Score       float64  `json:"score"`
+			Reason      string   `json:"reason"`
 		}
-
-		var results []SearchResult
-		for _, e := range mf.Emotes {
-			score := matchScore(query, e.Name, e.Description, e.Tags)
-			if score > 0 {
-				results = append(results, SearchResult{
-					ID: e.ID, Name: e.Name, Description: e.Description,
-					Tags: e.Tags, Score: score,
-				})
+		results := make([]SearchResult, 0, len(matches))
+		for _, m := range matches {
+			for _, e := range allEmotes {
+				if e.ID == m.ID {
+					results = append(results, SearchResult{
+						ID: e.ID, Name: e.Name, Description: e.Description,
+						Tags: e.Tags, Reason: m.Reason,
+					})
+					break
+				}
 			}
 		}
 
-		sort.Slice(results, func(i, j int) bool { return results[i].Score > results[j].Score })
-
-		if len(results) > limit {
-			results = results[:limit]
-		}
-
-		resp := map[string]interface{}{
-			"results":       results,
-			"query":         query,
-			"total_matches": len(results),
-		}
-		data, _ := json.MarshalIndent(resp, "", "  ")
+		data, _ := json.MarshalIndent(map[string]interface{}{"results": results}, "", "  ")
 		return string(data), nil
 
-	case "get_emote":
-		id, _ := args["id"].(string)
-		name, _ := args["name"].(string)
-
-		if id == "" && name == "" {
-			return "", fmt.Errorf("id or name is required")
-		}
-
-		guildID := "global"
-		mf, err := p.storage.LoadMetadata(guildID)
-		if err != nil {
-			return "", fmt.Errorf("failed to get emote: %w", err)
-		}
-
-		var entry *EmoteEntry
-		for i := range mf.Emotes {
-			e := &mf.Emotes[i]
-			if id != "" && e.ID == id {
-				entry = e
-				break
-			}
-			if name != "" && e.Name == name {
-				entry = e
-				break
-			}
-		}
-
-		if entry == nil {
-			return "", fmt.Errorf("emote not found: id=%s name=%s", id, name)
-		}
-
-		// Skip file check for URL-only emotes (no local file).
-		if entry.URL == "" {
-			filePath := filepath.Join(p.config.DataDir, guildID, "images", entry.FileName)
-			if _, err := os.Stat(filePath); os.IsNotExist(err) {
-				return "", fmt.Errorf("emote file not found on disk: %s", entry.FileName)
-			}
-		}
-
-		data, _ := json.MarshalIndent(entry, "", "  ")
-		return string(data), nil
+	case "send_emote":
+		return "", fmt.Errorf("send_emote not yet implemented")
 
 	default:
 		return "", fmt.Errorf("unknown tool: %s", name)
 	}
-}
-
-// matchScore computes a relevance score for an emote entry against a query.
-func matchScore(query, name, description string, tags []string) float64 {
-	var score float64
-	if strings.Contains(strings.ToLower(name), query) {
-		score += 3.0
-	}
-	if strings.Contains(strings.ToLower(description), query) {
-		score += 1.0
-	}
-	for _, t := range tags {
-		if strings.Contains(strings.ToLower(t), query) {
-			score += 1.5
-		}
-	}
-	return score
 }
 
 func detectFormat(url string) string {
@@ -348,6 +246,15 @@ func main() {
 			time.Duration(config.VisionTimeoutSeconds)*time.Second,
 		)
 	}
+	p.emoteLLM = NewEmoteLLMClient(
+		config.EmoteModel,
+		config.EmoteApiKey,
+		config.EmoteApiBaseURL,
+		15*time.Second,
+	)
+	p.cdnRefresh = NewCDNRefreshClient(config.DiscordToken)
+	p.discord = &DiscordSession{}
+	p.sendQueue = make(map[string]string)
 	if err := plugin.Serve(p); err != nil {
 		fmt.Fprintf(os.Stderr, "[EMOTE] Error: %v\n", err)
 		os.Exit(1)
