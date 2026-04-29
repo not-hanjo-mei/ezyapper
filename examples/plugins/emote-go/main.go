@@ -78,7 +78,7 @@ func loadConfig(configPath string) (Config, error) {
 	cfg := Config{
 		DataDir:                      "data",
 		MaxImageSizeKb:               512,
-		AllowedFormats:               []string{"png", "jpg", "jpeg", "webp"},
+		AllowedFormats:               []string{"png", "jpg", "jpeg", "webp", "gif"},
 		VisionApiBaseUrl:             "https://api.openai.com/v1",
 		VisionModel:                  "gpt-4o-mini",
 		VisionTimeoutSeconds:         30,

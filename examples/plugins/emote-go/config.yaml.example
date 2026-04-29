@@ -6,7 +6,7 @@
 storage:
   data_dir: "data"  # relative to plugin directory
   max_image_size_kb: 512  # max image file size in KB
-  allowed_formats: ["png", "jpg", "jpeg", "webp"]  # allowed image formats (gif excluded for v1)
+  allowed_formats: ["png", "jpg", "jpeg", "webp", "gif"]  # allowed image formats
 
 # Vision Model configuration
 vision:

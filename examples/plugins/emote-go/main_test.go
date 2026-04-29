@@ -18,7 +18,7 @@ func newTestPlugin(t *testing.T) *EmotePlugin {
 			DataDir:                tmpDir,
 			AutoStealEnabled:       true,
 			MaxImageSizeKb:         512,
-			AllowedFormats:         []string{"png", "jpg", "jpeg", "webp"},
+			AllowedFormats:         []string{"png", "jpg", "jpeg", "webp", "gif"},
 			RateLimitPerMinute:     100,
 			CooldownSeconds:        0,
 		},
@@ -500,7 +500,7 @@ func TestListTools(t *testing.T) {
 }
 
 func TestIsAllowedFormat(t *testing.T) {
-	allowed := []string{"png", "jpg", "webp"}
+	allowed := []string{"png", "jpg", "webp", "gif"}
 
 	tests := []struct {
 		format   string
@@ -509,7 +509,7 @@ func TestIsAllowedFormat(t *testing.T) {
 		{"png", true},
 		{"jpg", true},
 		{"webp", true},
-		{"gif", false},
+		{"gif", true},
 		{"bmp", false},
 		{"PNG", false},
 		{"", false},
@@ -608,10 +608,10 @@ func TestLoadConfig_Defaults(t *testing.T) {
 		t.Fatalf("expected LoggingLevel='info', got %q", cfg.LoggingLevel)
 	}
 
-	if len(cfg.AllowedFormats) != 4 {
+	if len(cfg.AllowedFormats) != 5 {
 		t.Fatalf("expected 4 allowed formats, got %d", len(cfg.AllowedFormats))
 	}
-	expectedFormats := []string{"png", "jpg", "jpeg", "webp"}
+	expectedFormats := []string{"png", "jpg", "jpeg", "webp", "gif"}
 	for i, f := range cfg.AllowedFormats {
 		if f != expectedFormats[i] {
 			t.Fatalf("AllowedFormats[%d] = %q, want %q", i, f, expectedFormats[i])

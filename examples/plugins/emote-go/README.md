@@ -67,6 +67,7 @@ storage:
     - "jpg"
     - "jpeg"
     - "webp"
+    - "gif"
 
 # Vision — the model used to decide if an image is an emote
 vision:
@@ -101,7 +102,7 @@ with these defaults:
 |-------|---------|
 | `storage.data_dir` | `"data"` |
 | `storage.max_image_size_kb` | `512` |
-| `storage.allowed_formats` | `["png", "jpg", "jpeg", "webp"]` |
+| `storage.allowed_formats` | `["png", "jpg", "jpeg", "webp", "gif"]` |
 | `vision.api_base_url` | `"https://api.openai.com/v1"` |
 | `vision.model` | `"gpt-4o-mini"` |
 | `vision.timeout_seconds` | `30` |
@@ -159,7 +160,7 @@ writes (temp file + rename) to prevent corruption on crash.
 **No emotes being stolen** — Verify:
 - `auto_steal.enabled` is `true`
 - `vision.api_key` is set and valid
-- Images are PNG/JPG/JPEG/WEBP (GIF is excluded)
+- Images are PNG/JPG/JPEG/WEBP/GIF
 - The channel/user is not blacklisted
 - Cooldown hasn't been triggered recently
 
