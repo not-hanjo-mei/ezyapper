@@ -53,3 +53,13 @@ auto_steal:
 logging:
   enabled: true
   level: "info"  # debug, info, warn, error
+
+# Emote LLM — model used for semantic emote search
+emote:
+  model: ""
+  api_key: ""
+  api_base_url: ""
+
+# Discord — token for independent message sending (same as main bot token)
+discord:
+  token: ""

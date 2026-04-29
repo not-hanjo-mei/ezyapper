@@ -1,30 +1,26 @@
 // Package main — emote-plugin storage layer.
-// Provides file-based emote storage with atomic metadata writes, SHA256 dedup,
-// blacklist/whitelist checking, and per-channel rate limiting.
+// Provides file-based emote storage with atomic metadata writes
+// and blacklist/whitelist checking.
 package main
 
 import (
-	"crypto/rand"
-	"crypto/sha256"
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 )
 
 // EmoteEntry represents a single emote stored on disk.
 type EmoteEntry struct {
-	ID          string   `json:"id"`          // UUID
-	Name        string   `json:"name"`        // snake_case name
-	Description string   `json:"description"` // 1-2 sentence description
-	Tags        []string `json:"tags"`        // searchable tags
-	FileName    string   `json:"file_name"`   // filename on disk
-	URL         string   `json:"url,omitempty"` // image URL (for URL-only emotes, no local file)
-	Source      string   `json:"source"`      // "auto_steal" or "file"
-	SHA256      string   `json:"sha256"`      // content hash for dedup
-	CreatedAt   string   `json:"created_at"`  // ISO 8601 timestamp
+	ID          string   `json:"id"`                    // md5(URL) or md5(file_name)
+	Name        string   `json:"name"`                  // snake_case
+	Description string   `json:"description"`           // 1-2 sentence
+	Tags        []string `json:"tags"`                  // searchable
+	URL         string   `json:"url,omitempty"`          // bare URL (no ?params), mutually exclusive with FileName
+	FileName    string   `json:"file_name,omitempty"`   // local filename, mutually exclusive with URL
+	CreatedAt   string   `json:"created_at"`            // ISO 8601
 }
 
 // MetadataFile holds all emote entries for a guild.
@@ -32,48 +28,11 @@ type MetadataFile struct {
 	Emotes []EmoteEntry `json:"emotes"`
 }
 
-// rateLimiter provides per-channel sliding-window rate limiting with cooldown.
-type rateLimiter struct {
-	timestamps []time.Time
-	mu         sync.Mutex
-	MaxPerMin  int
-	Cooldown   time.Duration
-}
-
-// Allow checks whether a new request is permitted under the rate limit.
-// Returns false if per-minute cap or cooldown interval is exceeded.
-func (r *rateLimiter) Allow() bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	now := time.Now()
-	cutoff := now.Add(-time.Minute)
-
-	filtered := r.timestamps[:0]
-	for _, t := range r.timestamps {
-		if t.After(cutoff) {
-			filtered = append(filtered, t)
-		}
-	}
-	r.timestamps = filtered
-
-	if len(r.timestamps) >= r.MaxPerMin {
-		return false
-	}
-	if len(r.timestamps) > 0 && now.Sub(r.timestamps[len(r.timestamps)-1]) < r.Cooldown {
-		return false
-	}
-
-	r.timestamps = append(r.timestamps, now)
-	return true
-}
-
-// Storage provides file-based emote storage with atomic writes, SHA256 dedup,
-// blacklist/whitelist checking, and per-channel rate limiting.
+// Storage provides file-based emote storage with atomic writes
+// and blacklist/whitelist checking.
 type Storage struct {
-	dataDir      string
-	mu           sync.RWMutex
-	rateLimiters map[string]*rateLimiter
+	dataDir string
+	mu      sync.RWMutex
 }
 
 // NewStorage creates a new Storage backed by dataDir.
@@ -81,8 +40,7 @@ type Storage struct {
 func NewStorage(dataDir string) *Storage {
 	os.MkdirAll(dataDir, 0755)
 	return &Storage{
-		dataDir:      dataDir,
-		rateLimiters: make(map[string]*rateLimiter),
+		dataDir: dataDir,
 	}
 }
 
@@ -159,42 +117,6 @@ func (s *Storage) saveMetadataLocked(guildID string, mf *MetadataFile) error {
 	return nil
 }
 
-// SaveImage saves image data to the guild's images directory.
-// Returns the on-disk file path and SHA256 content hash.
-// Creates the images directory if it does not exist.
-func (s *Storage) SaveImage(guildID string, data []byte, format string) (string, string, error) {
-	dir := filepath.Join(s.dataDir, guildID, "images")
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", "", fmt.Errorf("failed to create images directory for guild %s: %w", guildID, err)
-	}
-
-	hash := sha256Hash(data)
-	uuid := generateUUID()
-	filename := uuid + "." + format
-	fpath := filepath.Join(dir, filename)
-
-	if err := os.WriteFile(fpath, data, 0644); err != nil {
-		return "", "", fmt.Errorf("failed to write image for guild %s: %w", guildID, err)
-	}
-
-	return fpath, hash, nil
-}
-
-// Dedup checks whether an emote with the given SHA256 hash already exists in the guild.
-// Returns true and a pointer to the existing entry if found.
-func (s *Storage) Dedup(sha256hash string, guildID string) (bool, *EmoteEntry, error) {
-	mf, err := s.LoadMetadata(guildID)
-	if err != nil {
-		return false, nil, err
-	}
-	for i := range mf.Emotes {
-		if mf.Emotes[i].SHA256 == sha256hash {
-			return true, &mf.Emotes[i], nil
-		}
-	}
-	return false, nil, nil
-}
-
 // AddEmote appends a new emote entry to the guild's metadata.
 // This is an atomic compound operation: load → append → save.
 func (s *Storage) AddEmote(guildID string, entry EmoteEntry) error {
@@ -244,44 +166,7 @@ checkBlacklist:
 	return true
 }
 
-// CheckRateLimit tests the per-channel rate limit and returns true if the action is allowed.
-// Creates a new rate limiter for the channel on first use.
-func (s *Storage) CheckRateLimit(channelID string, maxPerMin int, cooldown time.Duration) bool {
-	s.mu.Lock()
-	rl, ok := s.rateLimiters[channelID]
-	if !ok {
-		rl = &rateLimiter{
-			MaxPerMin: maxPerMin,
-			Cooldown:  cooldown,
-		}
-		s.rateLimiters[channelID] = rl
-	}
-	s.mu.Unlock()
-
-	// Refresh config values in case they changed at runtime.
-	rl.mu.Lock()
-	rl.MaxPerMin = maxPerMin
-	rl.Cooldown = cooldown
-	rl.mu.Unlock()
-
-	return rl.Allow()
-}
-
-// sha256Hash computes the SHA256 hash of data and returns it as a lowercase hex string.
-func sha256Hash(data []byte) string {
-	h := sha256.Sum256(data)
-	return fmt.Sprintf("%x", h[:])
-}
-
-// generateUUID creates a version 4 UUID using crypto/rand.
-func generateUUID() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		// crypto/rand.Read failure is effectively impossible on modern systems.
-		panic(fmt.Sprintf("failed to generate UUID: %v", err))
-	}
-	b[6] = (b[6] & 0x0f) | 0x40 // UUID version 4
-	b[8] = (b[8] & 0x3f) | 0x80 // UUID variant 10
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
-		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+// md5Hash computes the MD5 hash of s and returns it as a lowercase hex string.
+func md5Hash(s string) string {
+	return fmt.Sprintf("%x", md5.Sum([]byte(s)))
 }

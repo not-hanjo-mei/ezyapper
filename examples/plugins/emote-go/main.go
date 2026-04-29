@@ -1,12 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,164 +10,13 @@ import (
 	"time"
 
 	"ezyapper/internal/plugin"
-
-	"gopkg.in/yaml.v3"
 )
-
-// fileConfig mirrors config.yaml with pointer-based fields for strict loading.
-// nil pointer = field missing from config.
-type fileConfig struct {
-	Storage *struct {
-		DataDir        *string   `yaml:"data_dir"`
-		MaxImageSizeKb *int      `yaml:"max_image_size_kb"`
-		AllowedFormats *[]string `yaml:"allowed_formats"`
-	} `yaml:"storage"`
-	Vision *struct {
-		ApiKey         *string `yaml:"api_key"`
-		ApiBaseUrl     *string `yaml:"api_base_url"`
-		Model          *string `yaml:"model"`
-		TimeoutSeconds *int    `yaml:"timeout_seconds"`
-		Prompt         *string `yaml:"prompt"`
-	} `yaml:"vision"`
-	AutoSteal *struct {
-		Enabled                     *bool     `yaml:"enabled"`
-		AdditionalBlacklistChannels *[]string `yaml:"additional_blacklist_channels"`
-		AdditionalWhitelistChannels *[]string `yaml:"additional_whitelist_channels"`
-		AdditionalBlacklistUsers    *[]string `yaml:"additional_blacklist_users"`
-		RateLimitPerMinute          *int      `yaml:"rate_limit_per_minute"`
-		CooldownSeconds             *int      `yaml:"cooldown_seconds"`
-	} `yaml:"auto_steal"`
-	Logging *struct {
-		Enabled *bool   `yaml:"enabled"`
-		Level   *string `yaml:"level"`
-	} `yaml:"logging"`
-}
-
-// Config holds the fully resolved configuration with defaults applied.
-type Config struct {
-	DataDir                      string
-	MaxImageSizeKb               int
-	AllowedFormats               []string
-	VisionApiKey                 string
-	VisionApiBaseUrl             string
-	VisionModel                  string
-	VisionTimeoutSeconds         int
-	VisionPrompt                 string
-	AutoStealEnabled             bool
-	AdditionalBlacklistChannels  []string
-	AdditionalWhitelistChannels  []string
-	AdditionalBlacklistUsers     []string
-	RateLimitPerMinute           int
-	CooldownSeconds              int
-	LoggingEnabled               bool
-	LoggingLevel                 string
-}
 
 // EmotePlugin is the main plugin struct.
 type EmotePlugin struct {
 	config  Config
 	storage *Storage
 	vision  *VisionClient
-}
-
-func loadConfig(configPath string) (Config, error) {
-	cfg := Config{
-		DataDir:                      "data",
-		MaxImageSizeKb:               512,
-		AllowedFormats:               []string{"png", "jpg", "jpeg", "webp", "gif"},
-		VisionApiBaseUrl:             "https://api.openai.com/v1",
-		VisionModel:                  "gpt-4o-mini",
-		VisionTimeoutSeconds:         30,
-		VisionPrompt:                 "Analyze this image and determine if it is a \"meme/emote/sticker\" suitable for a chat reaction library.",
-		AutoStealEnabled:             true,
-		RateLimitPerMinute:           5,
-		CooldownSeconds:              2,
-		LoggingEnabled:               true,
-		LoggingLevel:                 "info",
-	}
-
-	if strings.TrimSpace(configPath) == "" {
-		return cfg, nil
-	}
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return cfg, nil
-		}
-		return cfg, fmt.Errorf("failed to read config file %q: %w", configPath, err)
-	}
-
-	if len(bytes.TrimSpace(data)) == 0 {
-		return cfg, nil
-	}
-
-	var fileCfg fileConfig
-	if err := yaml.Unmarshal(data, &fileCfg); err != nil {
-		return cfg, fmt.Errorf("failed to parse config file %q: %w", configPath, err)
-	}
-
-	if fileCfg.Storage != nil {
-		if fileCfg.Storage.DataDir != nil {
-			cfg.DataDir = *fileCfg.Storage.DataDir
-		}
-		if fileCfg.Storage.MaxImageSizeKb != nil {
-			cfg.MaxImageSizeKb = *fileCfg.Storage.MaxImageSizeKb
-		}
-		if fileCfg.Storage.AllowedFormats != nil {
-			cfg.AllowedFormats = *fileCfg.Storage.AllowedFormats
-		}
-	}
-
-	if fileCfg.Vision != nil {
-		if fileCfg.Vision.ApiKey != nil {
-			cfg.VisionApiKey = *fileCfg.Vision.ApiKey
-		}
-		if fileCfg.Vision.ApiBaseUrl != nil {
-			cfg.VisionApiBaseUrl = *fileCfg.Vision.ApiBaseUrl
-		}
-		if fileCfg.Vision.Model != nil {
-			cfg.VisionModel = *fileCfg.Vision.Model
-		}
-		if fileCfg.Vision.TimeoutSeconds != nil {
-			cfg.VisionTimeoutSeconds = *fileCfg.Vision.TimeoutSeconds
-		}
-		if fileCfg.Vision.Prompt != nil {
-			cfg.VisionPrompt = *fileCfg.Vision.Prompt
-		}
-	}
-
-	if fileCfg.AutoSteal != nil {
-		if fileCfg.AutoSteal.Enabled != nil {
-			cfg.AutoStealEnabled = *fileCfg.AutoSteal.Enabled
-		}
-		if fileCfg.AutoSteal.AdditionalBlacklistChannels != nil {
-			cfg.AdditionalBlacklistChannels = *fileCfg.AutoSteal.AdditionalBlacklistChannels
-		}
-		if fileCfg.AutoSteal.AdditionalWhitelistChannels != nil {
-			cfg.AdditionalWhitelistChannels = *fileCfg.AutoSteal.AdditionalWhitelistChannels
-		}
-		if fileCfg.AutoSteal.AdditionalBlacklistUsers != nil {
-			cfg.AdditionalBlacklistUsers = *fileCfg.AutoSteal.AdditionalBlacklistUsers
-		}
-		if fileCfg.AutoSteal.RateLimitPerMinute != nil {
-			cfg.RateLimitPerMinute = *fileCfg.AutoSteal.RateLimitPerMinute
-		}
-		if fileCfg.AutoSteal.CooldownSeconds != nil {
-			cfg.CooldownSeconds = *fileCfg.AutoSteal.CooldownSeconds
-		}
-	}
-
-	if fileCfg.Logging != nil {
-		if fileCfg.Logging.Enabled != nil {
-			cfg.LoggingEnabled = *fileCfg.Logging.Enabled
-		}
-		if fileCfg.Logging.Level != nil {
-			cfg.LoggingLevel = *fileCfg.Logging.Level
-		}
-	}
-
-	return cfg, nil
 }
 
 // Info returns plugin metadata.
@@ -185,9 +30,7 @@ func (p *EmotePlugin) Info() (plugin.Info, error) {
 	}, nil
 }
 
-// OnMessage is called for every Discord message. Iterates attachment URLs,
-// downloads images, checks blacklist/dedup/rate-limit, runs Vision analysis,
-// and stores detected emotes.
+// OnMessage is called for every Discord message. Records attachment URLs as emote entries.
 func (p *EmotePlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
 	if !p.config.AutoStealEnabled {
 		return true, nil
@@ -214,97 +57,15 @@ func (p *EmotePlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
 			continue
 		}
 
-		if !p.storage.CheckRateLimit(msg.ChannelID,
-			p.config.RateLimitPerMinute,
-			time.Duration(p.config.CooldownSeconds)*time.Second,
-		) {
-			continue
-		}
-
-		imageBytes, err := downloadImage(url)
-		if err != nil {
-			continue
-		}
-
-		if len(imageBytes) > p.config.MaxImageSizeKb*1024 {
-			continue
-		}
-
-		sha256Hash := sha256Hash(imageBytes)
-		isDup, _, _ := p.storage.Dedup(sha256Hash, guildID)
-		if isDup {
-			continue
-		}
-
-		if p.vision == nil {
-			continue
-		}
-		result, err := p.vision.AnalyzeImage(imageBytes)
-		if err != nil || !result.IsEmote {
-			continue
-		}
-
-		format := detectFormat(url)
-		if !isAllowedFormat(format, p.config.AllowedFormats) {
-			continue
-		}
-
-		filePath, sha256Hash, err := p.storage.SaveImage(guildID, imageBytes, format)
-		if err != nil {
-			continue
-		}
-
 		entry := EmoteEntry{
-			ID:          generateUUID(),
-			Name:        result.Name,
-			Description: result.Description,
-			Tags:        result.Tags,
-			FileName:    filepath.Base(filePath),
-			URL:         "",
-			Source:      "auto_steal",
-			SHA256:      sha256Hash,
-			CreatedAt:   time.Now().Format(time.RFC3339),
+			ID:        md5Hash(url),
+			URL:       url,
+			CreatedAt: time.Now().Format(time.RFC3339),
 		}
 		_ = p.storage.AddEmote(guildID, entry)
 	}
 
 	return true, nil
-}
-
-func downloadImage(url string) ([]byte, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("download failed: %d", resp.StatusCode)
-	}
-	var buf bytes.Buffer
-	limited := io.LimitReader(resp.Body, 10*1024*1024)
-	_, err = io.Copy(&buf, limited)
-	if err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
-func detectFormat(url string) string {
-	ext := filepath.Ext(url)
-	if ext == "" {
-		return "png"
-	}
-	return strings.ToLower(strings.TrimPrefix(ext, "."))
-}
-
-func isAllowedFormat(format string, allowed []string) bool {
-	for _, a := range allowed {
-		if a == format {
-			return true
-		}
-	}
-	return false
 }
 
 // OnResponse is called after the bot generates a response.
@@ -546,6 +307,23 @@ func matchScore(query, name, description string, tags []string) float64 {
 	return score
 }
 
+func detectFormat(url string) string {
+	ext := filepath.Ext(url)
+	if ext == "" {
+		return "png"
+	}
+	return strings.ToLower(strings.TrimPrefix(ext, "."))
+}
+
+func isAllowedFormat(format string, allowed []string) bool {
+	for _, a := range allowed {
+		if a == format {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
 	configPath := strings.TrimSpace(os.Getenv("EZYAPPER_PLUGIN_CONFIG"))
 	config, err := loadConfig(configPath)
@@ -561,13 +339,15 @@ func main() {
 
 	p := &EmotePlugin{config: config}
 	p.storage = NewStorage(config.DataDir)
-	p.vision = NewVisionClient(
-		config.VisionApiKey,
-		config.VisionApiBaseUrl,
-		config.VisionModel,
-		config.VisionPrompt,
-		time.Duration(config.VisionTimeoutSeconds)*time.Second,
-	)
+	if config.VisionApiKey != "" {
+		p.vision = NewVisionClient(
+			config.VisionApiKey,
+			config.VisionApiBaseUrl,
+			config.VisionModel,
+			config.VisionPrompt,
+			time.Duration(config.VisionTimeoutSeconds)*time.Second,
+		)
+	}
 	if err := plugin.Serve(p); err != nil {
 		fmt.Fprintf(os.Stderr, "[EMOTE] Error: %v\n", err)
 		os.Exit(1)
