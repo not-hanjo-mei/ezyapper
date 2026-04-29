@@ -148,7 +148,7 @@ Wave FINAL（4 并行审查）:
 
 ## TODOs
 
-- [ ] 1. 修改 DiscordMessage 添加附件字段
+- [x] 1. 修改 DiscordMessage 添加附件字段
 
   **What**: 在 `DiscordMessage` 加一行 `AttachmentURLs []string \`json:"attachment_urls,omitempty"\``，`FromDiscordgo()` 中提取 `m.Attachments` 的 URL（仅 image/ 开头的 ContentType）。不改其他字段。
   
@@ -163,7 +163,7 @@ Wave FINAL（4 并行审查）:
   **Evidence**: task-1-attachment.txt, task-1-compat.txt
   **Commit**: `feat(plugin): add AttachmentURLs to DiscordMessage`
 
-- [ ] 2. 创建插件目录结构
+- [x] 2. 创建插件目录结构
 
   **What**: 创建 `plugins/emote-plugin/`、`data/` 子目录、`config.yaml` 模板
   **Category**: `quick` | **Parallel**: Wave 1 (with 1,3-5)

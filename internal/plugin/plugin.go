@@ -124,20 +124,28 @@ type DiscordMessage struct {
 	Username  string `json:"username"`
 	Content   string `json:"content"`
 	Timestamp string `json:"timestamp"`
-	IsBot     bool   `json:"is_bot"`
+	IsBot          bool     `json:"is_bot"`
+	AttachmentURLs []string `json:"attachment_urls,omitempty"`
 }
 
 // FromDiscordgo converts a discordgo.MessageCreate to DiscordMessage
 func FromDiscordgo(m *discordgo.MessageCreate) DiscordMessage {
+	var attachmentURLs []string
+	for _, att := range m.Attachments {
+		if strings.HasPrefix(att.ContentType, "image/") {
+			attachmentURLs = append(attachmentURLs, att.URL)
+		}
+	}
 	return DiscordMessage{
-		ID:        m.ID,
-		ChannelID: m.ChannelID,
-		GuildID:   m.GuildID,
-		AuthorID:  m.Author.ID,
-		Username:  m.Author.Username,
-		Content:   m.Content,
-		Timestamp: m.Timestamp.Format(time.RFC3339),
-		IsBot:     m.Author.Bot,
+		ID:             m.ID,
+		ChannelID:      m.ChannelID,
+		GuildID:        m.GuildID,
+		AuthorID:       m.Author.ID,
+		Username:       m.Author.Username,
+		Content:        m.Content,
+		Timestamp:      m.Timestamp.Format(time.RFC3339),
+		IsBot:          m.Author.Bot,
+		AttachmentURLs: attachmentURLs,
 	}
 }
 

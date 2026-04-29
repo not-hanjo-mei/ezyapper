@@ -1,0 +1,55 @@
+# EZyapper Emote Plugin Configuration
+# This plugin auto-steals emotes from message image attachments
+# and provides tools for LLM to search/list/get emotes.
+
+# Storage configuration
+storage:
+  data_dir: "data"  # relative to plugin directory
+  max_image_size_kb: 512  # max image file size in KB
+  allowed_formats: ["png", "jpg", "jpeg", "webp"]  # allowed image formats (gif excluded for v1)
+
+# Vision Model configuration
+vision:
+  api_key: ""  # REQUIRED: Your OpenAI-compatible API key
+  api_base_url: "https://api.openai.com/v1"  # OpenAI-compatible API base URL
+  model: "gpt-4o-mini"  # Vision-capable model
+  timeout_seconds: 30  # Max time for vision analysis
+  prompt: |
+    Analyze this image and determine if it is a "meme/emote/sticker" suitable for a chat reaction library.
+
+    Meme/emote/sticker characteristics:
+    1. Has text overlay (typically white/black stroke text)
+    2. Exaggerated facial expressions or actions
+    3. From popular culture (movies, anime, internet memes)
+    4. Used to express emotions or reactions
+    5. Simple, clear, and visually striking
+
+    If it IS a meme/emote/sticker, return a JSON object with:
+    {
+      "is_emote": true,
+      "name": "suggested_name_in_snake_case",
+      "description": "1-2 sentence description of what the image shows",
+      "tags": ["tag1", "tag2", "tag3"]
+    }
+
+    If it is NOT a meme/emote/sticker, return:
+    {"is_emote": false}
+
+# Auto-steal configuration
+auto_steal:
+  enabled: true
+  
+  # Blacklist/Whitelist (extends main bot's blacklist/whitelist)
+  # These are ADDITIONAL entries on top of the main bot's rules
+  additional_blacklist_channels: []  # channel IDs where stealing is blocked
+  additional_whitelist_channels: []  # channel IDs where stealing is always allowed (if set, only these work)
+  additional_blacklist_users: []  # user IDs whose images are never stolen
+  
+  # Rate limiting (per channel)
+  rate_limit_per_minute: 5  # max steals per minute per channel
+  cooldown_seconds: 2  # minimum seconds between steals
+
+# Logging
+logging:
+  enabled: true
+  level: "info"  # debug, info, warn, error
