@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -82,10 +83,15 @@ func (c *EmoteLLMClient) Match(query string, emotes []EmoteEntry) ([]MatchResult
 	}
 
 	content := strings.TrimSpace(chatResp.Choices[0].Message.Content)
+
+	// Log raw response for debugging
+	fmt.Fprintf(os.Stderr, "[EMOTE-LLM] raw response: %s\n", content)
+
 	content = stripJSONFences(content)
 
 	var result emoteLLMResponse
 	if err := json.Unmarshal([]byte(content), &result); err != nil {
+		fmt.Fprintf(os.Stderr, "[EMOTE-LLM] parse error: %v, content=%q\n", err, content)
 		return nil, fmt.Errorf("failed to parse emote LLM response: %w", err)
 	}
 	if result.NoMatch {
