@@ -205,7 +205,7 @@ Wave FINAL（4 并行审查）:
   **Evidence**: task-4-atomic.txt, task-4-concurrent.txt, task-4-dedup.txt, task-4-blacklist.txt
   **Commit**: `feat(emote-plugin): implement storage layer`
 
-- [ ] 5. OnMessage 自动偷取（核心）
+- [x] 5. OnMessage 自动偷取（核心）
 
   **What**: `OnMessage` 中遍历 `msg.AttachmentURLs`，对每个图片URL执行：黑白名单检查 → 下载 → SHA256去重 → Vision分析（判断是否表情包，生成name/tags/description） → 保存。Vision判定非表情包则跳过，不干扰正常消息。
   
@@ -223,33 +223,9 @@ Wave FINAL（4 并行审查）:
   **Evidence**: task-5-steal.txt, task-5-not.txt, task-5-dedup.txt, task-5-blacklist.txt, task-5-ratelimit.txt
   **Commit**: `feat(emote-plugin): implement OnMessage auto-steal`
 
-- [ ] 6. list_emotes 工具
-
-  **What**: 读取 metadata.json，支持 guild_id 和分页
-  **Category**: `unspecified-high` | **Parallel**: Wave 2 (with 7-11)
-  **Blocked by**: 3,4
-
-  **QA**:
-  ```
-  go test -run TestListEmotes → 返回正确列表，分页正确
-  ```
-  **Evidence**: task-6-list.txt
-  **Commit**: `feat(emote-plugin): implement list_emotes`
-
-- [ ] 7. search_emote 工具
-
-  **What**: 名称/描述/标签文本匹配，相关性排序，支持 guild_id
-  **Category**: `unspecified-high` | **Parallel**: Wave 2 (with 6,8-11)
-  **Blocked by**: 3,4
-
-  **QA**:
-  ```
-  go test -run TestSearchEmote → 名称+标签搜索正确
-  ```
-  **Evidence**: task-7-search.txt
-  **Commit**: `feat(emote-plugin): implement search_emote`
-
-- [ ] 8. get_emote 工具
+- [x] 6. list_emotes 工具
+- [x] 7. search_emote 工具
+- [x] 8. get_emote 工具
 
   **What**: 按ID或名称获取表情详情，检查文件存在性
   **Category**: `unspecified-high` | **Parallel**: Wave 2 (with 6,7,9-11)
