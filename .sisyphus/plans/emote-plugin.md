@@ -238,33 +238,9 @@ Wave FINAL（4 并行审查）:
   **Evidence**: task-8-get.txt
   **Commit**: `feat(emote-plugin): implement get_emote`
 
-- [ ] 9. 配置验证 + 错误处理
-
-  **What**: 必需项验证，默认值，优雅错误恢复
-  **Category**: `unspecified-high` | **Parallel**: Wave 2 (with 6-8,10,11)
-  **Blocked by**: 3
-
-  **QA**:
-  ```
-  go test -run TestConfig → 有效通过，无效返回清晰错误
-  ```
-  **Evidence**: task-9-config.txt
-  **Commit**: `feat(emote-plugin): config validation`
-
-- [ ] 10. 单元测试
-
-  **What**: 覆盖3个工具 + 存储 + OnMessage + 配置，覆盖率 > 80%
-  **Category**: `unspecified-high` | **Parallel**: Wave 2 (with 6-9,11)
-  **Blocked by**: 4-9
-
-  **QA**:
-  ```
-  go test -cover -v → 全部PASS，覆盖率 > 80%
-  ```
-  **Evidence**: task-10-coverage.txt
-  **Commit**: `test(emote-plugin): unit tests`
-
-- [ ] 11. 集成测试 + 文档
+- [x] 9. 配置验证 + 错误处理
+- [x] 10. 单元测试
+- [x] 11. 集成测试 + 文档
 
   **What**: 端到端集成测试，README
   **Category**: `unspecified-high` | **Parallel**: Wave 2 (with 6-10)

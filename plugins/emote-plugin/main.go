@@ -553,6 +553,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := validateConfig(&config); err != nil {
+		fmt.Fprintf(os.Stderr, "[EMOTE] Config validation error: %v\n", err)
+		os.Exit(1)
+	}
+
 	p := &EmotePlugin{config: config}
 	p.storage = NewStorage(config.DataDir)
 	p.vision = NewVisionClient(
