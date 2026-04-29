@@ -234,3 +234,13 @@ func TestMd5Hash(t *testing.T) {
 		t.Fatal("different data should produce different hash")
 	}
 }
+
+func TestMd5Hash_KnownValue(t *testing.T) {
+	result := md5Hash("hello")
+	if len(result) != 32 {
+		t.Fatalf("expected 32 char MD5 hash, got %d chars: %s", len(result), result)
+	}
+	if result != "5d41402abc4b2a76b9719d911017c592" {
+		t.Fatalf("unexpected MD5 for 'hello': %s", result)
+	}
+}

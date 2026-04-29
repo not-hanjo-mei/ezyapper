@@ -440,3 +440,87 @@ storage:
 		t.Fatal("AutoStealEnabled should remain default: true")
 	}
 }
+
+func TestSearchEmote_MergesGlobalAndGuild(t *testing.T) {
+	p := newTestPlugin(t)
+	p.emoteLLM = &EmoteLLMClient{model: "test-model"}
+	addTestEmotes(t, p.storage, "global", []EmoteEntry{
+		{ID: "id-global", Name: "global_emote", URL: ""},
+	})
+	addTestEmotes(t, p.storage, "guild123", []EmoteEntry{
+		{ID: "id-guild", Name: "guild_emote", URL: ""},
+	})
+	result, err := p.ExecuteTool("search_emote", map[string]interface{}{
+		"query":    "test",
+		"guild_id": "guild123",
+	})
+	if err != nil {
+		t.Fatalf("search_emote failed: %v", err)
+	}
+	if result != "no matching emotes found" {
+		t.Fatalf("expected 'no matching emotes found' with empty API key, got: %s", result)
+	}
+}
+
+func TestSendEmote_NotFound(t *testing.T) {
+	p := newTestPlugin(t)
+	_, err := p.ExecuteTool("send_emote", map[string]interface{}{
+		"id": "nonexistent",
+	})
+	if err == nil {
+		t.Fatal("expected error for non-existent emote")
+	}
+	if !strings.Contains(err.Error(), "emote not found") {
+		t.Fatalf("expected 'emote not found' error, got: %v", err)
+	}
+}
+
+func TestSendEmote_MissingID(t *testing.T) {
+	p := newTestPlugin(t)
+	_, err := p.ExecuteTool("send_emote", map[string]interface{}{})
+	if err == nil {
+		t.Fatal("expected error for missing id")
+	}
+	if !strings.Contains(err.Error(), "id is required") {
+		t.Fatalf("expected 'id is required' error, got: %v", err)
+	}
+}
+
+func TestSendEmote_Success(t *testing.T) {
+	p := newTestPlugin(t)
+	p.cdnRefresh = NewCDNRefreshClient("")
+	guildID := "global"
+	addTestEmotes(t, p.storage, guildID, []EmoteEntry{
+		{ID: "md5abc", Name: "test_emote", URL: "https://example.com/test.png"},
+	})
+	result, err := p.ExecuteTool("send_emote", map[string]interface{}{
+		"id": "md5abc",
+	})
+	if err != nil {
+		t.Fatalf("send_emote failed: %v", err)
+	}
+	if !strings.Contains(result, "sent test_emote") {
+		t.Fatalf("expected 'sent test_emote', got: %s", result)
+	}
+}
+
+func TestOnResponse_SendsQueued(t *testing.T) {
+	p := newTestPlugin(t)
+	p.discord = &DiscordSession{}
+	p.sendQueue = map[string]string{"chan-123": "https://example.com/test.png"}
+	msg := plugin.DiscordMessage{ChannelID: "chan-123"}
+	if err := p.OnResponse(msg, "response text"); err != nil {
+		t.Fatalf("OnResponse should return nil: %v", err)
+	}
+	if _, ok := p.sendQueue["chan-123"]; ok {
+		t.Fatal("expected queue entry to be removed after send")
+	}
+}
+
+func TestOnResponse_NoQueueEntry(t *testing.T) {
+	p := newTestPlugin(t)
+	msg := plugin.DiscordMessage{ChannelID: "no-queue"}
+	if err := p.OnResponse(msg, "response text"); err != nil {
+		t.Fatalf("OnResponse should return nil: %v", err)
+	}
+}
