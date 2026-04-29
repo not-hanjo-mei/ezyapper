@@ -14,14 +14,15 @@ import (
 
 // EmotePlugin is the main plugin struct.
 type EmotePlugin struct {
-	config     Config
-	storage    *Storage
-	vision     *VisionClient
-	emoteLLM   *EmoteLLMClient
-	cdnRefresh *CDNRefreshClient
-	discord    *DiscordSession
-	sendQueue  map[string]string
-	mu         sync.Mutex
+	config        Config
+	storage       *Storage
+	vision        *VisionClient
+	emoteLLM      *EmoteLLMClient
+	cdnRefresh    *CDNRefreshClient
+	discord       *DiscordSession
+	sendQueue     map[string]string
+	lastChannelID string // set in OnMessage, used by send_emote
+	mu            sync.Mutex
 }
 
 // Info returns plugin metadata.
@@ -37,13 +38,9 @@ func (p *EmotePlugin) Info() (plugin.Info, error) {
 
 // OnMessage is called for every Discord message. Records attachment URLs as emote entries.
 func (p *EmotePlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
-	if !p.config.AutoStealEnabled {
-		return true, nil
-	}
-	if p.storage == nil {
-		return true, nil
-	}
-	if len(msg.AttachmentURLs) == 0 {
+	p.lastChannelID = msg.ChannelID
+
+	if !p.config.AutoStealEnabled || p.storage == nil || len(msg.AttachmentURLs) == 0 {
 		return true, nil
 	}
 
@@ -62,9 +59,15 @@ func (p *EmotePlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
 			continue
 		}
 
+		// Store bare URL (strip Discord query params for Discord CDN)
+		bare := url
+		if strings.Contains(url, "cdn.discordapp.com") && strings.Contains(url, "?") {
+			bare = url[:strings.Index(url, "?")]
+		}
+
 		entry := EmoteEntry{
-			ID:        md5Hash(url),
-			URL:       url,
+			ID:        md5Hash(bare),
+			URL:       bare,
 			CreatedAt: time.Now().Format(time.RFC3339),
 		}
 		_ = p.storage.AddEmote(guildID, entry)
@@ -75,6 +78,28 @@ func (p *EmotePlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
 
 // OnResponse is called after the bot generates a response.
 func (p *EmotePlugin) OnResponse(msg plugin.DiscordMessage, response string) error {
+	p.mu.Lock()
+	content, ok := p.sendQueue[msg.ChannelID]
+	if ok {
+		delete(p.sendQueue, msg.ChannelID)
+	}
+	p.mu.Unlock()
+
+	if !ok {
+		return nil
+	}
+
+	// Connect Discord if needed (lazy)
+	if p.config.DiscordToken != "" && p.discord.session == nil {
+		_ = p.discord.Connect(p.config.DiscordToken)
+	}
+
+	if strings.HasPrefix(content, "__file__:") {
+		filePath := filepath.Join(p.config.DataDir, "global", "images", strings.TrimPrefix(content, "__file__:"))
+		_ = p.discord.SendFile(msg.ChannelID, filePath)
+	} else {
+		_ = p.discord.SendMessage(msg.ChannelID, content)
+	}
 	return nil
 }
 
@@ -198,7 +223,59 @@ func (p *EmotePlugin) ExecuteTool(name string, args map[string]interface{}) (str
 		return string(data), nil
 
 	case "send_emote":
-		return "", fmt.Errorf("send_emote not yet implemented")
+		id, ok := args["id"].(string)
+		if !ok || id == "" {
+			return "", fmt.Errorf("id is required")
+		}
+		guildID, _ := args["guild_id"].(string)
+		if guildID == "" {
+			guildID = "global"
+		}
+
+		// Search metadata for the emote (try guild first, then global)
+		var entry *EmoteEntry
+		for _, gid := range []string{guildID, "global"} {
+			mf, err := p.storage.LoadMetadata(gid)
+			if err != nil {
+				continue
+			}
+			for i := range mf.Emotes {
+				if mf.Emotes[i].ID == id {
+					e := mf.Emotes[i]
+					entry = &e
+					break
+				}
+			}
+			if entry != nil {
+				break
+			}
+		}
+		if entry == nil {
+			return "", fmt.Errorf("emote not found: %s", id)
+		}
+
+		// Resolve the output: CDN refresh if URL, or local file path
+		var sendContent string
+		if entry.URL != "" {
+			refreshed, err := p.cdnRefresh.RefreshURL(entry.URL)
+			if err != nil {
+				refreshed = entry.URL // fallback
+			}
+			sendContent = refreshed
+		} else if entry.FileName != "" {
+			sendContent = "__file__:" + entry.FileName
+		} else {
+			return "", fmt.Errorf("emote has neither URL nor file_name: %s", id)
+		}
+
+		// Queue for OnResponse
+		p.mu.Lock()
+		if p.lastChannelID != "" {
+			p.sendQueue[p.lastChannelID] = sendContent
+		}
+		p.mu.Unlock()
+
+		return fmt.Sprintf("sent %s", entry.Name), nil
 
 	default:
 		return "", fmt.Errorf("unknown tool: %s", name)
