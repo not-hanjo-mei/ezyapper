@@ -1,17 +1,15 @@
 # EZyapper Emote Plugin
 
-Auto-steals emotes from Discord message image attachments and provides a
-searchable emote library for the LLM via JSON-RPC tools.
+Semantic emote search via emote LLM, Discord CDN refresh, and independent emote sending.
 
 ## Features
 
-- **Auto-steal** — Automatically detects and saves emotes/memes/stickers from
-  image attachments using a Vision model
-- **Search** — Find emotes by name, description, or tags via LLM tool calls
-- **Per-guild storage** — Each Discord guild gets its own metadata and image
-  directory
-- **Deduplication** — SHA256 content hashing prevents saving the same image twice
-- **Rate limiting** — Per-channel cooldown and per-minute cap to avoid spam
+- **Semantic search** — Dedicated emote LLM matches emotes by intent, not just keywords
+- **URL + Local** — Emotes can be Discord CDN URLs (auto-refreshed) or local files
+- **CDN refresh** — Discord CDN URLs refreshed via official API (24h cache)
+- **Independent send** — Plugin sends emote separately from bot text (clean, no URL clutter)
+- **MD5 dedup** — Emote ID = MD5(url) or MD5(file_name), natural deduplication
+- **Per-guild storage** — Each Discord guild gets its own metadata directory
 - **Blacklist/whitelist** — Channel and user filtering extends the main bot's rules
 
 ## Installation
@@ -19,26 +17,25 @@ searchable emote library for the LLM via JSON-RPC tools.
 ### Prerequisites
 
 - EZyapper main bot installed and configured
-- A Discord bot token with message content intent
-- An OpenAI-compatible Vision API key (for emote detection)
+- A Discord bot token (for sending emote messages independently)
+- An OpenAI-compatible Vision API key (for auto-steal emote detection)
+- An OpenAI-compatible Emote LLM API key (for semantic search)
 
 ### Build
 
 ```bash
-cd plugins/emote-plugin
-go build -o emote-plugin.exe .
+cd examples/plugins/emote-go
+go build -o emote-go.exe .
 ```
 
 ### Deploy
 
-1. Create the plugin directory under the bot's plugins folder:
-
 ```bash
-mkdir -p plugins/emote-plugin
-cp emote-plugin.exe config.yaml plugins/emote-plugin/
+mkdir -p plugins/emote-go
+cp emote-go.exe config.yaml plugins/emote-go/
 ```
 
-2. Enable plugins in the main bot's `config.yaml`:
+Enable plugins in main bot's `config.yaml`:
 
 ```yaml
 operations:
@@ -47,189 +44,157 @@ operations:
     plugins_dir: "plugins"
 ```
 
-3. Restart the bot.
+Restart the bot.
 
 ## Configuration
 
-Copy `config.yaml` and edit the values. The plugin reads its config from the
-path in the `EZYAPPER_PLUGIN_CONFIG` environment variable, falling back to
-built-in defaults if no file is found.
+Copy `config.yaml` and edit the values. Built-in defaults apply when the file is missing.
 
 ### Full Configuration Reference
 
 ```yaml
-# Storage — where emotes and metadata are saved
+# Storage
 storage:
-  data_dir: "data"             # Relative to plugin directory
-  max_image_size_kb: 512       # Max download size in KB
-  allowed_formats:             # Image formats to accept
-    - "png"
-    - "jpg"
-    - "jpeg"
-    - "webp"
-    - "gif"
+  data_dir: "data"
+  max_image_size_kb: 512
+  allowed_formats: ["png", "jpg", "jpeg", "webp", "gif"]
 
-# Vision — the model used to decide if an image is an emote
+# Vision — for auto-steal detection
 vision:
-  api_key: ""                  # REQUIRED: OpenAI-compatible API key
+  api_key: ""
   api_base_url: "https://api.openai.com/v1"
-  model: "gpt-4o-mini"        # Must be a vision-capable model
+  model: "gpt-4o-mini"
   timeout_seconds: 30
-  prompt: |                    # Prompt sent to the Vision model
+  prompt: |
     Analyze this image and determine if it is a "meme/emote/sticker"...
 
-# Auto-steal — controls when and where stealing happens
+# Emote LLM — for semantic search
+emote:
+  model: ""
+  api_key: ""
+  api_base_url: ""
+
+# Discord — for independent emote sending (same as main bot token)
+discord:
+  token: ""
+
+# Auto-steal
 auto_steal:
   enabled: true
-  additional_blacklist_channels: []  # Channel IDs to always skip
-  additional_whitelist_channels: []  # If non-empty, ONLY these channels work
-  additional_blacklist_users: []     # User IDs to never steal from
-  rate_limit_per_minute: 5           # Max steals per minute per channel
-  cooldown_seconds: 2                # Minimum seconds between steals
+  additional_blacklist_channels: []
+  additional_whitelist_channels: []
+  additional_blacklist_users: []
+  rate_limit_per_minute: 5
+  cooldown_seconds: 2
 
 # Logging
 logging:
   enabled: true
-  level: "info"                # debug, info, warn, error
+  level: "info"
 ```
 
 ### Defaults
 
-When no config file is provided (or it is empty/missing), the plugin starts
-with these defaults:
-
 | Field | Default |
 |-------|---------|
 | `storage.data_dir` | `"data"` |
-| `storage.max_image_size_kb` | `512` |
 | `storage.allowed_formats` | `["png", "jpg", "jpeg", "webp", "gif"]` |
-| `vision.api_base_url` | `"https://api.openai.com/v1"` |
-| `vision.model` | `"gpt-4o-mini"` |
-| `vision.timeout_seconds` | `30` |
-| `auto_steal.enabled` | `true` |
-| `auto_steal.rate_limit_per_minute` | `5` |
-| `auto_steal.cooldown_seconds` | `2` |
-| `logging.enabled` | `true` |
-| `logging.level` | `"info"` |
+| `emote.api_base_url` | `"https://asus.omgpizzatnt.top:3000/v1"` |
 
 ## How It Works
 
-### Auto-Steal Flow
-
-1. The main bot forwards every Discord message to the plugin via `OnMessage`
-2. If `auto_steal.enabled` is `false`, skip immediately
-3. If there are no image attachments, skip
-4. For each attachment URL:
-   - Check blacklist/whitelist — block filtered channels and users
-   - Check rate limit — enforce per-channel cooldown and per-minute cap
-   - Download the image (max 10 MB)
-   - Check file size against `max_image_size_kb`
-   - Compute SHA256 and check dedup — skip if already stored
-   - Send to Vision model for analysis — skip if not an emote
-   - Check file format against `allowed_formats`
-   - Save image to disk and add metadata entry
-
-### Tools Exposed to LLM
-
-The plugin registers three tools that the LLM can call:
+### 2 Tools Exposed to LLM
 
 | Tool | Description |
 |------|-------------|
-| `list_emotes` | List available emotes with optional guild filter and limit |
-| `search_emote` | Search emotes by name, description, or tags (sorted by relevance) |
-| `get_emote` | Get a specific emote by ID or name |
+| `search_emote` | Search emotes by describing what you want. Emote LLM matches by semantic intent. |
+| `send_emote` | Send an emote to the channel. Plugin refreshes CDN URLs and queues for independent sending. |
+
+### Auto-Steal Flow
+
+1. Discord message arrives with image attachment
+2. Plugin checks blacklist/whitelist
+3. Strips Discord CDN query params (prevents token-based duplicates)
+4. Stores bare URL with `ID = md5(URL)` in guild metadata
+5. No file download — URL-only storage
+
+### Semantic Search Flow
+
+1. LLM calls `search_emote(query="网太卡了", guild_id="123")`
+2. Plugin loads emotes from `global` + `guild_123` metadata
+3. Merges and deduplicates by ID
+4. Sends all emotes to emote LLM for matching
+5. Returns top matches with relevance reasons
+
+### Send Flow
+
+1. LLM calls `send_emote(id="md5abc")`
+2. Plugin finds emote in metadata (guild first, then global)
+3. Discord CDN URL: refreshes via Discord API → queues
+4. Local file: queues file path
+5. Returns confirmation text
+6. `OnResponse`: plugin sends emote as separate Discord message (pure URL = clean image render, or file attachment)
 
 ## Storage Layout
 
 ```
-plugins/emote-plugin/data/
+plugins/emote-go/data/
   <guild_id>/
     metadata.json        # Emote entries for this guild
-    images/
-      <uuid>.png         # Saved emote images
+    images/              # Local image files (for file_name emotes)
 ```
-
-Each guild (or `"global"` for DMs) gets its own directory with atomic metadata
-writes (temp file + rename) to prevent corruption on crash.
 
 ## Manual Management
 
-Since the plugin has no `add_emote` tool, adding, removing, or editing emotes
-is done by directly modifying the storage files on disk.
-
 ### Adding a Local Image Emote
 
-1. Place the image file in the guild's `images/` directory:
-   ```
-   data/<guild_id>/images/my-emote.png
-   ```
-2. Add an entry to the guild's `metadata.json`:
-   ```json
-   {
-     "id": "550e8400-e29b-41d4-a716-446655440000",
-     "name": "my_emote",
-     "description": "A custom emote added manually",
-     "tags": ["custom", "manual"],
-     "file_name": "my-emote.png",
-     "url": "",
-     "source": "file",
-     "sha256": "<sha256-of-file>",
-     "created_at": "2026-04-30T12:00:00+08:00"
-   }
-   ```
-   Get SHA256: `sha256sum data/<guild_id>/images/my-emote.png`
+1. Place the image file in `data/<guild_id>/images/my-emote.png`
+2. Add to `data/<guild_id>/metadata.json`:
 
-### Adding a URL Emote
-
-For emotes that only have a URL (no local file):
 ```json
 {
-  "id": "550e8400-e29b-41d4-a716-446655440001",
-  "name": "sad_cat",
-  "description": "A sad cat reaction image",
-  "tags": ["cat", "sad", "cry"],
-  "file_name": "",
-  "url": "https://example.com/sad-cat.png",
-  "source": "file",
-  "sha256": "",
+  "id": "md5_of_filename",
+  "name": "my_emote",
+  "description": "A custom emote added manually",
+  "tags": ["custom"],
+  "url": "",
+  "file_name": "my-emote.png",
   "created_at": "2026-04-30T12:00:00+08:00"
 }
 ```
-Set `file_name` to `""` and `url` to the image URL. The plugin will skip the
-local file check for URL-only emotes.
+
+### Adding a URL Emote
+
+```json
+{
+  "id": "md5_of_url",
+  "name": "sad_cat",
+  "description": "A sad cat reaction image",
+  "tags": ["cat", "sad"],
+  "url": "https://cdn.discordapp.com/attachments/.../sad-cat.png",
+  "file_name": "",
+  "created_at": "2026-04-30T12:00:00+08:00"
+}
+```
+
+> **Note**: Discord CDN URLs must be stored **without** query parameters (`?ex=&is=&hm=`).
+> The plugin strips these during auto-steal and refreshes them before sending.
 
 ### Removing an Emote
 
-Delete the image file from `data/<guild_id>/images/` (if local), then remove the
-entry from `data/<guild_id>/metadata.json`.
-
-### Editing Metadata
-
-Edit `data/<guild_id>/metadata.json` directly — change `name`, `description`,
-or `tags` at any time. Changes take effect immediately.
-
-### Bulk Import
-
-```bash
-cp /path/to/emotes/*.png data/<guild_id>/images/
-# Then generate metadata.json entries for each file
-```
+Delete the image file (if local), then remove the entry from `metadata.json`.
 
 ## Troubleshooting
 
-**Plugin doesn't appear in bot logs** — Check that `plugins_dir` is correct and
-`plugins.enabled` is `true` in the main bot config.
+**Plugin doesn't appear in bot logs** — Verify `plugins_dir` and `plugins.enabled` in main bot config.
 
-**No emotes being stolen** — Verify:
-- `auto_steal.enabled` is `true`
-- `vision.api_key` is set and valid
-- Images are PNG/JPG/JPEG/WEBP/GIF
-- The channel/user is not blacklisted
-- Cooldown hasn't been triggered recently
+**No emotes being stolen** — Check `auto_steal.enabled`, `vision.api_key`, blacklist, and that images are in allowed formats.
 
-**"emote file not found on disk" errors** — This means the metadata entry
-exists but the image file was deleted. Either restore from backup or remove the
-metadata entry.
+**Emote LLM not configured** — The `emote` section in config.yaml needs `model` and `api_key` set. Without it, `search_emote` returns an error.
+
+**CDN refresh failing** — Check `discord.token` is correctly set. CDN refresh requires a valid bot token.
+
+**Emote not sending** — Ensure `discord.token` is set (for independent sending). Verify the emote has either a `url` or `file_name` (not both empty).
 
 ## License
 
