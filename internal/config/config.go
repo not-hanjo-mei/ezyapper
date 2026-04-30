@@ -437,8 +437,8 @@ func validateDiscord(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Discord.ReplyTruncationLength, "discord.reply_truncation_length", errs)
 	requirePositive(cfg.Discord.ImageCacheTTLMin, "discord.image_cache_ttl_min", errs)
 	requirePositive(cfg.Discord.ImageCacheMaxEntries, "discord.image_cache_max_entries", errs)
-	if !cfg.Discord.ReplyToBots {
-		fmt.Fprintf(os.Stderr, "WARNING: discord.reply_to_bots is false — bot will not respond to other bots\n")
+	if cfg.Discord.ReplyToBots {
+		fmt.Fprintf(os.Stderr, "WARNING: discord.reply_to_bots is true — bot will respond to other bots\n")
 	}
 }
 
