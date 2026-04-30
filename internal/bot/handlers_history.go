@@ -1,4 +1,4 @@
-// Package bot provides Discord bot event handlers
+﻿// Package bot provides Discord bot event handlers
 package bot
 
 import (
@@ -9,7 +9,7 @@ import (
 
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
-	"ezyapper/internal/memory"
+	"ezyapper/internal/types"
 	"ezyapper/internal/utils"
 
 	"github.com/bwmarrin/discordgo"
@@ -72,7 +72,7 @@ func shouldEnrichRecentHistoricalImages(userContent string, hasReference bool) b
 }
 
 // buildConversationHistory builds message history from Discord messages
-func (b *Bot) buildConversationHistory(ctx context.Context, messages []*memory.DiscordMessage) []openai.ChatCompletionMessage {
+func (b *Bot) buildConversationHistory(ctx context.Context, messages []*types.DiscordMessage) []openai.ChatCompletionMessage {
 	var result []openai.ChatCompletionMessage
 	visionDescriber := b.getVisionDescriber()
 
@@ -166,7 +166,7 @@ func (b *Bot) buildConversationHistory(ctx context.Context, messages []*memory.D
 // Filters out the current message being processed and marks only the current bot as "Assistant"
 // In hybrid mode, primarily uses cached historical image descriptions; optionally performs
 // tightly bounded on-demand enrichment for the most recent image message.
-func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*memory.DiscordMessage, currentMsgID, botID string, allowOnDemandRecentImageEnrichment bool, mentions []*discordgo.User, channelMappings []utils.ChannelMapping) string {
+func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*types.DiscordMessage, currentMsgID, botID string, allowOnDemandRecentImageEnrichment bool, mentions []*discordgo.User, channelMappings []utils.ChannelMapping) string {
 	if len(messages) == 0 {
 		return ""
 	}
@@ -301,7 +301,7 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*memo
 }
 
 // collectRecentUsers collects unique users from recent messages
-func (b *Bot) collectRecentUsers(messages []*memory.DiscordMessage) []UserInfo {
+func (b *Bot) collectRecentUsers(messages []*types.DiscordMessage) []UserInfo {
 	seen := make(map[string]bool)
 	var users []UserInfo
 

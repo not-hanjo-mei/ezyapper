@@ -1,4 +1,4 @@
-// Package bot provides Discord bot event handlers
+﻿// Package bot provides Discord bot event handlers
 package bot
 
 import (
@@ -7,7 +7,7 @@ import (
 
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
-	"ezyapper/internal/memory"
+	"ezyapper/internal/types"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -94,7 +94,7 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		m.Content, m.Author.Username, m.ChannelID, m.GuildID)
 
 	// Create DiscordMessage early so bot's own messages also enter channel buffer
-	msg := &memory.DiscordMessage{
+	msg := &types.DiscordMessage{
 		ID:        m.ID,
 		ChannelID: m.ChannelID,
 		GuildID:   m.GuildID,

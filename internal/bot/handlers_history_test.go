@@ -1,4 +1,4 @@
-package bot
+﻿package bot
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"ezyapper/internal/memory"
+	"ezyapper/internal/types"
 	"ezyapper/internal/utils"
 
 	"github.com/bwmarrin/discordgo"
@@ -13,7 +14,7 @@ import (
 
 func TestCollectRecentUsers_Dedup(t *testing.T) {
 	b := &Bot{}
-	messages := []*memory.DiscordMessage{
+	messages := []*types.DiscordMessage{
 		{AuthorID: "user1", Username: "Alice"},
 		{AuthorID: "user2", Username: "Bob"},
 		{AuthorID: "user1", Username: "Alice"},
@@ -45,7 +46,7 @@ func TestCollectRecentUsers_Dedup(t *testing.T) {
 
 func TestCollectRecentUsers_FromMessages(t *testing.T) {
 	b := &Bot{}
-	messages := []*memory.DiscordMessage{
+	messages := []*types.DiscordMessage{
 		{AuthorID: "user1", Username: "Alice", Content: "Hello"},
 		{AuthorID: "user2", Username: "Bob", Content: "Hi there"},
 		{AuthorID: "user1", Username: "Alice", Content: "How are you?"},
@@ -77,7 +78,7 @@ func TestCollectRecentUsers_FromMessages(t *testing.T) {
 func TestBuildConversationHistory_ResolvedMentions(t *testing.T) {
 	b := &Bot{}
 
-	messages := []*memory.DiscordMessage{
+	messages := []*types.DiscordMessage{
 		{
 			ID:       "msg1",
 			AuthorID: "user1",
@@ -163,7 +164,7 @@ func TestBuildConversationHistory_ResolvedMentions(t *testing.T) {
 func TestBuildConversationHistory_WithReply(t *testing.T) {
 	b := &Bot{}
 
-	messages := []*memory.DiscordMessage{
+	messages := []*types.DiscordMessage{
 		{
 			ID:              "msg2",
 			AuthorID:        "user2",
@@ -217,7 +218,7 @@ func TestBuildConversationHistory_WithReply(t *testing.T) {
 func TestBuildConversationHistory_WithReplyDeleted(t *testing.T) {
 	b := &Bot{}
 
-	messages := []*memory.DiscordMessage{
+	messages := []*types.DiscordMessage{
 		{
 			ID:              "msg2",
 			AuthorID:        "user2",
@@ -250,7 +251,7 @@ func TestBuildConversationHistory_WithReplyDeleted(t *testing.T) {
 func TestBuildConversationHistory_NoReply(t *testing.T) {
 	b := &Bot{}
 
-	messages := []*memory.DiscordMessage{
+	messages := []*types.DiscordMessage{
 		{
 			ID:       "msg1",
 			AuthorID: "user1",
@@ -285,19 +286,19 @@ func TestBuildConversationHistory_NoReply(t *testing.T) {
 func TestBuildConversationHistory_WithRename(t *testing.T) {
 	b := &Bot{}
 
-	messages := []*memory.DiscordMessage{
+	messages := []*types.DiscordMessage{
 		{
 			ID:       "msg1",
 			AuthorID: "user1",
-			Username: "半条命",
-			Content:  "大家好",
+			Username: "鍗婃潯鍛?,
+			Content:  "澶у濂?,
 			IsBot:    false,
 		},
 		{
 			ID:              "msg2",
 			AuthorID:        "user1",
-			Username:        "xxx_半条命",
-			Content:         "我把名字改了",
+			Username:        "xxx_鍗婃潯鍛?,
+			Content:         "鎴戞妸鍚嶅瓧鏀逛簡",
 			IsBot:           false,
 			ReplyToID:       "msg0",
 			ReplyToUsername: "Mei",
@@ -319,7 +320,7 @@ func TestBuildConversationHistory_WithRename(t *testing.T) {
 		{
 			ID:              "msg5",
 			AuthorID:        "user1",
-			Username:        "xxx_半条命",
+			Username:        "xxx_鍗婃潯鍛?,
 			Content:         "Same name again",
 			IsBot:           false,
 			ReplyToID:       "msgX",
@@ -338,12 +339,12 @@ func TestBuildConversationHistory_WithRename(t *testing.T) {
 	)
 
 	// First message should have NO rename marker (first appearance)
-	if !strings.Contains(result, "[User] 半条命 (ID:user1): 大家好") {
+	if !strings.Contains(result, "[User] 鍗婃潯鍛?(ID:user1): 澶у濂?) {
 		t.Error("expected first message of user1 without rename marker")
 	}
 
-	// Second message (user1 renamed to xxx_半条命) should have rename marker + reply marker
-	expectedLine := "[User] xxx_半条命 (ID:user1): 我把名字改了 (was @半条命) (replying to @Mei)"
+	// Second message (user1 renamed to xxx_鍗婃潯鍛? should have rename marker + reply marker
+	expectedLine := "[User] xxx_鍗婃潯鍛?(ID:user1): 鎴戞妸鍚嶅瓧鏀逛簡 (was @鍗婃潯鍛? (replying to @Mei)"
 	if !strings.Contains(result, expectedLine) {
 		t.Errorf("expected rename marker before reply marker\n  want: %s\n  got:\n%s", expectedLine, result)
 	}

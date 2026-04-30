@@ -1,4 +1,4 @@
-// Package bot provides Discord bot session management
+﻿// Package bot provides Discord bot session management
 package bot
 
 import (
@@ -19,6 +19,7 @@ import (
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
+	"ezyapper/internal/types"
 	"ezyapper/internal/plugin"
 	"ezyapper/internal/ratelimit"
 	"ezyapper/internal/utils"
@@ -137,7 +138,7 @@ type Bot struct {
 	lastResponseTime map[string]time.Time
 	wg               sync.WaitGroup
 
-	channelMessageBuffer   map[string][]*memory.DiscordMessage // Channel-level buffer for batch consolidation
+	channelMessageBuffer   map[string][]*types.DiscordMessage // Channel-level buffer for batch consolidation
 	channelBufferMu        sync.RWMutex
 	channelConsolidating   map[string]bool
 	channelConsolidationMu sync.Mutex
@@ -230,7 +231,7 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 		visionDescriber:          nil,
 		pluginToolNames:          make(map[string]struct{}),
 		lastResponseTime:         make(map[string]time.Time),
-		channelMessageBuffer:     make(map[string][]*memory.DiscordMessage),
+		channelMessageBuffer:     make(map[string][]*types.DiscordMessage),
 		channelConsolidating:     make(map[string]bool),
 		historicalImageDescCache: make(map[string]historicalImageDescCacheEntry),
 		processingMessages:       make(map[string]*ProcessingMessage),
@@ -513,7 +514,7 @@ func (b *Bot) SetCooldown(userID string, duration time.Duration) {
 }
 
 // FetchUserMessages proxies Discord message retrieval for the Web server.
-func (b *Bot) FetchUserMessages(ctx context.Context, channelID string, userID string, limit int) ([]*memory.DiscordMessage, error) {
+func (b *Bot) FetchUserMessages(ctx context.Context, channelID string, userID string, limit int) ([]*types.DiscordMessage, error) {
 	return b.discordClient.FetchUserMessages(ctx, channelID, userID, limit)
 }
 
@@ -646,7 +647,7 @@ func (b *Bot) registerPluginTools() {
 
 // ShouldRespond determines if the bot should respond to a message
 // The context is used to cancel the LLM decision if the message is edited
-func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, recentMessages []*memory.DiscordMessage) (bool, string) {
+func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, recentMessages []*types.DiscordMessage) (bool, string) {
 	// Ignore bot's own messages
 	if m.Author.ID == b.session.State.User.ID {
 		return false, "own message"
@@ -724,7 +725,7 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 	return true, "random engagement"
 }
 
-func (b *Bot) getRecentMessagesForDecision(currentMessageID string, messages []*memory.DiscordMessage) []decision.ContextMessage {
+func (b *Bot) getRecentMessagesForDecision(currentMessageID string, messages []*types.DiscordMessage) []decision.ContextMessage {
 	var result []decision.ContextMessage
 	for _, msg := range messages {
 		if msg.ID == currentMessageID {
@@ -852,7 +853,7 @@ func (b *Bot) handleEditedMessage(pm *ProcessingMessage, newContent string) bool
 
 // Channel-level buffer methods for batch consolidation
 
-func (b *Bot) addMessageToChannelBuffer(channelID string, msg *memory.DiscordMessage) {
+func (b *Bot) addMessageToChannelBuffer(channelID string, msg *types.DiscordMessage) {
 	if msg == nil {
 		return
 	}
@@ -877,7 +878,7 @@ func (b *Bot) addMessageToChannelBuffer(channelID string, msg *memory.DiscordMes
 	}
 }
 
-func (b *Bot) getAndClearChannelMessageBuffer(channelID string) []*memory.DiscordMessage {
+func (b *Bot) getAndClearChannelMessageBuffer(channelID string) []*types.DiscordMessage {
 	b.channelBufferMu.Lock()
 	defer b.channelBufferMu.Unlock()
 

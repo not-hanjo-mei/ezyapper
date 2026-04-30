@@ -1,4 +1,4 @@
-package plugin
+﻿package plugin
 
 import (
 	"encoding/json"
@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	"ezyapper/internal/types"
 )
 
 type jsonRPCRequest struct {
@@ -202,7 +204,7 @@ func Serve(impl Interface) error {
 		case "info":
 			result, callErr = impl.Info()
 		case "on_message":
-			var msg DiscordMessage
+			var msg types.DiscordMessage
 			if err := decodeJSONRPCParams(req.Params, &msg); err != nil {
 				callErr = fmt.Errorf("invalid params for on_message")
 				break

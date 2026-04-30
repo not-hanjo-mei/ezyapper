@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"os"
@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"ezyapper/internal/plugin"
+	"ezyapper/internal/types"
 )
 
 func newTestPlugin(t *testing.T) *EmotePlugin {
@@ -52,7 +53,7 @@ func TestSearchEmote_NoEmoteLLM(t *testing.T) {
 
 func TestSearchEmote_NoMatch(t *testing.T) {
 	p := newTestPlugin(t)
-	p.emoteLLM = &EmoteLLMClient{model: "test-model"} // empty apiKey → returns nil, nil (no matches)
+	p.emoteLLM = &EmoteLLMClient{model: "test-model"} // empty apiKey 鈫?returns nil, nil (no matches)
 
 	entry := EmoteEntry{ID: "nm1", Name: "happy_cat", Tags: []string{"cat"}, URL: ""}
 	addTestEmotes(t, p.storage, "global", []EmoteEntry{entry})
@@ -85,8 +86,8 @@ func TestOnMessage_SkipWhenDisabled(t *testing.T) {
 	p := newTestPlugin(t)
 	p.config.AutoStealEnabled = false
 
-	msg := plugin.DiscordMessage{
-		AttachmentURLs: []string{"https://example.com/image.png"},
+	msg := types.DiscordMessage{
+		ImageURLs: []string{"https://example.com/image.png"},
 		GuildID:        "g",
 		ChannelID:      "c",
 		AuthorID:       "u",
@@ -105,7 +106,7 @@ func TestOnMessage_SkipEmptyAttachments(t *testing.T) {
 	p := newTestPlugin(t)
 	p.config.AutoStealEnabled = true
 
-	msg := plugin.DiscordMessage{
+	msg := types.DiscordMessage{
 		GuildID:   "g",
 		ChannelID: "c",
 		AuthorID:  "u",
@@ -124,8 +125,8 @@ func TestOnMessage_SkipNilStorage(t *testing.T) {
 	p := &EmotePlugin{
 		config: Config{AutoStealEnabled: true},
 	}
-	msg := plugin.DiscordMessage{
-		AttachmentURLs: []string{"https://example.com/image.png"},
+	msg := types.DiscordMessage{
+		ImageURLs: []string{"https://example.com/image.png"},
 		GuildID:        "g",
 		ChannelID:      "c",
 		AuthorID:       "u",
@@ -154,7 +155,7 @@ func TestExecuteTool_Unknown(t *testing.T) {
 
 func TestOnResponse(t *testing.T) {
 	p := newTestPlugin(t)
-	msg := plugin.DiscordMessage{Content: "hello"}
+	msg := types.DiscordMessage{Content: "hello"}
 	if err := p.OnResponse(msg, "response text"); err != nil {
 		t.Fatalf("OnResponse should return nil: %v", err)
 	}
@@ -520,7 +521,7 @@ func TestOnResponse_SendsQueued(t *testing.T) {
 	p := newTestPlugin(t)
 	p.discord = &DiscordSession{}
 	p.sendQueue = map[string]string{"chan-123": "https://example.com/test.png"}
-	msg := plugin.DiscordMessage{ChannelID: "chan-123"}
+	msg := types.DiscordMessage{ChannelID: "chan-123"}
 	if err := p.OnResponse(msg, "response text"); err != nil {
 		t.Fatalf("OnResponse should return nil: %v", err)
 	}
@@ -531,7 +532,7 @@ func TestOnResponse_SendsQueued(t *testing.T) {
 
 func TestOnResponse_NoQueueEntry(t *testing.T) {
 	p := newTestPlugin(t)
-	msg := plugin.DiscordMessage{ChannelID: "no-queue"}
+	msg := types.DiscordMessage{ChannelID: "no-queue"}
 	if err := p.OnResponse(msg, "response text"); err != nil {
 		t.Fatalf("OnResponse should return nil: %v", err)
 	}

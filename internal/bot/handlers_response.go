@@ -1,4 +1,4 @@
-// Package bot provides Discord bot event handlers
+﻿// Package bot provides Discord bot event handlers
 package bot
 
 import (
@@ -11,6 +11,7 @@ import (
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
+	"ezyapper/internal/types"
 	"ezyapper/internal/utils"
 
 	"github.com/bwmarrin/discordgo"
@@ -50,7 +51,7 @@ func extractReplyToUsername(m *discordgo.MessageCreate) string {
 }
 
 // generateResponse generates an AI response for a message
-func (b *Bot) generateResponse(ctx context.Context, mc ModeContext, gc GenerateContext, recentMessages []*memory.DiscordMessage, memories []*memory.Record, profile *memory.Profile) (string, error) {
+func (b *Bot) generateResponse(ctx context.Context, mc ModeContext, gc GenerateContext, recentMessages []*types.DiscordMessage, memories []*memory.Record, profile *memory.Profile) (string, error) {
 	// Check if context is cancelled before starting
 	if err := ctx.Err(); err != nil {
 		return "", err

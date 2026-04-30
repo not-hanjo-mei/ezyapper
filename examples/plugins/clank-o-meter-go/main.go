@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"bytes"
@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"ezyapper/internal/plugin"
+	"ezyapper/internal/types"
 
 	"gopkg.in/yaml.v3"
 )
@@ -44,11 +45,11 @@ func (p *ClankOMeterPlugin) Info() (plugin.Info, error) {
 	}, nil
 }
 
-func (p *ClankOMeterPlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
+func (p *ClankOMeterPlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	return true, nil
 }
 
-func (p *ClankOMeterPlugin) OnResponse(msg plugin.DiscordMessage, response string) error {
+func (p *ClankOMeterPlugin) OnResponse(msg types.DiscordMessage, response string) error {
 	return nil
 }
 

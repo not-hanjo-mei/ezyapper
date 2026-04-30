@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"encoding/json"
@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"ezyapper/internal/plugin"
+	"ezyapper/internal/types"
 
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/mem"
@@ -70,11 +71,11 @@ func (p *SystemSpecPlugin) Info() (plugin.Info, error) {
 	}, nil
 }
 
-func (p *SystemSpecPlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
+func (p *SystemSpecPlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	return true, nil
 }
 
-func (p *SystemSpecPlugin) OnResponse(msg plugin.DiscordMessage, response string) error {
+func (p *SystemSpecPlugin) OnResponse(msg types.DiscordMessage, response string) error {
 	return nil
 }
 

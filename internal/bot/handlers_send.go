@@ -1,4 +1,4 @@
-// Package bot provides Discord bot event handlers
+﻿// Package bot provides Discord bot event handlers
 package bot
 
 import (
@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"ezyapper/internal/logger"
-	"ezyapper/internal/memory"
+	"ezyapper/internal/types"
 	"ezyapper/internal/plugin"
 
 	"github.com/bwmarrin/discordgo"
@@ -210,8 +210,8 @@ func (b *Bot) sendMessageWithLocalFiles(
 }
 
 // buildBotMessage creates a DiscordMessage record for the bot's own sent message.
-func (b *Bot) buildBotMessage(sentMsg *discordgo.Message, m *discordgo.MessageCreate, s *discordgo.Session) *memory.DiscordMessage {
-	return &memory.DiscordMessage{
+func (b *Bot) buildBotMessage(sentMsg *discordgo.Message, m *discordgo.MessageCreate, s *discordgo.Session) *types.DiscordMessage {
+	return &types.DiscordMessage{
 		ID:        sentMsg.ID,
 		ChannelID: sentMsg.ChannelID,
 		GuildID:   m.GuildID,

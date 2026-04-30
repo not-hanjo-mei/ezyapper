@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"encoding/json"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"ezyapper/internal/plugin"
+	"ezyapper/internal/types"
 )
 
 // EmotePlugin is the main plugin struct.
@@ -37,21 +38,21 @@ func (p *EmotePlugin) Info() (plugin.Info, error) {
 }
 
 // OnMessage is called for every Discord message. Records attachment URLs as emote entries.
-func (p *EmotePlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
+func (p *EmotePlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	p.lastChannelID = msg.ChannelID
 
-	if !p.config.AutoStealEnabled || p.storage == nil || len(msg.AttachmentURLs) == 0 || msg.IsBot {
+	if !p.config.AutoStealEnabled || p.storage == nil || len(msg.ImageURLs) == 0 || msg.IsBot {
 		return true, nil
 	}
 
-	fmt.Fprintf(os.Stderr, "[EMOTE] OnMessage: %d attachments from channel=%s\n", len(msg.AttachmentURLs), msg.ChannelID)
+	fmt.Fprintf(os.Stderr, "[EMOTE] OnMessage: %d attachments from channel=%s\n", len(msg.ImageURLs), msg.ChannelID)
 
 	guildID := msg.GuildID
 	if guildID == "" {
 		guildID = "global"
 	}
 
-	for _, url := range msg.AttachmentURLs {
+	for _, url := range msg.ImageURLs {
 		if !p.storage.CheckBlacklist(
 			guildID, msg.ChannelID, msg.AuthorID,
 			p.config.AdditionalBlacklistChannels,
@@ -80,7 +81,7 @@ func (p *EmotePlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
 }
 
 // OnResponse is called after the bot generates a response.
-func (p *EmotePlugin) OnResponse(msg plugin.DiscordMessage, response string) error {
+func (p *EmotePlugin) OnResponse(msg types.DiscordMessage, response string) error {
 	p.mu.Lock()
 	content, ok := p.sendQueue[msg.ChannelID]
 	if ok {

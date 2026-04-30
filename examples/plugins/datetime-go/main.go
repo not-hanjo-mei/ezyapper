@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"bytes"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"ezyapper/internal/plugin"
+	"ezyapper/internal/types"
 
 	"gopkg.in/yaml.v3"
 )
@@ -126,11 +127,11 @@ func (p *DateTimePlugin) Info() (plugin.Info, error) {
 	}, nil
 }
 
-func (p *DateTimePlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
+func (p *DateTimePlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	return true, nil
 }
 
-func (p *DateTimePlugin) OnResponse(msg plugin.DiscordMessage, response string) error {
+func (p *DateTimePlugin) OnResponse(msg types.DiscordMessage, response string) error {
 	return nil
 }
 

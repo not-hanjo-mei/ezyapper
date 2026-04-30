@@ -1,4 +1,4 @@
-// Anti-Spam Plugin
+﻿// Anti-Spam Plugin
 // This is a working example plugin that uses the external plugin system
 // It works on Windows, Linux, and macOS
 //
@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"ezyapper/internal/plugin"
+	"ezyapper/internal/types"
 
 	"gopkg.in/yaml.v3"
 )
@@ -68,7 +69,7 @@ func (p *AntiSpamPlugin) Info() (plugin.Info, error) {
 }
 
 // OnMessage is called for every message
-func (p *AntiSpamPlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
+func (p *AntiSpamPlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	// Skip bot messages if configured
 	if p.config.IgnoreBots && msg.IsBot {
 		return true, nil
@@ -104,7 +105,7 @@ func (p *AntiSpamPlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
 }
 
 // OnResponse is called after the bot generates a response
-func (p *AntiSpamPlugin) OnResponse(msg plugin.DiscordMessage, response string) error {
+func (p *AntiSpamPlugin) OnResponse(msg types.DiscordMessage, response string) error {
 	// No action needed
 	return nil
 }

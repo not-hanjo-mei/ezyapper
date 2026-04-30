@@ -1,8 +1,10 @@
-// Package memory provides long-term memory management using Qdrant vector database
+﻿// Package memory provides long-term memory management using Qdrant vector database
 package memory
 
 import (
 	"time"
+
+	"ezyapper/internal/types"
 )
 
 // Type represents the type of memory being stored
@@ -119,26 +121,9 @@ type ProfileDelta struct {
 	NewInterests   []string          `json:"new_interests"`
 }
 
-// DiscordMessage represents a simplified Discord message for short-term context
-type DiscordMessage struct {
-	ID                string    `json:"id"`
-	ChannelID         string    `json:"channel_id"`
-	GuildID           string    `json:"guild_id"`
-	AuthorID          string    `json:"author_id"`
-	Username          string    `json:"username"`
-	Content           string    `json:"content"`
-	ImageURLs         []string  `json:"image_urls,omitempty"`
-	ImageDescriptions []string  `json:"image_descriptions,omitempty"` // Cached image descriptions to avoid redundant API calls
-	Timestamp         time.Time `json:"timestamp"`
-	IsBot             bool      `json:"is_bot"`
 
-	// ReplyToID is the ID of the message being replied to (from MessageReference)
-	ReplyToID string `json:"reply_to_id"`
-	// ReplyToUsername is the username of the author of the replied-to message
-	ReplyToUsername string `json:"reply_to_username"`
-	// ReplyToContent is the content of the replied-to message
-	ReplyToContent string `json:"reply_to_content"`
-}
+// DiscordMessage is an alias for the canonical type defined in internal/types.
+type DiscordMessage = types.DiscordMessage
 
 // UserStats represents statistics for a user
 type UserStats struct {

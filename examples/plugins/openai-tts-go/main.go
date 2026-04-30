@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"bytes"
@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"ezyapper/internal/plugin"
+	"ezyapper/internal/types"
 
 	"gopkg.in/yaml.v3"
 )
@@ -429,11 +430,11 @@ func (p *openAITTSPlugin) Info() (plugin.Info, error) {
 	}, nil
 }
 
-func (p *openAITTSPlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
+func (p *openAITTSPlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	return true, nil
 }
 
-func (p *openAITTSPlugin) OnResponse(msg plugin.DiscordMessage, response string) error {
+func (p *openAITTSPlugin) OnResponse(msg types.DiscordMessage, response string) error {
 	return nil
 }
 
@@ -442,7 +443,7 @@ func (p *openAITTSPlugin) Shutdown() error {
 	return nil
 }
 
-func (p *openAITTSPlugin) BeforeSend(msg plugin.DiscordMessage, response string) (plugin.BeforeSendResult, error) {
+func (p *openAITTSPlugin) BeforeSend(msg types.DiscordMessage, response string) (plugin.BeforeSendResult, error) {
 	text := strings.TrimSpace(response)
 	if text == "" {
 		return plugin.BeforeSendResult{}, nil

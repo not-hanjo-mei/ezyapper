@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"bytes"
@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"ezyapper/internal/plugin"
+	"ezyapper/internal/types"
 
 	"gopkg.in/yaml.v3"
 )
@@ -103,11 +104,11 @@ func (p *kimiToolsPlugin) Info() (plugin.Info, error) {
 	}, nil
 }
 
-func (p *kimiToolsPlugin) OnMessage(msg plugin.DiscordMessage) (bool, error) {
+func (p *kimiToolsPlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	return true, nil
 }
 
-func (p *kimiToolsPlugin) OnResponse(msg plugin.DiscordMessage, response string) error {
+func (p *kimiToolsPlugin) OnResponse(msg types.DiscordMessage, response string) error {
 	return nil
 }
 

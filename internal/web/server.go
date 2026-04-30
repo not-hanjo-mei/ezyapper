@@ -1,4 +1,4 @@
-// Package web provides an HTTP API server and WebUI for managing the bot.
+﻿// Package web provides an HTTP API server and WebUI for managing the bot.
 package web
 
 import (
@@ -15,6 +15,7 @@ import (
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
+	"ezyapper/internal/types"
 	"ezyapper/internal/plugin"
 )
 
@@ -44,11 +45,11 @@ func (s *Server) cfg() *config.Config {
 }
 
 type DiscordMessageFetcher interface {
-	FetchUserMessages(ctx context.Context, channelID string, userID string, limit int) ([]*memory.DiscordMessage, error)
+	FetchUserMessages(ctx context.Context, channelID string, userID string, limit int) ([]*types.DiscordMessage, error)
 }
 
 // DiscordInfoProvider provides read-only access to Discord metadata (channel names, user names, guild names).
-// All methods are non-blocking — they read from Discord's in-memory state cache only.
+// All methods are non-blocking 鈥?they read from Discord's in-memory state cache only.
 type DiscordInfoProvider interface {
 	GetChannelName(channelID string) string
 	GetUserName(guildID, userID string) string
@@ -237,7 +238,7 @@ func (s *Server) setupRoutes() {
 	// Logs
 	mux.HandleFunc("/logs", LogsHandler(s.cfg().Logging.File, ts))
 
-	// Chain middleware: Security → CSRF → Session → mux
+	// Chain middleware: Security 鈫?CSRF 鈫?Session 鈫?mux
 	s.router = Chain(mux,
 		securityHeaders,
 		CSRFMiddleware(s.csrfSecret),

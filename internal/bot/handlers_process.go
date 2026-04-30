@@ -1,4 +1,4 @@
-package bot
+﻿package bot
 
 import (
 	"context"
@@ -8,25 +8,26 @@ import (
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
+	"ezyapper/internal/types"
 	"ezyapper/internal/utils"
 
 	"github.com/bwmarrin/discordgo"
 )
 
 // processMessageWithoutImages processes a message without image handling (text-only mode).
-func (b *Bot) processMessageWithoutImages(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, recentMessages []*memory.DiscordMessage) {
+func (b *Bot) processMessageWithoutImages(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, recentMessages []*types.DiscordMessage) {
 	b.processMessageCore(ctx, s, m, pm, false, recentMessages)
 }
 
 // processMessage processes a message and generates a response (with image handling).
-func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, recentMessages []*memory.DiscordMessage) {
+func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, recentMessages []*types.DiscordMessage) {
 	b.processMessageCore(ctx, s, m, pm, true, recentMessages)
 }
 
 // processMessageCore is the shared processing pipeline used by both text-only and
 // image-capable paths. When withImages is false, image extraction and the
 // image-enriched DiscordMessage struct are skipped.
-func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, withImages bool, recentMessages []*memory.DiscordMessage) {
+func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, withImages bool, recentMessages []*types.DiscordMessage) {
 	if err := ctx.Err(); err != nil {
 		logger.Infof("[processing] Message %s cancelled before starting", m.ID)
 		b.clearProcessingMessage(pm, m.ID)
@@ -39,7 +40,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 
 	var imageURLs []string
 	var imageDescriptions []string
-	var msg *memory.DiscordMessage
+	var msg *types.DiscordMessage
 
 	if withImages {
 		imageURLs = utils.ExtractImageURLs(m.Message)
@@ -56,7 +57,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 			}
 		}
 
-		msg = &memory.DiscordMessage{
+		msg = &types.DiscordMessage{
 			ID:                m.ID,
 			ChannelID:         m.ChannelID,
 			GuildID:           m.GuildID,
