@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestManagerHelperProcess(t *testing.T) {
@@ -406,5 +408,174 @@ func TestValidateToolSpec_OK(t *testing.T) {
 	err := validateToolSpec(&ToolSpec{Name: "test", TimeoutMs: 15000})
 	if err != nil {
 		t.Fatalf("expected no error for valid timeout_ms, got %v", err)
+	}
+}
+
+func TestToolSpecTimeoutMsPropagation(t *testing.T) {
+	pm := NewManager(0)
+	pm.plugins["test-plugin"] = &Client{
+		Name:    "test-plugin",
+		runtime: pluginRuntimeJSONRPC,
+		tools: []ToolSpec{
+			{Name: "test-tool", Description: "test", TimeoutMs: 15000},
+		},
+	}
+
+	tools := pm.ListTools()
+	if len(tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(tools))
+	}
+	if tools[0].Spec.TimeoutMs != 15000 {
+		t.Fatalf("expected TimeoutMs=15000, got %d", tools[0].Spec.TimeoutMs)
+	}
+}
+
+func TestToolSpecTimeoutMsJSONDeserialization(t *testing.T) {
+	raw := `{"name":"test","description":"test tool","parameters":{"type":"object"},"timeout_ms":15000}`
+	var spec ToolSpec
+	if err := json.Unmarshal([]byte(raw), &spec); err != nil {
+		t.Fatalf("failed to unmarshal ToolSpec: %v", err)
+	}
+	if spec.TimeoutMs != 15000 {
+		t.Fatalf("expected TimeoutMs=15000, got %d", spec.TimeoutMs)
+	}
+}
+
+func TestToolSpecTimeoutMsJSONOmittedDefaultsToZero(t *testing.T) {
+	raw := `{"name":"test","description":"test tool","parameters":{"type":"object"}}`
+	var spec ToolSpec
+	if err := json.Unmarshal([]byte(raw), &spec); err != nil {
+		t.Fatalf("failed to unmarshal ToolSpec: %v", err)
+	}
+	if spec.TimeoutMs != 0 {
+		t.Fatalf("expected TimeoutMs=0 when omitted, got %d", spec.TimeoutMs)
+	}
+}
+
+func newMockJSONRPCClient(responseDelay time.Duration) (*stdioJSONRPCClient, func()) {
+	stdinReader, stdinWriter := io.Pipe()
+	stdoutReader, stdoutWriter := io.Pipe()
+
+	client := newStdioJSONRPCClient(stdinWriter, stdoutReader)
+
+	go func() {
+		var req jsonRPCRequest
+		if err := json.NewDecoder(stdinReader).Decode(&req); err != nil {
+			stdinWriter.Close()
+			stdoutWriter.Close()
+			return
+		}
+		time.Sleep(responseDelay)
+		writeJSONRPCResponse(json.NewEncoder(stdoutWriter), req.ID, "done", nil)
+		stdinWriter.Close()
+		stdoutWriter.Close()
+	}()
+
+	cleanup := func() {
+		stdinWriter.Close()
+		stdoutReader.Close()
+	}
+
+	return client, cleanup
+}
+
+func newTimeoutTestManager(t *testing.T, toolTimeoutMs int, toolDelay time.Duration, defaultToolTimeoutMs int) *Manager {
+	t.Helper()
+
+	jsonClient, cleanup := newMockJSONRPCClient(toolDelay)
+	t.Cleanup(cleanup)
+
+	pm := NewManager(defaultToolTimeoutMs)
+	pm.plugins["mock-plugin"] = &Client{
+		Name:    "mock-plugin",
+		jsonrpc: jsonClient,
+		runtime: pluginRuntimeJSONRPC,
+		tools: []ToolSpec{
+			{Name: "mock-tool", Description: "mock tool", TimeoutMs: toolTimeoutMs},
+		},
+	}
+
+	return pm
+}
+
+func TestExecuteToolTimeout_ToolSpecWins(t *testing.T) {
+	pm := newTimeoutTestManager(t, 200, 1*time.Second, 0)
+
+	_, err := pm.ExecuteTool("mock-plugin", "mock-tool", map[string]interface{}{})
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if !strings.Contains(err.Error(), "jsonrpc call timeout") {
+		t.Fatalf("expected timeout error message, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "(200ms)") {
+		t.Fatalf("expected error to mention (200ms), got: %v", err)
+	}
+}
+
+func TestExecuteToolTimeout_ConfigWins(t *testing.T) {
+	pm := newTimeoutTestManager(t, 0, 2*time.Second, 500)
+
+	_, err := pm.ExecuteTool("mock-plugin", "mock-tool", map[string]interface{}{})
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if !strings.Contains(err.Error(), "(500ms)") {
+		t.Fatalf("expected error to mention (500ms), got: %v", err)
+	}
+}
+
+func TestExecuteToolTimeout_Fallback(t *testing.T) {
+	pm := newTimeoutTestManager(t, 0, 100*time.Millisecond, 0)
+
+	result, err := pm.ExecuteTool("mock-plugin", "mock-tool", map[string]interface{}{})
+	if err != nil {
+		t.Fatalf("expected success with fallback timeout, got error: %v", err)
+	}
+	if result != "done" {
+		t.Fatalf("expected result 'done', got %q", result)
+	}
+}
+
+func TestExecuteToolTimeout_SuccessWithToolTimeout(t *testing.T) {
+	pm := newTimeoutTestManager(t, 15000, 100*time.Millisecond, 0)
+
+	result, err := pm.ExecuteTool("mock-plugin", "mock-tool", map[string]interface{}{})
+	if err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+	if result != "done" {
+		t.Fatalf("expected result 'done', got %q", result)
+	}
+}
+
+func TestExecuteToolTimeout_SuccessWithConfigTimeout(t *testing.T) {
+	pm := newTimeoutTestManager(t, 0, 100*time.Millisecond, 10000)
+
+	result, err := pm.ExecuteTool("mock-plugin", "mock-tool", map[string]interface{}{})
+	if err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+	if result != "done" {
+		t.Fatalf("expected result 'done', got %q", result)
+	}
+}
+
+func TestManagerDefaultToolTimeoutMsZero(t *testing.T) {
+	pm := NewManager(0)
+	if pm.defaultToolTimeoutMs != 0 {
+		t.Fatalf("expected DefaultToolTimeoutMs=0, got %d", pm.defaultToolTimeoutMs)
+	}
+}
+
+func TestToolSpecTimeoutMsZeroRoundtrip(t *testing.T) {
+	pm := newTimeoutTestManager(t, 0, 50*time.Millisecond, 0)
+
+	result, err := pm.ExecuteTool("mock-plugin", "mock-tool", map[string]interface{}{})
+	if err != nil {
+		t.Fatalf("expected success with zero timeout_ms, got: %v", err)
+	}
+	if result != "done" {
+		t.Fatalf("expected result 'done', got %q", result)
 	}
 }
