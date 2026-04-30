@@ -25,28 +25,11 @@ const DateTimeConfig = struct {
     utc_offset_minutes: i64,
 };
 
-fn defaultDateTimeConfig(init: std.process.Init) DateTimeConfig {
-    const timezone = blk: {
-        const timezone_raw = init.environ_map.get("EZYAPPER_SYSTEM_TIMEZONE") orelse break :blk "Local";
-        const trimmed = std.mem.trim(u8, timezone_raw, " \t\r\n");
-        if (trimmed.len == 0) {
-            break :blk "Local";
-        }
-        break :blk trimmed;
-    };
-
-    const utc_offset_minutes = blk: {
-        const offset_raw = init.environ_map.get("EZYAPPER_SYSTEM_UTC_OFFSET_MINUTES") orelse break :blk @as(i64, 0);
-        const trimmed = std.mem.trim(u8, offset_raw, " \t\r\n");
-        if (trimmed.len == 0) {
-            break :blk @as(i64, 0);
-        }
-        break :blk std.fmt.parseInt(i64, trimmed, 10) catch @as(i64, 0);
-    };
-
+fn defaultDateTimeConfig() DateTimeConfig {
+    // Default to UTC with zero offset when no config file is available.
     return .{
-        .timezone = timezone,
-        .utc_offset_minutes = utc_offset_minutes,
+        .timezone = "UTC",
+        .utc_offset_minutes = 0,
     };
 }
 
@@ -110,7 +93,7 @@ fn parseDateTimeConfig(config_text: []const u8, defaults: DateTimeConfig) !DateT
 }
 
 fn loadDateTimeConfig(init: std.process.Init) !DateTimeConfig {
-    const defaults = defaultDateTimeConfig(init);
+    const defaults = defaultDateTimeConfig();
 
     const config_path_raw = init.environ_map.get("EZYAPPER_PLUGIN_CONFIG") orelse return defaults;
     const config_path = std.mem.trim(u8, config_path_raw, " \t\r\n");

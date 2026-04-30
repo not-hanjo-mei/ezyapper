@@ -3,9 +3,9 @@
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,75 +15,95 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type DateTimePlugin struct {
+	config DateTimeConfig
+}
+
 type DateTimeConfig struct {
 	Location             *time.Location
 	TimezoneLabel        string
 	GetCurrentDatetimeMs int
 }
 
-type dateTimeConfigFile struct {
-	Timezone         string `yaml:"timezone"`
-	UTCOffsetHours   *int   `yaml:"utc_offset_hours"`
-	UTCOffsetMinutes *int   `yaml:"utc_offset_minutes"`
+type dateTimeFileConfig struct {
+	Timezone         *string `yaml:"timezone"`
+	UTCOffsetHours   *int    `yaml:"utc_offset_hours"`
+	UTCOffsetMinutes *int    `yaml:"utc_offset_minutes"`
 	ToolTimeouts     *struct {
 		GetCurrentDatetimeMs *int `yaml:"get_current_datetime_ms"`
 	} `yaml:"tool_timeouts"`
 }
 
-type DateTimePlugin struct {
-	config DateTimeConfig
+func pluginConfigPath() string {
+	if cfg := strings.TrimSpace(os.Getenv("EZYAPPER_PLUGIN_CONFIG")); cfg != "" {
+		return cfg
+	}
+	if dir := strings.TrimSpace(os.Getenv("EZYAPPER_PLUGIN_PATH")); dir != "" {
+		return filepath.Join(dir, "config.yaml")
+	}
+	return "config.yaml"
 }
 
-func loadDateTimeConfig(configPath string) (DateTimeConfig, error) {
+func loadDateTimeConfig() (DateTimeConfig, error) {
+	var cfg DateTimeConfig
+	path := pluginConfigPath()
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return cfg, fmt.Errorf("failed to read plugin config file: %s: %w\n"+
+			"where to configure:\n"+
+			"- create/edit %s\n"+
+			"- required keys: tool_timeouts.get_current_datetime_ms\n"+
+			"- optional keys: timezone, utc_offset_hours, utc_offset_minutes\n"+
+			"- example: examples/plugins/datetime-go/config.yaml.example",
+			path, err, path)
+	}
+
+	var raw dateTimeFileConfig
+	decoder := yaml.NewDecoder(bytes.NewReader(content))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&raw); err != nil {
+		return cfg, fmt.Errorf("invalid plugin config file: %s: %w\n"+
+			"where to configure:\n"+
+			"- fix %s\n"+
+			"- example: examples/plugins/datetime-go/config.yaml.example",
+			path, err, path)
+	}
+
+	var errors []string
 	zoneName, _ := time.Now().Zone()
 	if strings.TrimSpace(zoneName) == "" {
 		zoneName = time.Local.String()
 	}
 
-	config := DateTimeConfig{
-		Location:             time.Local,
-		TimezoneLabel:        zoneName,
-		GetCurrentDatetimeMs: 5000,
+	cfg.Location = time.Local
+	cfg.TimezoneLabel = zoneName
+	cfg.GetCurrentDatetimeMs = 5000
+
+	if raw.ToolTimeouts != nil && raw.ToolTimeouts.GetCurrentDatetimeMs != nil {
+		cfg.GetCurrentDatetimeMs = *raw.ToolTimeouts.GetCurrentDatetimeMs
+	} else if raw.ToolTimeouts == nil {
+		errors = append(errors, "tool_timeouts is required")
+	} else if raw.ToolTimeouts.GetCurrentDatetimeMs == nil {
+		errors = append(errors, "tool_timeouts.get_current_datetime_ms is required")
 	}
 
-	if strings.TrimSpace(configPath) == "" {
-		return config, nil
+	if cfg.GetCurrentDatetimeMs <= 0 {
+		errors = append(errors, fmt.Sprintf("tool_timeouts.get_current_datetime_ms must be > 0, got %d", cfg.GetCurrentDatetimeMs))
 	}
 
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return config, nil
-		}
-		return config, fmt.Errorf("failed to read config file %q: %w", configPath, err)
-	}
-
-	if len(bytes.TrimSpace(data)) == 0 {
-		return config, nil
-	}
-
-	var fileConfig dateTimeConfigFile
-	if err := yaml.Unmarshal(data, &fileConfig); err != nil {
-		return config, fmt.Errorf("failed to parse config file %q: %w", configPath, err)
-	}
-
-	if fileConfig.ToolTimeouts != nil && fileConfig.ToolTimeouts.GetCurrentDatetimeMs != nil {
-		config.GetCurrentDatetimeMs = *fileConfig.ToolTimeouts.GetCurrentDatetimeMs
-	}
-
-	if config.GetCurrentDatetimeMs <= 0 {
-		return DateTimeConfig{}, fmt.Errorf("tool_timeouts.get_current_datetime_ms must be > 0, got %d", config.GetCurrentDatetimeMs)
-	}
-
-	if fileConfig.UTCOffsetMinutes != nil || fileConfig.UTCOffsetHours != nil {
+	if raw.UTCOffsetMinutes != nil || raw.UTCOffsetHours != nil {
 		offsetMinutes := 0
-		if fileConfig.UTCOffsetMinutes != nil {
-			offsetMinutes = *fileConfig.UTCOffsetMinutes
-		} else if fileConfig.UTCOffsetHours != nil {
-			offsetMinutes = *fileConfig.UTCOffsetHours * 60
+		if raw.UTCOffsetMinutes != nil {
+			offsetMinutes = *raw.UTCOffsetMinutes
+		} else if raw.UTCOffsetHours != nil {
+			offsetMinutes = *raw.UTCOffsetHours * 60
 		}
 
-		label := strings.TrimSpace(fileConfig.Timezone)
+		label := ""
+		if raw.Timezone != nil {
+			label = strings.TrimSpace(*raw.Timezone)
+		}
 		if label == "" {
 			sign := "+"
 			if offsetMinutes < 0 {
@@ -93,21 +113,28 @@ func loadDateTimeConfig(configPath string) (DateTimeConfig, error) {
 			label = fmt.Sprintf("UTC%s%d:%02d", sign, absMinutes/60, absMinutes%60)
 		}
 
-		config.Location = time.FixedZone(label, offsetMinutes*60)
-		config.TimezoneLabel = label
-		return config, nil
-	}
-
-	if tz := strings.TrimSpace(fileConfig.Timezone); tz != "" {
+		cfg.Location = time.FixedZone(label, offsetMinutes*60)
+		cfg.TimezoneLabel = label
+	} else if raw.Timezone != nil && strings.TrimSpace(*raw.Timezone) != "" {
+		tz := strings.TrimSpace(*raw.Timezone)
 		loc, err := time.LoadLocation(tz)
 		if err != nil {
-			return config, fmt.Errorf("failed to load timezone %q: %w", tz, err)
+			errors = append(errors, fmt.Sprintf("failed to load timezone %q: %v", tz, err))
+		} else {
+			cfg.Location = loc
+			cfg.TimezoneLabel = tz
 		}
-		config.Location = loc
-		config.TimezoneLabel = tz
 	}
 
-	return config, nil
+	if len(errors) > 0 {
+		return cfg, fmt.Errorf("configuration errors in %s: %v\n"+
+			"where to configure:\n"+
+			"- edit %s\n"+
+			"- example: examples/plugins/datetime-go/config.yaml.example",
+			path, errors, path)
+	}
+
+	return cfg, nil
 }
 
 func absInt(v int) int {
@@ -166,13 +193,15 @@ func (p *DateTimePlugin) ExecuteTool(name string, args map[string]interface{}) (
 		"weekday":      now.Weekday().String(),
 		"unix_seconds": now.Unix(),
 	}
-	data, _ := json.MarshalIndent(result, "", "  ")
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal result: %w", err)
+	}
 	return string(data), nil
 }
 
 func main() {
-	configPath := strings.TrimSpace(os.Getenv("EZYAPPER_PLUGIN_CONFIG"))
-	config, err := loadDateTimeConfig(configPath)
+	config, err := loadDateTimeConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[DATETIME] Error loading config: %v\n", err)
 		os.Exit(1)

@@ -5,9 +5,9 @@ import (
 	"crypto/md5"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -17,22 +17,76 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// fileConfig mirrors config.yaml with pointer-based fields for strict loading.
-// nil pointer = field missing from config.
 type fileConfig struct {
 	ToolTimeouts *struct {
 		GetClankOMeterMs *int `yaml:"get_clank_o_meter_ms"`
 	} `yaml:"tool_timeouts"`
 }
 
-// Config holds the fully resolved configuration.
 type Config struct {
 	GetClankOMeterMs int
 }
 
-// ClankOMeterPlugin implements the plugin interface.
 type ClankOMeterPlugin struct {
 	config Config
+}
+
+func pluginConfigPath() string {
+	if cfg := strings.TrimSpace(os.Getenv("EZYAPPER_PLUGIN_CONFIG")); cfg != "" {
+		return cfg
+	}
+	if dir := strings.TrimSpace(os.Getenv("EZYAPPER_PLUGIN_PATH")); dir != "" {
+		return filepath.Join(dir, "config.yaml")
+	}
+	return "config.yaml"
+}
+
+func loadConfig() (Config, error) {
+	var cfg Config
+	path := pluginConfigPath()
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return cfg, fmt.Errorf("failed to read plugin config file: %s: %w\n"+
+			"where to configure:\n"+
+			"- create/edit %s\n"+
+			"- required keys: tool_timeouts.get_clank_o_meter_ms\n"+
+			"- example: examples/plugins/clank-o-meter-go/config.yaml.example",
+			path, err, path)
+	}
+
+	var raw fileConfig
+	decoder := yaml.NewDecoder(bytes.NewReader(content))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&raw); err != nil {
+		return cfg, fmt.Errorf("invalid plugin config file: %s: %w\n"+
+			"where to configure:\n"+
+			"- fix %s\n"+
+			"- example: examples/plugins/clank-o-meter-go/config.yaml.example",
+			path, err, path)
+	}
+
+	var errors []string
+	if raw.ToolTimeouts == nil {
+		errors = append(errors, "tool_timeouts is required")
+	} else if raw.ToolTimeouts.GetClankOMeterMs == nil {
+		errors = append(errors, "tool_timeouts.get_clank_o_meter_ms is required")
+	} else {
+		cfg.GetClankOMeterMs = *raw.ToolTimeouts.GetClankOMeterMs
+		if cfg.GetClankOMeterMs <= 0 {
+			errors = append(errors, fmt.Sprintf("tool_timeouts.get_clank_o_meter_ms must be > 0, got %d", cfg.GetClankOMeterMs))
+		}
+	}
+
+	if len(errors) > 0 {
+		return cfg, fmt.Errorf("configuration errors in %s: %v\n"+
+			"where to configure:\n"+
+			"- edit %s\n"+
+			"- example: examples/plugins/clank-o-meter-go/config.yaml.example",
+			path, errors, path)
+	}
+
+	return cfg, nil
 }
 
 func (p *ClankOMeterPlugin) Info() (plugin.Info, error) {
@@ -106,60 +160,17 @@ func (p *ClankOMeterPlugin) ExecuteTool(name string, args map[string]interface{}
 		"algorithm":     "MD5",
 	}
 
-	data, _ := json.MarshalIndent(result, "", "  ")
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal result: %w", err)
+	}
 	return string(data), nil
 }
 
-func loadConfig(configPath string) (Config, error) {
-	cfg := Config{
-		GetClankOMeterMs: 5000,
-	}
-
-	if strings.TrimSpace(configPath) == "" {
-		return cfg, nil
-	}
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return cfg, nil
-		}
-		return cfg, fmt.Errorf("failed to read config file %q: %w", configPath, err)
-	}
-
-	if len(bytes.TrimSpace(data)) == 0 {
-		return cfg, nil
-	}
-
-	var fileCfg fileConfig
-	if err := yaml.Unmarshal(data, &fileCfg); err != nil {
-		return cfg, fmt.Errorf("failed to parse config file %q: %w", configPath, err)
-	}
-
-	if fileCfg.ToolTimeouts != nil && fileCfg.ToolTimeouts.GetClankOMeterMs != nil {
-		cfg.GetClankOMeterMs = *fileCfg.ToolTimeouts.GetClankOMeterMs
-	}
-
-	return cfg, nil
-}
-
-func validateConfig(cfg *Config) error {
-	if cfg.GetClankOMeterMs <= 0 {
-		return fmt.Errorf("tool_timeouts.get_clank_o_meter_ms is required and must be > 0")
-	}
-	return nil
-}
-
 func main() {
-	configPath := strings.TrimSpace(os.Getenv("EZYAPPER_PLUGIN_CONFIG"))
-	config, err := loadConfig(configPath)
+	config, err := loadConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[CLANK-O-METER] Error loading config: %v\n", err)
-		os.Exit(1)
-	}
-
-	if err := validateConfig(&config); err != nil {
-		fmt.Fprintf(os.Stderr, "[CLANK-O-METER] Config validation error: %v\n", err)
 		os.Exit(1)
 	}
 

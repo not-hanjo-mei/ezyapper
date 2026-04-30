@@ -73,7 +73,10 @@ func (p *EmotePlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 			URL:       bare,
 			CreatedAt: time.Now().Format(time.RFC3339),
 		}
-		_ = p.storage.AddEmote(guildID, entry)
+		err := p.storage.AddEmote(guildID, entry)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[EMOTE] failed to add emote: %v\n", err)
+		}
 		fmt.Fprintf(os.Stderr, "[EMOTE] recorded URL: %s (guild=%s)\n", bare, guildID)
 	}
 
@@ -95,14 +98,20 @@ func (p *EmotePlugin) OnResponse(msg types.DiscordMessage, response string) erro
 
 	// Connect Discord if needed (lazy)
 	if p.config.DiscordToken != "" && p.discord.session == nil {
-		_ = p.discord.Connect(p.config.DiscordToken)
+		if err := p.discord.Connect(p.config.DiscordToken); err != nil {
+			fmt.Fprintf(os.Stderr, "[EMOTE] failed to connect discord: %v\n", err)
+		}
 	}
 
 	if strings.HasPrefix(content, "__file__:") {
 		filePath := filepath.Join(p.config.DataDir, "global", "images", strings.TrimPrefix(content, "__file__:"))
-		_ = p.discord.SendFile(msg.ChannelID, filePath)
+		if err := p.discord.SendFile(msg.ChannelID, filePath); err != nil {
+			fmt.Fprintf(os.Stderr, "[EMOTE] failed to send file: %v\n", err)
+		}
 	} else {
-		_ = p.discord.SendMessage(msg.ChannelID, content)
+		if err := p.discord.SendMessage(msg.ChannelID, content); err != nil {
+			fmt.Fprintf(os.Stderr, "[EMOTE] failed to send message: %v\n", err)
+		}
 	}
 	fmt.Fprintf(os.Stderr, "[EMOTE] OnResponse: sent URL to channel=%s\n", msg.ChannelID)
 	return nil
@@ -230,7 +239,10 @@ func (p *EmotePlugin) ExecuteTool(name string, args map[string]interface{}) (str
 			}
 		}
 
-		data, _ := json.MarshalIndent(map[string]interface{}{"results": results}, "", "  ")
+		data, err := json.MarshalIndent(map[string]interface{}{"results": results}, "", "  ")
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal search results: %w", err)
+		}
 		return string(data), nil
 
 	case "send_emote":
