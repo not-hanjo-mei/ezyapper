@@ -1,4 +1,4 @@
-﻿// Package web provides an HTTP API server and WebUI for managing the bot.
+// Package web provides an HTTP API server and WebUI for managing the bot.
 package web
 
 import (
@@ -15,8 +15,8 @@ import (
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
-	"ezyapper/internal/types"
 	"ezyapper/internal/plugin"
+	"ezyapper/internal/types"
 )
 
 // Server provides the WebUI HTTP server and API endpoints for bot management.

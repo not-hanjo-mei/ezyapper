@@ -276,7 +276,7 @@ func TestIsTimeoutLikeError_NonTimeout(t *testing.T) {
 
 func TestFindFieldIndexByJSONTag_ByJSONTag(t *testing.T) {
 	type testStruct struct {
-		Model string `json:"model"`
+		Model string  `json:"model"`
 		TopP  float32 `json:"top_p,omitempty"`
 	}
 	typ := reflectType(&testStruct{})
@@ -457,7 +457,7 @@ func TestApplyExtraParamsToStruct_EmptyParams(t *testing.T) {
 func TestApplyExtraParamsToStruct_ValidFields(t *testing.T) {
 	req := openai.ChatCompletionRequest{Model: "gpt-4"}
 	params := map[string]interface{}{
-		"top_p":          0.9,
+		"top_p":            0.9,
 		"presence_penalty": 0.5,
 	}
 	applyExtraParamsToStruct(&req, params, "[test]")

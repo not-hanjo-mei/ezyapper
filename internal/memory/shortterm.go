@@ -20,7 +20,7 @@ type MessageFetcher interface {
 // ShortTermClient provides access to Discord messages for short-term context.
 // It delegates actual API calls to a MessageFetcher implementation.
 type ShortTermClient struct {
-	fetcher          MessageFetcher
+	fetcher           MessageFetcher
 	maxPaginatedLimit int
 }
 

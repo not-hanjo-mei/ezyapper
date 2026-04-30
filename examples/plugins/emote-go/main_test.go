@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"os"
@@ -88,9 +88,9 @@ func TestOnMessage_SkipWhenDisabled(t *testing.T) {
 
 	msg := types.DiscordMessage{
 		ImageURLs: []string{"https://example.com/image.png"},
-		GuildID:        "g",
-		ChannelID:      "c",
-		AuthorID:       "u",
+		GuildID:   "g",
+		ChannelID: "c",
+		AuthorID:  "u",
 	}
 
 	cont, err := p.OnMessage(msg)
@@ -127,9 +127,9 @@ func TestOnMessage_SkipNilStorage(t *testing.T) {
 	}
 	msg := types.DiscordMessage{
 		ImageURLs: []string{"https://example.com/image.png"},
-		GuildID:        "g",
-		ChannelID:      "c",
-		AuthorID:       "u",
+		GuildID:   "g",
+		ChannelID: "c",
+		AuthorID:  "u",
 	}
 
 	cont, err := p.OnMessage(msg)

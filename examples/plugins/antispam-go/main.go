@@ -1,4 +1,4 @@
-﻿// Anti-Spam Plugin
+// Anti-Spam Plugin
 // This is a working example plugin that uses the external plugin system
 // It works on Windows, Linux, and macOS
 //

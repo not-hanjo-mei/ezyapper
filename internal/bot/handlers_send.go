@@ -1,4 +1,4 @@
-﻿// Package bot provides Discord bot event handlers
+// Package bot provides Discord bot event handlers
 package bot
 
 import (
@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"ezyapper/internal/logger"
-	"ezyapper/internal/types"
 	"ezyapper/internal/plugin"
+	"ezyapper/internal/types"
 
 	"github.com/bwmarrin/discordgo"
 )

@@ -1,4 +1,4 @@
-﻿// Package memory provides long-term memory management using Qdrant vector database
+// Package memory provides long-term memory management using Qdrant vector database
 package memory
 
 import (
@@ -120,7 +120,6 @@ type ProfileDelta struct {
 	NewPreferences map[string]string `json:"new_preferences"`
 	NewInterests   []string          `json:"new_interests"`
 }
-
 
 // DiscordMessage is an alias for the canonical type defined in internal/types.
 type DiscordMessage = types.DiscordMessage

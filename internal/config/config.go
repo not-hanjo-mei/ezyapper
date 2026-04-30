@@ -13,18 +13,18 @@ import (
 
 // Config represents the complete application configuration
 type Config struct {
-	Discord   DiscordConfig   `mapstructure:"discord" yaml:"discord"`
-	AI        AIConfig        `mapstructure:"ai" yaml:"ai"`
-	Embedding EmbeddingConfig `mapstructure:"embedding" yaml:"embedding"`
-	Memory    MemoryConfig    `mapstructure:"memory" yaml:"memory"`
-	Web       WebConfig       `mapstructure:"web" yaml:"web"`
-	Logging   LoggingConfig   `mapstructure:"logging" yaml:"logging"`
-	Qdrant    QdrantConfig    `mapstructure:"qdrant" yaml:"qdrant"`
-	Blacklist BlacklistConfig `mapstructure:"blacklist" yaml:"blacklist"`
-	Whitelist WhitelistConfig `mapstructure:"whitelist" yaml:"whitelist"`
-	Plugins   PluginsConfig   `mapstructure:"plugins" yaml:"plugins"`
-	MCP       MCPConfig       `mapstructure:"mcp" yaml:"mcp"`
-	Decision  DecisionConfig  `mapstructure:"decision" yaml:"decision"`
+	Discord    DiscordConfig    `mapstructure:"discord" yaml:"discord"`
+	AI         AIConfig         `mapstructure:"ai" yaml:"ai"`
+	Embedding  EmbeddingConfig  `mapstructure:"embedding" yaml:"embedding"`
+	Memory     MemoryConfig     `mapstructure:"memory" yaml:"memory"`
+	Web        WebConfig        `mapstructure:"web" yaml:"web"`
+	Logging    LoggingConfig    `mapstructure:"logging" yaml:"logging"`
+	Qdrant     QdrantConfig     `mapstructure:"qdrant" yaml:"qdrant"`
+	Blacklist  BlacklistConfig  `mapstructure:"blacklist" yaml:"blacklist"`
+	Whitelist  WhitelistConfig  `mapstructure:"whitelist" yaml:"whitelist"`
+	Plugins    PluginsConfig    `mapstructure:"plugins" yaml:"plugins"`
+	MCP        MCPConfig        `mapstructure:"mcp" yaml:"mcp"`
+	Decision   DecisionConfig   `mapstructure:"decision" yaml:"decision"`
 	Operations OperationsConfig `mapstructure:"operations" yaml:"operations"`
 
 	configPath string `yaml:"-"`
@@ -73,18 +73,18 @@ type OperationsConfig struct {
 
 func (f fileConfig) toRuntimeConfig() Config {
 	return Config{
-		Discord:   f.Core.Discord,
-		AI:        f.Core.AI,
-		Decision:  f.Core.Decision,
-		Embedding: f.MemoryPipe.Embedding,
-		Memory:    f.MemoryPipe.Memory,
-		Qdrant:    f.MemoryPipe.Qdrant,
-		Blacklist: f.Access.Blacklist,
-		Whitelist: f.Access.Whitelist,
-		Web:       f.Operations.Web,
-		Logging:   f.Operations.Logging,
-		Plugins:   f.Operations.Plugins,
-		MCP:       f.Operations.MCP,
+		Discord:    f.Core.Discord,
+		AI:         f.Core.AI,
+		Decision:   f.Core.Decision,
+		Embedding:  f.MemoryPipe.Embedding,
+		Memory:     f.MemoryPipe.Memory,
+		Qdrant:     f.MemoryPipe.Qdrant,
+		Blacklist:  f.Access.Blacklist,
+		Whitelist:  f.Access.Whitelist,
+		Web:        f.Operations.Web,
+		Logging:    f.Operations.Logging,
+		Plugins:    f.Operations.Plugins,
+		MCP:        f.Operations.MCP,
 		Operations: f.Operations.Ops,
 	}
 }
@@ -132,20 +132,20 @@ type DecisionConfig struct {
 
 // DiscordConfig holds Discord bot specific settings
 type DiscordConfig struct {
-	Token                     string  `mapstructure:"token" yaml:"token"`
-	BotName                   string  `mapstructure:"bot_name" yaml:"bot_name"`
-	OwnBotID                  string  `mapstructure:"own_bot_id" yaml:"own_bot_id"` // Bot's own ID to distinguish from other bots
-	ReplyPercentage           float64 `mapstructure:"reply_percentage" yaml:"reply_percentage"`
-	CooldownSeconds           int     `mapstructure:"cooldown_seconds" yaml:"cooldown_seconds"`
-	MaxResponsesPerMin        int     `mapstructure:"max_responses_per_minute" yaml:"max_responses_per_minute"`
-	ReplyToBots               bool    `mapstructure:"reply_to_bots" yaml:"reply_to_bots"`
-	ConsolidationTimeoutSec   int     `mapstructure:"consolidation_timeout_sec" yaml:"consolidation_timeout_sec"`
-	TypingIndicatorIntervalSec int    `mapstructure:"typing_indicator_interval_sec" yaml:"typing_indicator_interval_sec"`
-	LongResponseDelayMs       int     `mapstructure:"long_response_delay_ms" yaml:"long_response_delay_ms"`
-	ChunkSplitDelaySec        int     `mapstructure:"chunk_split_delay_sec" yaml:"chunk_split_delay_sec"`
-	ReplyTruncationLength     int     `mapstructure:"reply_truncation_length" yaml:"reply_truncation_length"`
-	ImageCacheTTLMin          int     `mapstructure:"image_cache_ttl_min" yaml:"image_cache_ttl_min"`
-	ImageCacheMaxEntries      int     `mapstructure:"image_cache_max_entries" yaml:"image_cache_max_entries"`
+	Token                      string  `mapstructure:"token" yaml:"token"`
+	BotName                    string  `mapstructure:"bot_name" yaml:"bot_name"`
+	OwnBotID                   string  `mapstructure:"own_bot_id" yaml:"own_bot_id"` // Bot's own ID to distinguish from other bots
+	ReplyPercentage            float64 `mapstructure:"reply_percentage" yaml:"reply_percentage"`
+	CooldownSeconds            int     `mapstructure:"cooldown_seconds" yaml:"cooldown_seconds"`
+	MaxResponsesPerMin         int     `mapstructure:"max_responses_per_minute" yaml:"max_responses_per_minute"`
+	ReplyToBots                bool    `mapstructure:"reply_to_bots" yaml:"reply_to_bots"`
+	ConsolidationTimeoutSec    int     `mapstructure:"consolidation_timeout_sec" yaml:"consolidation_timeout_sec"`
+	TypingIndicatorIntervalSec int     `mapstructure:"typing_indicator_interval_sec" yaml:"typing_indicator_interval_sec"`
+	LongResponseDelayMs        int     `mapstructure:"long_response_delay_ms" yaml:"long_response_delay_ms"`
+	ChunkSplitDelaySec         int     `mapstructure:"chunk_split_delay_sec" yaml:"chunk_split_delay_sec"`
+	ReplyTruncationLength      int     `mapstructure:"reply_truncation_length" yaml:"reply_truncation_length"`
+	ImageCacheTTLMin           int     `mapstructure:"image_cache_ttl_min" yaml:"image_cache_ttl_min"`
+	ImageCacheMaxEntries       int     `mapstructure:"image_cache_max_entries" yaml:"image_cache_max_entries"`
 }
 
 // AIConfig holds AI/LLM settings for chat
@@ -175,14 +175,14 @@ type EmbeddingConfig struct {
 }
 
 type MemoryConfig struct {
-	ConsolidationInterval  int                 `mapstructure:"consolidation_interval" yaml:"consolidation_interval"`
-	ShortTermLimit         int                 `mapstructure:"short_term_limit" yaml:"short_term_limit"`
-	MaxPaginatedLimit      int                 `mapstructure:"max_paginated_limit" yaml:"max_paginated_limit"`
-	EmbeddingCacheMaxSize  int                 `mapstructure:"embedding_cache_max_size" yaml:"embedding_cache_max_size"`
-	EmbeddingCacheTTLMin   int                 `mapstructure:"embedding_cache_ttl_min" yaml:"embedding_cache_ttl_min"`
-	EvictionIntervalMin    int                 `mapstructure:"eviction_interval_min" yaml:"eviction_interval_min"`
-	Retrieval              RetrievalConfig     `mapstructure:"retrieval" yaml:"retrieval"`
-	Consolidation          ConsolidationConfig `mapstructure:"consolidation" yaml:"consolidation"`
+	ConsolidationInterval int                 `mapstructure:"consolidation_interval" yaml:"consolidation_interval"`
+	ShortTermLimit        int                 `mapstructure:"short_term_limit" yaml:"short_term_limit"`
+	MaxPaginatedLimit     int                 `mapstructure:"max_paginated_limit" yaml:"max_paginated_limit"`
+	EmbeddingCacheMaxSize int                 `mapstructure:"embedding_cache_max_size" yaml:"embedding_cache_max_size"`
+	EmbeddingCacheTTLMin  int                 `mapstructure:"embedding_cache_ttl_min" yaml:"embedding_cache_ttl_min"`
+	EvictionIntervalMin   int                 `mapstructure:"eviction_interval_min" yaml:"eviction_interval_min"`
+	Retrieval             RetrievalConfig     `mapstructure:"retrieval" yaml:"retrieval"`
+	Consolidation         ConsolidationConfig `mapstructure:"consolidation" yaml:"consolidation"`
 }
 
 type ConsolidationConfig struct {

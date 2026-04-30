@@ -26,7 +26,7 @@ func TestExtractReplyToUsername_NoReference(t *testing.T) {
 func TestExtractReplyToUsername_DeletedMessage(t *testing.T) {
 	m := &discordgo.MessageCreate{
 		Message: &discordgo.Message{
-			MessageReference: &discordgo.MessageReference{},
+			MessageReference:  &discordgo.MessageReference{},
 			ReferencedMessage: nil,
 		},
 	}
@@ -275,9 +275,9 @@ func TestHandleTextOnlyMode_NoContext(t *testing.T) {
 	_ = b.createToolHandler()
 
 	mc := ModeContext{
-		AIClient:  (*ai.Client)(nil),
-		Username:  "Alice",
-		UserID:    "123",
+		AIClient:    (*ai.Client)(nil),
+		Username:    "Alice",
+		UserID:      "123",
 		UserContent: "test message",
 	}
 	req := ai.ChatCompletionRequest{
@@ -370,8 +370,8 @@ func TestFormatSystemPrompt_Basic(t *testing.T) {
 	cfg := &config.Config{
 		AI: config.AIConfig{
 			SystemPrompt: "You are {BotName} in {ServerName}",
-			Vision:  config.VisionConfig{Mode: config.VisionModeTextOnly},
-			Model:   "gpt-4",
+			Vision:       config.VisionConfig{Mode: config.VisionModeTextOnly},
+			Model:        "gpt-4",
 		},
 		Discord: config.DiscordConfig{
 			Token:           "token",

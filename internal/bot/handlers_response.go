@@ -1,4 +1,4 @@
-﻿// Package bot provides Discord bot event handlers
+// Package bot provides Discord bot event handlers
 package bot
 
 import (

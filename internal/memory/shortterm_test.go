@@ -85,10 +85,10 @@ func TestFetchRecentMessages_Error(t *testing.T) {
 
 func TestValidateLimit(t *testing.T) {
 	tests := []struct {
-		limit    int
-		wantErr  bool
-		errText  string
-		wantCap  int
+		limit   int
+		wantErr bool
+		errText string
+		wantCap int
 	}{
 		{0, true, "limit must be greater than 0", 0},
 		{-1, true, "limit must be greater than 0", 0},

@@ -1,4 +1,4 @@
-﻿// Package bot provides Discord bot session management
+// Package bot provides Discord bot session management
 package bot
 
 import (
@@ -19,9 +19,9 @@ import (
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
-	"ezyapper/internal/types"
 	"ezyapper/internal/plugin"
 	"ezyapper/internal/ratelimit"
+	"ezyapper/internal/types"
 
 	"github.com/bwmarrin/discordgo"
 )

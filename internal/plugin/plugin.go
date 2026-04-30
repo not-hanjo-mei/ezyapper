@@ -1,4 +1,4 @@
-﻿// Package plugin provides a cross-platform plugin system with JSON-RPC and command runtimes.
+// Package plugin provides a cross-platform plugin system with JSON-RPC and command runtimes.
 // This works on Windows, Linux, and macOS by running plugins as separate processes.
 package plugin
 

@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"bytes"
@@ -69,8 +69,8 @@ type ttsConfigFile struct {
 	MaxTextChars               *int              `yaml:"max_text_chars"`
 	UploadMemoryThreshold      *string           `yaml:"upload_memory_threshold"`
 	UploadMemoryThresholdBytes *int              `yaml:"upload_memory_threshold_bytes"`
-	Rewriter                   ttsRewriterFile         `yaml:"rewriter"`
-	Headers                    map[string]string       `yaml:"headers"`
+	Rewriter                   ttsRewriterFile   `yaml:"rewriter"`
+	Headers                    map[string]string `yaml:"headers"`
 	ToolTimeouts               *struct {
 		GenerateTtsAudioMs *int `yaml:"generate_tts_audio_ms"`
 	} `yaml:"tool_timeouts"`
