@@ -30,6 +30,8 @@ core:
     reply_truncation_length: 200
     image_cache_ttl_min: 60
     image_cache_max_entries: 100
+    rate_limit:
+      reset_period_seconds: 60
   ai:
     api_base_url: "https://api.openai.com"
     api_key: "sk-test"

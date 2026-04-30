@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
+	"go.uber.org/zap/zapcore"
 	"gopkg.in/yaml.v3"
 )
 
@@ -130,22 +131,28 @@ type DecisionConfig struct {
 	ExtraParams  map[string]interface{} `mapstructure:"extra_params" yaml:"extra_params"`
 }
 
+// RateLimitConfig holds per-user rate limiting window settings.
+type RateLimitConfig struct {
+	ResetPeriodSeconds int `mapstructure:"reset_period_seconds" yaml:"reset_period_seconds"`
+}
+
 // DiscordConfig holds Discord bot specific settings
 type DiscordConfig struct {
-	Token                      string  `mapstructure:"token" yaml:"token"`
-	BotName                    string  `mapstructure:"bot_name" yaml:"bot_name"`
-	OwnBotID                   string  `mapstructure:"own_bot_id" yaml:"own_bot_id"` // Bot's own ID to distinguish from other bots
-	ReplyPercentage            float64 `mapstructure:"reply_percentage" yaml:"reply_percentage"`
-	CooldownSeconds            int     `mapstructure:"cooldown_seconds" yaml:"cooldown_seconds"`
-	MaxResponsesPerMin         int     `mapstructure:"max_responses_per_minute" yaml:"max_responses_per_minute"`
-	ReplyToBots                bool    `mapstructure:"reply_to_bots" yaml:"reply_to_bots"`
-	ConsolidationTimeoutSec    int     `mapstructure:"consolidation_timeout_sec" yaml:"consolidation_timeout_sec"`
-	TypingIndicatorIntervalSec int     `mapstructure:"typing_indicator_interval_sec" yaml:"typing_indicator_interval_sec"`
-	LongResponseDelayMs        int     `mapstructure:"long_response_delay_ms" yaml:"long_response_delay_ms"`
-	ChunkSplitDelaySec         int     `mapstructure:"chunk_split_delay_sec" yaml:"chunk_split_delay_sec"`
-	ReplyTruncationLength      int     `mapstructure:"reply_truncation_length" yaml:"reply_truncation_length"`
-	ImageCacheTTLMin           int     `mapstructure:"image_cache_ttl_min" yaml:"image_cache_ttl_min"`
-	ImageCacheMaxEntries       int     `mapstructure:"image_cache_max_entries" yaml:"image_cache_max_entries"`
+	Token                      string          `mapstructure:"token" yaml:"token"`
+	BotName                    string          `mapstructure:"bot_name" yaml:"bot_name"`
+	OwnBotID                   string          `mapstructure:"own_bot_id" yaml:"own_bot_id"` // Bot's own ID to distinguish from other bots
+	ReplyPercentage            float64         `mapstructure:"reply_percentage" yaml:"reply_percentage"`
+	CooldownSeconds            int             `mapstructure:"cooldown_seconds" yaml:"cooldown_seconds"`
+	MaxResponsesPerMin         int             `mapstructure:"max_responses_per_minute" yaml:"max_responses_per_minute"`
+	RateLimit                  RateLimitConfig `mapstructure:"rate_limit" yaml:"rate_limit"`
+	ReplyToBots                bool            `mapstructure:"reply_to_bots" yaml:"reply_to_bots"`
+	ConsolidationTimeoutSec    int             `mapstructure:"consolidation_timeout_sec" yaml:"consolidation_timeout_sec"`
+	TypingIndicatorIntervalSec int             `mapstructure:"typing_indicator_interval_sec" yaml:"typing_indicator_interval_sec"`
+	LongResponseDelayMs        int             `mapstructure:"long_response_delay_ms" yaml:"long_response_delay_ms"`
+	ChunkSplitDelaySec         int             `mapstructure:"chunk_split_delay_sec" yaml:"chunk_split_delay_sec"`
+	ReplyTruncationLength      int             `mapstructure:"reply_truncation_length" yaml:"reply_truncation_length"`
+	ImageCacheTTLMin           int             `mapstructure:"image_cache_ttl_min" yaml:"image_cache_ttl_min"`
+	ImageCacheMaxEntries       int             `mapstructure:"image_cache_max_entries" yaml:"image_cache_max_entries"`
 }
 
 // AIConfig holds AI/LLM settings for chat
@@ -459,6 +466,7 @@ func validateMemory(cfg *Config, errs *[]string) {
 func validateRateLimit(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Discord.CooldownSeconds, "discord.cooldown_seconds", errs)
 	requirePositive(cfg.Discord.MaxResponsesPerMin, "discord.max_responses_per_minute", errs)
+	requirePositive(cfg.Discord.RateLimit.ResetPeriodSeconds, "discord.rate_limit.reset_period_seconds", errs)
 }
 
 func validateWeb(cfg *Config, errs *[]string) {
@@ -509,6 +517,9 @@ func validateBlacklist(cfg *Config, errs *[]string) {
 
 func validateOperations(cfg *Config, errs *[]string) {
 	requireNonEmpty(cfg.Logging.Level, "logging.level", errs)
+	if _, err := zapcore.ParseLevel(cfg.Logging.Level); err != nil && cfg.Logging.Level != "" {
+		*errs = append(*errs, fmt.Sprintf("logging.level %q is invalid: %v", cfg.Logging.Level, err))
+	}
 	requireNonEmpty(cfg.Logging.File, "logging.file", errs)
 	requirePositive(cfg.Logging.MaxSize, "logging.max_size", errs)
 	requirePositive(cfg.Logging.MaxBackups, "logging.max_backups", errs)
@@ -536,6 +547,9 @@ func validateAccess(cfg *Config, errs *[]string) {
 func validateConsolidation(cfg *Config, errs *[]string) {
 	if !cfg.Memory.Consolidation.Enabled {
 		return
+	}
+	if cfg.Discord.OwnBotID == "" {
+		*errs = append(*errs, "discord.own_bot_id is required when consolidation is enabled")
 	}
 	if cfg.Memory.Consolidation.SystemPrompt == "" {
 		*errs = append(*errs, "memory.consolidation.system_prompt is required when consolidation is enabled")

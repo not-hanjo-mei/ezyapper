@@ -75,8 +75,8 @@ func TestExtractLimit_WithinBounds(t *testing.T) {
 func TestExtractLimit_ExceedsMax(t *testing.T) {
 	args := map[string]any{"limit": float64(200)}
 	limit := extractLimit(args, "limit", 5, 100)
-	if limit != 100 {
-		t.Fatalf("expected clamped to 100, got %d", limit)
+	if limit != 200 {
+		t.Fatalf("expected user value 200 to be honored, got %d", limit)
 	}
 }
 

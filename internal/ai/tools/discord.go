@@ -575,7 +575,7 @@ func extractLimit(args map[string]any, key string, defaultVal, maxVal int) int {
 	if l, ok := args[key].(float64); ok {
 		limit = int(l)
 		if limit > maxVal {
-			limit = maxVal
+			logger.Warnf("[tools] limit %d exceeds recommended maximum %d, honoring user value", limit, maxVal)
 		}
 	}
 	return limit

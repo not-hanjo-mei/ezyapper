@@ -12,6 +12,7 @@ type Limiter struct {
 	cooldownCache  map[string]time.Time
 	maxPerMinute   int
 	cooldownPeriod time.Duration
+	resetPeriod    time.Duration
 	mu             sync.RWMutex
 }
 
@@ -20,13 +21,14 @@ type rateLimitInfo struct {
 	resetTime time.Time
 }
 
-// NewLimiter creates a new rate limiter with the specified max requests per minute and cooldown duration.
-func NewLimiter(maxPerMinute int, cooldownPeriod time.Duration) *Limiter {
+// NewLimiter creates a new rate limiter with the specified max requests per period, cooldown duration, and reset window.
+func NewLimiter(maxPerMinute int, cooldownPeriod, resetPeriod time.Duration) *Limiter {
 	return &Limiter{
 		rateLimitCache: make(map[string]*rateLimitInfo),
 		cooldownCache:  make(map[string]time.Time),
 		maxPerMinute:   maxPerMinute,
 		cooldownPeriod: cooldownPeriod,
+		resetPeriod:    resetPeriod,
 	}
 }
 
@@ -46,7 +48,7 @@ func (l *Limiter) Check(channelID, userID string) bool {
 	if info, exists := l.rateLimitCache[key]; exists {
 		if now.After(info.resetTime) {
 			info.count = 0
-			info.resetTime = now.Add(time.Minute)
+			info.resetTime = now.Add(l.resetPeriod)
 		}
 
 		if info.count >= l.maxPerMinute {
@@ -57,7 +59,7 @@ func (l *Limiter) Check(channelID, userID string) bool {
 	} else {
 		l.rateLimitCache[key] = &rateLimitInfo{
 			count:     1,
-			resetTime: now.Add(time.Minute),
+			resetTime: now.Add(l.resetPeriod),
 		}
 	}
 
@@ -97,9 +99,10 @@ func (l *Limiter) Cleanup() {
 }
 
 // UpdateConfig hot-updates the rate limit settings without restarting.
-func (l *Limiter) UpdateConfig(maxPerMinute int, cooldownPeriod time.Duration) {
+func (l *Limiter) UpdateConfig(maxPerMinute int, cooldownPeriod, resetPeriod time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.maxPerMinute = maxPerMinute
 	l.cooldownPeriod = cooldownPeriod
+	l.resetPeriod = resetPeriod
 }

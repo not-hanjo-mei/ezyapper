@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"ezyapper/internal/ai"
+	"ezyapper/internal/logger"
 
 	"golang.org/x/sync/singleflight"
 )
@@ -108,6 +109,7 @@ func (e *CachedEmbedder) Embed(ctx context.Context, text string) ([]float32, err
 
 		e.mu.Lock()
 		if len(e.cache) >= e.maxSize {
+			logger.Warnf("evicting embedding cache entry (cache size=%d, max=%d)", len(e.cache), e.maxSize)
 			e.evictOne()
 		}
 		e.cache[key] = cacheEntry{vector: vec, insertedAt: e.now()}

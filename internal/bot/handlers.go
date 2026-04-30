@@ -111,6 +111,7 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 			msg.ReplyToUsername = m.ReferencedMessage.Author.Username
 			content := m.ReferencedMessage.Content
 			if len(content) > b.cfg().Discord.ReplyTruncationLength {
+				logger.Warnf("reply content truncated from %d to %d chars", len(content), b.cfg().Discord.ReplyTruncationLength)
 				content = content[:b.cfg().Discord.ReplyTruncationLength]
 			}
 			msg.ReplyToContent = content

@@ -65,12 +65,11 @@ func TestNew_InvalidLevel(t *testing.T) {
 	}
 
 	logger, err := New(cfg)
-	if err != nil {
-		t.Fatalf("New failed: %v", err)
+	if err == nil {
+		t.Error("Expected error for invalid log level, got nil")
 	}
-
-	if logger == nil {
-		t.Error("Expected non-nil logger")
+	if logger != nil {
+		t.Error("Expected nil logger when level is invalid")
 	}
 }
 

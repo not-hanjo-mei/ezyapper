@@ -71,7 +71,7 @@ func TestRateLimiter_Check(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			limiter := ratelimit.NewLimiter(10, 5*time.Second)
+			limiter := ratelimit.NewLimiter(10, 5*time.Second, time.Minute)
 			tt.setup(limiter)
 
 			result := limiter.Check(tt.channelID, tt.userID)

@@ -201,7 +201,8 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 	}
 
 	cooldownDuration := time.Duration(cfg.Discord.CooldownSeconds) * time.Second
-	limiter := ratelimit.NewLimiter(cfg.Discord.MaxResponsesPerMin, cooldownDuration)
+	resetPeriod := time.Duration(cfg.Discord.RateLimit.ResetPeriodSeconds) * time.Second
+	limiter := ratelimit.NewLimiter(cfg.Discord.MaxResponsesPerMin, cooldownDuration, resetPeriod)
 
 	rootCtx, rootCancel := context.WithCancel(context.Background())
 	bot := &Bot{
@@ -495,6 +496,7 @@ func (b *Bot) CheckRateLimit(channelID, userID string) bool {
 	b.rateLimiter.UpdateConfig(
 		b.cfg().Discord.MaxResponsesPerMin,
 		time.Duration(b.cfg().Discord.CooldownSeconds)*time.Second,
+		time.Duration(b.cfg().Discord.RateLimit.ResetPeriodSeconds)*time.Second,
 	)
 	return b.rateLimiter.Check(channelID, userID)
 }
@@ -513,6 +515,7 @@ func (b *Bot) ApplyRuntimeConfig() error {
 	b.rateLimiter.UpdateConfig(
 		b.cfg().Discord.MaxResponsesPerMin,
 		time.Duration(b.cfg().Discord.CooldownSeconds)*time.Second,
+		time.Duration(b.cfg().Discord.RateLimit.ResetPeriodSeconds)*time.Second,
 	)
 
 	b.mu.Lock()
@@ -864,7 +867,7 @@ func (b *Bot) addMessageToChannelBuffer(channelID string, msg *types.DiscordMess
 	maxBuffer := b.cfg().Memory.ConsolidationInterval * 2
 	if len(b.channelMessageBuffer[channelID]) > maxBuffer {
 		b.channelMessageBuffer[channelID] = b.channelMessageBuffer[channelID][len(b.channelMessageBuffer[channelID])-maxBuffer:]
-		logger.Debugf("[channel_buffer] truncated buffer for channel=%s to %d messages", channelID, maxBuffer)
+		logger.Warnf("[channel_buffer] truncated buffer for channel=%s to %d messages", channelID, maxBuffer)
 	}
 }
 
@@ -977,6 +980,7 @@ func (b *Bot) pruneHistoricalImageDescCacheLocked() {
 			break
 		}
 
+		logger.Warnf("evicting image description cache entry for message %s", oldestMessageID)
 		delete(b.historicalImageDescCache, oldestMessageID)
 	}
 }

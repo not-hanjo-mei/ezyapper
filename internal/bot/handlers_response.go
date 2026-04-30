@@ -248,7 +248,7 @@ func (b *Bot) handleMultimodalMode(ctx context.Context, mc ModeContext, req ai.C
 	imagesToProcess := imageURLs
 	if len(imageURLs) > maxImages {
 		imagesToProcess = imageURLs[:maxImages]
-		logger.Infof("Limiting images to %d (received %d)", maxImages, len(imageURLs))
+		logger.Warnf("Limiting images to %d (received %d)", maxImages, len(imageURLs))
 	}
 
 	// Wrap user content in XML format for multimodal mode

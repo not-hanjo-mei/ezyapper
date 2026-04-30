@@ -6,7 +6,7 @@ import (
 )
 
 func TestNewLimiter(t *testing.T) {
-	limiter := NewLimiter(10, 5*time.Second)
+	limiter := NewLimiter(10, 5*time.Second, time.Minute)
 	if limiter == nil {
 		t.Fatal("NewLimiter returned nil")
 	}
@@ -19,7 +19,7 @@ func TestNewLimiter(t *testing.T) {
 }
 
 func TestLimiter_Check_Cooldown(t *testing.T) {
-	limiter := NewLimiter(10, 100*time.Millisecond)
+	limiter := NewLimiter(10, 100*time.Millisecond, time.Minute)
 
 	// First request should pass
 	if !limiter.Check("channel1", "user1") {
@@ -44,7 +44,7 @@ func TestLimiter_Check_Cooldown(t *testing.T) {
 }
 
 func TestLimiter_Check_RateLimit(t *testing.T) {
-	limiter := NewLimiter(3, 0) // 3 requests per minute, no cooldown
+	limiter := NewLimiter(3, 0, time.Minute) // 3 requests per minute, no cooldown
 
 	// First 3 requests should pass
 	for i := 0; i < 3; i++ {
@@ -70,7 +70,7 @@ func TestLimiter_Check_RateLimit(t *testing.T) {
 }
 
 func TestLimiter_Check_Reset(t *testing.T) {
-	limiter := NewLimiter(2, 0)
+	limiter := NewLimiter(2, 0, time.Minute)
 
 	// Use up the rate limit
 	limiter.Check("channel1", "user1")
@@ -93,7 +93,7 @@ func TestLimiter_Check_Reset(t *testing.T) {
 }
 
 func TestLimiter_SetCooldownDefault(t *testing.T) {
-	limiter := NewLimiter(10, 100*time.Millisecond)
+	limiter := NewLimiter(10, 100*time.Millisecond, time.Minute)
 
 	// First request should pass
 	if !limiter.Check("channel1", "user1") {
@@ -110,7 +110,7 @@ func TestLimiter_SetCooldownDefault(t *testing.T) {
 }
 
 func TestLimiter_Cleanup(t *testing.T) {
-	limiter := NewLimiter(10, 0)
+	limiter := NewLimiter(10, 0, time.Minute)
 
 	// Add some entries
 	limiter.Check("channel1", "user1")
@@ -142,7 +142,7 @@ func TestLimiter_Cleanup(t *testing.T) {
 }
 
 func TestLimiter_Concurrent(t *testing.T) {
-	limiter := NewLimiter(100, 0)
+	limiter := NewLimiter(100, 0, time.Minute)
 
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {

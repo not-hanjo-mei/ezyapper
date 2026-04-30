@@ -75,6 +75,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 				msg.ReplyToUsername = m.ReferencedMessage.Author.Username
 				content := m.ReferencedMessage.Content
 				if len(content) > b.cfg().Discord.ReplyTruncationLength {
+					logger.Warnf("[processing] reply content truncated from %d to %d chars", len(content), b.cfg().Discord.ReplyTruncationLength)
 					content = content[:b.cfg().Discord.ReplyTruncationLength]
 				}
 				msg.ReplyToContent = content

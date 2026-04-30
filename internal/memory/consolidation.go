@@ -296,7 +296,7 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 	logger.Infof("[consolidation] starting with messages for user=%s message_count=%d", userID, len(messages))
 
 	if len(messages) > c.maxMessages {
-		logger.Infof("[consolidation] truncating messages for user=%s from %d to %d", userID, len(messages), c.maxMessages)
+		logger.Warnf("[consolidation] truncating messages for user=%s from %d to %d", userID, len(messages), c.maxMessages)
 		messages = messages[:c.maxMessages]
 	}
 
@@ -412,7 +412,7 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 	logger.Infof("[consolidation] starting batch consolidation for channel=%s messages=%d users=%d", channelID, len(messages), len(targetUserIDs))
 
 	if len(messages) > c.maxMessages {
-		logger.Infof("[consolidation] truncating messages from %d to %d", len(messages), c.maxMessages)
+		logger.Warnf("[consolidation] truncating messages from %d to %d", len(messages), c.maxMessages)
 		messages = messages[:c.maxMessages]
 	}
 

@@ -31,7 +31,7 @@ func New(cfg Config) (*Logger, error) {
 	// Parse log level
 	var level zapcore.Level
 	if err := level.UnmarshalText([]byte(cfg.Level)); err != nil {
-		level = zapcore.InfoLevel
+		return nil, fmt.Errorf("invalid log level %q: %w", cfg.Level, err)
 	}
 
 	atomicLevel := zap.NewAtomicLevelAt(level)

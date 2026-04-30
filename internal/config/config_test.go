@@ -226,9 +226,7 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 		Discord: DiscordConfig{
 			Token:                      "test",
 			BotName:                    "TestBot",
-			ReplyPercentage:            1.5,
-			CooldownSeconds:            5,
-			MaxResponsesPerMin:         10,
+			ReplyPercentage:            0.15,
 			ConsolidationTimeoutSec:    300,
 			TypingIndicatorIntervalSec: 5,
 			LongResponseDelayMs:        500,
@@ -236,6 +234,7 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 			ReplyTruncationLength:      200,
 			ImageCacheTTLMin:           60,
 			ImageCacheMaxEntries:       100,
+			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
 		},
 		AI: AIConfig{
 			APIBaseURL:   "https://api.openai.com/v1",
@@ -324,6 +323,7 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 			ReplyTruncationLength:      200,
 			ImageCacheTTLMin:           60,
 			ImageCacheMaxEntries:       100,
+			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
 		},
 		AI: AIConfig{
 			APIBaseURL:   "https://api.openai.com/v1",
@@ -433,6 +433,7 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 			ReplyTruncationLength:      200,
 			ImageCacheTTLMin:           60,
 			ImageCacheMaxEntries:       100,
+			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
 		},
 		AI: AIConfig{
 			APIBaseURL:   "https://api.openai.com/v1",
@@ -527,6 +528,7 @@ func TestValidate_MissingVisionMaxImages(t *testing.T) {
 			ReplyTruncationLength:      200,
 			ImageCacheTTLMin:           60,
 			ImageCacheMaxEntries:       100,
+			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
 		},
 		AI: AIConfig{
 			APIBaseURL:   "https://api.openai.com/v1",
@@ -622,6 +624,7 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 			ReplyTruncationLength:      200,
 			ImageCacheTTLMin:           60,
 			ImageCacheMaxEntries:       100,
+			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
 		},
 		AI: AIConfig{
 			APIBaseURL:   "https://api.openai.com/v1",
@@ -708,6 +711,7 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 		Discord: DiscordConfig{
 			Token:                      "test",
 			BotName:                    "TestBot",
+			OwnBotID:                   "123",
 			ReplyPercentage:            0.15,
 			CooldownSeconds:            5,
 			MaxResponsesPerMin:         10,
@@ -718,6 +722,7 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			ReplyTruncationLength:      200,
 			ImageCacheTTLMin:           60,
 			ImageCacheMaxEntries:       100,
+			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
 		},
 		AI: AIConfig{
 			APIBaseURL:   "https://api.openai.com/v1",
@@ -802,7 +807,7 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 }
 func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100},
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
@@ -833,7 +838,7 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 }
 func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100},
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
@@ -864,7 +869,7 @@ func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 }
 func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100},
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
@@ -905,7 +910,7 @@ func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 }
 func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100},
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
@@ -936,7 +941,7 @@ func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *test
 }
 func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100},
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
@@ -973,7 +978,7 @@ func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T
 }
 func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100},
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
@@ -1007,7 +1012,7 @@ func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 }
 func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100},
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
@@ -1069,6 +1074,8 @@ core:
     reply_truncation_length: 200
     image_cache_ttl_min: 60
     image_cache_max_entries: 100
+    rate_limit:
+      reset_period_seconds: 60
   ai:
     api_base_url: "https://api.openai.com/v1"
     api_key: "test-key"
@@ -1179,6 +1186,8 @@ core:
     reply_truncation_length: 200
     image_cache_ttl_min: 60
     image_cache_max_entries: 100
+    rate_limit:
+      reset_period_seconds: 60
   ai:
     api_base_url: "https://api.openai.com/v1"
     api_key: "test-key"
@@ -1288,6 +1297,8 @@ core:
     reply_truncation_length: 200
     image_cache_ttl_min: 60
     image_cache_max_entries: 100
+    rate_limit:
+      reset_period_seconds: 60
   ai:
     api_base_url: "https://api.openai.com/v1"
     api_key: "test-key"
@@ -1382,7 +1393,7 @@ operations:
 
 func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100},
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
@@ -1419,5 +1430,71 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 	}
 	if err := validate(cfg); err != nil {
 		t.Fatalf("expected validation success with explicit decision credentials, got: %v", err)
+	}
+}
+
+func TestValidate_ConsolidationEnabled_RequiresOwnBotID(t *testing.T) {
+	cfg := &Config{
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		AI: AIConfig{
+			APIBaseURL: "https://api.example.com/v1",
+			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
+			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
+			Vision: VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+		},
+		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
+		Memory: MemoryConfig{
+			ConsolidationInterval: 1,
+			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
+			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5},
+			Consolidation:         ConsolidationConfig{Enabled: true, SystemPrompt: "sp", MemorySearchLimit: 20, WorkerQueueSize: 10},
+		},
+		Qdrant:     QdrantConfig{Host: "localhost", Port: 6333, VectorSize: 1536},
+		Web:        WebConfig{Enabled: false},
+		Logging:    LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
+		Plugins:    PluginsConfig{Enabled: false},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
+	}
+	err := validate(cfg)
+	if err == nil {
+		t.Fatal("expected validation failure when consolidation enabled but discord.own_bot_id is empty")
+	}
+	if !strings.Contains(err.Error(), "discord.own_bot_id") {
+		t.Fatalf("expected error about discord.own_bot_id, got: %v", err)
+	}
+}
+
+func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
+	cfg := &Config{
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		AI: AIConfig{
+			APIBaseURL: "https://api.example.com/v1",
+			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
+			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
+			Vision: VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+		},
+		Embedding: EmbeddingConfig{},
+		Memory: MemoryConfig{
+			ConsolidationInterval: 1,
+			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
+			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+		},
+		Qdrant:     QdrantConfig{},
+		Web:        WebConfig{Enabled: false},
+		Logging:    LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
+		Plugins:    PluginsConfig{Enabled: false},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
+	}
+	if err := validate(cfg); err != nil {
+		t.Fatalf("expected validation success when consolidation disabled even without discord.own_bot_id, got: %v", err)
 	}
 }
