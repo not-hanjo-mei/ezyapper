@@ -22,7 +22,6 @@ import (
 	"ezyapper/internal/types"
 	"ezyapper/internal/plugin"
 	"ezyapper/internal/ratelimit"
-	"ezyapper/internal/utils"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -199,7 +198,7 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 	mcpManager := mcp.NewMCPManager(cfg.MCP.Servers)
 
 	// Create Discord client for short-term context
-	discordClient := memory.NewShortTermClient(session)
+	discordClient := memory.NewShortTermClient(NewDiscordMessageFetcher(session))
 
 	var decisionService *decision.DecisionService
 	if cfg.Decision.Enabled {
@@ -691,7 +690,7 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 		decisionCtx, cancel := context.WithTimeout(ctx, totalTimeout)
 		defer cancel()
 
-		imageCount := len(utils.ExtractImageURLs(m.Message))
+		imageCount := len(extractImageURLs(m.Message))
 		decisionMessages := b.getRecentMessagesForDecision(m.ID, recentMessages)
 
 		// Build message info with author and reply metadata

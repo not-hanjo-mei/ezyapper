@@ -1,165 +1,122 @@
 package memory
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
 	"testing"
-	"time"
 
-	"github.com/bwmarrin/discordgo"
+	"ezyapper/internal/types"
 )
 
-func TestConvertMessage_WithReply(t *testing.T) {
-	client := &ShortTermClient{session: nil}
+// mockFetcher implements MessageFetcher for testing.
+type mockFetcher struct {
+	messages []types.DiscordMessage
+	err      error
+}
 
-	now := time.Now().UTC().Truncate(time.Second)
-
-	replyContent := "this is the original message being replied to"
-	discordMsg := &discordgo.Message{
-		ID:        "msg-100",
-		ChannelID: "chan-200",
-		GuildID:   "guild-300",
-		Author: &discordgo.User{
-			ID:       "user-400",
-			Username: "testuser",
-			Bot:      false,
-		},
-		Content:   "hello world",
-		Timestamp: now,
-		MessageReference: &discordgo.MessageReference{
-			MessageID: "parent-999",
-			ChannelID: "chan-200",
-			GuildID:   "guild-300",
-		},
-		ReferencedMessage: &discordgo.Message{
-			ID:      "parent-999",
-			Content: replyContent,
-			Author: &discordgo.User{
-				ID:       "parent-user-555",
-				Username: "parentuser",
-			},
-		},
+func (m *mockFetcher) FetchMessages(ctx context.Context, channelID string, limit int) ([]types.DiscordMessage, error) {
+	if m.err != nil {
+		return nil, m.err
 	}
-
-	result := client.convertMessage(discordMsg)
-
-	if result.ReplyToID != "parent-999" {
-		t.Fatalf("ReplyToID: got %q, want %q", result.ReplyToID, "parent-999")
+	if limit > len(m.messages) {
+		limit = len(m.messages)
 	}
-	if result.ReplyToUsername != "parentuser" {
-		t.Fatalf("ReplyToUsername: got %q, want %q", result.ReplyToUsername, "parentuser")
+	return m.messages[:limit], nil
+}
+
+func TestFetchRecentMessages(t *testing.T) {
+	msgs := []types.DiscordMessage{
+		{ID: "1", AuthorID: "u1", Content: "hello"},
+		{ID: "2", AuthorID: "u2", Content: "world"},
 	}
-	if result.ReplyToContent != replyContent {
-		t.Fatalf("ReplyToContent: got %q, want %q", result.ReplyToContent, replyContent)
+	client := NewShortTermClient(&mockFetcher{messages: msgs})
+
+	result, err := client.FetchRecentMessages(context.Background(), "chan", 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("got %d messages, want 2", len(result))
 	}
 }
 
-func TestConvertMessage_WithReply_Truncation(t *testing.T) {
-	client := &ShortTermClient{session: nil}
-
-	now := time.Now().UTC().Truncate(time.Second)
-
-	longContent := ""
-	for i := 0; i < 150; i++ {
-		longContent += "x"
+func TestFetchUserMessages(t *testing.T) {
+	msgs := []types.DiscordMessage{
+		{ID: "1", AuthorID: "u1", Content: "hello"},
+		{ID: "2", AuthorID: "u2", Content: "world"},
+		{ID: "3", AuthorID: "u1", Content: "again"},
 	}
+	client := NewShortTermClient(&mockFetcher{messages: msgs})
 
-	discordMsg := &discordgo.Message{
-		ID:        "msg-100",
-		ChannelID: "chan-200",
-		GuildID:   "guild-300",
-		Author: &discordgo.User{
-			ID:       "user-400",
-			Username: "testuser",
-		},
-		Content:   "hello",
-		Timestamp: now,
-		MessageReference: &discordgo.MessageReference{
-			MessageID: "parent-999",
-		},
-		ReferencedMessage: &discordgo.Message{
-			Content: longContent,
-			Author: &discordgo.User{
-				ID:       "parent-user-555",
-				Username: "parentuser",
-			},
-		},
+	result, err := client.FetchUserMessages(context.Background(), "chan", "u1", 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-
-	result := client.convertMessage(discordMsg)
-
-	if len(result.ReplyToContent) != 100 {
-		t.Fatalf("ReplyToContent length: got %d, want 100", len(result.ReplyToContent))
-	}
-	if result.ReplyToContent != longContent[:100] {
-		t.Fatalf("ReplyToContent: got %q, want %q", result.ReplyToContent, longContent[:100])
+	if len(result) != 2 {
+		t.Fatalf("got %d messages, want 2", len(result))
 	}
 }
 
-func TestConvertMessage_NoReply(t *testing.T) {
-	client := &ShortTermClient{session: nil}
-
-	now := time.Now().UTC().Truncate(time.Second)
-
-	discordMsg := &discordgo.Message{
-		ID:        "msg-100",
-		ChannelID: "chan-200",
-		GuildID:   "guild-300",
-		Author: &discordgo.User{
-			ID:       "user-400",
-			Username: "testuser",
-			Bot:      false,
-		},
-		Content:           "hello world",
-		Timestamp:         now,
-		MessageReference:  nil,
-		ReferencedMessage: nil,
+func TestFetchChannelMessages(t *testing.T) {
+	msgs := []types.DiscordMessage{
+		{ID: "1", Content: "hello"},
 	}
+	client := NewShortTermClient(&mockFetcher{messages: msgs})
 
-	result := client.convertMessage(discordMsg)
-
-	if result.ReplyToID != "" {
-		t.Fatalf("ReplyToID: got %q, want empty string", result.ReplyToID)
+	result, err := client.FetchChannelMessages(context.Background(), "chan", 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.ReplyToUsername != "" {
-		t.Fatalf("ReplyToUsername: got %q, want empty string", result.ReplyToUsername)
-	}
-	if result.ReplyToContent != "" {
-		t.Fatalf("ReplyToContent: got %q, want empty string", result.ReplyToContent)
+	if len(result) != 1 {
+		t.Fatalf("got %d messages, want 1", len(result))
 	}
 }
 
-func TestConvertMessage_ReplyToDeleted(t *testing.T) {
-	client := &ShortTermClient{session: nil}
+func TestFetchRecentMessages_Error(t *testing.T) {
+	client := NewShortTermClient(&mockFetcher{err: errors.New("api down")})
 
-	now := time.Now().UTC().Truncate(time.Second)
+	_, err := client.FetchRecentMessages(context.Background(), "chan", 10)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
 
-	discordMsg := &discordgo.Message{
-		ID:        "msg-100",
-		ChannelID: "chan-200",
-		GuildID:   "guild-300",
-		Author: &discordgo.User{
-			ID:       "user-400",
-			Username: "testuser",
-			Bot:      false,
-		},
-		Content:   "hello world",
-		Timestamp: now,
-		MessageReference: &discordgo.MessageReference{
-			MessageID: "parent-999",
-			ChannelID: "chan-200",
-			GuildID:   "guild-300",
-		},
-		ReferencedMessage: nil,
+func TestValidateLimit(t *testing.T) {
+	tests := []struct {
+		limit    int
+		wantErr  bool
+		errText  string
+		wantCap  int
+	}{
+		{0, true, "limit must be greater than 0", 0},
+		{-1, true, "limit must be greater than 0", 0},
+		{1, false, "", 1},
+		{100, false, "", 100},
+		{500, false, "", 500},
+		{600, false, "", 500}, // capped to maxPaginatedLimit
+		{1000, false, "", 500},
 	}
 
-	result := client.convertMessage(discordMsg)
-
-	if result.ReplyToID != "parent-999" {
-		t.Fatalf("ReplyToID: got %q, want %q", result.ReplyToID, "parent-999")
-	}
-	if result.ReplyToUsername != "(deleted message)" {
-		t.Fatalf("ReplyToUsername: got %q, want %q", result.ReplyToUsername, "(deleted message)")
-	}
-	if result.ReplyToContent != "" {
-		t.Fatalf("ReplyToContent: got %q, want empty string", result.ReplyToContent)
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("limit=%d", tt.limit), func(t *testing.T) {
+			got, err := validateLimit(tt.limit, "TestFunc")
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				if tt.errText != "" && !strings.Contains(err.Error(), tt.errText) {
+					t.Fatalf("error %q does not contain %q", err.Error(), tt.errText)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.wantCap {
+				t.Fatalf("got %d, want %d", got, tt.wantCap)
+			}
+		})
 	}
 }

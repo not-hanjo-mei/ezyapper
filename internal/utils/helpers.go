@@ -5,34 +5,14 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/bwmarrin/discordgo"
+	"ezyapper/internal/types"
 )
 
 var channelMentionRe = regexp.MustCompile(`<#(\d+)>`)
 
-// ExtractImageURLs extracts image URLs from a Discord message
-// This consolidates the duplicate implementations from handlers.go and shortterm.go
-func ExtractImageURLs(msg *discordgo.Message) []string {
-	var urls []string
-
-	// From attachments
-	for _, attachment := range msg.Attachments {
-		if strings.HasPrefix(attachment.ContentType, "image/") {
-			urls = append(urls, attachment.URL)
-		}
-	}
-
-	// From embeds
-	for _, embed := range msg.Embeds {
-		if embed.Image != nil && embed.Image.URL != "" {
-			urls = append(urls, embed.Image.URL)
-		}
-		if embed.Thumbnail != nil && embed.Thumbnail.URL != "" {
-			urls = append(urls, embed.Thumbnail.URL)
-		}
-	}
-
-	return urls
+// ExtractImageURLs returns the image URLs from a DiscordMessage.
+func ExtractImageURLs(msg *types.DiscordMessage) []string {
+	return msg.ImageURLs
 }
 
 // Contains checks if a string slice contains a specific item

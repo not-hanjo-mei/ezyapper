@@ -9,7 +9,6 @@ import (
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
 	"ezyapper/internal/types"
-	"ezyapper/internal/utils"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -43,7 +42,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 	var msg *types.DiscordMessage
 
 	if withImages {
-		imageURLs = utils.ExtractImageURLs(m.Message)
+		imageURLs = extractImageURLs(m.Message)
 
 		visionDescriber := b.getVisionDescriber()
 		if b.cfg().AI.Vision.Mode == config.VisionModeHybrid && len(imageURLs) > 0 && visionDescriber != nil {

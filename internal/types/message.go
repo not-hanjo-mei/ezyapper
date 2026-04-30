@@ -2,9 +2,8 @@
 package types
 
 import (
+	"strings"
 	"time"
-
-	"ezyapper/internal/utils"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -41,7 +40,7 @@ func FromDiscordgo(m *discordgo.MessageCreate) DiscordMessage {
 		AuthorID:  m.Author.ID,
 		Username:  m.Author.Username,
 		Content:   m.Content,
-		ImageURLs: utils.ExtractImageURLs(m.Message),
+		ImageURLs: extractImageURLsFromMessage(m.Message),
 		Timestamp: m.Timestamp,
 		IsBot:     m.Author.Bot,
 	}
@@ -61,4 +60,25 @@ func FromDiscordgo(m *discordgo.MessageCreate) DiscordMessage {
 	}
 
 	return msg
+}
+
+func extractImageURLsFromMessage(msg *discordgo.Message) []string {
+	var urls []string
+
+	for _, attachment := range msg.Attachments {
+		if strings.HasPrefix(attachment.ContentType, "image/") {
+			urls = append(urls, attachment.URL)
+		}
+	}
+
+	for _, embed := range msg.Embeds {
+		if embed.Image != nil && embed.Image.URL != "" {
+			urls = append(urls, embed.Image.URL)
+		}
+		if embed.Thumbnail != nil && embed.Thumbnail.URL != "" {
+			urls = append(urls, embed.Thumbnail.URL)
+		}
+	}
+
+	return urls
 }
