@@ -27,6 +27,11 @@ type qdrantStore interface {
 	GetMemoriesByUser(ctx context.Context, userID string, limit int) ([]*Record, error)
 }
 
+// aiChatCompleter is the subset of ai.Client methods used by Consolidator.
+type aiChatCompleter interface {
+	CreateChatCompletion(ctx context.Context, req ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error)
+}
+
 // embedSleep overrides time.Sleep for retry tests. Nil means use real timers.
 var embedSleep func(time.Duration)
 
@@ -34,13 +39,16 @@ var embedSleep func(time.Duration)
 type Consolidator struct {
 	qdrant            qdrantStore
 	embedder          Embedder
-	aiClient          *ai.Client
+	aiClient          aiChatCompleter
 	visionDescriber   *vision.VisionDescriber
 	maxMessages       int
 	model             string
 	prompt            string
 	ownBotID          string // Bot's own ID to distinguish from other bots
 	memorySearchLimit int
+	retryMaxRetries   int
+	retryBaseDelay    time.Duration
+	retryMaxDelay     time.Duration
 
 	lastConsolidatedAt time.Time
 	mu                 sync.RWMutex
@@ -61,18 +69,14 @@ func (c *Consolidator) setLastConsolidatedAt(t time.Time) {
 }
 
 // embedWithRetry generates an embedding with exponential backoff retry on failure.
-func embedWithRetry(ctx context.Context, embedder Embedder, text string) ([]float32, error) {
-	const maxRetries = 3
-	const baseDelay = 1 * time.Second
-	const maxDelay = 30 * time.Second
-
-	return retry.Retry(ctx, maxRetries, func(ctx context.Context) ([]float32, error) {
-		return embedder.Embed(ctx, text)
-	}, retry.WithBaseDelay(baseDelay), retry.WithMaxDelay(maxDelay))
+func (c *Consolidator) embedWithRetry(ctx context.Context, text string) ([]float32, error) {
+	return retry.Retry(ctx, c.retryMaxRetries, func(ctx context.Context) ([]float32, error) {
+		return c.embedder.Embed(ctx, text)
+	}, retry.WithBaseDelay(c.retryBaseDelay), retry.WithMaxDelay(c.retryMaxDelay))
 }
 
 // NewConsolidator creates a new consolidator with the given Qdrant client, embedder, and AI configuration.
-func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient *ai.Client, visionDescriber *vision.VisionDescriber, cfg *config.ConsolidationConfig, ownBotID string, consolidationInterval int, memorySearchLimit int) *Consolidator {
+func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient aiChatCompleter, visionDescriber *vision.VisionDescriber, cfg *config.ConsolidationConfig, ownBotID string, consolidationInterval int, memorySearchLimit int, retryMaxRetries int, retryBaseDelayMs int, retryMaxDelayMs int) *Consolidator {
 	return &Consolidator{
 		qdrant:            qdrant,
 		embedder:          embedder,
@@ -83,6 +87,9 @@ func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient *ai.Clien
 		prompt:            cfg.SystemPrompt,
 		ownBotID:          ownBotID,
 		memorySearchLimit: memorySearchLimit,
+		retryMaxRetries:   retryMaxRetries,
+		retryBaseDelay:    time.Duration(retryBaseDelayMs) * time.Millisecond,
+		retryMaxDelay:     time.Duration(retryMaxDelayMs) * time.Millisecond,
 	}
 }
 
@@ -308,7 +315,11 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 		return fmt.Errorf("getOrCreateProfile: %w", err)
 	}
 
-	extracted := c.analyzeConversation(ctx, conversation, []string{userID})
+	extracted, err := c.analyzeConversation(ctx, conversation, []string{userID})
+	if err != nil {
+		logger.Errorf("[consolidation] analyzeConversation failed for user=%s: %v", userID, err)
+		return fmt.Errorf("analyzeConversation: %w", err)
+	}
 	if len(extracted) == 0 {
 		elapsed := time.Since(start)
 		logger.Infof("[consolidation] no memories extracted for user=%s duration=%s", userID, elapsed)
@@ -371,11 +382,11 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 			CreatedAt:  time.Now(),
 		}
 
-		embedding, err := retry.Retry(ctx, 3, func(ctx context.Context) ([]float32, error) {
+		embedding, err := retry.Retry(ctx, c.retryMaxRetries, func(ctx context.Context) ([]float32, error) {
 			return c.embedder.Embed(ctx, memory.Content)
 		},
-			retry.WithBaseDelay(1*time.Second),
-			retry.WithMaxDelay(30*time.Second),
+			retry.WithBaseDelay(c.retryBaseDelay),
+			retry.WithMaxDelay(c.retryMaxDelay),
 		)
 		if err != nil {
 			logger.Errorf("[consolidation] embedding exhausted for memory %d for user=%s: %v", i+1, userID, err)
@@ -422,7 +433,11 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 	logger.Infof("[consolidation] built conversation length=%d chars images=%d users=%v", len(conversation), imageCount, targetUserIDs)
 
 	// Analyze conversation with batch extraction for all users
-	batchExtracts := c.analyzeConversationBatch(ctx, conversation, targetUserIDs)
+	batchExtracts, err := c.analyzeConversationBatch(ctx, conversation, targetUserIDs)
+	if err != nil {
+		logger.Errorf("[consolidation] analyzeConversationBatch failed for channel=%s: %v", channelID, err)
+		return fmt.Errorf("analyzeConversationBatch: %w", err)
+	}
 	if len(batchExtracts) == 0 {
 		elapsed := time.Since(start)
 		logger.Infof("[consolidation] no memories extracted for channel=%s duration=%s", channelID, elapsed)
@@ -498,24 +513,24 @@ func (c *Consolidator) getOrCreateProfile(ctx context.Context, userID string) (*
 	return profile, nil
 }
 
-func (c *Consolidator) analyzeConversation(ctx context.Context, conversation string, targetUserIDs []string) []Extract {
+func (c *Consolidator) analyzeConversation(ctx context.Context, conversation string, targetUserIDs []string) ([]Extract, error) {
 	start := time.Now()
 
 	logger.Debugf("[consolidation] analyzeConversation called with conversation length=%d target_users=%d", len(conversation), len(targetUserIDs))
 
 	if c.aiClient == nil {
 		logger.Error("[consolidation] AI client not configured, cannot perform LLM extraction")
-		return []Extract{}
+		return nil, fmt.Errorf("consolidation: AI client not configured")
 	}
 
 	if strings.TrimSpace(conversation) == "" {
 		logger.Warn("[consolidation] empty conversation, skipping LLM analysis")
-		return []Extract{}
+		return nil, nil
 	}
 
 	if c.prompt == "" {
 		logger.Error("[consolidation] consolidation prompt is empty, cannot perform LLM extraction")
-		return []Extract{}
+		return nil, fmt.Errorf("consolidation: system prompt is empty")
 	}
 
 	logger.Debugf("[consolidation] preparing LLM prompt with conversation length=%d", len(conversation))
@@ -538,7 +553,7 @@ func (c *Consolidator) analyzeConversation(ctx context.Context, conversation str
 	resp, err := c.aiClient.CreateChatCompletion(ctx, req)
 	if err != nil {
 		logger.Errorf("[consolidation] LLM request failed: %v", err)
-		return []Extract{}
+		return nil, fmt.Errorf("consolidation: LLM request failed: %w", err)
 	}
 
 	elapsed := time.Since(start)
@@ -559,32 +574,32 @@ func (c *Consolidator) analyzeConversation(ctx context.Context, conversation str
 	if err := json.Unmarshal([]byte(content), &extracts); err != nil {
 		logger.Errorf("[consolidation] failed to parse LLM response as JSON: %v", err)
 		logger.Debugf("[consolidation] raw LLM response: %s", resp.Content)
-		return []Extract{}
+		return nil, fmt.Errorf("consolidation: failed to parse LLM response: %w", err)
 	}
 
 	logger.Infof("[consolidation] successfully extracted %d memories from LLM response", len(extracts))
-	return extracts
+	return extracts, nil
 }
 
 // analyzeConversationBatch performs batch memory extraction for multiple users
-func (c *Consolidator) analyzeConversationBatch(ctx context.Context, conversation string, targetUserIDs []string) []UserMemoryExtract {
+func (c *Consolidator) analyzeConversationBatch(ctx context.Context, conversation string, targetUserIDs []string) ([]UserMemoryExtract, error) {
 	start := time.Now()
 
 	logger.Debugf("[consolidation] analyzeConversationBatch called with conversation length=%d target_users=%d", len(conversation), len(targetUserIDs))
 
 	if c.aiClient == nil {
 		logger.Error("[consolidation] AI client not configured, cannot perform LLM extraction")
-		return []UserMemoryExtract{}
+		return nil, fmt.Errorf("consolidation: AI client not configured")
 	}
 
 	if strings.TrimSpace(conversation) == "" {
 		logger.Warn("[consolidation] empty conversation, skipping LLM analysis")
-		return []UserMemoryExtract{}
+		return nil, nil
 	}
 
 	if c.prompt == "" {
 		logger.Error("[consolidation] consolidation prompt is empty, cannot perform LLM extraction")
-		return []UserMemoryExtract{}
+		return nil, fmt.Errorf("consolidation: system prompt is empty")
 	}
 
 	logger.Debugf("[consolidation] preparing LLM prompt with conversation length=%d", len(conversation))
@@ -607,7 +622,7 @@ func (c *Consolidator) analyzeConversationBatch(ctx context.Context, conversatio
 	resp, err := c.aiClient.CreateChatCompletion(ctx, req)
 	if err != nil {
 		logger.Errorf("[consolidation] LLM batch request failed: %v", err)
-		return []UserMemoryExtract{}
+		return nil, fmt.Errorf("consolidation: LLM batch request failed: %w", err)
 	}
 
 	elapsed := time.Since(start)
@@ -628,11 +643,11 @@ func (c *Consolidator) analyzeConversationBatch(ctx context.Context, conversatio
 	if err := json.Unmarshal([]byte(content), &batchExtracts); err != nil {
 		logger.Errorf("[consolidation] failed to parse LLM batch response as JSON: %v", err)
 		logger.Debugf("[consolidation] raw LLM response: %s", resp.Content)
-		return []UserMemoryExtract{}
+		return nil, fmt.Errorf("consolidation: failed to parse LLM batch response: %w", err)
 	}
 
 	logger.Infof("[consolidation] successfully extracted memories for %d users from LLM response", len(batchExtracts))
-	return batchExtracts
+	return batchExtracts, nil
 }
 
 func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []Extract) {

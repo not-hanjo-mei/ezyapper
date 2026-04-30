@@ -17,9 +17,10 @@ func TestMain(m *testing.M) {
 
 func TestNewDecisionServiceRequiresExplicitCredentials(t *testing.T) {
 	cfg := &config.DecisionConfig{
-		APIKey:     "decision-key",
-		APIBaseURL: "https://example.com/v1",
-		Timeout:    1,
+		APIKey:         "decision-key",
+		APIBaseURL:     "https://example.com/v1",
+		Timeout:        1,
+		HTTPTimeoutSec: 60,
 	}
 
 	svc, err := NewDecisionService(cfg)
@@ -30,8 +31,8 @@ func TestNewDecisionServiceRequiresExplicitCredentials(t *testing.T) {
 		t.Fatal("expected initialized decision service")
 	}
 
-	if svc.httpClient.Timeout != 30*time.Second {
-		t.Fatalf("expected minimum http timeout 30s, got %s", svc.httpClient.Timeout)
+	if svc.httpClient.Timeout != 60*time.Second {
+		t.Fatalf("expected http timeout 60s, got %s", svc.httpClient.Timeout)
 	}
 }
 

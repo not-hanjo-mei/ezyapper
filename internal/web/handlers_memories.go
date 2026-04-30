@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"ezyapper/internal/config"
+	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
 )
 
@@ -28,6 +29,7 @@ type memoriesPageData struct {
 	Memories []memoryDisplayEntry
 	Count    int
 	Searched bool
+	Error    string
 }
 
 // MemoriesHandler returns an http.HandlerFunc for the memories browser page.
@@ -58,11 +60,15 @@ func handleMemoriesGET(w http.ResponseWriter, r *http.Request, cfgStore *atomic.
 
 	var entries []memoryDisplayEntry
 	searched := false
+	var errorMsg string
 
 	if userID != "" {
 		searched = true
 		memories, err := memStore.GetMemories(ctx, userID, cfg.Web.MemoriesPageLimit)
-		if err == nil {
+		if err != nil {
+			logger.Errorf("[Web] GetMemories error for user %s: %v", userID, err)
+			errorMsg = "Failed to fetch memories: " + err.Error()
+		} else {
 			entries = make([]memoryDisplayEntry, 0, len(memories))
 			for _, m := range memories {
 				entries = append(entries, toDisplayEntry(m, cfg.Web.ContentTruncationLength))
@@ -75,6 +81,7 @@ func handleMemoriesGET(w http.ResponseWriter, r *http.Request, cfgStore *atomic.
 		Memories: entries,
 		Count:    len(entries),
 		Searched: searched,
+		Error:    errorMsg,
 	}
 
 	navItems := []NavItem{

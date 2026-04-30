@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"ezyapper/internal/logger"
 )
 
 // sessionCtxKey is the context key for the authenticated Session.
@@ -154,9 +156,12 @@ func (s *SessionStore) cleanupExpired() {
 }
 
 // SessionFromContext extracts the Session from a request context.
-// Returns nil if no session is present.
+// Returns nil if no session is present or the value is not a *Session.
 func SessionFromContext(ctx context.Context) *Session {
-	s, _ := ctx.Value(sessionCtxKey).(*Session)
+	s, ok := ctx.Value(sessionCtxKey).(*Session)
+	if !ok {
+		return nil
+	}
 	return s
 }
 
@@ -188,7 +193,11 @@ func SessionMiddleware(store *SessionStore) Middleware {
 			cookie, err := r.Cookie("session_id")
 			var session *Session
 			if err == nil {
-				session, _ = store.GetSession(cookie.Value)
+				var sessErr error
+				session, sessErr = store.GetSession(cookie.Value)
+				if sessErr != nil {
+					logger.Debugf("[Web] invalid session cookie: %v", sessErr)
+				}
 			}
 
 			// If session found, store in context

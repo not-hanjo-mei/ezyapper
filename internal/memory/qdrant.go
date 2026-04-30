@@ -30,27 +30,38 @@ func discordIDToUint64(discordID string) (uint64, error) {
 // retrySleep overrides time.Sleep for tests. Nil means use real time.Sleep.
 var retrySleep func(time.Duration)
 
+// QdrantClient wraps the Qdrant client
+type QdrantClient struct {
+	client          *qdrant.Client
+	host            string
+	port            int
+	vectorSize      int
+	maxRetries      int
+	baseBackoff     time.Duration
+	maxBackoff      time.Duration
+	defaultTopK     int
+	defaultMinScore float64
+}
+
 const (
-	maxRetries  = 3
-	baseBackoff = 1 * time.Second
-	maxBackoff  = 30 * time.Second
+	CollectionMemories = "memories"
+	CollectionProfiles = "profiles"
 )
 
-// retryWithBackoff is a thin compatibility wrapper around retry.Retry,
-// preserved for backward compatibility with tests in this package.
-func retryWithBackoff(ctx context.Context, operation string, fn func() error) error {
-	_, err := retry.Retry(ctx, maxRetries, func(ctx context.Context) (struct{}, error) {
+var ErrProfileNotFound = errors.New("profile not found")
+
+func (qc *QdrantClient) retryWithBackoff(ctx context.Context, operation string, fn func() error) error {
+	_, err := retry.Retry(ctx, qc.maxRetries, func(ctx context.Context) (struct{}, error) {
 		return struct{}{}, fn()
 	}, retry.WithErrorClassifier(isRetryableGrpc),
-		retry.WithBaseDelay(baseBackoff),
-		retry.WithMaxDelay(maxBackoff))
+		retry.WithBaseDelay(qc.baseBackoff),
+		retry.WithMaxDelay(qc.maxBackoff))
 	if err != nil {
 		return fmt.Errorf("%s %w", operation, err)
 	}
 	return nil
 }
 
-// isRetryableGrpc returns true for gRPC status codes that warrant a retry.
 func isRetryableGrpc(err error) bool {
 	if err == nil {
 		return false
@@ -67,25 +78,8 @@ func isRetryableGrpc(err error) bool {
 	}
 }
 
-const (
-	// CollectionMemories is the name of the memories collection
-	CollectionMemories = "memories"
-	// CollectionProfiles is the name of the profiles collection
-	CollectionProfiles = "profiles"
-)
-
-var ErrProfileNotFound = errors.New("profile not found")
-
-// QdrantClient wraps the Qdrant client
-type QdrantClient struct {
-	client     *qdrant.Client
-	host       string
-	port       int
-	vectorSize int
-}
-
-// NewQdrantClient creates a new Qdrant client using configuration from config package
-func NewQdrantClient(cfg *config.QdrantConfig) (*QdrantClient, error) {
+// NewQdrantClient creates a new Qdrant client using configuration from config package.
+func NewQdrantClient(cfg *config.QdrantConfig, retryMaxRetries, retryBaseDelayMs, retryMaxDelayMs int, defaultTopK int, defaultMinScore float64) (*QdrantClient, error) {
 	qdrantCfg := &qdrant.Config{
 		Host: cfg.Host,
 		Port: cfg.Port,
@@ -103,10 +97,15 @@ func NewQdrantClient(cfg *config.QdrantConfig) (*QdrantClient, error) {
 	}
 
 	qc := &QdrantClient{
-		client:     client,
-		host:       cfg.Host,
-		port:       cfg.Port,
-		vectorSize: cfg.VectorSize,
+		client:          client,
+		host:            cfg.Host,
+		port:            cfg.Port,
+		vectorSize:      cfg.VectorSize,
+		maxRetries:      retryMaxRetries,
+		baseBackoff:     time.Duration(retryBaseDelayMs) * time.Millisecond,
+		maxBackoff:      time.Duration(retryMaxDelayMs) * time.Millisecond,
+		defaultTopK:     defaultTopK,
+		defaultMinScore: defaultMinScore,
 	}
 
 	// Initialize collections
@@ -228,7 +227,7 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error 
 	embedding := memory.Embedding
 
 	// UUID 必须在重试之前生成以防止重复记录
-	_, err := retry.Retry(ctx, maxRetries, func(ctx context.Context) (*qdrant.UpdateResult, error) {
+	_, err := retry.Retry(ctx, qc.maxRetries, func(ctx context.Context) (*qdrant.UpdateResult, error) {
 		return qc.client.Upsert(ctx, &qdrant.UpsertPoints{
 			CollectionName: CollectionMemories,
 			Points: []*qdrant.PointStruct{
@@ -239,7 +238,7 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error 
 				},
 			},
 		})
-	}, retry.WithErrorClassifier(isRetryableGrpc), retry.WithBaseDelay(baseBackoff), retry.WithMaxDelay(maxBackoff))
+	}, retry.WithErrorClassifier(isRetryableGrpc), retry.WithBaseDelay(qc.baseBackoff), retry.WithMaxDelay(qc.maxBackoff))
 	if err != nil {
 		logger.Errorf("[UpsertMemory] failed to upsert memory for userID=%s: %v", memory.UserID, err)
 		return fmt.Errorf("failed to upsert memory: %w", err)
@@ -251,7 +250,7 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error 
 // SearchMemories searches for similar memories
 func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embedding []float32, opts *SearchOptions) ([]*Record, error) {
 	if opts == nil {
-		opts = &SearchOptions{TopK: 5, MinScore: 0.75}
+		opts = &SearchOptions{TopK: qc.defaultTopK, MinScore: qc.defaultMinScore}
 	}
 
 	limit := uint64(opts.TopK)
@@ -435,7 +434,7 @@ func (qc *QdrantClient) UpsertProfile(ctx context.Context, profile *Profile) err
 		return fmt.Errorf("upsert profile: %w", err)
 	}
 
-	_, err = retry.Retry(ctx, maxRetries, func(ctx context.Context) (*qdrant.UpdateResult, error) {
+	_, err = retry.Retry(ctx, qc.maxRetries, func(ctx context.Context) (*qdrant.UpdateResult, error) {
 		return qc.client.Upsert(ctx, &qdrant.UpsertPoints{
 			CollectionName: CollectionProfiles,
 			Points: []*qdrant.PointStruct{
@@ -446,7 +445,7 @@ func (qc *QdrantClient) UpsertProfile(ctx context.Context, profile *Profile) err
 				},
 			},
 		})
-	}, retry.WithErrorClassifier(isRetryableGrpc), retry.WithBaseDelay(baseBackoff), retry.WithMaxDelay(maxBackoff))
+	}, retry.WithErrorClassifier(isRetryableGrpc), retry.WithBaseDelay(qc.baseBackoff), retry.WithMaxDelay(qc.maxBackoff))
 	if err != nil {
 		logger.Errorf("[UpsertProfile] failed to upsert profile for userID=%s: %v", profile.UserID, err)
 		return fmt.Errorf("failed to upsert profile: %w", err)

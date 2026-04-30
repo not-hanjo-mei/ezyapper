@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
 )
 
@@ -24,7 +25,10 @@ func DashboardHandler(stats *StatsProvider, startTime time.Time, ts *TemplateSet
 		}
 
 		ctx := r.Context()
-		gs := stats.GetDashboardStats(ctx)
+		gs, err := stats.GetDashboardStats(ctx)
+		if err != nil {
+			logger.Errorf("[Web] failed to fetch dashboard stats: %v", err)
+		}
 		csrfToken := CSRFTokenFromContext(ctx)
 
 		data := dashboardData{

@@ -31,14 +31,19 @@ func TestMain(m *testing.M) {
 
 func defaultAIConfig() *config.AIConfig {
 	return &config.AIConfig{
-		APIKey:      "test-key",
-		APIBaseURL:  "https://api.example.com",
-		Model:       "gpt-4",
-		VisionModel: "gpt-4-vision",
-		MaxTokens:   100,
-		Temperature: 0.7,
-		RetryCount:  2,
-		Timeout:     0,
+		APIKey:                  "test-key",
+		APIBaseURL:              "https://api.example.com",
+		Model:                   "gpt-4",
+		VisionModel:             "gpt-4-vision",
+		MaxTokens:               100,
+		Temperature:             0.7,
+		RetryCount:              2,
+		Timeout:                 0,
+		HTTPTimeoutSec:          30,
+		MaxToolIterations:       5,
+		MaxImageBytes:           10485760,
+		UserAgent:               "EZyapper/1.0",
+		RequireImageContentType: true,
 	}
 }
 
@@ -50,7 +55,7 @@ func testClient(cfg *config.AIConfig) *Client {
 
 func TestNewClient_InitializesFields(t *testing.T) {
 	cfg := defaultAIConfig()
-	cfg.Timeout = 15
+	cfg.HTTPTimeoutSec = 15
 	tr := tools.NewToolRegistry()
 	c := NewClient(cfg, tr)
 
@@ -71,23 +76,23 @@ func TestNewClient_InitializesFields(t *testing.T) {
 	}
 }
 
-func TestNewClient_ZeroTimeoutUsesDefault(t *testing.T) {
+func TestNewClient_UsesHTTPTimeoutSec(t *testing.T) {
 	cfg := defaultAIConfig()
-	cfg.Timeout = 0
+	cfg.HTTPTimeoutSec = 45
 	c := NewClient(cfg, tools.NewToolRegistry())
 
-	if c.httpClient.Timeout != 30*time.Second {
-		t.Errorf("expected default timeout 30s, got %v", c.httpClient.Timeout)
+	if c.httpClient.Timeout != 45*time.Second {
+		t.Errorf("expected HTTP timeout 45s, got %v", c.httpClient.Timeout)
 	}
 }
 
-func TestNewClient_NegativeTimeoutUsesDefault(t *testing.T) {
+func TestNewClient_HTTPTimeoutSecFromConfig(t *testing.T) {
 	cfg := defaultAIConfig()
-	cfg.Timeout = -1
+	cfg.HTTPTimeoutSec = 10
 	c := NewClient(cfg, tools.NewToolRegistry())
 
-	if c.httpClient.Timeout != 30*time.Second {
-		t.Errorf("expected default timeout 30s, got %v", c.httpClient.Timeout)
+	if c.httpClient.Timeout != 10*time.Second {
+		t.Errorf("expected HTTP timeout 10s, got %v", c.httpClient.Timeout)
 	}
 }
 
@@ -106,7 +111,7 @@ func TestRequestTimeout_FallsBackToHTTPClient(t *testing.T) {
 	cfg := defaultAIConfig()
 	cfg.Timeout = 0
 	c := testClient(cfg)
-	// httpClient initialized with 30s default (since config.Timeout <= 0 in NewClient)
+	// httpClient initialized from HTTPTimeoutSec (30s default)
 	if got := c.requestTimeout(); got != 30*time.Second {
 		t.Errorf("expected 30s from httpClient, got %v", got)
 	}

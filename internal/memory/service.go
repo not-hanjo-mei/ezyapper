@@ -124,6 +124,9 @@ type ServiceConfig struct {
 	MemorySearchLimit     int
 	WorkerQueueSize       int
 	MaxPaginatedLimit     int
+	RetryMaxRetries       int
+	RetryBaseDelayMs      int
+	RetryMaxDelayMs       int
 }
 
 // Embedder defines the interface for generating embeddings
@@ -170,7 +173,7 @@ func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedde
 		consolidationInterval: cfg.ConsolidationInterval,
 	}
 
-	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, visionDescriber, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit)
+	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, visionDescriber, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit, cfg.RetryMaxRetries, cfg.RetryBaseDelayMs, cfg.RetryMaxDelayMs)
 	service.worker = NewWorker(service.consolidator, cfg.WorkerQueueSize)
 	service.worker.Start(context.Background())
 

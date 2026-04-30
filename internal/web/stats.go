@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -34,56 +35,70 @@ func NewStatsProvider(memStore memory.MemoryStore, profileStore memory.ProfileSt
 }
 
 // GetDashboardStats returns aggregated statistics. Each query has a 5-second
-// timeout. Failed queries return 0 values without blocking the page render.
-func (s *StatsProvider) GetDashboardStats(ctx context.Context) memory.GlobalStats {
+// timeout. An error is returned if either the memory count or profile count
+// sub-query fails — the caller should log the error and render the page with
+// zero values to avoid blocking the user.
+func (s *StatsProvider) GetDashboardStats(ctx context.Context) (memory.GlobalStats, error) {
 	stats := memory.GlobalStats{}
 
-	s.countMemories(ctx, &stats)
-	s.countProfiles(ctx, &stats)
-	s.countMessages(ctx, &stats)
+	totalMemories, err := s.countMemories(ctx)
+	if err != nil {
+		return stats, fmt.Errorf("get dashboard stats: count memories: %w", err)
+	}
+	stats.TotalMemories = totalMemories
 
-	return stats
+	totalUsers, err := s.countProfiles(ctx)
+	if err != nil {
+		return stats, fmt.Errorf("get dashboard stats: count profiles: %w", err)
+	}
+	stats.TotalUsers = totalUsers
+
+	s.countMessages(&stats)
+
+	return stats, nil
 }
 
-func (s *StatsProvider) countMemories(ctx context.Context, stats *memory.GlobalStats) {
+func (s *StatsProvider) countMemories(ctx context.Context) (int64, error) {
 	cfg := s.cfgStore.Load().(*config.Config)
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(cfg.Web.StatsQueryTimeoutSec)*time.Second)
 	defer cancel()
 
 	if mc, ok := s.memStore.(memoryCounter); ok {
-		if count, err := mc.CountMemories(ctx); err == nil {
-			stats.TotalMemories = count
-			return
-		} else {
-			logger.Warnf("[StatsProvider] failed to count memories: %v", err)
+		count, err := mc.CountMemories(ctx)
+		if err == nil {
+			return count, nil
 		}
+		logger.Warnf("[StatsProvider] failed to count memories: %v", err)
 	}
 	// Fallback: use GetStats if the store supports it
-	if gs, err := s.memStore.GetStats(ctx); err == nil {
-		stats.TotalMemories = gs.TotalMemories
+	gs, err := s.memStore.GetStats(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count memories: %w", err)
 	}
+	return gs.TotalMemories, nil
 }
 
-func (s *StatsProvider) countProfiles(ctx context.Context, stats *memory.GlobalStats) {
+func (s *StatsProvider) countProfiles(ctx context.Context) (int64, error) {
 	cfg := s.cfgStore.Load().(*config.Config)
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(cfg.Web.StatsQueryTimeoutSec)*time.Second)
 	defer cancel()
 
 	if pc, ok := s.profileStore.(profileCounter); ok {
-		if count, err := pc.CountProfiles(ctx); err == nil {
-			stats.TotalUsers = count
-			return
-		} else {
-			logger.Warnf("[StatsProvider] failed to count profiles: %v", err)
+		count, err := pc.CountProfiles(ctx)
+		if err == nil {
+			return count, nil
 		}
+		logger.Warnf("[StatsProvider] failed to count profiles: %v", err)
 	}
 	// Fallback: try GetStats from MemoryStore
-	if gs, err := s.memStore.GetStats(ctx); err == nil {
-		stats.TotalUsers = gs.TotalUsers
+	gs, err := s.memStore.GetStats(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count profiles: %w", err)
 	}
+	return gs.TotalUsers, nil
 }
 
-func (s *StatsProvider) countMessages(_ context.Context, stats *memory.GlobalStats) {
+func (s *StatsProvider) countMessages(stats *memory.GlobalStats) {
 	// TotalMessages is not directly countable from Qdrant
 	// Set to 0 with note: "N/A"
 	stats.TotalMessages = 0

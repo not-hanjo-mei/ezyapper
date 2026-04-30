@@ -119,16 +119,17 @@ func toFileConfig(cfg *Config) fileConfig {
 
 // DecisionConfig holds LLM-based reply decision settings
 type DecisionConfig struct {
-	Enabled      bool                   `mapstructure:"enabled" yaml:"enabled"`
-	Model        string                 `mapstructure:"model" yaml:"model"`
-	APIBaseURL   string                 `mapstructure:"api_base_url" yaml:"api_base_url"`
-	APIKey       string                 `mapstructure:"api_key" yaml:"api_key"`
-	MaxTokens    int                    `mapstructure:"max_tokens" yaml:"max_tokens"`
-	Temperature  float32                `mapstructure:"temperature" yaml:"temperature"`
-	RetryCount   int                    `mapstructure:"retry_count" yaml:"retry_count"`
-	Timeout      int                    `mapstructure:"timeout" yaml:"timeout"`
-	SystemPrompt string                 `mapstructure:"system_prompt" yaml:"system_prompt"`
-	ExtraParams  map[string]interface{} `mapstructure:"extra_params" yaml:"extra_params"`
+	Enabled        bool                   `mapstructure:"enabled" yaml:"enabled"`
+	Model          string                 `mapstructure:"model" yaml:"model"`
+	APIBaseURL     string                 `mapstructure:"api_base_url" yaml:"api_base_url"`
+	APIKey         string                 `mapstructure:"api_key" yaml:"api_key"`
+	MaxTokens      int                    `mapstructure:"max_tokens" yaml:"max_tokens"`
+	Temperature    float32                `mapstructure:"temperature" yaml:"temperature"`
+	RetryCount     int                    `mapstructure:"retry_count" yaml:"retry_count"`
+	Timeout        int                    `mapstructure:"timeout" yaml:"timeout"`
+	SystemPrompt   string                 `mapstructure:"system_prompt" yaml:"system_prompt"`
+	ExtraParams    map[string]interface{} `mapstructure:"extra_params" yaml:"extra_params"`
+	HTTPTimeoutSec int                    `mapstructure:"http_timeout_sec" yaml:"http_timeout_sec"`
 }
 
 // RateLimitConfig holds per-user rate limiting window settings.
@@ -157,18 +158,23 @@ type DiscordConfig struct {
 
 // AIConfig holds AI/LLM settings for chat
 type AIConfig struct {
-	APIBaseURL   string                 `mapstructure:"api_base_url" yaml:"api_base_url"`
-	APIKey       string                 `mapstructure:"api_key" yaml:"api_key"`
-	Model        string                 `mapstructure:"model" yaml:"model"`
-	VisionModel  string                 `mapstructure:"vision_model" yaml:"vision_model"`
-	VisionBase64 bool                   `mapstructure:"vision_base64" yaml:"vision_base64"`
-	Vision       VisionConfig           `mapstructure:"vision" yaml:"vision"`
-	MaxTokens    int                    `mapstructure:"max_tokens" yaml:"max_tokens"`
-	Temperature  float32                `mapstructure:"temperature" yaml:"temperature"`
-	RetryCount   int                    `mapstructure:"retry_count" yaml:"retry_count"`
-	Timeout      int                    `mapstructure:"timeout" yaml:"timeout"`
-	SystemPrompt string                 `mapstructure:"system_prompt" yaml:"system_prompt"`
-	ExtraParams  map[string]interface{} `mapstructure:"extra_params" yaml:"extra_params"`
+	APIBaseURL              string                 `mapstructure:"api_base_url" yaml:"api_base_url"`
+	APIKey                  string                 `mapstructure:"api_key" yaml:"api_key"`
+	Model                   string                 `mapstructure:"model" yaml:"model"`
+	VisionModel             string                 `mapstructure:"vision_model" yaml:"vision_model"`
+	VisionBase64            bool                   `mapstructure:"vision_base64" yaml:"vision_base64"`
+	Vision                  VisionConfig           `mapstructure:"vision" yaml:"vision"`
+	MaxTokens               int                    `mapstructure:"max_tokens" yaml:"max_tokens"`
+	Temperature             float32                `mapstructure:"temperature" yaml:"temperature"`
+	RetryCount              int                    `mapstructure:"retry_count" yaml:"retry_count"`
+	Timeout                 int                    `mapstructure:"timeout" yaml:"timeout"`
+	SystemPrompt            string                 `mapstructure:"system_prompt" yaml:"system_prompt"`
+	ExtraParams             map[string]interface{} `mapstructure:"extra_params" yaml:"extra_params"`
+	HTTPTimeoutSec          int                    `mapstructure:"http_timeout_sec" yaml:"http_timeout_sec"`
+	MaxToolIterations       int                    `mapstructure:"max_tool_iterations" yaml:"max_tool_iterations"`
+	MaxImageBytes           int                    `mapstructure:"max_image_bytes" yaml:"max_image_bytes"`
+	UserAgent               string                 `mapstructure:"user_agent" yaml:"user_agent"`
+	RequireImageContentType bool                   `mapstructure:"require_image_content_type" yaml:"require_image_content_type"`
 }
 
 // EmbeddingConfig holds settings for embedding generation
@@ -188,6 +194,9 @@ type MemoryConfig struct {
 	EmbeddingCacheMaxSize int                 `mapstructure:"embedding_cache_max_size" yaml:"embedding_cache_max_size"`
 	EmbeddingCacheTTLMin  int                 `mapstructure:"embedding_cache_ttl_min" yaml:"embedding_cache_ttl_min"`
 	EvictionIntervalMin   int                 `mapstructure:"eviction_interval_min" yaml:"eviction_interval_min"`
+	RetryBaseDelayMs      int                 `mapstructure:"retry_base_delay_ms" yaml:"retry_base_delay_ms"`
+	RetryMaxDelayMs       int                 `mapstructure:"retry_max_delay_ms" yaml:"retry_max_delay_ms"`
+	MaxRetries            int                 `mapstructure:"max_retries" yaml:"max_retries"`
 	Retrieval             RetrievalConfig     `mapstructure:"retrieval" yaml:"retrieval"`
 	Consolidation         ConsolidationConfig `mapstructure:"consolidation" yaml:"consolidation"`
 }
@@ -216,8 +225,10 @@ type ConsolidationConfig struct {
 }
 
 type RetrievalConfig struct {
-	TopK     int     `mapstructure:"top_k" yaml:"top_k"`
-	MinScore float64 `mapstructure:"min_score" yaml:"min_score"`
+	TopK            int     `mapstructure:"top_k" yaml:"top_k"`
+	MinScore        float64 `mapstructure:"min_score" yaml:"min_score"`
+	DefaultTopK     int     `mapstructure:"default_top_k" yaml:"default_top_k"`
+	DefaultMinScore float64 `mapstructure:"default_min_score" yaml:"default_min_score"`
 }
 
 type WebConfig struct {
@@ -383,6 +394,10 @@ func validateAI(cfg *Config, errs *[]string) {
 	requireNonEmpty(cfg.AI.SystemPrompt, "ai.system_prompt", errs)
 	requirePositive(cfg.AI.RetryCount, "ai.retry_count", errs)
 	requirePositive(cfg.AI.Timeout, "ai.timeout", errs)
+	requirePositive(cfg.AI.HTTPTimeoutSec, "ai.http_timeout_sec", errs)
+	requirePositive(cfg.AI.MaxToolIterations, "ai.max_tool_iterations", errs)
+	requirePositive(cfg.AI.MaxImageBytes, "ai.max_image_bytes", errs)
+	requireNonEmpty(cfg.AI.UserAgent, "ai.user_agent", errs)
 }
 
 func validateVision(cfg *Config, errs *[]string) {
@@ -443,6 +458,13 @@ func validateQdrant(cfg *Config, errs *[]string) {
 	expectedVectorSize := expectedEmbeddingVectorSize(cfg.Embedding.Model)
 	if expectedVectorSize > 0 && cfg.Qdrant.VectorSize > 0 && cfg.Qdrant.VectorSize != expectedVectorSize {
 		*errs = append(*errs, fmt.Sprintf("qdrant.vector_size (%d) must match embedding.model %q size (%d)", cfg.Qdrant.VectorSize, cfg.Embedding.Model, expectedVectorSize))
+	}
+	requirePositive(cfg.Memory.RetryBaseDelayMs, "memory.retry_base_delay_ms", errs)
+	requirePositive(cfg.Memory.RetryMaxDelayMs, "memory.retry_max_delay_ms", errs)
+	requirePositive(cfg.Memory.MaxRetries, "memory.max_retries", errs)
+	requirePositive(cfg.Memory.Retrieval.DefaultTopK, "memory.retrieval.default_top_k", errs)
+	if cfg.Memory.Retrieval.DefaultMinScore <= 0 || cfg.Memory.Retrieval.DefaultMinScore > 1 {
+		*errs = append(*errs, "memory.retrieval.default_min_score must be between 0 and 1 (exclusive of 0) when memory is enabled")
 	}
 }
 
@@ -576,6 +598,7 @@ func validateDecision(cfg *Config, errs *[]string) {
 	if cfg.Decision.RetryCount < 0 {
 		*errs = append(*errs, "decision.retry_count must be greater than or equal to 0")
 	}
+	requirePositive(cfg.Decision.HTTPTimeoutSec, "decision.http_timeout_sec", errs)
 }
 
 func validateSystem(cfg *Config, errs *[]string) {

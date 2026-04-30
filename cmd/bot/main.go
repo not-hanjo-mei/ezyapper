@@ -88,7 +88,35 @@ func main() {
 	}
 
 	// Initialize web server
-	webServer := web.NewServer(cfgStore, memoryService, memoryService, memoryService, pluginManager, discordBot, web.NewDiscordAdapter(discordBot.GetSession()))
+	s := discordBot.GetSession()
+	discordAdapter := web.NewDiscordAdapter(
+		func(channelID string) string {
+			ch, err := s.State.Channel(channelID)
+			if err != nil || ch == nil {
+				return channelID
+			}
+			return ch.Name
+		},
+		func(guildID, userID string) string {
+			member, err := s.State.Member(guildID, userID)
+			if err == nil && member != nil && member.User != nil {
+				return member.User.Username
+			}
+			user, err := s.User(userID)
+			if err == nil && user != nil {
+				return user.Username
+			}
+			return userID
+		},
+		func(guildID string) string {
+			g, err := s.State.Guild(guildID)
+			if err != nil || g == nil {
+				return guildID
+			}
+			return g.Name
+		},
+	)
+	webServer := web.NewServer(cfgStore, memoryService, memoryService, memoryService, pluginManager, discordBot, discordAdapter)
 	if err := webServer.Start(); err != nil {
 		logger.Warnf("Failed to start web server: %v", err)
 	}
@@ -170,7 +198,7 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 		return nil, fmt.Errorf("failed to create embedder: %w", err)
 	}
 
-	qdrantClient, err := memory.NewQdrantClient(&cfg.Qdrant)
+	qdrantClient, err := memory.NewQdrantClient(&cfg.Qdrant, cfg.Memory.MaxRetries, cfg.Memory.RetryBaseDelayMs, cfg.Memory.RetryMaxDelayMs, cfg.Memory.Retrieval.DefaultTopK, cfg.Memory.Retrieval.DefaultMinScore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create qdrant client: %w", err)
 	}
@@ -185,6 +213,9 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 		MemorySearchLimit:     cfg.Memory.Consolidation.MemorySearchLimit,
 		WorkerQueueSize:       cfg.Memory.Consolidation.WorkerQueueSize,
 		MaxPaginatedLimit:     cfg.Memory.MaxPaginatedLimit,
+		RetryMaxRetries:       cfg.Memory.MaxRetries,
+		RetryBaseDelayMs:      cfg.Memory.RetryBaseDelayMs,
+		RetryMaxDelayMs:       cfg.Memory.RetryMaxDelayMs,
 	}
 
 	return memory.NewService(memoryCfg, qdrantClient, embedder, consolidationAIClient, visionDescriber)

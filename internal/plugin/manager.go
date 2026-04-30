@@ -8,8 +8,6 @@ import (
 
 	"ezyapper/internal/logger"
 	"ezyapper/internal/types"
-
-	"github.com/bwmarrin/discordgo"
 )
 
 // NewManager creates a new plugin manager
@@ -29,7 +27,7 @@ func NewManager(defaultToolTimeoutMs int, startupTimeoutSec int, rpcTimeoutSec i
 
 // OnMessage calls all plugins' OnMessage methods
 // Returns false if any plugin wants to block the message
-func (pm *Manager) OnMessage(ctx context.Context, m *discordgo.MessageCreate) (bool, error) {
+func (pm *Manager) OnMessage(ctx context.Context, msg types.DiscordMessage) (bool, error) {
 	pm.mu.RLock()
 	plugins := make([]*Client, 0, len(pm.plugins))
 	for _, p := range pm.plugins {
@@ -41,8 +39,6 @@ func (pm *Manager) OnMessage(ctx context.Context, m *discordgo.MessageCreate) (b
 	sort.Slice(plugins, func(i, j int) bool {
 		return plugins[i].priority > plugins[j].priority
 	})
-
-	msg := types.FromDiscordgo(m)
 
 	for _, plugin := range plugins {
 		if plugin.jsonrpc == nil {
@@ -65,7 +61,7 @@ func (pm *Manager) OnMessage(ctx context.Context, m *discordgo.MessageCreate) (b
 }
 
 // OnResponse calls all plugins' OnResponse methods
-func (pm *Manager) OnResponse(ctx context.Context, m *discordgo.MessageCreate, response string) error {
+func (pm *Manager) OnResponse(ctx context.Context, msg types.DiscordMessage, response string) error {
 	pm.mu.RLock()
 	plugins := make([]*Client, 0, len(pm.plugins))
 	for _, p := range pm.plugins {
@@ -73,7 +69,6 @@ func (pm *Manager) OnResponse(ctx context.Context, m *discordgo.MessageCreate, r
 	}
 	pm.mu.RUnlock()
 
-	msg := types.FromDiscordgo(m)
 	args := ResponseArgs{
 		Message:  msg,
 		Response: response,
@@ -97,7 +92,7 @@ func (pm *Manager) OnResponse(ctx context.Context, m *discordgo.MessageCreate, r
 // BeforeSend runs optional pre-send hooks and returns mutated response/upload files.
 func (pm *Manager) BeforeSend(
 	ctx context.Context,
-	m *discordgo.MessageCreate,
+	msg types.DiscordMessage,
 	response string,
 ) (string, []LocalFile, bool, error) {
 	pm.mu.RLock()
@@ -113,7 +108,6 @@ func (pm *Manager) BeforeSend(
 
 	currentResponse := response
 	uploadFiles := make([]LocalFile, 0)
-	msg := types.FromDiscordgo(m)
 
 	for _, plugin := range plugins {
 		if err := ctx.Err(); err != nil {

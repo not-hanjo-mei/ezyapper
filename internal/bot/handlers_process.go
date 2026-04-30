@@ -211,7 +211,8 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 	b.clearProcessingMessage(pm, m.ID)
 
 	if b.pluginManager != nil {
-		if err := b.pluginManager.OnResponse(ctx, m, response); err != nil {
+		dm := types.FromDiscordgo(m)
+		if err := b.pluginManager.OnResponse(ctx, dm, response); err != nil {
 			logger.Warnf("Plugin error in OnResponse: %v", err)
 		}
 	}

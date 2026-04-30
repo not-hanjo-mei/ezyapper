@@ -31,10 +31,7 @@ type Client struct {
 
 // NewClient creates a new AI client
 func NewClient(cfg *config.AIConfig, toolRegistry *tools.ToolRegistry) *Client {
-	httpTimeout := 30 * time.Second
-	if cfg.Timeout > 0 {
-		httpTimeout = time.Duration(cfg.Timeout) * time.Second
-	}
+	httpTimeout := time.Duration(cfg.HTTPTimeoutSec) * time.Second
 	httpClient := &http.Client{Timeout: httpTimeout}
 
 	// Create OpenAI config with custom base URL
@@ -66,8 +63,6 @@ type ChatCompletionResponse struct {
 	FinishReason     string
 	Usage            openai.Usage
 }
-
-const maxToolIterations = 5
 
 // processMessages converts image URLs to base64 if VisionBase64 is enabled
 func (c *Client) processMessages(ctx context.Context, messages []openai.ChatCompletionMessage) ([]openai.ChatCompletionMessage, error) {
@@ -455,7 +450,11 @@ func (c *Client) fetchImageAsDataURL(ctx context.Context, url string, opts image
 
 	httpClient := c.httpClient
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 30 * time.Second}
+		timeout := 30 * time.Second
+		if c.config != nil && c.config.HTTPTimeoutSec > 0 {
+			timeout = time.Duration(c.config.HTTPTimeoutSec) * time.Second
+		}
+		httpClient = &http.Client{Timeout: timeout}
 	}
 
 	resp, err := httpClient.Do(req)
@@ -553,7 +552,7 @@ func (c *Client) CreateChatCompletionWithTools(ctx context.Context, req ChatComp
 
 	// Process tool calls iteratively
 	messages := req.Messages
-	maxIterations := maxToolIterations // Prevent infinite loops
+	maxIterations := c.config.MaxToolIterations // Prevent infinite loops
 
 	for i := 0; i < maxIterations && len(resp.ToolCalls) > 0; i++ {
 		// Add assistant message with tool calls
@@ -648,7 +647,7 @@ func (c *Client) CreateVisionCompletionWithTools(ctx context.Context, systemProm
 	}
 
 	// Process tool calls iteratively
-	maxIterations := maxToolIterations
+	maxIterations := c.config.MaxToolIterations
 	currentMessages := messages
 
 	for i := 0; i < maxIterations && len(resp.Choices[0].Message.ToolCalls) > 0; i++ {
@@ -705,9 +704,9 @@ type ToolHandler func(ctx context.Context, toolCall openai.ToolCall) (string, er
 // DownloadImage downloads an image and returns it as base64 data URL
 func (c *Client) DownloadImage(ctx context.Context, url string) (string, error) {
 	return c.fetchImageAsDataURL(ctx, url, imageDownloadOptions{
-		RequireImageContentType: true,
-		MaxBytes:                10 * 1024 * 1024,
-		UserAgent:               "EZyapper/1.0",
+		RequireImageContentType: c.config.RequireImageContentType,
+		MaxBytes:                int64(c.config.MaxImageBytes),
+		UserAgent:               c.config.UserAgent,
 	})
 }
 

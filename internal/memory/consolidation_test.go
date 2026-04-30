@@ -120,7 +120,14 @@ func TestEmbedWithRetry_Success(t *testing.T) {
 	ctx := context.Background()
 	emb := newRetryableEmbedder(2) // fails first 2 calls, succeeds on 3rd
 
-	vec, err := embedWithRetry(ctx, emb, "test text")
+	c := &Consolidator{
+		embedder:        emb,
+		retryMaxRetries: 3,
+		retryBaseDelay:  1 * time.Second,
+		retryMaxDelay:   30 * time.Second,
+	}
+
+	vec, err := c.embedWithRetry(ctx, "test text")
 	if err != nil {
 		t.Fatalf("expected success after retries, got: %v", err)
 	}
@@ -141,7 +148,14 @@ func TestEmbedWithRetry_Exhausted(t *testing.T) {
 	// Always fails — 1 initial + 3 retries = 4 attempts
 	emb := newRetryableEmbedder(999)
 
-	_, err := embedWithRetry(ctx, emb, "test text")
+	c := &Consolidator{
+		embedder:        emb,
+		retryMaxRetries: 3,
+		retryBaseDelay:  1 * time.Second,
+		retryMaxDelay:   30 * time.Second,
+	}
+
+	_, err := c.embedWithRetry(ctx, "test text")
 	if err == nil {
 		t.Fatal("expected error after exhausting retries, got nil")
 	}
@@ -159,7 +173,14 @@ func TestEmbedWithRetry_ContextCancelled(t *testing.T) {
 	cancel() // cancel immediately
 
 	emb := newRetryableEmbedder(999)
-	_, err := embedWithRetry(ctx, emb, "test text")
+	c := &Consolidator{
+		embedder:        emb,
+		retryMaxRetries: 3,
+		retryBaseDelay:  1 * time.Second,
+		retryMaxDelay:   30 * time.Second,
+	}
+
+	_, err := c.embedWithRetry(ctx, "test text")
 	if err == nil {
 		t.Fatal("expected context cancelled error, got nil")
 	}
@@ -173,7 +194,14 @@ func TestEmbedWithRetry_ImmediateSuccess(t *testing.T) {
 	ctx := context.Background()
 	emb := newRetryableEmbedder(0) // no failures
 
-	vec, err := embedWithRetry(ctx, emb, "immediate")
+	c := &Consolidator{
+		embedder:        emb,
+		retryMaxRetries: 3,
+		retryBaseDelay:  1 * time.Second,
+		retryMaxDelay:   30 * time.Second,
+	}
+
+	vec, err := c.embedWithRetry(ctx, "immediate")
 	if err != nil {
 		t.Fatalf("expected success on first call, got: %v", err)
 	}
@@ -230,7 +258,7 @@ func TestConsolidationProcess_QdrantStoreError(t *testing.T) {
 			CreatedAt:  time.Now(),
 		}
 
-		embedding, err := embedWithRetry(ctx, c.embedder, memory.Content)
+		embedding, err := c.embedWithRetry(ctx, memory.Content)
 		if err != nil {
 			t.Logf("memory %d: embedding failed (expected for retry test): %v", i+1, err)
 			continue
@@ -302,7 +330,7 @@ func TestProfileMemoryCount_OnlyOnSuccess(t *testing.T) {
 			Confidence: extract.Confidence,
 			CreatedAt:  time.Now(),
 		}
-		embedding, err := embedWithRetry(ctx, c.embedder, memory.Content)
+		embedding, err := c.embedWithRetry(ctx, memory.Content)
 		if err != nil {
 			continue
 		}
@@ -374,7 +402,7 @@ func TestProfileMemoryCount_Consistent(t *testing.T) {
 			Confidence: extract.Confidence,
 			CreatedAt:  time.Now(),
 		}
-		embedding, err := embedWithRetry(ctx, c.embedder, memory.Content)
+		embedding, err := c.embedWithRetry(ctx, memory.Content)
 		if err != nil {
 			continue
 		}

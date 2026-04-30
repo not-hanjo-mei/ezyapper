@@ -76,7 +76,8 @@ func (b *Bot) runBeforeSendPluginHooks(
 		return response, nil, false, nil
 	}
 
-	updatedResponse, files, skipSend, err := b.pluginManager.BeforeSend(ctx, m, response)
+	dm := types.FromDiscordgo(m)
+	updatedResponse, files, skipSend, err := b.pluginManager.BeforeSend(ctx, dm, response)
 	if err != nil {
 		return "", nil, false, err
 	}

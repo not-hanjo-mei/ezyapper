@@ -27,13 +27,19 @@ func (r *retryableCounter) call() error {
 	return nil
 }
 
+var testRetryQC = &QdrantClient{
+	maxRetries:  3,
+	baseBackoff: 1 * time.Second,
+	maxBackoff:  30 * time.Second,
+}
+
 // TestRetryWithBackoff_Success verifies that when the operation eventually succeeds
 // within the retry budget, no error is returned.
 func TestRetryWithBackoff_Success(t *testing.T) {
 	ctx := context.Background()
 	counter := &retryableCounter{failCount: 2} // fails twice, succeeds on 3rd
 
-	err := retryWithBackoff(ctx, "test_op", counter.call)
+	err := testRetryQC.retryWithBackoff(ctx, "test_op", counter.call)
 	if err != nil {
 		t.Fatalf("expected success after retries, got: %v", err)
 	}
@@ -49,7 +55,7 @@ func TestRetryWithBackoff_Exhausted(t *testing.T) {
 	// Always return Unavailable — will exhaust all 4 attempts (1 initial + 3 retries)
 	counter := &retryableCounter{failCount: 999}
 
-	err := retryWithBackoff(ctx, "test_op", counter.call)
+	err := testRetryQC.retryWithBackoff(ctx, "test_op", counter.call)
 	if err == nil {
 		t.Fatal("expected error after exhausting retries, got nil")
 	}
@@ -67,7 +73,7 @@ func TestRetryWithBackoff_NonRetryable(t *testing.T) {
 	ctx := context.Background()
 	var calls atomic.Int64
 
-	err := retryWithBackoff(ctx, "test_op", func() error {
+	err := testRetryQC.retryWithBackoff(ctx, "test_op", func() error {
 		calls.Add(1)
 		return status.Errorf(codes.InvalidArgument, "bad request")
 	})
@@ -88,7 +94,7 @@ func TestRetryWithBackoff_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
-	err := retryWithBackoff(ctx, "test_op", func() error {
+	err := testRetryQC.retryWithBackoff(ctx, "test_op", func() error {
 		return status.Errorf(codes.Unavailable, "unavailable")
 	})
 	if err == nil {
@@ -101,7 +107,7 @@ func TestRetryWithBackoff_ImmediateSuccess(t *testing.T) {
 	ctx := context.Background()
 	var calls atomic.Int64
 
-	err := retryWithBackoff(ctx, "test_op", func() error {
+	err := testRetryQC.retryWithBackoff(ctx, "test_op", func() error {
 		calls.Add(1)
 		return nil
 	})
@@ -146,7 +152,7 @@ func TestIsRetryableGrpc(t *testing.T) {
 func TestRetryWithBackoff_DeadlineExceeded_Retryable(t *testing.T) {
 	ctx := context.Background()
 	var deadlineCalls atomic.Int64
-	err := retryWithBackoff(ctx, "test_op", func() error {
+	err := testRetryQC.retryWithBackoff(ctx, "test_op", func() error {
 		call := deadlineCalls.Add(1)
 		if call <= 1 {
 			return status.Errorf(codes.DeadlineExceeded, "deadline exceeded")
@@ -166,7 +172,7 @@ func TestRetryWithBackoff_ResourceExhausted_Retryable(t *testing.T) {
 	ctx := context.Background()
 	var calls atomic.Int64
 
-	err := retryWithBackoff(ctx, "test_op", func() error {
+	err := testRetryQC.retryWithBackoff(ctx, "test_op", func() error {
 		call := calls.Add(1)
 		if call <= 3 {
 			return status.Errorf(codes.ResourceExhausted, "resource exhausted")

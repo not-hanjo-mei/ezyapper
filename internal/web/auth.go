@@ -3,6 +3,8 @@ package web
 import (
 	"html/template"
 	"net/http"
+
+	"ezyapper/internal/logger"
 )
 
 // LoginHandler returns an http.HandlerFunc for GET and POST /login.
@@ -100,7 +102,12 @@ func LogoutHandler(store *SessionStore) http.HandlerFunc {
 
 // renderLoginError renders the login template with an error flash message.
 func renderLoginError(w http.ResponseWriter, loginTmpl *template.Template, message string) {
-	token, _ := GenerateCSRFToken()
+	token, err := GenerateCSRFToken()
+	if err != nil {
+		logger.Errorf("[Web] failed to generate CSRF token for login error: %v", err)
+		// Non-fatal: render page without CSRF token
+		token = ""
+	}
 	data := &PageData{
 		Title:     "Login",
 		CSRFToken: token,

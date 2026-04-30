@@ -126,7 +126,7 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 
 	// Run plugin OnMessage hooks
 	if b.pluginManager != nil {
-		continueProcessing, err := b.pluginManager.OnMessage(ctx, m)
+		continueProcessing, err := b.pluginManager.OnMessage(ctx, types.FromDiscordgo(m))
 		if err != nil {
 			logger.Warnf("Plugin error in OnMessage: %v", err)
 		}

@@ -45,6 +45,10 @@ core:
     temperature: 0.8
     retry_count: 3
     timeout: 30
+    http_timeout_sec: 30
+    max_tool_iterations: 10
+    max_image_bytes: 5242880
+    user_agent: "ezyapper-test"
     system_prompt: "test"
   decision:
     enabled: false
@@ -60,9 +64,14 @@ memory_pipeline:
     embedding_cache_max_size: 500
     embedding_cache_ttl_min: 30
     eviction_interval_min: 5
+    retry_base_delay_ms: 100
+    retry_max_delay_ms: 5000
+    max_retries: 3
     retrieval:
       top_k: 0
       min_score: 0.0
+      default_top_k: 5
+      default_min_score: 0.75
     consolidation:
       enabled: false
       memory_search_limit: 20

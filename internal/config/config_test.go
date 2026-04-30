@@ -46,6 +46,10 @@ core:
 		retry_count: 1
 		timeout: 10
 		system_prompt: "test"
+		http_timeout_sec: 30
+		max_tool_iterations: 5
+		max_image_bytes: 10485760
+		user_agent: "EZyapper/1.0"
 memory_pipeline:
 	embedding:
 		model: "text-embedding-3-small"
@@ -147,6 +151,10 @@ core:
 		retry_count: 1
 		timeout: 10
 		system_prompt: "test"
+		http_timeout_sec: 30
+		max_tool_iterations: 5
+		max_image_bytes: 10485760
+		user_agent: "EZyapper/1.0"
 memory_pipeline:
 	embedding:
 		model: "text-embedding-3-small"
@@ -237,13 +245,14 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
 		},
 		AI: AIConfig{
-			APIBaseURL:   "https://api.openai.com/v1",
-			APIKey:       "test",
-			Model:        "gpt-4o-mini",
-			VisionModel:  "gpt-4o",
-			MaxTokens:    1024,
-			Temperature:  0.8,
-			SystemPrompt: "test",
+			APIBaseURL:     "https://api.openai.com/v1",
+			APIKey:         "test",
+			Model:          "gpt-4o-mini",
+			VisionModel:    "gpt-4o",
+			MaxTokens:      1024,
+			Temperature:    0.8,
+			SystemPrompt:   "test",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
 		},
 		Embedding: EmbeddingConfig{
 			Model: "text-embedding-3-small",
@@ -326,13 +335,14 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
 		},
 		AI: AIConfig{
-			APIBaseURL:   "https://api.openai.com/v1",
-			APIKey:       "test",
-			Model:        "gpt-4o-mini",
-			VisionModel:  "gpt-4o",
-			MaxTokens:    1024,
-			Temperature:  3.0,
-			SystemPrompt: "test",
+			APIBaseURL:     "https://api.openai.com/v1",
+			APIKey:         "test",
+			Model:          "gpt-4o-mini",
+			VisionModel:    "gpt-4o",
+			MaxTokens:      1024,
+			Temperature:    3.0,
+			SystemPrompt:   "test",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
 		},
 		Embedding: EmbeddingConfig{
 			Model: "text-embedding-3-small",
@@ -446,6 +456,7 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 			Vision: VisionConfig{
 				MaxImages: 4,
 			},
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
 		},
 		Embedding: EmbeddingConfig{
 			Model: "text-embedding-3-small",
@@ -542,6 +553,7 @@ func TestValidate_MissingVisionMaxImages(t *testing.T) {
 				Mode:      VisionModeMultimodal,
 				MaxImages: 0,
 			},
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
 		},
 		Embedding: EmbeddingConfig{
 			Model: "text-embedding-3-small",
@@ -639,6 +651,7 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 				MaxImages:         4,
 				DescriptionPrompt: "",
 			},
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
 		},
 		Embedding: EmbeddingConfig{
 			Model: "text-embedding-3-small",
@@ -738,6 +751,7 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 				Mode:      VisionModeTextOnly,
 				MaxImages: 1,
 			},
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
 		},
 		Embedding: EmbeddingConfig{
 			Model:      "text-embedding-3-small",
@@ -745,15 +759,20 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			Timeout:    30,
 		},
 		Memory: MemoryConfig{
-			ConsolidationInterval: 50,
-			ShortTermLimit:        20,
+			ConsolidationInterval: 1,
+			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 			EmbeddingCacheMaxSize: 500,
 			EmbeddingCacheTTLMin:  30,
 			EvictionIntervalMin:   5,
+			RetryBaseDelayMs:      1000,
+			RetryMaxDelayMs:       30000,
+			MaxRetries:            3,
 			Retrieval: RetrievalConfig{
-				TopK:     0,
-				MinScore: 0.75,
+				TopK:            0,
+				MinScore:        0.75,
+				DefaultTopK:     5,
+				DefaultMinScore: 0.75,
 			},
 			Consolidation: ConsolidationConfig{
 				Enabled:           true,
@@ -812,7 +831,8 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision: VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
@@ -822,7 +842,10 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 			EmbeddingCacheMaxSize: 500,
 			EmbeddingCacheTTLMin:  30,
 			EvictionIntervalMin:   5,
-			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
+			RetryBaseDelayMs:      1000,
+			RetryMaxDelayMs:       30000,
+			MaxRetries:            3,
+			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5, DefaultTopK: 5, DefaultMinScore: 0.75},
 			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
 		},
 		Qdrant:     QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
@@ -843,7 +866,8 @@ func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision: VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
@@ -853,7 +877,10 @@ func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 			EmbeddingCacheMaxSize: 500,
 			EmbeddingCacheTTLMin:  30,
 			EvictionIntervalMin:   5,
-			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
+			RetryBaseDelayMs:      1000,
+			RetryMaxDelayMs:       30000,
+			MaxRetries:            3,
+			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5, DefaultTopK: 5, DefaultMinScore: 0.75},
 			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
 		},
 		Qdrant:     QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
@@ -874,7 +901,8 @@ func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision: VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
@@ -915,7 +943,8 @@ func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *test
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision: VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -946,7 +975,8 @@ func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision: VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -976,6 +1006,42 @@ func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T
 		t.Fatalf("Expected qdrant requirement error, got: %v", err)
 	}
 }
+func TestValidate_MemoryEnabled_MissingRetryBaseDelay(t *testing.T) {
+	cfg := &Config{
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		AI: AIConfig{
+			APIBaseURL: "https://api.example.com/v1",
+			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
+			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			Vision: VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+		},
+		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
+		Memory: MemoryConfig{
+			ConsolidationInterval: 1,
+			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
+			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+		},
+		Qdrant:     QdrantConfig{Host: "localhost", Port: 6333, VectorSize: 1536},
+		Web:        WebConfig{Enabled: false},
+		Logging:    LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
+		Plugins:    PluginsConfig{Enabled: false},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
+	}
+	err := validate(cfg)
+	if err == nil {
+		t.Fatal("Expected validation error for missing memory.retry_base_delay_ms when memory is enabled")
+	}
+	if !strings.Contains(err.Error(), "memory.retry_base_delay_ms") {
+		t.Fatalf("Expected error about memory.retry_base_delay_ms, got: %v", err)
+	}
+}
+
 func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
@@ -983,7 +1049,8 @@ func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision: VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
@@ -1017,7 +1084,8 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision: VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1036,13 +1104,14 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 		Decision: DecisionConfig{
-			Enabled:      true,
-			Model:        "gpt-4o-mini",
-			MaxTokens:    64,
-			Temperature:  0.1,
-			RetryCount:   1,
-			Timeout:      10,
-			SystemPrompt: "decide",
+			Enabled:        true,
+			Model:          "gpt-4o-mini",
+			MaxTokens:      64,
+			Temperature:    0.1,
+			RetryCount:     1,
+			Timeout:        10,
+			SystemPrompt:   "decide",
+			HTTPTimeoutSec: 60,
 		},
 	}
 	err := validate(cfg)
@@ -1086,6 +1155,10 @@ core:
     retry_count: 1
     timeout: 10
     system_prompt: "test"
+    http_timeout_sec: 30
+    max_tool_iterations: 5
+    max_image_bytes: 10485760
+    user_agent: "EZyapper/1.0"
     vision:
       mode: "text_only"
       max_images: 1
@@ -1101,9 +1174,14 @@ memory_pipeline:
     embedding_cache_max_size: 500
     embedding_cache_ttl_min: 30
     eviction_interval_min: 5
+    retry_base_delay_ms: 1000
+    retry_max_delay_ms: 30000
+    max_retries: 3
     retrieval:
       top_k: 5
       min_score: 0.75
+      default_top_k: 5
+      default_min_score: 0.75
     consolidation:
       enabled: false
       max_messages: 20
@@ -1198,6 +1276,10 @@ core:
     retry_count: 1
     timeout: 10
     system_prompt: "test"
+    http_timeout_sec: 30
+    max_tool_iterations: 5
+    max_image_bytes: 10485760
+    user_agent: "EZyapper/1.0"
     vision:
       mode: "text_only"
       max_images: 1
@@ -1213,9 +1295,14 @@ memory_pipeline:
     embedding_cache_max_size: 500
     embedding_cache_ttl_min: 30
     eviction_interval_min: 5
+    retry_base_delay_ms: 1000
+    retry_max_delay_ms: 30000
+    max_retries: 3
     retrieval:
       top_k: 5
       min_score: 0.75
+      default_top_k: 5
+      default_min_score: 0.75
     consolidation:
       enabled: false
       max_messages: 20
@@ -1309,6 +1396,10 @@ core:
     retry_count: 1
     timeout: 10
     system_prompt: "test"
+    http_timeout_sec: 30
+    max_tool_iterations: 5
+    max_image_bytes: 10485760
+    user_agent: "EZyapper/1.0"
     vision:
       mode: "text_only"
       max_images: 1
@@ -1324,9 +1415,14 @@ memory_pipeline:
     embedding_cache_max_size: 500
     embedding_cache_ttl_min: 30
     eviction_interval_min: 5
+    retry_base_delay_ms: 1000
+    retry_max_delay_ms: 30000
+    max_retries: 3
     retrieval:
       top_k: 5
       min_score: 0.75
+      default_top_k: 5
+      default_min_score: 0.75
     consolidation:
       enabled: false
       max_messages: 20
@@ -1398,7 +1494,8 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision: VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1417,15 +1514,16 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 		Decision: DecisionConfig{
-			Enabled:      true,
-			Model:        "gpt-4o-mini",
-			APIBaseURL:   "https://decision.example.com/v1",
-			APIKey:       "decision-key",
-			MaxTokens:    64,
-			Temperature:  0.1,
-			RetryCount:   1,
-			Timeout:      10,
-			SystemPrompt: "decide",
+			Enabled:        true,
+			Model:          "gpt-4o-mini",
+			APIBaseURL:     "https://decision.example.com/v1",
+			APIKey:         "decision-key",
+			MaxTokens:      64,
+			Temperature:    0.1,
+			RetryCount:     1,
+			Timeout:        10,
+			SystemPrompt:   "decide",
+			HTTPTimeoutSec: 60,
 		},
 	}
 	if err := validate(cfg); err != nil {
@@ -1440,7 +1538,8 @@ func TestValidate_ConsolidationEnabled_RequiresOwnBotID(t *testing.T) {
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision: VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
 		Memory: MemoryConfig{
@@ -1475,7 +1574,8 @@ func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision: VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1496,5 +1596,79 @@ func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 	}
 	if err := validate(cfg); err != nil {
 		t.Fatalf("expected validation success when consolidation disabled even without discord.own_bot_id, got: %v", err)
+	}
+}
+
+func TestValidateAI_MissingHTTPTimeoutSec(t *testing.T) {
+	cfg := &Config{
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		AI: AIConfig{
+			APIBaseURL: "https://api.example.com/v1",
+			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
+			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
+			Vision: VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			// HTTPTimeoutSec intentionally omitted
+			MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+		},
+		Embedding: EmbeddingConfig{},
+		Memory: MemoryConfig{
+			ConsolidationInterval: 1,
+			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
+			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+		},
+		Qdrant:     QdrantConfig{},
+		Web:        WebConfig{Enabled: false},
+		Logging:    LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
+		Plugins:    PluginsConfig{Enabled: false},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
+	}
+	err := validate(cfg)
+	if err == nil {
+		t.Fatal("expected validation error for missing ai.http_timeout_sec")
+	}
+	if !strings.Contains(err.Error(), "ai.http_timeout_sec must be greater than 0") {
+		t.Fatalf("expected ai.http_timeout_sec error, got: %v", err)
+	}
+}
+
+func TestValidateAI_MissingMaxToolIterations(t *testing.T) {
+	cfg := &Config{
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		AI: AIConfig{
+			APIBaseURL: "https://api.example.com/v1",
+			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
+			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
+			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			HTTPTimeoutSec: 30, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			// MaxToolIterations intentionally omitted
+		},
+		Embedding: EmbeddingConfig{},
+		Memory: MemoryConfig{
+			ConsolidationInterval: 1,
+			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
+			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+		},
+		Qdrant:     QdrantConfig{},
+		Web:        WebConfig{Enabled: false},
+		Logging:    LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
+		Plugins:    PluginsConfig{Enabled: false},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
+	}
+	err := validate(cfg)
+	if err == nil {
+		t.Fatal("expected validation error for missing ai.max_tool_iterations")
+	}
+	if !strings.Contains(err.Error(), "ai.max_tool_iterations must be greater than 0") {
+		t.Fatalf("expected ai.max_tool_iterations error, got: %v", err)
 	}
 }

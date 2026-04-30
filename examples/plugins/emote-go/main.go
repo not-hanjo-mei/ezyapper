@@ -146,7 +146,7 @@ func (p *EmotePlugin) ListTools() ([]plugin.ToolSpec, error) {
 		},
 		{
 			Name:        "send_emote",
-			Description: "Send an emote to the channel",
+			Description: "Send an emote to the channel, requires the emote ID from search_emote results",
 			TimeoutMs:   p.config.SendEmoteMs,
 			Parameters: map[string]interface{}{
 				"type": "object",
