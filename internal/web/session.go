@@ -29,6 +29,7 @@ type SessionStore struct {
 	sessions map[string]*Session
 	stopCh   chan struct{}
 	stopped  bool
+	wg       *sync.WaitGroup
 }
 
 // NewSessionStore creates a new SessionStore and starts the cleanup goroutine.
@@ -93,6 +94,18 @@ func (s *SessionStore) DeleteSession(sessionID string) {
 	s.mu.Unlock()
 }
 
+// SetWG sets the WaitGroup for goroutine lifecycle tracking.
+// Must be called before the cleanup goroutine exits.
+func (s *SessionStore) SetWG(wg *sync.WaitGroup) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.wg != nil {
+		return
+	}
+	s.wg = wg
+	wg.Add(1)
+}
+
 // Stop stops the cleanup goroutine. Safe to call multiple times.
 func (s *SessionStore) Stop() {
 	s.mu.Lock()
@@ -107,6 +120,13 @@ func (s *SessionStore) Stop() {
 func (s *SessionStore) cleanupLoop() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
+	defer func() {
+		s.mu.RLock()
+		if s.wg != nil {
+			s.wg.Done()
+		}
+		s.mu.RUnlock()
+	}()
 
 	for {
 		select {

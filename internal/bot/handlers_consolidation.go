@@ -32,7 +32,10 @@ func (b *Bot) triggerChannelConsolidation(ctx context.Context, channelID string,
 		triggerCount = b.cfg().Memory.ConsolidationInterval
 	}
 
+	b.wg.Add(1)
 	go func(consumedCount int) {
+		defer b.wg.Done()
+
 		defer func() {
 			if r := recover(); r != nil {
 				logger.Errorf("[consolidation] panic recovered: %v\n%s", r, debug.Stack())

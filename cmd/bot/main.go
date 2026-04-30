@@ -105,6 +105,10 @@ func main() {
 		logger.Warnf("Error stopping web server: %v", err)
 	}
 
+	if err := discordBot.Shutdown(shutdownCtx); err != nil {
+		logger.Warnf("Error during bot shutdown: %v", err)
+	}
+
 	// Stop Discord bot
 	if err := discordBot.Stop(); err != nil {
 		logger.Warnf("Error stopping Discord bot: %v", err)

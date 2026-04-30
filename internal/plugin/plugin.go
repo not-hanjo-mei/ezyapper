@@ -194,6 +194,7 @@ type Client struct {
 	tools     []ToolSpec
 	runtime   string
 	commands  map[string]commandTool
+	wg        *sync.WaitGroup // parent Manager's WaitGroup for RPC call tracking
 }
 
 // PluginTool wraps a tool with its owning plugin name.
@@ -228,6 +229,7 @@ type Manager struct {
 	disabled             map[string]disabledPlugin
 	mu                   sync.RWMutex
 	defaultToolTimeoutMs int
+	wg                   sync.WaitGroup // tracks in-flight goroutines (plugin loads, RPC calls, process shutdown)
 }
 
 // NewManager creates a new plugin manager
@@ -359,13 +361,13 @@ func (pm *Manager) loadRPCPlugin(pluginPath string, pluginConfigDir string) erro
 	jsonClient := newStdioJSONRPCClient(stdin, stdout)
 
 	var info Info
-	if err := callJSONRPCWithTimeout(jsonClient, "info", map[string]interface{}{}, &info, pluginStartupTimeout); err != nil {
+	if err := callJSONRPCWithTimeout(jsonClient, &pm.wg, "info", map[string]interface{}{}, &info, pluginStartupTimeout); err != nil {
 		jsonClient.Close()
 		cmd.Process.Kill()
 		return fmt.Errorf("plugin failed to initialize jsonrpc: %w", err)
 	}
 
-	pluginTools, err := listPluginToolsJSONRPC(jsonClient)
+	pluginTools, err := listPluginToolsJSONRPC(jsonClient, &pm.wg)
 	if err != nil {
 		logger.Warnf("Failed to list tools for plugin %s: %v", info.Name, err)
 		pluginTools = []ToolSpec{}
@@ -400,6 +402,7 @@ func (pm *Manager) loadRPCPlugin(pluginPath string, pluginConfigDir string) erro
 		configDir: pluginConfigDir,
 		tools:     pluginTools,
 		runtime:   pluginRuntimeJSONRPC,
+		wg:        &pm.wg,
 	}
 	delete(pm.disabled, info.Name)
 
@@ -509,6 +512,7 @@ func (pm *Manager) loadCommandPlugin(
 		tools:     tools,
 		runtime:   pluginRuntimeCommand,
 		commands:  commands,
+		wg:        &pm.wg,
 	}
 	delete(pm.disabled, info.Name)
 
@@ -774,10 +778,12 @@ func (pm *Manager) LoadPluginsFromDir(dir string) error {
 
 	for _, target := range targets {
 		wg.Add(1)
+		pm.wg.Add(1)
 
 		go func(t pluginLoadTarget) {
+			defer wg.Done()
+			defer pm.wg.Done()
 			defer func() {
-				wg.Done()
 				if r := recover(); r != nil {
 					logger.Errorf("[plugin] panic recovered: %v\n%s", r, debug.Stack())
 				}
@@ -971,6 +977,7 @@ func isMethodNotFoundPluginError(err error) bool {
 
 func callJSONRPCWithTimeout(
 	client *stdioJSONRPCClient,
+	wg *sync.WaitGroup,
 	method string,
 	params interface{},
 	reply interface{},
@@ -981,12 +988,18 @@ func callJSONRPCWithTimeout(
 	}
 
 	done := make(chan error, 1)
+	if wg != nil {
+		wg.Add(1)
+	}
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
 				logger.Errorf("[plugin] panic recovered: %v\n%s", r, debug.Stack())
 			}
 		}()
+		if wg != nil {
+			defer wg.Done()
+		}
 		done <- client.Call(method, params, reply)
 	}()
 
@@ -1011,7 +1024,7 @@ func callPluginOnMessageWithTimeout(
 	}
 
 	if plugin.jsonrpc != nil {
-		return callJSONRPCWithTimeout(plugin.jsonrpc, "on_message", msg, reply, timeout)
+		return callJSONRPCWithTimeout(plugin.jsonrpc, plugin.wg, "on_message", msg, reply, timeout)
 	}
 
 	return fmt.Errorf("plugin %s has no jsonrpc transport", plugin.Name)
@@ -1028,7 +1041,7 @@ func callPluginOnResponseWithTimeout(
 	}
 
 	if plugin.jsonrpc != nil {
-		return callJSONRPCWithTimeout(plugin.jsonrpc, "on_response", args, reply, timeout)
+		return callJSONRPCWithTimeout(plugin.jsonrpc, plugin.wg, "on_response", args, reply, timeout)
 	}
 
 	return fmt.Errorf("plugin %s has no jsonrpc transport", plugin.Name)
@@ -1045,7 +1058,7 @@ func callPluginBeforeSendWithTimeout(
 	}
 
 	if plugin.jsonrpc != nil {
-		return callJSONRPCWithTimeout(plugin.jsonrpc, "before_send", args, reply, timeout)
+		return callJSONRPCWithTimeout(plugin.jsonrpc, plugin.wg, "before_send", args, reply, timeout)
 	}
 
 	return fmt.Errorf("plugin %s has no jsonrpc transport", plugin.Name)
@@ -1058,7 +1071,7 @@ func callPluginShutdownWithTimeout(plugin *Client, timeout time.Duration) error 
 
 	var reply struct{}
 	if plugin.jsonrpc != nil {
-		return callJSONRPCWithTimeout(plugin.jsonrpc, "shutdown", map[string]interface{}{}, &reply, timeout)
+		return callJSONRPCWithTimeout(plugin.jsonrpc, plugin.wg, "shutdown", map[string]interface{}{}, &reply, timeout)
 	}
 
 	return fmt.Errorf("plugin %s has no jsonrpc transport", plugin.Name)
@@ -1078,7 +1091,9 @@ func (pm *Manager) stopPluginProcess(plugin *Client, timeout time.Duration) {
 	}
 
 	done := make(chan error, 1)
+	pm.wg.Add(1)
 	go func() {
+		defer pm.wg.Done()
 		defer func() {
 			if r := recover(); r != nil {
 				logger.Errorf("[plugin] panic recovered: %v\n%s", r, debug.Stack())
@@ -1097,10 +1112,26 @@ func (pm *Manager) stopPluginProcess(plugin *Client, timeout time.Duration) {
 	}
 }
 
+// WaitForPending waits for all in-flight goroutines (RPC calls, process shutdown waits)
+// to complete, with a timeout to prevent indefinite blocking.
+func (pm *Manager) WaitForPending() error {
+	done := make(chan struct{})
+	go func() {
+		pm.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-time.After(30 * time.Second):
+		return fmt.Errorf("timeout waiting for pending plugin operations")
+	}
+}
+
 // Shutdown gracefully stops all plugins
 func (pm *Manager) Shutdown(ctx context.Context) error {
 	pm.mu.Lock()
-	defer pm.mu.Unlock()
 
 	var errs []error
 	for name, plugin := range pm.plugins {
@@ -1114,6 +1145,12 @@ func (pm *Manager) Shutdown(ctx context.Context) error {
 	}
 
 	pm.plugins = make(map[string]*Client)
+	pm.mu.Unlock()
+
+	// Wait for in-flight RPC calls and process shutdown goroutines to settle.
+	if err := pm.WaitForPending(); err != nil {
+		logger.Warnf("WaitForPending: %v", err)
+	}
 
 	if len(errs) > 0 {
 		return fmt.Errorf("shutdown errors: %v", errs)
@@ -1219,6 +1256,7 @@ func (pm *Manager) executeJSONRPCTool(plugin *Client, toolName string, args map[
 	var reply string
 	err := callJSONRPCWithTimeout(
 		plugin.jsonrpc,
+		plugin.wg,
 		"execute_tool",
 		ExecuteToolArgs{Name: toolName, Arguments: args},
 		&reply,

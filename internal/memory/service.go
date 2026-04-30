@@ -99,6 +99,7 @@ type MemoryService struct {
 	consolidator *Consolidator
 	embedder     Embedder
 	config       *ServiceConfig
+	worker       *Worker
 
 	// Message counters for consolidation triggering (user-level for backward compat)
 	messageCounters map[string]int
@@ -166,6 +167,8 @@ func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedde
 	}
 
 	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, visionDescriber, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval)
+	service.worker = NewWorker(service.consolidator)
+	service.worker.Start(context.Background())
 
 	logger.Info("Memory service initialized")
 	return service, nil
@@ -533,5 +536,6 @@ func (s *MemoryService) GetUserStats(ctx context.Context, userID string) (*UserS
 
 // Close closes the service and its connections
 func (s *MemoryService) Close() error {
+	s.worker.Stop()
 	return s.qdrant.Close()
 }

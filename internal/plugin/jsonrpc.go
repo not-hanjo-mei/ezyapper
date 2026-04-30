@@ -114,9 +114,9 @@ func (c *stdioJSONRPCClient) Call(method string, params interface{}, reply inter
 	}
 }
 
-func listPluginToolsJSONRPC(client *stdioJSONRPCClient) ([]ToolSpec, error) {
+func listPluginToolsJSONRPC(client *stdioJSONRPCClient, wg *sync.WaitGroup) ([]ToolSpec, error) {
 	var tools []ToolSpec
-	err := callJSONRPCWithTimeout(client, "list_tools", map[string]interface{}{}, &tools, pluginRPCTimeout)
+	err := callJSONRPCWithTimeout(client, wg, "list_tools", map[string]interface{}{}, &tools, pluginRPCTimeout)
 	if err != nil {
 		return nil, err
 	}

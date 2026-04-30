@@ -23,6 +23,8 @@ type Worker struct {
 	triggers     chan Trigger
 	mu           sync.Mutex
 	pending      map[string]bool
+	wg           sync.WaitGroup
+	done         chan struct{}
 }
 
 // NewWorker creates a new consolidation worker
@@ -31,12 +33,15 @@ func NewWorker(consolidator *Consolidator) *Worker {
 		consolidator: consolidator,
 		triggers:     make(chan Trigger, 100),
 		pending:      make(map[string]bool),
+		done:         make(chan struct{}),
 	}
 }
 
 // Start begins processing triggers in a background goroutine
 func (w *Worker) Start(ctx context.Context) {
+	w.wg.Add(1)
 	go func() {
+		defer w.wg.Done()
 		defer func() {
 			if r := recover(); r != nil {
 				logger.Errorf("[consolidation] panic recovered: %v\n%s", r, debug.Stack())
@@ -51,10 +56,18 @@ func (w *Worker) run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-w.done:
+			return
 		case trigger := <-w.triggers:
 			w.processTrigger(ctx, trigger)
 		}
 	}
+}
+
+// Stop signals the worker to shut down and waits for the goroutine to finish.
+func (w *Worker) Stop() {
+	close(w.done)
+	w.wg.Wait()
 }
 
 func (w *Worker) processTrigger(ctx context.Context, trigger Trigger) {

@@ -32,6 +32,7 @@ type Server struct {
 	runtimeApplier   RuntimeConfigApplier
 	toolRefresher    PluginToolRefresher
 	mu               sync.RWMutex
+	wg               sync.WaitGroup
 	startTime        time.Time
 	discordFetcher   DiscordMessageFetcher
 	discordInfo      DiscordInfoProvider
@@ -258,7 +259,11 @@ func (s *Server) Start() error {
 
 	logger.Infof("Starting WebUI on port %d", s.cfg().Web.Port)
 
+	s.sessionStore.SetWG(&s.wg)
+
+	s.wg.Add(1)
 	go func() {
+		defer s.wg.Done()
 		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Errorf("Web server error: %v", err)
 		}
@@ -274,5 +279,23 @@ func (s *Server) Stop(ctx context.Context) error {
 	}
 
 	logger.Info("Stopping web server...")
-	return s.server.Shutdown(ctx)
+
+	// Signal session cleanup goroutine to exit
+	s.sessionStore.Stop()
+
+	err := s.server.Shutdown(ctx)
+
+	// Wait for tracked goroutines with remaining deadline
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		logger.Warnf("[web] goroutines did not finish before context deadline")
+	}
+
+	return err
 }

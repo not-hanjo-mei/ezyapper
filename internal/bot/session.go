@@ -131,6 +131,7 @@ type Bot struct {
 
 	mu               sync.RWMutex
 	lastResponseTime map[string]time.Time
+	wg               sync.WaitGroup
 
 	channelMessageBuffer   map[string][]*memory.DiscordMessage // Channel-level buffer for batch consolidation
 	channelBufferMu        sync.RWMutex
@@ -299,6 +300,28 @@ func (b *Bot) Stop() error {
 	}
 
 	return nil
+}
+
+// Shutdown cancels the root context and waits for tracked goroutines (e.g. consolidation)
+// to drain, respecting the timeout from ctx. Returns an error if the timeout expires.
+func (b *Bot) Shutdown(ctx context.Context) error {
+	logger.Info("Shutting down bot goroutines...")
+
+	b.cancel()
+
+	done := make(chan struct{})
+	go func() {
+		b.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		logger.Info("All goroutines completed")
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("shutdown timed out waiting for goroutines")
+	}
 }
 
 // registerMCPTools fetches and registers MCP tools from connected servers
