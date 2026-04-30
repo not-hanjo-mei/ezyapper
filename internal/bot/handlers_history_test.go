@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"ezyapper/internal/types"
-	"ezyapper/internal/utils"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -98,7 +97,7 @@ func TestBuildConversationHistory_ResolvedMentions(t *testing.T) {
 		{ID: "user2", Username: "Bob"},
 		{ID: "user3", Username: "Charlie"},
 	}
-	channelMappings := []utils.ChannelMapping{
+	channelMappings := []ChannelMapping{
 		{ID: "12345", Name: "general"},
 		{ID: "67890", Name: "lounge"},
 	}

@@ -10,7 +10,6 @@ import (
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/types"
-	"ezyapper/internal/utils"
 
 	"github.com/bwmarrin/discordgo"
 	openai "github.com/sashabaranov/go-openai"
@@ -166,7 +165,7 @@ func (b *Bot) buildConversationHistory(ctx context.Context, messages []*types.Di
 // Filters out the current message being processed and marks only the current bot as "Assistant"
 // In hybrid mode, primarily uses cached historical image descriptions; optionally performs
 // tightly bounded on-demand enrichment for the most recent image message.
-func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*types.DiscordMessage, currentMsgID, botID string, allowOnDemandRecentImageEnrichment bool, mentions []*discordgo.User, channelMappings []utils.ChannelMapping) string {
+func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*types.DiscordMessage, currentMsgID, botID string, allowOnDemandRecentImageEnrichment bool, mentions []*discordgo.User, channelMappings []ChannelMapping) string {
 	if len(messages) == 0 {
 		return ""
 	}
@@ -192,12 +191,12 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 	// Build user mappings from history + current message mentions for ReplaceMentions.
 	// Current message mentions take precedence over history usernames.
 	historyUsers := b.collectRecentUsers(messages)
-	userMappings := make([]utils.UserMapping, 0, len(historyUsers))
+	userMappings := make([]UserMapping, 0, len(historyUsers))
 	userIdx := make(map[string]int)
 
 	for _, u := range historyUsers {
 		userIdx[u.ID] = len(userMappings)
-		userMappings = append(userMappings, utils.UserMapping{ID: u.ID, Username: u.Username})
+		userMappings = append(userMappings, UserMapping{ID: u.ID, Username: u.Username})
 	}
 
 	for _, mention := range mentions {
@@ -205,7 +204,7 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 			userMappings[idx].Username = mention.Username
 		} else {
 			userIdx[mention.ID] = len(userMappings)
-			userMappings = append(userMappings, utils.UserMapping{ID: mention.ID, Username: mention.Username})
+			userMappings = append(userMappings, UserMapping{ID: mention.ID, Username: mention.Username})
 		}
 	}
 
@@ -291,7 +290,7 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 		seenNames[msg.AuthorID] = msg.Username
 
 		// Write formatted message with mention IDs replaced by readable usernames and channel names
-		displayContent := utils.ReplaceMentions(content, userMappings, channelMappings)
+		displayContent := ReplaceMentions(content, userMappings, channelMappings)
 		result.WriteString(fmt.Sprintf("  [%s] %s (ID:%s): %s%s%s\n", role, msg.Username, msg.AuthorID, displayContent, renameMarker, replyMarker))
 	}
 

@@ -12,7 +12,6 @@ import (
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
 	"ezyapper/internal/types"
-	"ezyapper/internal/utils"
 
 	"github.com/bwmarrin/discordgo"
 	openai "github.com/sashabaranov/go-openai"
@@ -75,11 +74,11 @@ func (b *Bot) generateResponse(ctx context.Context, mc ModeContext, gc GenerateC
 	}
 
 	// Build channel mappings from state cache for resolving <#ID> mentions
-	var channelMappings []utils.ChannelMapping
+	var channelMappings []ChannelMapping
 	if b.session != nil && b.session.State != nil {
 		for _, guild := range b.session.State.Guilds {
 			for _, ch := range guild.Channels {
-				channelMappings = append(channelMappings, utils.ChannelMapping{ID: ch.ID, Name: ch.Name})
+				channelMappings = append(channelMappings, ChannelMapping{ID: ch.ID, Name: ch.Name})
 			}
 		}
 	}

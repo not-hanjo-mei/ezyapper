@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"ezyapper/internal/logger"
 	"ezyapper/internal/types"
 
 	"github.com/bwmarrin/discordgo"
@@ -92,6 +93,7 @@ func (f *DiscordMessageFetcher) convertMessage(msg *discordgo.Message) types.Dis
 			d.ReplyToUsername = msg.ReferencedMessage.Author.Username
 			content := msg.ReferencedMessage.Content
 			if len(content) > 100 {
+				logger.Warnf("reply content truncated from %d to 100 chars", len(content))
 				content = content[:100]
 			}
 			d.ReplyToContent = content

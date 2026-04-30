@@ -191,9 +191,6 @@ type MemoryConfig struct {
 	ConsolidationInterval int                 `mapstructure:"consolidation_interval" yaml:"consolidation_interval"`
 	ShortTermLimit        int                 `mapstructure:"short_term_limit" yaml:"short_term_limit"`
 	MaxPaginatedLimit     int                 `mapstructure:"max_paginated_limit" yaml:"max_paginated_limit"`
-	EmbeddingCacheMaxSize int                 `mapstructure:"embedding_cache_max_size" yaml:"embedding_cache_max_size"`
-	EmbeddingCacheTTLMin  int                 `mapstructure:"embedding_cache_ttl_min" yaml:"embedding_cache_ttl_min"`
-	EvictionIntervalMin   int                 `mapstructure:"eviction_interval_min" yaml:"eviction_interval_min"`
 	RetryBaseDelayMs      int                 `mapstructure:"retry_base_delay_ms" yaml:"retry_base_delay_ms"`
 	RetryMaxDelayMs       int                 `mapstructure:"retry_max_delay_ms" yaml:"retry_max_delay_ms"`
 	MaxRetries            int                 `mapstructure:"max_retries" yaml:"max_retries"`
@@ -479,9 +476,6 @@ func validateMemory(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Memory.ConsolidationInterval, "memory.consolidation_interval", errs)
 	requirePositive(cfg.Memory.ShortTermLimit, "memory.short_term_limit", errs)
 	requirePositive(cfg.Memory.MaxPaginatedLimit, "memory.max_paginated_limit", errs)
-	requirePositive(cfg.Memory.EmbeddingCacheMaxSize, "memory.embedding_cache_max_size", errs)
-	requirePositive(cfg.Memory.EmbeddingCacheTTLMin, "memory.embedding_cache_ttl_min", errs)
-	requirePositive(cfg.Memory.EvictionIntervalMin, "memory.eviction_interval_min", errs)
 	if cfg.Memory.Retrieval.TopK < 0 {
 		*errs = append(*errs, "memory.retrieval.top_k must be greater than or equal to 0")
 	}

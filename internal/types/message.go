@@ -2,6 +2,8 @@
 package types
 
 import (
+	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -51,6 +53,7 @@ func FromDiscordgo(m *discordgo.MessageCreate) DiscordMessage {
 			msg.ReplyToUsername = m.ReferencedMessage.Author.Username
 			content := m.ReferencedMessage.Content
 			if len(content) > 100 {
+				fmt.Fprintf(os.Stderr, "WARNING: reply content truncated from %d to 100 chars\n", len(content))
 				content = content[:100]
 			}
 			msg.ReplyToContent = content
