@@ -89,10 +89,10 @@ func buildChannelsPageData(cfg *config.Config, info DiscordInfoProvider, csrfTok
 	}
 
 	return &PageData{
-		Title:        "Channels",
-		ActiveNav:    "channels",
-		CSRFToken:    csrfToken,
-		Data:         pd,
+		Title:     "Channels",
+		ActiveNav: "channels",
+		CSRFToken: csrfToken,
+		Data:      pd,
 		NavItems:  navItems,
 	}
 }

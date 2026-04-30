@@ -15,11 +15,11 @@ import (
 )
 
 type testMemStore struct {
-	memories   []*memory.Record
-	getMemory  *memory.Record
-	getMemErr  error
-	deleteErr  error
-	deletedID  string
+	memories  []*memory.Record
+	getMemory *memory.Record
+	getMemErr error
+	deleteErr error
+	deletedID string
 }
 
 func (m *testMemStore) Store(ctx context.Context, mem *memory.Record) error { return nil }

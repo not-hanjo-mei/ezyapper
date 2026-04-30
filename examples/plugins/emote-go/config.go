@@ -51,47 +51,47 @@ type fileConfig struct {
 
 // Config holds the fully resolved configuration with defaults applied.
 type Config struct {
-	DataDir                      string
-	MaxImageSizeKb               int
-	AllowedFormats               []string
-	VisionApiKey                 string
-	VisionApiBaseUrl             string
-	VisionModel                  string
-	VisionTimeoutSeconds         int
-	VisionPrompt                 string
-	AutoStealEnabled             bool
-	AdditionalBlacklistChannels  []string
-	AdditionalWhitelistChannels  []string
-	AdditionalBlacklistUsers     []string
-	RateLimitPerMinute           int
-	CooldownSeconds              int
-	LoggingEnabled               bool
-	LoggingLevel                 string
-	EmoteModel                   string
-	EmoteApiKey                  string
-	EmoteApiBaseURL              string
-	EmoteMaxTokens               int
-	EmoteTemperature             float64
-	DiscordToken                 string
+	DataDir                     string
+	MaxImageSizeKb              int
+	AllowedFormats              []string
+	VisionApiKey                string
+	VisionApiBaseUrl            string
+	VisionModel                 string
+	VisionTimeoutSeconds        int
+	VisionPrompt                string
+	AutoStealEnabled            bool
+	AdditionalBlacklistChannels []string
+	AdditionalWhitelistChannels []string
+	AdditionalBlacklistUsers    []string
+	RateLimitPerMinute          int
+	CooldownSeconds             int
+	LoggingEnabled              bool
+	LoggingLevel                string
+	EmoteModel                  string
+	EmoteApiKey                 string
+	EmoteApiBaseURL             string
+	EmoteMaxTokens              int
+	EmoteTemperature            float64
+	DiscordToken                string
 }
 
 func loadConfig(configPath string) (Config, error) {
 	cfg := Config{
-		DataDir:                      "data",
-		MaxImageSizeKb:               512,
-		AllowedFormats:               []string{"png", "jpg", "jpeg", "webp", "gif"},
-		VisionApiBaseUrl:             "https://api.openai.com/v1",
-		VisionModel:                  "gpt-4o-mini",
-		VisionTimeoutSeconds:         30,
-		VisionPrompt:                 "Analyze this image and determine if it is a \"meme/emote/sticker\" suitable for a chat reaction library.",
-		AutoStealEnabled:             true,
-		RateLimitPerMinute:           5,
-		CooldownSeconds:              2,
-		LoggingEnabled:               true,
-		LoggingLevel:                 "info",
-		EmoteApiBaseURL:              "https://asus.omgpizzatnt.top:3000/v1",
-		EmoteMaxTokens:               1024,
-		EmoteTemperature:             0.1,
+		DataDir:              "data",
+		MaxImageSizeKb:       512,
+		AllowedFormats:       []string{"png", "jpg", "jpeg", "webp", "gif"},
+		VisionApiBaseUrl:     "https://api.openai.com/v1",
+		VisionModel:          "gpt-4o-mini",
+		VisionTimeoutSeconds: 30,
+		VisionPrompt:         "Analyze this image and determine if it is a \"meme/emote/sticker\" suitable for a chat reaction library.",
+		AutoStealEnabled:     true,
+		RateLimitPerMinute:   5,
+		CooldownSeconds:      2,
+		LoggingEnabled:       true,
+		LoggingLevel:         "info",
+		EmoteApiBaseURL:      "https://asus.omgpizzatnt.top:3000/v1",
+		EmoteMaxTokens:       1024,
+		EmoteTemperature:     0.1,
 	}
 
 	if strings.TrimSpace(configPath) == "" {

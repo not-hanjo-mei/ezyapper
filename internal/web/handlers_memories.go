@@ -85,11 +85,11 @@ func handleMemoriesGET(w http.ResponseWriter, r *http.Request, memStore memory.M
 	}
 
 	RenderPage(w, ts, "memories", &PageData{
-		Title:        "Memories",
-		ActiveNav:    "memories",
-		CSRFToken:    csrfToken,
-		Flash:        flash,
-		Data:         pd,
+		Title:     "Memories",
+		ActiveNav: "memories",
+		CSRFToken: csrfToken,
+		Flash:     flash,
+		Data:      pd,
 		NavItems:  navItems,
 	})
 }
@@ -198,4 +198,3 @@ func flashFromCookieMemories(r *http.Request) *FlashMessage {
 		Message: string(msgBytes),
 	}
 }
-

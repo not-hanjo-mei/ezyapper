@@ -15,10 +15,10 @@ import (
 )
 
 type testProfileStore struct {
-	profile       *memory.Profile
-	getProfileErr error
+	profile        *memory.Profile
+	getProfileErr  error
 	updatedProfile *memory.Profile
-	updateErr     error
+	updateErr      error
 }
 
 func (m *testProfileStore) GetProfile(ctx context.Context, userID string) (*memory.Profile, error) {
@@ -148,12 +148,12 @@ func TestProfilesHandler_GET_ProfileExists(t *testing.T) {
 	now := time.Date(2025, 3, 15, 14, 30, 0, 0, time.UTC)
 	store := &testProfileStore{
 		profile: &memory.Profile{
-			UserID:      "user123",
-			DisplayName: "TestUser",
-			Traits:      []string{"friendly", "helpful"},
-			Facts:       map[string]string{"location": "Tokyo", "language": "Japanese"},
-			Preferences: map[string]string{"theme": "dark"},
-			Interests:   []string{"coding", "music"},
+			UserID:       "user123",
+			DisplayName:  "TestUser",
+			Traits:       []string{"friendly", "helpful"},
+			Facts:        map[string]string{"location": "Tokyo", "language": "Japanese"},
+			Preferences:  map[string]string{"theme": "dark"},
+			Interests:    []string{"coding", "music"},
 			MessageCount: 42,
 			MemoryCount:  15,
 			FirstSeenAt:  now.Add(-30 * 24 * time.Hour),
@@ -294,9 +294,9 @@ func TestProfilesHandler_GET_EditMode(t *testing.T) {
 func TestProfilesHandler_Update_ValidData(t *testing.T) {
 	store := &testProfileStore{
 		profile: &memory.Profile{
-			UserID:      "user789",
-			DisplayName: "OldName",
-			Traits:      []string{"patient"},
+			UserID:       "user789",
+			DisplayName:  "OldName",
+			Traits:       []string{"patient"},
 			MessageCount: 10,
 		},
 	}

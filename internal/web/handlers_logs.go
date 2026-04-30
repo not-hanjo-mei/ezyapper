@@ -65,10 +65,10 @@ func LogsHandler(logFilePath string, ts *TemplateSet) http.HandlerFunc {
 		}
 
 		RenderPage(w, ts, "logs", &PageData{
-			Title:        "Logs",
-			ActiveNav:    "logs",
-			CSRFToken:    csrfToken,
-			Data:         data,
+			Title:     "Logs",
+			ActiveNav: "logs",
+			CSRFToken: csrfToken,
+			Data:      data,
 			NavItems:  navItems,
 		})
 	}

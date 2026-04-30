@@ -14,13 +14,13 @@ import (
 
 // EmoteEntry represents a single emote stored on disk.
 type EmoteEntry struct {
-	ID          string   `json:"id"`                    // md5(URL) or md5(file_name)
-	Name        string   `json:"name"`                  // snake_case
-	Description string   `json:"description"`           // 1-2 sentence
-	Tags        []string `json:"tags"`                  // searchable
-	URL         string   `json:"url,omitempty"`          // bare URL (no ?params), mutually exclusive with FileName
-	FileName    string   `json:"file_name,omitempty"`   // local filename, mutually exclusive with URL
-	CreatedAt   string   `json:"created_at"`            // ISO 8601
+	ID          string   `json:"id"`                  // md5(URL) or md5(file_name)
+	Name        string   `json:"name"`                // snake_case
+	Description string   `json:"description"`         // 1-2 sentence
+	Tags        []string `json:"tags"`                // searchable
+	URL         string   `json:"url,omitempty"`       // bare URL (no ?params), mutually exclusive with FileName
+	FileName    string   `json:"file_name,omitempty"` // local filename, mutually exclusive with URL
+	CreatedAt   string   `json:"created_at"`          // ISO 8601
 }
 
 // MetadataFile holds all emote entries for a guild.

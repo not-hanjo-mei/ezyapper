@@ -43,11 +43,11 @@ func DashboardHandler(stats *StatsProvider, startTime time.Time, ts *TemplateSet
 		}
 
 		pageData := &PageData{
-			Title:        "Dashboard",
-			ActiveNav:    "dashboard",
-			CSRFToken:    csrfToken,
-			Data:         data,
-			NavItems: navItems,
+			Title:     "Dashboard",
+			ActiveNav: "dashboard",
+			CSRFToken: csrfToken,
+			Data:      data,
+			NavItems:  navItems,
 		}
 
 		RenderPage(w, ts, "dashboard", pageData)

@@ -14,12 +14,12 @@ func newTestPlugin(t *testing.T) *EmotePlugin {
 	tmpDir := t.TempDir()
 	return &EmotePlugin{
 		config: Config{
-			DataDir:                tmpDir,
-			AutoStealEnabled:       true,
-			MaxImageSizeKb:         512,
-			AllowedFormats:         []string{"png", "jpg", "jpeg", "webp", "gif"},
-			RateLimitPerMinute:     100,
-			CooldownSeconds:        0,
+			DataDir:            tmpDir,
+			AutoStealEnabled:   true,
+			MaxImageSizeKb:     512,
+			AllowedFormats:     []string{"png", "jpg", "jpeg", "webp", "gif"},
+			RateLimitPerMinute: 100,
+			CooldownSeconds:    0,
 		},
 		storage: NewStorage(tmpDir),
 	}

@@ -57,11 +57,11 @@ func handlePluginsGET(w http.ResponseWriter, r *http.Request, mgr pluginManager,
 	}
 
 	RenderPage(w, ts, "plugins", &PageData{
-		Title:        "Plugins",
-		ActiveNav:    "plugins",
-		CSRFToken:    csrfToken,
-		Flash:        flash,
-		Data:         pd,
+		Title:     "Plugins",
+		ActiveNav: "plugins",
+		CSRFToken: csrfToken,
+		Flash:     flash,
+		Data:      pd,
 		NavItems:  navItems,
 	})
 }

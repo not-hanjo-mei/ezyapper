@@ -31,11 +31,11 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 			}
 
 			RenderPage(w, ts, "config", &PageData{
-				Title:        "Configuration",
-				ActiveNav:    "config",
-				CSRFToken:    csrfToken,
-				Flash:        flash,
-				Data:         data,
+				Title:     "Configuration",
+				ActiveNav: "config",
+				CSRFToken: csrfToken,
+				Flash:     flash,
+				Data:      data,
 				NavItems:  navItems,
 			})
 
@@ -169,15 +169,15 @@ func renderConfigError(w http.ResponseWriter, r *http.Request, ts *TemplateSet, 
 	}
 
 	RenderPage(w, ts, "config", &PageData{
-		Title:        "Configuration",
-		ActiveNav:    "config",
-		CSRFToken:    csrfToken,
+		Title:     "Configuration",
+		ActiveNav: "config",
+		CSRFToken: csrfToken,
 		Flash: &FlashMessage{
 			Type:    "error",
 			Message: message,
 		},
-		Data:         cfg,
-		NavItems:  navItems,
+		Data:     cfg,
+		NavItems: navItems,
 	})
 }
 

@@ -132,13 +132,13 @@ type InfoExt struct {
 
 // DiscordMessage is a serializable version of discordgo.MessageCreate
 type DiscordMessage struct {
-	ID        string `json:"id"`
-	ChannelID string `json:"channel_id"`
-	GuildID   string `json:"guild_id"`
-	AuthorID  string `json:"author_id"`
-	Username  string `json:"username"`
-	Content   string `json:"content"`
-	Timestamp string `json:"timestamp"`
+	ID             string   `json:"id"`
+	ChannelID      string   `json:"channel_id"`
+	GuildID        string   `json:"guild_id"`
+	AuthorID       string   `json:"author_id"`
+	Username       string   `json:"username"`
+	Content        string   `json:"content"`
+	Timestamp      string   `json:"timestamp"`
 	IsBot          bool     `json:"is_bot"`
 	AttachmentURLs []string `json:"attachment_urls,omitempty"`
 }

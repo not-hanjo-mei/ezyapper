@@ -144,7 +144,7 @@ func TestCreateSession_UniqueIDs(t *testing.T) {
 // --- Test helpers ---
 
 type sessionTestHandler struct {
-	called bool
+	called  bool
 	session *Session
 }
 

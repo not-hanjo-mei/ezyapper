@@ -11,27 +11,27 @@ import (
 
 // profileDisplayEntry is the view-model for a profile on the profiles page.
 type profileDisplayEntry struct {
-	UserID            string
-	DisplayName       string
-	Traits            []string
-	Facts             map[string]string
-	Preferences       map[string]string
-	Interests         []string
-	LastSummary       string
+	UserID             string
+	DisplayName        string
+	Traits             []string
+	Facts              map[string]string
+	Preferences        map[string]string
+	Interests          []string
+	LastSummary        string
 	PersonalitySummary string
-	MessageCount      int
-	MemoryCount       int
-	FirstSeenAt       string
-	LastActiveAt      string
+	MessageCount       int
+	MemoryCount        int
+	FirstSeenAt        string
+	LastActiveAt       string
 	LastConsolidatedAt string
 }
 
 type profilesPageData struct {
-	UserID    string
-	Profile   *profileDisplayEntry
-	Found     bool
-	Searched  bool
-	EditMode  bool
+	UserID   string
+	Profile  *profileDisplayEntry
+	Found    bool
+	Searched bool
+	EditMode bool
 }
 
 // ProfilesHandler returns an http.HandlerFunc for the user profiles page.
@@ -86,11 +86,11 @@ func handleProfilesGET(w http.ResponseWriter, r *http.Request, profileStore memo
 	}
 
 	RenderPage(w, ts, "profiles", &PageData{
-		Title:        "User Profiles",
-		ActiveNav:    "profiles",
-		CSRFToken:    csrfToken,
-		Flash:        flash,
-		Data:         pd,
+		Title:     "User Profiles",
+		ActiveNav: "profiles",
+		CSRFToken: csrfToken,
+		Flash:     flash,
+		Data:      pd,
 		NavItems:  navItems,
 	})
 }
@@ -131,16 +131,16 @@ func handleProfilesUpdate(w http.ResponseWriter, r *http.Request, profileStore m
 
 func toProfileDisplayEntry(p *memory.Profile) *profileDisplayEntry {
 	entry := &profileDisplayEntry{
-		UserID:            p.UserID,
-		DisplayName:       p.DisplayName,
-		Traits:            p.Traits,
-		Facts:             p.Facts,
-		Preferences:       p.Preferences,
-		Interests:         p.Interests,
-		LastSummary:       p.LastSummary,
+		UserID:             p.UserID,
+		DisplayName:        p.DisplayName,
+		Traits:             p.Traits,
+		Facts:              p.Facts,
+		Preferences:        p.Preferences,
+		Interests:          p.Interests,
+		LastSummary:        p.LastSummary,
 		PersonalitySummary: p.PersonalitySummary,
-		MessageCount:      p.MessageCount,
-		MemoryCount:       p.MemoryCount,
+		MessageCount:       p.MessageCount,
+		MemoryCount:        p.MemoryCount,
 	}
 
 	if !p.FirstSeenAt.IsZero() {

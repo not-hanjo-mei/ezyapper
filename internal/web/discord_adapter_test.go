@@ -9,9 +9,9 @@ type mockDiscordInfo struct {
 	guildName   string
 }
 
-func (m *mockDiscordInfo) GetChannelName(id string) string                        { return m.channelName }
-func (m *mockDiscordInfo) GetUserName(guildID, userID string) string               { return m.userName }
-func (m *mockDiscordInfo) GetGuildName(id string) string                           { return m.guildName }
+func (m *mockDiscordInfo) GetChannelName(id string) string           { return m.channelName }
+func (m *mockDiscordInfo) GetUserName(guildID, userID string) string { return m.userName }
+func (m *mockDiscordInfo) GetGuildName(id string) string             { return m.guildName }
 
 // TestDiscordInfoProvider_Interface verifies mock implements interface at compile time.
 func TestDiscordInfoProvider_Interface(t *testing.T) {
