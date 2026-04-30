@@ -292,6 +292,10 @@ func loadConfig() (ttsConfig, error) {
 		errs = append(errs, "format must be one of: mp3, opus, aac, flac, wav, pcm")
 	}
 
+	if raw.ToolTimeouts != nil && raw.ToolTimeouts.GenerateTtsAudioMs != nil {
+		cfg.GenerateTtsAudioMs = *raw.ToolTimeouts.GenerateTtsAudioMs
+	}
+
 	if cfg.GenerateTtsAudioMs <= 0 {
 		errs = append(errs, "tool_timeouts.generate_tts_audio_ms is required and must be > 0")
 	}
@@ -301,10 +305,6 @@ func loadConfig() (ttsConfig, error) {
 			errs = append(errs, "headers must not override Authorization")
 			break
 		}
-	}
-
-	if raw.ToolTimeouts != nil && raw.ToolTimeouts.GenerateTtsAudioMs != nil {
-		cfg.GenerateTtsAudioMs = *raw.ToolTimeouts.GenerateTtsAudioMs
 	}
 
 	if cfg.Rewriter.Enabled {
