@@ -1,7 +1,9 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/not-hanjo-mei/ezyapper/main/examples/config.schema.json
-# EZyapper config template (v3 grouped schema)
+# EZyapper config example (v3 grouped schema)
 # ------------------------------------------------
-# Required format: schema_version 3
+# Copy this file to config.yaml and fill in your values.
+# ALL fields shown here are required unless marked "optional override".
+# Missing any required field = bot refuses to start.
 #
 # Quick start:
 # 1) Fill core.discord + core.ai first
@@ -13,322 +15,386 @@
 schema_version: 3
 
 core:
-  # Discord Bot Settings (Required)
-  # Get your token from: https://discord.com/developers/applications
+  # ── Discord Bot Settings ──────────────────────────────
   discord:
-    # Discord bot token from Developer Portal.
+    # Discord bot token from Developer Portal:
+    # https://discord.com/developers/applications
     token: "YOUR_DISCORD_BOT_TOKEN"
+
     # Bot display name used in prompts and logs.
-    bot_name: "YOUR_BOT_NAME"
-    # Bot user ID (required to identify self messages correctly).
+    bot_name: "EZyapper"
+
+    # Bot user ID. Used to identify self-messages.
+    # Required when memory consolidation is enabled.
     own_bot_id: "YOUR_BOT_USER_ID"
-    # Random reply probability when bot is not mentioned.
-    reply_percentage: 0.75
-    # Minimum seconds between replies for the same user/channel flow.
-    cooldown_seconds: 1
-    # Hard cap to avoid spam in active channels.
-    max_responses_per_minute: 120
-    # Usually keep false to avoid bot-to-bot loops.
+
+    # Random reply probability when bot is NOT mentioned (0.0-1.0).
+    reply_percentage: 0.15
+
+    # Minimum seconds between replies for the same user+channel.
+    cooldown_seconds: 5
+
+    # Hard cap: max responses per minute across all channels.
+    max_responses_per_minute: 10
+
+    # Whether to respond to messages from other bots.
     reply_to_bots: false
 
+    # ── Rate limit window settings ──
+    rate_limit:
+      # Window size for per-user rate limiting (seconds).
+      reset_period_seconds: 60
+
+    # ── Behavior tuning ──
+    # Timeout for consolidation-triggered response generation (seconds).
+    consolidation_timeout_sec: 300
+
+    # Interval between typing indicator updates (seconds).
+    typing_indicator_interval_sec: 5
+
+    # Delay before sending a response flagged as "long" (milliseconds).
+    long_response_delay_ms: 500
+
+    # Delay between sending each chunk of a split response (seconds).
+    chunk_split_delay_sec: 2
+
+    # Character limit for reply truncation (Discord max: 2000).
+    reply_truncation_length: 2000
+
+    # TTL for cached Discord image data (minutes).
+    image_cache_ttl_min: 60
+
+    # Max number of images kept in the in-memory cache.
+    image_cache_max_entries: 100
+
+  # ── AI / LLM Settings ─────────────────────────────────
   ai:
-    # Common patterns:
-    # - Official endpoint: https://api.openai.com/v1
-    # - Local/OpenAI-compatible gateway: http://127.0.0.1:3000/v1
+    # OpenAI-compatible API endpoint.
+    # Examples:
+    #   https://api.openai.com/v1
+    #   http://127.0.0.1:3000/v1
     api_base_url: "https://api.openai.com/v1"
-    api_key: "YOUR_AI_API_KEY"
+
+    api_key: "YOUR_API_KEY"
 
     # Main text model.
     model: "gpt-4o-mini"
-    # Model used in multimodal/hybrid image path.
+
+    # Model used for multimodal/hybrid vision path.
+    # Required when vision.mode is not text_only.
     vision_model: "gpt-4o"
 
-    # true: fetch image and send as base64 payload.
+    # Whether to fetch images and send them as base64 payloads.
+    # Set false to send images as URLs (may not work with local endpoints).
     vision_base64: true
-    # Response token upper bound for main chat completion.
-    max_tokens: 8192
-    # 0.0-2.0, higher means more creative.
-    temperature: 0.8
-    # Retries for transient API/network errors.
-    retry_count: 8
-    # Per-request timeout (seconds).
-    timeout: 30
 
-    # System prompt template (Required, careful those indents!)
-    # Variables: {BotName}, {AuthorName}, {ServerName}, {GuildID}, {ChannelID}
-    system_prompt: |
-      You are {BotName}, a helpful Discord bot in the {ServerName} server.
-      You're chatting with {AuthorName}.
-
-      Guidelines:
-      - Be helpful and friendly
-      - Keep responses concise (under 200 words typically)
-      - Use appropriate emoji
-
-      IMPORTANT CONTEXT:
-      You're chatting with {AuthorName}.
-
-      - Guild ID (Server ID): {GuildID}
-      - Channel ID: {ChannelID}
-
-      When using tools, ALWAYS use these exact IDs:
-      - For server-wide tools (list_channels, get_server_info): use GuildID: {GuildID}
-      - For channel-specific tools (get_channel_info, get_recent_messages): use ChannelID: {ChannelID}
-      - For user-specific tools (e.g.: get_user_info): use the UserID from the current message format "Username"{UserID=xxx}
-      - Do NOT use names - use the numeric IDs provided above.
-
-      You have access to tools for Discord operations. Use them when appropriate.
-
+    # ── Vision processing ──
     vision:
       # text_only: ignore images
       # hybrid: describe image -> send text to main model
       # multimodal: send images directly to model
-      mode: "hybrid"
-      description_prompt: "Describe this image in 1-2 sentences. Be compact but informative."
-      # Max number of images consumed from one incoming message.
-      max_images: 4
+      mode: "text_only"
 
-      # Leave empty to inherit from ai.api_base_url / ai.api_key
-      api_base_url: ""
-      api_key: ""
-      # Vision call token limit.
-      max_tokens: 8192
-      # Vision call temperature.
-      temperature: 0.8
-      # Vision call retries.
-      retry_count: 8
-      # Vision call timeout (seconds).
-      timeout: 30
+      # Prompt used to describe images in "hybrid" mode.
+      # Required when mode is "hybrid".
+      # description_prompt: "Describe this image in 1-2 sentences. Be compact but informative."
 
-  decision:
-    # Enable LLM-based should-respond classifier.
-    enabled: true
-    # Fast/cheap model is recommended for decision path.
-    model: "gpt-4o-mini"
+      # Max images consumed from one incoming message.
+      # Required when mode is not text_only.
+      max_images: 1
 
-    # Decision endpoint/key are required when decision is enabled.
-    api_base_url: "https://api.openai.com/v1"
-    api_key: "YOUR_DECISION_API_KEY"
+      # ── Optional: separate vision endpoint ──
+      # Leave empty to inherit from ai.api_base_url / ai.api_key above.
+      ## api_base_url: "https://api.openai.com/v1"
+      ## api_key: "YOUR_API_KEY"
+      ## max_tokens: 1024
+      ## temperature: 0.8
+      ## retry_count: 3
+      ## timeout: 30
+      ## extra_params: {}
 
-    # Decision JSON output max tokens.
-    max_tokens: 512
-    # Keep low for deterministic classification.
-    temperature: 0.1
-    # Decision retries.
+    # ── Response tuning ──
+    # Token limit for main chat completion responses.
+    max_tokens: 4096
+
+    # 0.0-2.0. Higher = more creative, lower = more deterministic.
+    temperature: 0.8
+
+    # Retries for transient API/network errors.
     retry_count: 3
-    # Decision timeout (seconds).
-    timeout: 10
+
+    # Per-request LLM timeout (seconds).
+    timeout: 180
+
+    # HTTP client timeout for API connections (seconds).
+    http_timeout_sec: 30
+
+    # Max tool-calling iterations in a single conversation turn.
+    # Guards against infinite tool-call loops.
+    max_tool_iterations: 5
+
+    # Max bytes for an image fetched from Discord CDN.
+    max_image_bytes: 10485760
+
+    # User-Agent header sent when fetching images from Discord.
+    user_agent: "EZyapper/1.0"
+
+    # If true, rejects image responses that lack a Content-Type header.
+    require_image_content_type: false
+
+    # System prompt template. Supports these variables:
+    # {BotName}, {AuthorName}, {ServerName}, {GuildID}, {ChannelID}
     system_prompt: |
-      You are a decision classifier for a Discord bot named "{BotName}". Your job is to decide if the bot should respond to the latest message.
+      You are {BotName}, a helpful Discord bot in the {ServerName} server.
+      You're chatting with {AuthorName}.
 
-      CRITICAL - CHECK IF MESSAGE IS FOR THE BOT:
-      - If "Reply to" shows someone OTHER than {BotName}, the message is a reply to that person, NOT to {BotName}
-      - If the message asks questions like "Would you like me to..." or "Do you want..." but is replying to someone else, they are asking THAT person, not {BotName}
-      - If the conversation appears to be between other users, {BotName} should NOT interrupt
-      - Only respond if the message is genuinely directed at {BotName} or clearly involves {BotName}
+      IMPORTANT CONTEXT:
+      - Guild ID (Server ID): {GuildID}
+      - Channel ID: {ChannelID}
 
-      RULES FOR RESPONDING (should_respond: true):
-      1. Bot is directly mentioned (@{BotName} or by name)
-      2. Message is a reply to the bot (Reply to: {BotName})
-      3. Message is a question DIRECTED AT THE BOT that could benefit from bot's knowledge
-      4. Message discusses a topic the bot has expertise in AND is directed at the bot
-      5. User seems to want engagement WITH THE BOT specifically (asking bot for opinions, help, or conversation)
-      6. Message is in response to bot's previous message
-      7. User shared an image AND explicitly asks {BotName} to analyze or comment on it
-      8. Any message that mentioned GPU (since the bot is obsessed with shiny hardware)
+      When using tools, ALWAYS use these exact IDs:
+      - For server-wide tools: use GuildID: {GuildID}
+      - For channel-specific tools: use ChannelID: {ChannelID}
+      - Do NOT use names - use the numeric IDs provided above.
 
-      RULES FOR NOT RESPONDING (should_respond: false):
-      1. Message is a reply to someone other than {BotName} (check "Reply to" field carefully)
-      2. Casual conversation between other users where {BotName} is not involved
-      3. Message contains questions but they are directed at someone else (e.g., "Would you like me to answer" when replying to another user)
-      4. Message is a simple acknowledgment ("ok", "yeah", "lol")
-      5. Message is a command or discussion for another bot
-      6. Message is too short or unclear to warrant response
-      7. Topic doesn't need bot's input
-      8. Image is attached but no one asked {BotName} to look at it
+      Guidelines:
+      - Be natural and conversational
+      - Keep responses concise (under 200 words typically)
+      - You have access to Discord tools. Use them when appropriate.
 
-      Respond ONLY with valid JSON in this exact format:
-      {"should_respond": true/false, "reason": "brief explanation", "confidence": 0.0-1.0}
+    # ── Optional: extra parameters forwarded to the API ──
+    ## extra_params: {}
+
+  # ── Decision Classifier ───────────────────────────────
+  # When enabled, an LLM decides whether the bot should respond.
+  # Disable if you want simple mention/percentage-based replies.
+  decision:
+    enabled: false
+
+    # All fields below are required ONLY when enabled: true.
+    ## model: "gpt-4o-mini"
+    ## api_base_url: "https://api.openai.com/v1"
+    ## api_key: "YOUR_DECISION_API_KEY"
+    ## max_tokens: 64
+    ## temperature: 0.1
+    ## retry_count: 3
+    ## timeout: 10
+    ## http_timeout_sec: 30
+    ## system_prompt: |
+    ##   You are a decision classifier for a Discord bot. Decide if the bot should respond.
+    ##   Respond ONLY with valid JSON: {"should_respond": true/false, "reason": "...", "confidence": 0.0-1.0}
+    ## extra_params: {}
 
 memory_pipeline:
+  # ── Embedding Model ───────────────────────────────────
   embedding:
-    # If empty, embedding falls back to core.ai api_base_url/api_key.
-    # You can keep a separate embedding service endpoint like in your config.
-    api_base_url: "http://127.0.0.1:1234/v1"
-    api_key: "x"
-    # Embedding model used for vector search/consolidation memory.
+    # Optional override: separate embedding endpoint.
+    # Leave empty to inherit from core.ai.api_base_url / core.ai.api_key.
+    ## api_base_url: "https://api.openai.com/v1"
+    ## api_key: "YOUR_API_KEY"
+
+    # Embedding model for vector search and consolidation.
+    # Required when memory retrieval or consolidation is enabled.
     model: "text-embedding-3-small"
-    # Embedding retries.
-    retry_count: 8
-    # Embedding timeout (seconds).
-    timeout: 30
 
+    # Retries for embedding API calls.
+    retry_count: 1
+
+    # Per-request embedding timeout (seconds).
+    timeout: 10
+
+    # ── Optional: extra parameters ──
+    ## extra_params: {}
+
+  # ── Memory Settings ───────────────────────────────────
   memory:
-    # Aggressive extraction style (similar to your setup): low interval + low short-term window
-    # Trigger consolidation every N bot-handled messages (also controls batch size).
-    consolidation_interval: 3
-    # Number of recent Discord messages to pull as short-term context.
-    short_term_limit: 3
+    # Trigger consolidation every N bot-handled messages.
+    consolidation_interval: 50
 
+    # Number of recent messages to pull as short-term context.
+    short_term_limit: 20
+
+    # Pagination limit for fetching older messages.
+    max_paginated_limit: 100
+
+    # Max items in the embedding result cache.
+    embedding_cache_max_size: 500
+
+    # TTL for cached embedding results (minutes).
+    embedding_cache_ttl_min: 30
+
+    # Interval for evicting expired cache entries (minutes).
+    eviction_interval_min: 5
+
+    # ── Retry settings for Qdrant operations ──
+    # Base delay for exponential backoff (milliseconds).
+    retry_base_delay_ms: 1000
+
+    # Max delay for exponential backoff (milliseconds).
+    retry_max_delay_ms: 30000
+
+    # Max retry attempts for Qdrant operations.
+    max_retries: 3
+
+    # ── Semantic Retrieval ──
     retrieval:
-      # top_k=0 + consolidation.enabled=false -> long-term memory fully disabled
-      # Number of memories returned in semantic retrieval.
+      # Number of memories returned per retrieval query.
+      # Set to 0 to disable long-term memory retrieval.
       top_k: 5
-      # Similarity threshold (0.0-1.0).
-      min_score: 0.60
 
+      # Similarity score threshold (0.0-1.0).
+      # Memories below this score are filtered out.
+      min_score: 0.75
+
+      # Default top_k used when the caller doesn't specify one.
+      default_top_k: 5
+
+      # Default min_score used when the caller doesn't specify one.
+      default_min_score: 0.75
+
+    # ── Memory Consolidation ──
     consolidation:
       # Enable writing new long-term memories.
-      enabled: true
+      enabled: false
 
-      # Optional dedicated extraction model endpoint
-      model: "gpt-4o-mini"
-      api_base_url: ""
-      api_key: ""
-      # Consolidation token limit.
-      max_tokens: 8192
-      # Consolidation temperature.
-      temperature: 0.8
-      # Consolidation retries.
-      retry_count: 8
-      # Consolidation timeout (seconds).
-      timeout: 30
+      # All fields below are required ONLY when enabled: true.
+      ## model: "gpt-4o-mini"
+      ## api_base_url: "https://api.openai.com/v1"      # optional override
+      ## api_key: "YOUR_API_KEY"                        # optional override
+      ## max_tokens: 4096
+      ## temperature: 0.8
+      ## retry_count: 5
+      ## timeout: 30
 
-      # Optional dedicated vision settings for consolidation
-      vision_model: ""
-      vision_base64: true
-      vision_api_base_url: ""
-      vision_api_key: ""
-      # Vision token limit during consolidation.
-      vision_max_tokens: 8192
-      # Vision temperature during consolidation.
-      vision_temperature: 0.8
-      # Vision retries during consolidation.
-      vision_retry_count: 8
-      # Vision timeout during consolidation (seconds).
-      vision_timeout: 30
+      # ── Optional: separate vision settings for consolidation ──
+      ## vision_model: "gpt-4o"
+      ## vision_base64: true
+      ## vision_api_base_url: "https://api.openai.com/v1"
+      ## vision_api_key: "YOUR_API_KEY"
+      ## vision_max_tokens: 1024
+      ## vision_temperature: 0.8
+      ## vision_retry_count: 5
+      ## vision_timeout: 30
 
-      system_prompt: |
-        You are a memory extraction assistant. Analyze the conversation and extract memorable information about USERS.
+      # How many existing memories to search for deduplication/similarity.
+      memory_search_limit: 20
 
-        MESSAGE FORMAT:
-        Each message is formatted as: "Username"{UserID=userid,Time=2026-03-19T04:30:00Z,BOT=N}: "message content"
-        - BOT=2 (or BOT=ME) = This bot's own messages - COMPLETELY IGNORE, do not extract any information
-        - BOT=1 (or BOT=BOT) = Other bots' messages - extract MINIMALLY, only if they contain significant user-relevant information
-        - No BOT marker = Human users - extract normally
-        - Images: "  [Attached Image N: description]" inline with the message
+      # Size of the internal worker queue for consolidation jobs.
+      worker_queue_size: 10
 
-        EXTRACTION RULES - COMPLETELY IGNORE:
-        1. Messages marked with BOT=2 (or BOT=ME) - this is the bot itself, never extract
-        2. Trivial/daily activities: "going to sleep", "good morning", "eating lunch", "brb", "afk"
-        3. Generic acknowledgments: "ok", "yeah", "lol", "nice", "thanks"
+      # ── Optional: extra parameters ──
+      ## extra_params: {}
 
-        EXTRACTION RULES - MINIMAL EXTRACTION (for BOT=1 messages):
-        1. Only extract if the bot is sharing significant information ABOUT users (e.g., game stats, generated art for user)
-        2. Do NOT extract bot's own capabilities, settings, or general information
-        3. Skip routine bot responses and command confirmations
+      # Consolidation system prompt. Required when enabled.
+      ## system_prompt: |
+      ##   Extract memorable information about USERS from this conversation.
+      ##   Return JSON array: [{"user_id": "...", "memories": [{"content": "...", "type": "fact|episode", "confidence": 0.0-1.0, "keywords": []}]}]
 
-        EXTRACTION RULES - NORMAL EXTRACTION (for human users):
-        1. **Facts** - User attributes (name, location, job, hobbies, skills, preferences, opinions, etc.)
-        2. **Episodes** - Important life events, experiences, stories, memorable moments, future plans, achievements
-        3. **Visual content** - Extract when images show: artwork, projects, pets, locations, achievements, or meaningful personal content
-
-        TYPE GUIDELINES:
-        - Use "fact" for: personal info, traits, skills, preferences, job, location, opinions
-        - Use "episode" for: past events, experiences, stories, achievements, trips, milestones, future plans
-
-        OUTPUT FORMAT:
-        Return ONLY a JSON array in this exact format, grouped by user:
-        [
-          {
-            "user_id": "discord_user_id_here",
-            "memories": [
-              {
-                "content": "Brief description with temporal context when relevant (e.g., 'On March 18, 2026, user planned...')",
-                "type": "fact" or "episode",
-                "confidence": 0.0-1.0,
-                "keywords": ["keyword1", "keyword2"]
-              }
-            ]
-          }
-        ]
-
-        IMPORTANT: The "user_id" field MUST contain the actual Discord user ID (numbers only) extracted from the UserID=xxx in the message format.
-
-        IMPORTANT:
-        - BOT=2 (ME) messages: ZERO extraction - this is the bot itself talking
-        - BOT=1 (BOT) messages: MINIMAL extraction - only if directly relevant to users
-        - Human messages (no BOT marker): NORMAL extraction
-        - For images: extract the MEANING (e.g., "User built an impressive castle in Minecraft") not just "User shared an image"
-        - Include dates/times in content when they reference future events
-        - Be selective - quality over quantity
-
-        If no useful information can be extracted, return an empty array [].
-
+  # ── Qdrant Vector Database ────────────────────────────
   qdrant:
-    # Qdrant host (docker service name or remote domain).
+    # Qdrant host. Use "localhost" for local, container name for Docker.
     host: "localhost"
-    # Qdrant gRPC port.
-    port: 6334
-    # Optional API key for cloud/secured Qdrant.
-    api_key: ""
 
-    # Must match embedding model dimensions for known models:
-    # text-embedding-3-small -> 1536
-    # text-embedding-ada-002 -> 1536
-    # text-embedding-3-large -> 3072
+    # Qdrant gRPC port (default: 6334).
+    port: 6334
+
+    # Optional API key for cloud/secured Qdrant instances.
+    ## api_key: "YOUR_QDRANT_API_KEY"
+
+    # Vector dimensions. Must match your embedding model:
+    # text-embedding-3-small / text-embedding-ada-002 -> 1536
+    # text-embedding-3-large                         -> 3072
     vector_size: 1536
 
 access_control:
+  # ── Blacklist ─────────────────────────────────────────
+  # Block specific users, channels, or guilds.
+  # Cannot be combined with whitelist for the same category.
   blacklist:
-    # Blocklist has higher simplicity: deny these IDs.
     users: []
-    channels: []
     guilds: []
+    channels: []
 
+  # ── Whitelist ─────────────────────────────────────────
+  # When set, bot ONLY responds in listed users/channels/guilds.
+  # Cannot be combined with blacklist for the same category.
   whitelist:
-    # Allowlist mode: when set, bot only responds in listed IDs.
     users: []
-    channels: []
     guilds: []
+    channels: []
 
 operations:
+  # ── Web Dashboard ─────────────────────────────────────
   web:
-    # Enable web dashboard/API.
     enabled: false
-    # Web server port.
-    port: 8080
-    # Basic auth username.
-    username: "admin"
-    # Basic auth password (change before production).
-    password: "CHANGE_ME"
 
+    # All fields below are required ONLY when enabled: true.
+    ## port: 8080
+    ## username: "admin"
+    ## password: "CHANGE_ME"
+    ## memories_page_limit: 50
+    ## content_truncation_length: 500
+    ## session_ttl_min: 30
+    ## session_cleanup_interval_min: 5
+    ## stats_query_timeout_sec: 5
+    ## log_default_lines: 100
+    ## log_max_lines: 1000
+    ## log_max_read_bytes: 1048576
+
+  # ── Logging ───────────────────────────────────────────
   logging:
-    # debug/info/warn/error
-    level: "debug"
+    # Log level: debug, info, warn, error.
+    level: "info"
+
     # Log file path.
     file: "logs/ezyapper.log"
-    # Rotation single file max size (MB).
-    max_size: 10
-    # Rotation backups count.
+
+    # Max log file size before rotation (megabytes).
+    max_size: 100
+
+    # Number of rotated backup files to keep.
     max_backups: 3
-    # Rotation retention days.
+
+    # Retention for rotated logs (days).
     max_age: 30
 
+  # ── Plugin System ─────────────────────────────────────
   plugins:
-    # RPC plugin system switch.
-    enabled: true
-    # Plugin binaries directory.
-    plugins_dir: "plugins"
-
-  mcp:
-    # External MCP client switch.
     enabled: false
-    # MCP server list; required when enabled=true.
+
+    # All fields below are required ONLY when enabled: true.
+    ## plugins_dir: "plugins"
+    ## default_tool_timeout_ms: 30000
+    ## startup_timeout_sec: 90
+    ## rpc_timeout_sec: 5
+    ## before_send_timeout_sec: 180
+    ## command_timeout_sec: 45
+    ## shutdown_timeout_sec: 5
+    ## disable_timeout_sec: 2
+
+  # ── MCP Client ────────────────────────────────────────
+  mcp:
+    enabled: false
+
+    # All fields below are required ONLY when enabled: true.
+    # Servers can use either "stdio" or "sse" transport.
     servers: []
-    # Example:
+    # Example server list:
     # servers:
-    #   - name: filesystem
+    #   - name: datetime
     #     type: stdio
     #     command: npx
-    # args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/data"]
+    #     args: ["-y", "@pinkpixel/datetime-mcp"]
+    #     env:
+    #       "TZ": "UTC"
+    #   - name: remote-tool
+    #     type: sse
+    #     url: "http://localhost:8080/sse"
+
+  # ── Operational Settings ──────────────────────────────
+  operations:
+    # Graceful shutdown grace period (seconds).
+    shutdown_timeout_sec: 300
+
+    # Interval for periodic cleanup tasks (minutes).
+    cleanup_interval_min: 5
