@@ -1,10 +1,12 @@
-package ai
+// Package vision provides image description using vision-capable models for hybrid vision mode.
+package vision
 
 import (
 	"context"
 	"fmt"
 	"strings"
 
+	"ezyapper/internal/ai"
 	"ezyapper/internal/config"
 
 	openai "github.com/sashabaranov/go-openai"
@@ -13,7 +15,7 @@ import (
 // VisionDescriber handles image description using vision-capable models.
 // It supports both URL-based and base64-encoded image inputs.
 type VisionDescriber struct {
-	client            *Client
+	client            *ai.Client
 	visionModel       string
 	descriptionPrompt string
 	maxTokens         int
@@ -23,7 +25,7 @@ type VisionDescriber struct {
 }
 
 // NewVisionDescriber creates a new vision describer with the given client and vision configuration.
-func NewVisionDescriber(client *Client, visionConfig *config.VisionConfig, aiConfig *config.AIConfig) *VisionDescriber {
+func NewVisionDescriber(client *ai.Client, visionConfig *config.VisionConfig, aiConfig *config.AIConfig) *VisionDescriber {
 	maxTokens := aiConfig.MaxTokens
 	if visionConfig.MaxTokens > 0 {
 		maxTokens = visionConfig.MaxTokens
@@ -119,9 +121,9 @@ func (v *VisionDescriber) DescribeSingleImage(ctx context.Context, imageURL stri
 	}
 
 	// Apply extra parameters from config
-	ApplyExtraParams(&req, v.extraParams, "[vision]")
+	ai.ApplyExtraParams(&req, v.extraParams, "[vision]")
 
-	resp, err := v.client.createChatCompletionWithRetry(ctx, req, "vision describer completion")
+	resp, err := v.client.CreateChatCompletionWithRetry(ctx, req, "vision describer completion")
 	if err != nil {
 		return "", fmt.Errorf("vision completion failed: %w", err)
 	}

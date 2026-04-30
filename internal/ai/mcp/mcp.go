@@ -1,4 +1,6 @@
-package ai
+// Package mcp provides the Model Context Protocol client for connecting to
+// external tool servers (stdio, SSE) and calling tools across multiple providers.
+package mcp
 
 import (
 	"context"

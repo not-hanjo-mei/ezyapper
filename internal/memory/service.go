@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"ezyapper/internal/ai"
+	"ezyapper/internal/ai/vision"
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/utils"
@@ -128,7 +129,7 @@ type Embedder interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
 }
 
-func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedder, aiClient *ai.Client, visionDescriber *ai.VisionDescriber) (*MemoryService, error) {
+func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedder, aiClient *ai.Client, visionDescriber *vision.VisionDescriber) (*MemoryService, error) {
 	if qdrantClient == nil {
 		return nil, fmt.Errorf("qdrant client is required")
 	}

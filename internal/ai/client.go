@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"ezyapper/internal/ai/tools"
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/retry"
@@ -25,11 +26,11 @@ type Client struct {
 	client       *openai.Client
 	httpClient   *http.Client
 	config       *config.AIConfig
-	toolRegistry *ToolRegistry
+	toolRegistry *tools.ToolRegistry
 }
 
 // NewClient creates a new AI client
-func NewClient(cfg *config.AIConfig, toolRegistry *ToolRegistry) *Client {
+func NewClient(cfg *config.AIConfig, toolRegistry *tools.ToolRegistry) *Client {
 	httpTimeout := 30 * time.Second
 	if cfg.Timeout > 0 {
 		httpTimeout = time.Duration(cfg.Timeout) * time.Second
@@ -141,7 +142,8 @@ func (c *Client) closeIdleConnections() {
 	}
 }
 
-func isTimeoutLikeError(err error) bool {
+// IsTimeoutLikeError checks if an error is timeout-related (deadline exceeded, network timeout).
+func IsTimeoutLikeError(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -159,13 +161,14 @@ func isTimeoutLikeError(err error) bool {
 	return strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline exceeded")
 }
 
-func (c *Client) createChatCompletionWithRetry(ctx context.Context, req openai.ChatCompletionRequest, operation string) (openai.ChatCompletionResponse, error) {
+// CreateChatCompletionWithRetry sends a chat completion request with automatic retry on failures.
+func (c *Client) CreateChatCompletionWithRetry(ctx context.Context, req openai.ChatCompletionRequest, operation string) (openai.ChatCompletionResponse, error) {
 	return retry.Retry(ctx, c.config.RetryCount, func(ctx context.Context) (openai.ChatCompletionResponse, error) {
 		attemptCtx, cancel := context.WithTimeout(ctx, c.requestTimeout())
 		defer cancel()
 		logger.Debugf("[ai] calling %s API...", operation)
 		resp, err := c.client.CreateChatCompletion(attemptCtx, req)
-		if err != nil && isTimeoutLikeError(err) {
+		if err != nil && IsTimeoutLikeError(err) {
 			c.closeIdleConnections()
 		}
 		return resp, err
@@ -182,7 +185,7 @@ func (c *Client) createEmbeddingWithRetry(ctx context.Context, req openai.Embedd
 		defer cancel()
 		logger.Debugf("[ai] calling %s API...", operation)
 		resp, err := c.client.CreateEmbeddings(attemptCtx, req)
-		if err != nil && isTimeoutLikeError(err) {
+		if err != nil && IsTimeoutLikeError(err) {
 			c.closeIdleConnections()
 		}
 		return resp, err
@@ -282,7 +285,7 @@ func (c *Client) CreateChatCompletion(ctx context.Context, req ChatCompletionReq
 	logger.Debugf("  System prompt length: %d", len(req.SystemPrompt))
 	logger.Debugf("  Tools: %d", len(chatReq.Tools))
 
-	resp, err := c.createChatCompletionWithRetry(ctx, chatReq, "llm completion")
+	resp, err := c.CreateChatCompletionWithRetry(ctx, chatReq, "llm completion")
 	if err != nil {
 		return nil, err
 	}
@@ -522,7 +525,7 @@ func (c *Client) CreateVisionCompletion(ctx context.Context, systemPrompt, textP
 		Temperature: c.config.Temperature,
 	}
 
-	resp, err := c.createChatCompletionWithRetry(ctx, visionReq, "vision completion")
+	resp, err := c.CreateChatCompletionWithRetry(ctx, visionReq, "vision completion")
 	if err != nil {
 		return "", err
 	}
@@ -635,7 +638,7 @@ func (c *Client) CreateVisionCompletionWithTools(ctx context.Context, systemProm
 		Tools:       tools,
 	}
 
-	resp, err := c.createChatCompletionWithRetry(ctx, chatReq, "vision+tools completion")
+	resp, err := c.CreateChatCompletionWithRetry(ctx, chatReq, "vision+tools completion")
 	if err != nil {
 		return nil, err
 	}
@@ -677,7 +680,7 @@ func (c *Client) CreateVisionCompletionWithTools(ctx context.Context, systemProm
 		chatReq.Messages = currentMessages
 		chatReq.Tools = tools
 
-		resp, err = c.createChatCompletionWithRetry(ctx, chatReq, "vision+tools follow-up")
+		resp, err = c.CreateChatCompletionWithRetry(ctx, chatReq, "vision+tools follow-up")
 		if err != nil {
 			return nil, fmt.Errorf("tool iteration failed: %w", err)
 		}

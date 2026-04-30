@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"ezyapper/internal/ai"
+	"ezyapper/internal/ai/vision"
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/retry"
@@ -39,7 +40,7 @@ type Consolidator struct {
 	qdrant          qdrantStore
 	embedder        Embedder
 	aiClient        *ai.Client
-	visionDescriber *ai.VisionDescriber
+	visionDescriber *vision.VisionDescriber
 	maxMessages     int
 	model           string
 	prompt          string
@@ -75,7 +76,7 @@ func embedWithRetry(ctx context.Context, embedder Embedder, text string) ([]floa
 }
 
 // NewConsolidator creates a new consolidator with the given Qdrant client, embedder, and AI configuration.
-func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient *ai.Client, visionDescriber *ai.VisionDescriber, cfg *config.ConsolidationConfig, ownBotID string, consolidationInterval int) *Consolidator {
+func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient *ai.Client, visionDescriber *vision.VisionDescriber, cfg *config.ConsolidationConfig, ownBotID string, consolidationInterval int) *Consolidator {
 	return &Consolidator{
 		qdrant:          qdrant,
 		embedder:        embedder,

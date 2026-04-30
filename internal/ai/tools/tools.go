@@ -1,4 +1,6 @@
-package ai
+// Package tools provides the tool registry and Discord tool implementations
+// for the AI subsystem.
+package tools
 
 import (
 	"context"

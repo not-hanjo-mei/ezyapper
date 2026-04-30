@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"ezyapper/internal/ai"
+	"ezyapper/internal/ai/tools"
 
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -12,6 +13,6 @@ import (
 // createToolHandler creates a tool handler for AI function calling
 func (b *Bot) createToolHandler() ai.ToolHandler {
 	return func(ctx context.Context, toolCall openai.ToolCall) (string, error) {
-		return ai.HandleToolCall(ctx, b.toolRegistry, toolCall)
+		return tools.HandleToolCall(ctx, b.toolRegistry, toolCall)
 	}
 }

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"ezyapper/internal/ai"
+	"ezyapper/internal/ai/tools"
+	"ezyapper/internal/ai/vision"
 	"ezyapper/internal/bot"
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
@@ -131,7 +133,7 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 	}
 
 	embeddingAIConfig := buildEmbeddingAIConfig(cfg)
-	embedderClient := ai.NewClient(embeddingAIConfig, ai.NewToolRegistry())
+	embedderClient := ai.NewClient(embeddingAIConfig, tools.NewToolRegistry())
 
 	consolidationConfig := &config.AIConfig{
 		APIBaseURL:  cfg.AI.APIBaseURL,
@@ -150,11 +152,11 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 	}
 	// Copy extra params from consolidation config
 	consolidationConfig.ExtraParams = cfg.Memory.Consolidation.ExtraParams
-	consolidationAIClient := ai.NewClient(consolidationConfig, ai.NewToolRegistry())
+	consolidationAIClient := ai.NewClient(consolidationConfig, tools.NewToolRegistry())
 
 	visionConfig, visionAIConfig := buildConsolidationVisionConfig(cfg, consolidationConfig)
-	visionClient := ai.NewClient(visionAIConfig, ai.NewToolRegistry())
-	visionDescriber := ai.NewVisionDescriber(visionClient, visionConfig, visionAIConfig)
+	visionClient := ai.NewClient(visionAIConfig, tools.NewToolRegistry())
+	visionDescriber := vision.NewVisionDescriber(visionClient, visionConfig, visionAIConfig)
 
 	embedder, err := memory.NewAIEmbedder(embedderClient, cfg.Embedding.Model)
 	if err != nil {

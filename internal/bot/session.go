@@ -12,6 +12,10 @@ import (
 	"time"
 
 	"ezyapper/internal/ai"
+	"ezyapper/internal/ai/decision"
+	"ezyapper/internal/ai/mcp"
+	"ezyapper/internal/ai/tools"
+	"ezyapper/internal/ai/vision"
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
@@ -121,12 +125,12 @@ type Bot struct {
 	profileStore    memory.ProfileStore
 	consolidation   consolidationManager
 	discordClient   *memory.ShortTermClient
-	toolRegistry    *ai.ToolRegistry
+	toolRegistry    *tools.ToolRegistry
 	pluginManager   *plugin.Manager
-	mcpManager      *ai.MCPManager
-	decisionService *ai.DecisionService
+	mcpManager      *mcp.MCPManager
+	decisionService *decision.DecisionService
 	rateLimiter     *ratelimit.Limiter
-	visionDescriber *ai.VisionDescriber
+	visionDescriber *vision.VisionDescriber
 	pluginToolNames map[string]struct{}
 
 	mu               sync.RWMutex
@@ -185,21 +189,21 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 	session.State.TrackMembers = true
 
 	// Create tool registry
-	toolRegistry := ai.NewToolRegistry()
+	toolRegistry := tools.NewToolRegistry()
 
 	// Use provided plugin manager
 	pluginManager := pluginMgr
 
 	// Create MCP manager
-	mcpManager := ai.NewMCPManager(cfg.MCP.Servers)
+	mcpManager := mcp.NewMCPManager(cfg.MCP.Servers)
 
 	// Create Discord client for short-term context
 	discordClient := memory.NewShortTermClient(session)
 
-	var decisionService *ai.DecisionService
+	var decisionService *decision.DecisionService
 	if cfg.Decision.Enabled {
 		var err error
-		decisionService, err = ai.NewDecisionService(&cfg.Decision)
+		decisionService, err = decision.NewDecisionService(&cfg.Decision)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create decision service: %w", err)
 		}
@@ -233,7 +237,7 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 	}
 
 	// Register Discord tools
-	discordTools := ai.NewDiscordTools(session)
+	discordTools := tools.NewDiscordTools(session)
 	discordTools.RegisterTools(toolRegistry)
 
 	bot.registerPluginTools()
@@ -326,15 +330,15 @@ func (b *Bot) Shutdown(ctx context.Context) error {
 
 // registerMCPTools fetches and registers MCP tools from connected servers
 func (b *Bot) registerMCPTools(ctx context.Context) {
-	tools, err := b.mcpManager.GetAllTools(ctx)
+	mcpTools, err := b.mcpManager.GetAllTools(ctx)
 	if err != nil {
 		logger.Warnf("Failed to get MCP tools: %v", err)
 		return
 	}
 
-	for _, tool := range tools {
+	for _, tool := range mcpTools {
 		mcpTool := tool
-		b.toolRegistry.Register(&ai.Tool{
+		b.toolRegistry.Register(&tools.Tool{
 			Name:        fmt.Sprintf("%s_%s", mcpTool.ServerName, mcpTool.Tool.Name),
 			Description: fmt.Sprintf("[%s] %s", mcpTool.ServerName, mcpTool.Tool.Description),
 			Parameters:  mcpTool.Tool.InputSchema,
@@ -344,7 +348,7 @@ func (b *Bot) registerMCPTools(ctx context.Context) {
 		})
 	}
 
-	logger.Infof("Registered %d MCP tools from external servers", len(tools))
+	logger.Infof("Registered %d MCP tools from external servers", len(mcpTools))
 }
 
 // GetSession returns the Discord session
@@ -537,11 +541,11 @@ func (b *Bot) ApplyRuntimeConfig() error {
 	}
 
 	clientWrapper := ai.NewClient(&visionAIConfig, b.toolRegistry)
-	b.visionDescriber = ai.NewVisionDescriber(clientWrapper, &b.cfg().AI.Vision, &visionAIConfig)
+	b.visionDescriber = vision.NewVisionDescriber(clientWrapper, &b.cfg().AI.Vision, &visionAIConfig)
 	return nil
 }
 
-func (b *Bot) getVisionDescriber() *ai.VisionDescriber {
+func (b *Bot) getVisionDescriber() *vision.VisionDescriber {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	return b.visionDescriber
@@ -618,7 +622,7 @@ func (b *Bot) registerPluginTools() {
 			description = "Plugin tool"
 		}
 
-		b.toolRegistry.Register(&ai.Tool{
+		b.toolRegistry.Register(&tools.Tool{
 			Name:        fullName,
 			Description: fmt.Sprintf("[plugin:%s] %s", pluginName, description),
 			Parameters:  parameters,
@@ -690,7 +694,7 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 		decisionMessages := b.getRecentMessagesForDecision(m.ID, recentMessages)
 
 		// Build message info with author and reply metadata
-		msgInfo := ai.MessageInfo{
+		msgInfo := decision.MessageInfo{
 			AuthorName: m.Author.Username,
 			AuthorID:   m.Author.ID,
 			Content:    m.Content,
@@ -720,13 +724,13 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 	return true, "random engagement"
 }
 
-func (b *Bot) getRecentMessagesForDecision(currentMessageID string, messages []*memory.DiscordMessage) []ai.ContextMessage {
-	var result []ai.ContextMessage
+func (b *Bot) getRecentMessagesForDecision(currentMessageID string, messages []*memory.DiscordMessage) []decision.ContextMessage {
+	var result []decision.ContextMessage
 	for _, msg := range messages {
 		if msg.ID == currentMessageID {
 			continue
 		}
-		result = append(result, ai.ContextMessage{
+		result = append(result, decision.ContextMessage{
 			AuthorName: msg.Username,
 			AuthorID:   msg.AuthorID,
 			Content:    msg.Content,

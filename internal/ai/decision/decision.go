@@ -1,4 +1,5 @@
-package ai
+// Package decision provides LLM-based reply decisions for whether the bot should respond to a message.
+package decision
 
 import (
 	"context"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"ezyapper/internal/ai"
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/retry"
@@ -117,7 +119,7 @@ func (d *DecisionService) ShouldRespondWithInfo(ctx context.Context, botName str
 	}
 
 	// Apply extra parameters from config
-	ApplyExtraParams(&req, d.config.ExtraParams, "[decision]")
+	ai.ApplyExtraParams(&req, d.config.ExtraParams, "[decision]")
 
 	resp, err := retry.Retry(ctx, d.config.RetryCount, func(ctx context.Context) (openai.ChatCompletionResponse, error) {
 		attemptCtx, cancel := context.WithTimeout(ctx, time.Duration(d.config.Timeout)*time.Second)
@@ -125,7 +127,7 @@ func (d *DecisionService) ShouldRespondWithInfo(ctx context.Context, botName str
 
 		logger.Debugf("[decision] making LLM request")
 		resp, err := d.client.CreateChatCompletion(attemptCtx, req)
-		if err != nil && isTimeoutLikeError(err) {
+		if err != nil && ai.IsTimeoutLikeError(err) {
 			d.closeIdleConnections()
 		}
 		return resp, err
