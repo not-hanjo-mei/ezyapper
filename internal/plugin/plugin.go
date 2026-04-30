@@ -996,7 +996,7 @@ func callJSONRPCWithTimeout(
 	case err := <-done:
 		return err
 	case <-timer.C:
-		return fmt.Errorf("jsonrpc call timeout: %s", method)
+		return fmt.Errorf("jsonrpc call timeout (%dms): %s", timeout/time.Millisecond, method)
 	}
 }
 
@@ -1185,16 +1185,33 @@ func (pm *Manager) ExecuteTool(pluginName string, toolName string, args map[stri
 	}
 
 	if plugin.jsonrpc != nil {
-		return executeJSONRPCTool(plugin, toolName, args)
+		return pm.executeJSONRPCTool(plugin, toolName, args)
 	}
 
 	return "", fmt.Errorf("jsonrpc plugin is not initialized")
 }
 
-func executeJSONRPCTool(plugin *Client, toolName string, args map[string]interface{}) (string, error) {
+func (pm *Manager) executeJSONRPCTool(plugin *Client, toolName string, args map[string]interface{}) (string, error) {
 	if plugin == nil || plugin.jsonrpc == nil {
 		return "", fmt.Errorf("jsonrpc plugin is not initialized")
 	}
+
+	// Resolve per-tool timeout: ToolSpec.TimeoutMs > defaultToolTimeoutMs > pluginRPCTimeout (5s fallback)
+	timeout := pluginRPCTimeout
+	source := "fallback"
+	for _, t := range plugin.tools {
+		if t.Name == toolName && t.TimeoutMs > 0 {
+			timeout = time.Duration(t.TimeoutMs) * time.Millisecond
+			source = "tool_spec"
+			break
+		}
+	}
+	if source == "fallback" && pm.defaultToolTimeoutMs > 0 {
+		timeout = time.Duration(pm.defaultToolTimeoutMs) * time.Millisecond
+		source = "config"
+	}
+
+	logger.Debugf("[plugin] execute_tool %q timeout=%dms (source: %s)", toolName, timeout/time.Millisecond, source)
 
 	var reply string
 	err := callJSONRPCWithTimeout(
@@ -1202,7 +1219,7 @@ func executeJSONRPCTool(plugin *Client, toolName string, args map[string]interfa
 		"execute_tool",
 		ExecuteToolArgs{Name: toolName, Arguments: args},
 		&reply,
-		pluginRPCTimeout,
+		timeout,
 	)
 	if err != nil {
 		return "", fmt.Errorf("plugin tool execution failed: %w", err)
