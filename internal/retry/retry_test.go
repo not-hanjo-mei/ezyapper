@@ -3,10 +3,18 @@ package retry
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"ezyapper/internal/logger"
 )
+
+func TestMain(m *testing.M) {
+	logger.Init(logger.Config{Level: "info", File: os.DevNull})
+	os.Exit(m.Run())
+}
 
 // TestRetry_Success verifies that a successful call returns on the first attempt.
 func TestRetry_Success(t *testing.T) {

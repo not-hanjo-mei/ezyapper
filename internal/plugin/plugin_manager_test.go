@@ -11,7 +11,14 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"ezyapper/internal/logger"
 )
+
+func TestMain(m *testing.M) {
+	logger.Init(logger.Config{Level: "info", File: os.DevNull})
+	os.Exit(m.Run())
+}
 
 func TestManagerHelperProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_PLUGIN_HELPER_PROCESS") != "1" {

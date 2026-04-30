@@ -1,12 +1,19 @@
 package decision
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"ezyapper/internal/config"
+	"ezyapper/internal/logger"
 )
+
+func TestMain(m *testing.M) {
+	logger.Init(logger.Config{Level: "info", File: os.DevNull})
+	os.Exit(m.Run())
+}
 
 func TestNewDecisionServiceRequiresExplicitCredentials(t *testing.T) {
 	cfg := &config.DecisionConfig{

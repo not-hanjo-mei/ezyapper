@@ -1,11 +1,18 @@
 package main
 
 import (
+	"os"
 	"testing"
 
 	"ezyapper/internal/config"
+	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
 )
+
+func TestMain(m *testing.M) {
+	logger.Init(logger.Config{Level: "info", File: os.DevNull})
+	os.Exit(m.Run())
+}
 
 func TestBuildEmbeddingAIConfig_UsesEmbeddingOverrides(t *testing.T) {
 	cfg := &config.Config{

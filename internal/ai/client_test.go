@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -16,9 +17,15 @@ import (
 
 	"ezyapper/internal/ai/tools"
 	"ezyapper/internal/config"
+	"ezyapper/internal/logger"
 
 	openai "github.com/sashabaranov/go-openai"
 )
+
+func TestMain(m *testing.M) {
+	logger.Init(logger.Config{Level: "info", File: os.DevNull})
+	os.Exit(m.Run())
+}
 
 // --- Helpers ---
 
