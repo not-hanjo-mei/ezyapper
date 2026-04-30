@@ -3,7 +3,6 @@ package memory
 import (
 	"context"
 	"fmt"
-	"time"
 )
 
 // NewNoopService returns a memory service implementation that performs no external IO.
@@ -34,13 +33,11 @@ func (s *NoopService) GetMemory(ctx context.Context, memoryID string) (*Record, 
 
 func (s *NoopService) GetProfile(ctx context.Context, userID string) (*Profile, error) {
 	return &Profile{
-		UserID:       userID,
-		Traits:       []string{},
-		Facts:        map[string]string{},
-		Preferences:  map[string]string{},
-		Interests:    []string{},
-		FirstSeenAt:  time.Now(),
-		LastActiveAt: time.Now(),
+		UserID:      userID,
+		Traits:      []string{},
+		Facts:       map[string]string{},
+		Preferences: map[string]string{},
+		Interests:   []string{},
 	}, nil
 }
 
@@ -77,12 +74,11 @@ func (s *NoopService) ConsumeChannelMessageCount(channelID string, consumed int)
 }
 
 func (s *NoopService) GetStats(ctx context.Context) (*GlobalStats, error) {
-	return &GlobalStats{LastConsolidated: time.Now()}, nil
+	return &GlobalStats{}, nil
 }
 
 func (s *NoopService) GetUserStats(ctx context.Context, userID string) (*UserStats, error) {
-	now := time.Now()
-	return &UserStats{UserID: userID, FirstSeenAt: now, LastActiveAt: now}, nil
+	return &UserStats{UserID: userID}, nil
 }
 
 func (s *NoopService) Close() error { return nil }

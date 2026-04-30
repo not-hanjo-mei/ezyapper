@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"ezyapper/internal/ai"
@@ -43,6 +44,23 @@ type Consolidator struct {
 	model           string
 	prompt          string
 	ownBotID        string // Bot's own ID to distinguish from other bots
+
+	lastConsolidatedAt time.Time
+	mu                 sync.RWMutex
+}
+
+// LastConsolidatedAt returns the timestamp of the last successful consolidation.
+func (c *Consolidator) LastConsolidatedAt() time.Time {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.lastConsolidatedAt
+}
+
+// setLastConsolidatedAt records the timestamp of a successful consolidation.
+func (c *Consolidator) setLastConsolidatedAt(t time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.lastConsolidatedAt = t
 }
 
 // embedWithRetry generates an embedding with exponential backoff retry on failure.
@@ -107,6 +125,8 @@ func (c *Consolidator) Process(ctx context.Context, userID string) error {
 			logger.Warnf("[consolidation] failed to update memory_count for user=%s: %v", userID, err)
 		}
 	}
+
+	c.setLastConsolidatedAt(time.Now())
 
 	elapsed := time.Since(start)
 	logger.Infof("[consolidation] completed for user=%s duration=%s memories_stored=%d/%d",
@@ -317,6 +337,8 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 		}
 	}
 
+	c.setLastConsolidatedAt(time.Now())
+
 	elapsed := time.Since(start)
 	logger.Infof("[consolidation] completed for user=%s duration=%s messages_processed=%d memories_extracted=%d memories_stored=%d",
 		userID, elapsed, len(messages), len(extracted), stored)
@@ -427,6 +449,8 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 		totalStored += stored
 		logger.Infof("[consolidation] stored %d memories for user=%s", stored, userID)
 	}
+
+	c.setLastConsolidatedAt(time.Now())
 
 	elapsed := time.Since(start)
 	logger.Infof("[consolidation] completed batch consolidation for channel=%s duration=%s messages=%d users=%d total_memories=%d",

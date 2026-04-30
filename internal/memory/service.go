@@ -483,7 +483,7 @@ func (s *MemoryService) GetStats(ctx context.Context) (*GlobalStats, error) {
 	return &GlobalStats{
 		TotalMemories:    memories,
 		TotalUsers:       users,
-		LastConsolidated: time.Now(),
+		LastConsolidated: s.consolidator.LastConsolidatedAt(),
 	}, nil
 }
 
