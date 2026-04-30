@@ -189,15 +189,25 @@ func TestListTools(t *testing.T) {
 		t.Fatalf("ListTools failed: %v", err)
 	}
 
-	toolNames := make(map[string]bool)
+	toolMap := make(map[string]plugin.ToolSpec)
 	for _, ts := range tools {
-		toolNames[ts.Name] = true
+		toolMap[ts.Name] = ts
 	}
 
-	expected := []string{"search_emote", "send_emote"}
-	for _, name := range expected {
-		if !toolNames[name] {
-			t.Fatalf("expected tool %q in ListTools output", name)
+	expected := []struct {
+		name              string
+		expectedTimeoutMs int
+	}{
+		{"search_emote", 15000},
+		{"send_emote", 10000},
+	}
+	for _, e := range expected {
+		ts, ok := toolMap[e.name]
+		if !ok {
+			t.Fatalf("expected tool %q in ListTools output", e.name)
+		}
+		if ts.TimeoutMs != e.expectedTimeoutMs {
+			t.Fatalf("tool %q: expected TimeoutMs=%d, got %d", e.name, e.expectedTimeoutMs, ts.TimeoutMs)
 		}
 	}
 }

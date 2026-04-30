@@ -552,6 +552,7 @@ func (p *openAITTSPlugin) ListTools() ([]plugin.ToolSpec, error) {
 				},
 				"required": []string{"text"},
 			},
+			TimeoutMs: 60000,
 		},
 	}, nil
 }

@@ -214,6 +214,7 @@ func (p *kimiToolsPlugin) fetchFormulaTools(ctx context.Context, formulaURI stri
 			Name:        t.Function.Name,
 			Description: strings.TrimSpace(t.Function.Description),
 			Parameters:  params,
+			TimeoutMs:   60000,
 		})
 	}
 

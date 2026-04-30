@@ -130,6 +130,7 @@ func (p *DateTimePlugin) ListTools() ([]plugin.ToolSpec, error) {
 		{
 			Name:        "get_current_datetime",
 			Description: "Get the current date and time",
+			TimeoutMs:   5000,
 			Parameters: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},

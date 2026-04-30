@@ -41,6 +41,7 @@ func (p *SystemSpecPlugin) ListTools() ([]plugin.ToolSpec, error) {
 		{
 			Name:        "get_system_spec",
 			Description: "Get CPU model, thread count, max frequency, and total memory",
+			TimeoutMs:   5000,
 			Parameters: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
