@@ -2,6 +2,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -546,7 +547,11 @@ func validate(cfg *Config) error {
 	validateDecision(cfg, &errs)
 	validateSystem(cfg, &errs)
 	if len(errs) > 0 {
-		return fmt.Errorf("%s", strings.Join(errs, "; "))
+		errList := make([]error, len(errs))
+		for i, s := range errs {
+			errList[i] = fmt.Errorf("%s", s)
+		}
+		return errors.Join(errList...)
 	}
 	return nil
 }

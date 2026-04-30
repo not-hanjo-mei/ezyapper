@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"runtime/debug"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -86,14 +85,7 @@ func main() {
 	}
 
 	// Start cleanup routine
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.Errorf("[main] panic recovered: %v\n%s", r, debug.Stack())
-			}
-		}()
-		runCleanupRoutine(discordBot)
-	}()
+	go runCleanupRoutine(discordBot)
 
 	logger.Info("Bot is now running. Press CTRL+C to exit.")
 

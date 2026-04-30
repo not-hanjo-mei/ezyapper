@@ -8,10 +8,7 @@ BUILD_DIR=.
 GO=go
 GOFLAGS=-v
 
-# Version info (using date for now)
-BUILD_TIME=$(shell date +%Y%m%d-%H%M%S)
-GIT_HASH=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-LDFLAGS=-ldflags "-X main.buildTime=$(BUILD_TIME) -X main.gitHash=$(GIT_HASH)"
+LDFLAGS=
 
 all: build
 
@@ -93,10 +90,6 @@ vuln:
 	else \
 		echo "govulncheck not installed. Run: go install golang.org/x/vuln/cmd/govulncheck@latest"; \
 	fi
-
-# Generate mock files (if needed)
-generate:
-	$(GO) generate ./...
 
 # CI target (runs checks for CI pipeline)
 ci: fmt lint test

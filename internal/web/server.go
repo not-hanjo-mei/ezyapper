@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -260,12 +259,6 @@ func (s *Server) Start() error {
 	logger.Infof("Starting WebUI on port %d", s.cfg().Web.Port)
 
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.Errorf("[web] panic recovered: %v\n%s", r, debug.Stack())
-			}
-		}()
-
 		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Errorf("Web server error: %v", err)
 		}

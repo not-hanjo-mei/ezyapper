@@ -10,6 +10,8 @@ bot
 plugins/
 plugins_bak/
 !examples/plugins/
+plugins/*/config.yaml
+plugins/*/config.yml
 
 # Test binary, built with `go test -c`
 *.test

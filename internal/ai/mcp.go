@@ -3,10 +3,10 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 	"sync"
 
 	"ezyapper/internal/config"
@@ -34,16 +34,16 @@ func NewMCPManager(servers []config.MCPServer) *MCPManager {
 
 // Connect establishes connections to all configured MCP servers.
 func (m *MCPManager) Connect(ctx context.Context) error {
-	var errs []string
+	var errs []error
 	for _, server := range m.servers {
 		if err := m.connectServer(ctx, server); err != nil {
 			logger.Warnf("Failed to connect to MCP server '%s': %v", server.Name, err)
-			errs = append(errs, fmt.Sprintf("%s: %v", server.Name, err))
+			errs = append(errs, fmt.Errorf("%s: %w", server.Name, err))
 			continue
 		}
 	}
 	if len(errs) > 0 {
-		return fmt.Errorf("mcp connect errors: %s", strings.Join(errs, "; "))
+		return fmt.Errorf("mcp connect errors: %w", errors.Join(errs...))
 	}
 	return nil
 }
