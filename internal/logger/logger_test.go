@@ -162,9 +162,15 @@ func TestInit(t *testing.T) {
 func TestL(t *testing.T) {
 	globalLogger = nil
 
+	cfg := Config{Level: "info"}
+	err := Init(cfg)
+	if err != nil {
+		t.Fatalf("Init failed: %v", err)
+	}
+
 	logger := L()
 	if logger == nil {
-		t.Error("Expected non-nil logger from L()")
+		t.Error("Expected non-nil logger from L() after Init")
 	}
 }
 

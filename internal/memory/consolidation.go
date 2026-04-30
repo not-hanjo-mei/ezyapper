@@ -91,7 +91,10 @@ func (c *Consolidator) Process(ctx context.Context, userID string) error {
 	start := time.Now()
 	logger.Infof("[consolidation] starting for user=%s", userID)
 
-	profile := c.getOrCreateProfile(ctx, userID)
+	profile, err := c.getOrCreateProfile(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("getOrCreateProfile: %w", err)
+	}
 
 	memories, err := c.qdrant.GetMemoriesByUser(ctx, userID, c.memorySearchLimit)
 	if err != nil {
@@ -115,7 +118,10 @@ func (c *Consolidator) Process(ctx context.Context, userID string) error {
 	}
 	logger.Infof("[consolidation] updated profile for user=%s", userID)
 
-	stored, _ := c.storeMemories(ctx, userID, result.Memories)
+	stored, err := c.storeMemories(ctx, userID, result.Memories)
+	if err != nil {
+		logger.Warnf("[consolidation] some memories failed to store for user=%s: %v", userID, err)
+	}
 
 	if stored > 0 {
 		profile.MemoryCount += stored
@@ -297,7 +303,10 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 	conversation, imageCount := c.buildConversationText(ctx, messages, userID)
 	logger.Infof("[consolidation] built conversation for user=%s length=%d chars images=%d", userID, len(conversation), imageCount)
 
-	profile := c.getOrCreateProfile(ctx, userID)
+	profile, err := c.getOrCreateProfile(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("getOrCreateProfile: %w", err)
+	}
 
 	extracted := c.analyzeConversation(ctx, conversation, []string{userID})
 	if len(extracted) == 0 {
@@ -326,7 +335,10 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 	logger.Infof("[consolidation] updated profile for user=%s before=[%s] after=[%s]",
 		userID, profileBefore, profileAfter)
 
-	stored, _ := c.storeMemories(ctx, userID, extracted)
+	stored, err := c.storeMemories(ctx, userID, extracted)
+	if err != nil {
+		logger.Warnf("[consolidation] some memories failed to store for user=%s: %v", userID, err)
+	}
 
 	if stored > 0 {
 		profile.MemoryCount += stored
@@ -347,6 +359,7 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 // upserts them into Qdrant, and returns the number successfully stored.
 func (c *Consolidator) storeMemories(ctx context.Context, userID string, extracts []Extract) (int, error) {
 	stored := 0
+	var errs []error
 	for i, extract := range extracts {
 		memory := &Record{
 			UserID:     userID,
@@ -372,11 +385,12 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 
 		if err := c.qdrant.UpsertMemory(ctx, memory); err != nil {
 			logger.Errorf("[consolidation] failed to store memory %d for user=%s: %v", i+1, userID, err)
+			errs = append(errs, fmt.Errorf("store memory %d for user=%s: %w", i+1, userID, err))
 		} else {
 			stored++
 		}
 	}
-	return stored, nil
+	return stored, errors.Join(errs...)
 }
 
 // ProcessChannelMessages executes batch consolidation for all users in a channel
@@ -428,7 +442,11 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 			continue
 		}
 
-		profile := c.getOrCreateProfile(ctx, userID)
+		profile, err := c.getOrCreateProfile(ctx, userID)
+		if err != nil {
+			logger.Errorf("[consolidation] failed to get or create profile for user=%s: %v", userID, err)
+			continue
+		}
 		c.updateProfileFromExtraction(profile, extracts)
 		profile.LastConsolidatedAt = time.Now()
 
@@ -437,7 +455,10 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 			continue
 		}
 
-		stored, _ := c.storeMemories(ctx, userID, extracts)
+		stored, err := c.storeMemories(ctx, userID, extracts)
+		if err != nil {
+			logger.Warnf("[consolidation] some memories failed to store for user=%s: %v", userID, err)
+		}
 		if stored > 0 {
 			profile.MemoryCount += stored
 			if err := c.qdrant.UpsertProfile(ctx, profile); err != nil {
@@ -456,26 +477,25 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 	return nil
 }
 
-func (c *Consolidator) getOrCreateProfile(ctx context.Context, userID string) *Profile {
+func (c *Consolidator) getOrCreateProfile(ctx context.Context, userID string) (*Profile, error) {
 	profile, err := c.qdrant.GetProfile(ctx, userID)
 	if err != nil {
 		if errors.Is(err, ErrProfileNotFound) {
 			logger.Infof("[consolidation] creating new profile for user=%s", userID)
-		} else {
-			logger.Errorf("[consolidation] failed to get profile for user=%s: %v (creating default)", userID, err)
+			return &Profile{
+				UserID:      userID,
+				Traits:      []string{},
+				Facts:       make(map[string]string),
+				Preferences: make(map[string]string),
+				Interests:   []string{},
+				FirstSeenAt: time.Now(),
+			}, nil
 		}
-		return &Profile{
-			UserID:      userID,
-			Traits:      []string{},
-			Facts:       make(map[string]string),
-			Preferences: make(map[string]string),
-			Interests:   []string{},
-			FirstSeenAt: time.Now(),
-		}
+		return nil, fmt.Errorf("failed to get profile for user=%s: %w", userID, err)
 	}
 	logger.Infof("[consolidation] loaded existing profile for user=%s traits=%d facts=%d preferences=%d interests=%d",
 		userID, len(profile.Traits), len(profile.Facts), len(profile.Preferences), len(profile.Interests))
-	return profile
+	return profile, nil
 }
 
 func (c *Consolidator) analyzeConversation(ctx context.Context, conversation string, targetUserIDs []string) []Extract {

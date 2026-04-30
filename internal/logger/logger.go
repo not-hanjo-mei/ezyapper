@@ -2,6 +2,7 @@
 package logger
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -145,11 +146,12 @@ func Init(cfg Config) error {
 	return err
 }
 
-// L returns the global logger
+// L returns the global logger. If the logger has not been initialized,
+// the program exits with a fatal error — there is no silent fallback.
 func L() *Logger {
 	if globalLogger == nil {
-		// Fallback to no-op logger
-		globalLogger, _ = New(Config{Level: "info"})
+		fmt.Fprintf(os.Stderr, "FATAL: logger.L() called before Init() — logger was not initialized\n")
+		os.Exit(1)
 	}
 	return globalLogger
 }

@@ -8,7 +8,13 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"ezyapper/internal/logger"
 )
+
+func init() {
+	logger.Init(logger.Config{Level: "info"})
+}
 
 // retryableEmbedder returns errors for the first failCount calls, then succeeds.
 type retryableEmbedder struct {
@@ -195,7 +201,10 @@ func TestConsolidationProcess_QdrantStoreError(t *testing.T) {
 	}
 
 	userID := "user-1"
-	profile := c.getOrCreateProfile(ctx, userID)
+	profile, err := c.getOrCreateProfile(ctx, userID)
+	if err != nil {
+		t.Fatalf("getOrCreateProfile failed: %v", err)
+	}
 	profile.Traits = []string{"friendly"}
 	profile.Facts = map[string]string{"name": "TestUser"}
 
