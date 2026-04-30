@@ -47,6 +47,10 @@ type fileConfig struct {
 	Discord *struct {
 		Token *string `yaml:"token"`
 	} `yaml:"discord"`
+	ToolTimeouts *struct {
+		SearchEmoteMs *int `yaml:"search_emote_ms"`
+		SendEmoteMs   *int `yaml:"send_emote_ms"`
+	} `yaml:"tool_timeouts"`
 }
 
 // Config holds the fully resolved configuration with defaults applied.
@@ -73,6 +77,8 @@ type Config struct {
 	EmoteMaxTokens              int
 	EmoteTemperature            float64
 	DiscordToken                string
+	SearchEmoteMs               int
+	SendEmoteMs                 int
 }
 
 func loadConfig(configPath string) (Config, error) {
@@ -199,6 +205,15 @@ func loadConfig(configPath string) (Config, error) {
 		}
 	}
 
+	if fileCfg.ToolTimeouts != nil {
+		if fileCfg.ToolTimeouts.SearchEmoteMs != nil {
+			cfg.SearchEmoteMs = *fileCfg.ToolTimeouts.SearchEmoteMs
+		}
+		if fileCfg.ToolTimeouts.SendEmoteMs != nil {
+			cfg.SendEmoteMs = *fileCfg.ToolTimeouts.SendEmoteMs
+		}
+	}
+
 	return cfg, nil
 }
 
@@ -235,5 +250,13 @@ func validateConfig(cfg *Config) error {
 	}
 
 	// Emote LLM config is optional — empty values gracefully disable.
+
+	if cfg.SearchEmoteMs <= 0 {
+		return fmt.Errorf("tool_timeouts.search_emote_ms is required and must be > 0")
+	}
+	if cfg.SendEmoteMs <= 0 {
+		return fmt.Errorf("tool_timeouts.send_emote_ms is required and must be > 0")
+	}
+
 	return nil
 }

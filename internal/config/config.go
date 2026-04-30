@@ -433,6 +433,9 @@ func validatePlugins(cfg *Config, errs *[]string) {
 		return
 	}
 	requireNonEmpty(cfg.Plugins.PluginsDir, "plugins.plugins_dir", errs)
+	if cfg.Plugins.DefaultToolTimeoutMs == 0 {
+		fmt.Fprintf(os.Stderr, "[config][WARNING] plugins.default_tool_timeout_ms is 0 — tool execution will fail unless per-tool timeouts are set in plugin config\n")
+	}
 }
 
 func validateBlacklist(cfg *Config, errs *[]string) {

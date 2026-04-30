@@ -10,9 +10,55 @@ import (
 
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/mem"
+	"gopkg.in/yaml.v3"
 )
 
-type SystemSpecPlugin struct{}
+type fileConfig struct {
+	ToolTimeouts *struct {
+		GetSystemSpecMs *int `yaml:"get_system_spec_ms"`
+	} `yaml:"tool_timeouts"`
+}
+
+type Config struct {
+	GetSystemSpecMs int
+}
+
+func loadConfig(configPath string) (Config, error) {
+	cfg := Config{
+		GetSystemSpecMs: 5000,
+	}
+
+	if strings.TrimSpace(configPath) == "" {
+		return cfg, nil
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return cfg, fmt.Errorf("failed to read config file %q: %w", configPath, err)
+	}
+
+	var fileCfg fileConfig
+	if err := yaml.Unmarshal(data, &fileCfg); err != nil {
+		return cfg, fmt.Errorf("failed to parse config file %q: %w", configPath, err)
+	}
+
+	if fileCfg.ToolTimeouts != nil && fileCfg.ToolTimeouts.GetSystemSpecMs != nil {
+		cfg.GetSystemSpecMs = *fileCfg.ToolTimeouts.GetSystemSpecMs
+	}
+
+	return cfg, nil
+}
+
+func validateConfig(cfg *Config) error {
+	if cfg.GetSystemSpecMs <= 0 {
+		return fmt.Errorf("tool_timeouts.get_system_spec_ms must be > 0, got %d", cfg.GetSystemSpecMs)
+	}
+	return nil
+}
+
+type SystemSpecPlugin struct {
+	config Config
+}
 
 func (p *SystemSpecPlugin) Info() (plugin.Info, error) {
 	return plugin.Info{
@@ -41,7 +87,7 @@ func (p *SystemSpecPlugin) ListTools() ([]plugin.ToolSpec, error) {
 		{
 			Name:        "get_system_spec",
 			Description: "Get CPU model, thread count, max frequency, and total memory",
-			TimeoutMs:   5000,
+			TimeoutMs:   p.config.GetSystemSpecMs,
 			Parameters: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -100,6 +146,19 @@ func (p *SystemSpecPlugin) ExecuteTool(name string, args map[string]interface{})
 
 func main() {
 	p := &SystemSpecPlugin{}
+
+	configPath := os.Getenv("EZYAPPER_PLUGIN_CONFIG")
+	cfg, err := loadConfig(configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[SYSTEMSPEC] Config error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := validateConfig(&cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "[SYSTEMSPEC] Config validation error: %v\n", err)
+		os.Exit(1)
+	}
+	p.config = cfg
+
 	if err := plugin.Serve(p); err != nil {
 		fmt.Fprintf(os.Stderr, "[SYSTEMSPEC] Error: %v\n", err)
 		os.Exit(1)

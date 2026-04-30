@@ -53,6 +53,10 @@ rewriter:
     # If the target TTS model does not support instructions, use: {"input":"..."}
     Do not output markdown or extra text.
 
+# Tool-level timeouts in milliseconds.
+tool_timeouts:
+  generate_tts_audio_ms: 60000
+
 # Optional extra headers (must not override Authorization).
 # headers:
 #   OpenAI-Organization: "org_xxx"

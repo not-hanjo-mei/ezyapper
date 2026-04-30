@@ -4,6 +4,10 @@
 # Option 1: IANA timezone (DST-aware in Go runtime)
 # timezone: "Asia/Shanghai"
 
+# Tool timeout overrides (in milliseconds)
+# tool_timeouts:
+#   get_current_datetime_ms: 5000
+
 # Option 2: Fixed offset timezone
 # timezone: "UTC+09"
 # utc_offset_hours: 9

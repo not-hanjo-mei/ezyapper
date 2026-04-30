@@ -20,6 +20,8 @@ func newTestPlugin(t *testing.T) *EmotePlugin {
 			AllowedFormats:     []string{"png", "jpg", "jpeg", "webp", "gif"},
 			RateLimitPerMinute: 100,
 			CooldownSeconds:    0,
+			SearchEmoteMs:      15000,
+			SendEmoteMs:        10000,
 		},
 		storage: NewStorage(tmpDir),
 	}

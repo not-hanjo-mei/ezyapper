@@ -1,0 +1,5 @@
+# SystemSpec Plugin Configuration
+# Tool execution timeouts in milliseconds
+
+tool_timeouts:
+  get_system_spec_ms: 5000

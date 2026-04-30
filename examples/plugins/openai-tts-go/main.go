@@ -41,6 +41,7 @@ type ttsConfig struct {
 	UploadMemoryThresholdBytes int
 	Rewriter                   ttsRewriterConfig
 	Headers                    map[string]string
+	GenerateTtsAudioMs         int
 }
 
 type ttsRewriterConfig struct {
@@ -67,8 +68,11 @@ type ttsConfigFile struct {
 	MaxTextChars               *int              `yaml:"max_text_chars"`
 	UploadMemoryThreshold      *string           `yaml:"upload_memory_threshold"`
 	UploadMemoryThresholdBytes *int              `yaml:"upload_memory_threshold_bytes"`
-	Rewriter                   ttsRewriterFile   `yaml:"rewriter"`
-	Headers                    map[string]string `yaml:"headers"`
+	Rewriter                   ttsRewriterFile         `yaml:"rewriter"`
+	Headers                    map[string]string       `yaml:"headers"`
+	ToolTimeouts               *struct {
+		GenerateTtsAudioMs *int `yaml:"generate_tts_audio_ms"`
+	} `yaml:"tool_timeouts"`
 }
 
 type ttsRewriterFile struct {
@@ -288,11 +292,19 @@ func loadConfig() (ttsConfig, error) {
 		errs = append(errs, "format must be one of: mp3, opus, aac, flac, wav, pcm")
 	}
 
+	if cfg.GenerateTtsAudioMs <= 0 {
+		errs = append(errs, "tool_timeouts.generate_tts_audio_ms is required and must be > 0")
+	}
+
 	for key := range cfg.Headers {
 		if strings.EqualFold(key, "Authorization") {
 			errs = append(errs, "headers must not override Authorization")
 			break
 		}
+	}
+
+	if raw.ToolTimeouts != nil && raw.ToolTimeouts.GenerateTtsAudioMs != nil {
+		cfg.GenerateTtsAudioMs = *raw.ToolTimeouts.GenerateTtsAudioMs
 	}
 
 	if cfg.Rewriter.Enabled {
@@ -552,7 +564,7 @@ func (p *openAITTSPlugin) ListTools() ([]plugin.ToolSpec, error) {
 				},
 				"required": []string{"text"},
 			},
-			TimeoutMs: 60000,
+			TimeoutMs: p.cfg.GenerateTtsAudioMs,
 		},
 	}, nil
 }

@@ -54,14 +54,12 @@ logging:
   enabled: true
   level: "info"  # debug, info, warn, error
 
+# Tool timeouts — per-tool execution timeout in milliseconds
+tool_timeouts:
+  search_emote_ms: 15000   # semantic emote search via LLM API  
+  send_emote_ms: 10000     # Discord CDN refresh + message send
+
 # Emote LLM — model used for semantic emote search
-#
-# Tool timeouts (declared in code via ToolSpec.TimeoutMs, NOT configurable here):
-#   search_emote — 15s (emote LLM API call via JSON-RPC)
-#   send_emote  — 10s (Discord CDN refresh)
-#
-# The main bot's operations.plugins.default_tool_timeout_ms provides a global
-# fallback when a tool doesn't declare its own timeout.
 emote:
   model: ""
   api_key: ""

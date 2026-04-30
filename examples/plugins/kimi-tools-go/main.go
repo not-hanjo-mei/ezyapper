@@ -24,6 +24,7 @@ type kimiConfig struct {
 	APIKey         string
 	TimeoutSeconds int
 	Formulas       []string
+	ToolTimeoutMs  int
 }
 
 type fileConfig struct {
@@ -31,6 +32,9 @@ type fileConfig struct {
 	APIKey         *string  `yaml:"api_key"`
 	TimeoutSeconds *int     `yaml:"timeout_seconds"`
 	Formulas       []string `yaml:"formulas"`
+	ToolTimeouts   *struct {
+		DefaultMs *int `yaml:"default_ms"`
+	} `yaml:"tool_timeouts"`
 }
 
 type formulaToolsResponse struct {
@@ -214,7 +218,7 @@ func (p *kimiToolsPlugin) fetchFormulaTools(ctx context.Context, formulaURI stri
 			Name:        t.Function.Name,
 			Description: strings.TrimSpace(t.Function.Description),
 			Parameters:  params,
-			TimeoutMs:   60000,
+			TimeoutMs:   p.cfg.ToolTimeoutMs,
 		})
 	}
 
@@ -403,6 +407,13 @@ func loadConfig() (kimiConfig, error) {
 		}
 	}
 
+	if raw.ToolTimeouts != nil && raw.ToolTimeouts.DefaultMs != nil {
+		cfg.ToolTimeoutMs = *raw.ToolTimeouts.DefaultMs
+	}
+	if cfg.ToolTimeoutMs <= 0 {
+		errs = append(errs, "tool_timeouts.default_ms is required and must be > 0")
+	}
+
 	if len(errs) > 0 {
 		return cfg, fmt.Errorf("configuration errors in %s: %s", path, strings.Join(errs, "; "))
 	}
@@ -414,6 +425,11 @@ func main() {
 	cfg, err := loadConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[KIMI-TOOLS] Failed to load configuration: %v\n", err)
+		os.Exit(1)
+	}
+
+	if cfg.ToolTimeoutMs <= 0 {
+		fmt.Fprintf(os.Stderr, "[KIMI-TOOLS] tool_timeouts.default_ms is required and must be > 0\n")
 		os.Exit(1)
 	}
 

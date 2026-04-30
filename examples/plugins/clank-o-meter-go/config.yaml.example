@@ -1,0 +1,2 @@
+tool_timeouts:
+  get_clank_o_meter_ms: 5000

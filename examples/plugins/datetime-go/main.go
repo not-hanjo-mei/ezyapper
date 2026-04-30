@@ -15,14 +15,18 @@ import (
 )
 
 type DateTimeConfig struct {
-	Location      *time.Location
-	TimezoneLabel string
+	Location             *time.Location
+	TimezoneLabel        string
+	GetCurrentDatetimeMs int
 }
 
 type dateTimeConfigFile struct {
 	Timezone         string `yaml:"timezone"`
 	UTCOffsetHours   *int   `yaml:"utc_offset_hours"`
 	UTCOffsetMinutes *int   `yaml:"utc_offset_minutes"`
+	ToolTimeouts     *struct {
+		GetCurrentDatetimeMs *int `yaml:"get_current_datetime_ms"`
+	} `yaml:"tool_timeouts"`
 }
 
 type DateTimePlugin struct {
@@ -36,8 +40,9 @@ func loadDateTimeConfig(configPath string) (DateTimeConfig, error) {
 	}
 
 	config := DateTimeConfig{
-		Location:      time.Local,
-		TimezoneLabel: zoneName,
+		Location:             time.Local,
+		TimezoneLabel:        zoneName,
+		GetCurrentDatetimeMs: 5000,
 	}
 
 	if strings.TrimSpace(configPath) == "" {
@@ -59,6 +64,14 @@ func loadDateTimeConfig(configPath string) (DateTimeConfig, error) {
 	var fileConfig dateTimeConfigFile
 	if err := yaml.Unmarshal(data, &fileConfig); err != nil {
 		return config, fmt.Errorf("failed to parse config file %q: %w", configPath, err)
+	}
+
+	if fileConfig.ToolTimeouts != nil && fileConfig.ToolTimeouts.GetCurrentDatetimeMs != nil {
+		config.GetCurrentDatetimeMs = *fileConfig.ToolTimeouts.GetCurrentDatetimeMs
+	}
+
+	if config.GetCurrentDatetimeMs <= 0 {
+		return DateTimeConfig{}, fmt.Errorf("tool_timeouts.get_current_datetime_ms must be > 0, got %d", config.GetCurrentDatetimeMs)
 	}
 
 	if fileConfig.UTCOffsetMinutes != nil || fileConfig.UTCOffsetHours != nil {
@@ -130,7 +143,7 @@ func (p *DateTimePlugin) ListTools() ([]plugin.ToolSpec, error) {
 		{
 			Name:        "get_current_datetime",
 			Description: "Get the current date and time",
-			TimeoutMs:   5000,
+			TimeoutMs:   p.config.GetCurrentDatetimeMs,
 			Parameters: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},

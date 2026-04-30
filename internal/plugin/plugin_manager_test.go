@@ -525,15 +525,15 @@ func TestExecuteToolTimeout_ConfigWins(t *testing.T) {
 	}
 }
 
-func TestExecuteToolTimeout_Fallback(t *testing.T) {
+func TestExecuteToolTimeout_NoFallbackError(t *testing.T) {
 	pm := newTimeoutTestManager(t, 0, 100*time.Millisecond, 0)
 
-	result, err := pm.ExecuteTool("mock-plugin", "mock-tool", map[string]interface{}{})
-	if err != nil {
-		t.Fatalf("expected success with fallback timeout, got error: %v", err)
+	_, err := pm.ExecuteTool("mock-plugin", "mock-tool", map[string]interface{}{})
+	if err == nil {
+		t.Fatal("expected error when no tool timeout or config timeout is set, got nil")
 	}
-	if result != "done" {
-		t.Fatalf("expected result 'done', got %q", result)
+	if !strings.Contains(err.Error(), "no timeout configured") {
+		t.Fatalf("expected error to contain 'no timeout configured', got: %v", err)
 	}
 }
 
@@ -568,14 +568,14 @@ func TestManagerDefaultToolTimeoutMsZero(t *testing.T) {
 	}
 }
 
-func TestToolSpecTimeoutMsZeroRoundtrip(t *testing.T) {
+func TestToolSpecTimeoutMsZeroRequiresConfig(t *testing.T) {
 	pm := newTimeoutTestManager(t, 0, 50*time.Millisecond, 0)
 
-	result, err := pm.ExecuteTool("mock-plugin", "mock-tool", map[string]interface{}{})
-	if err != nil {
-		t.Fatalf("expected success with zero timeout_ms, got: %v", err)
+	_, err := pm.ExecuteTool("mock-plugin", "mock-tool", map[string]interface{}{})
+	if err == nil {
+		t.Fatal("expected error when ToolSpec.TimeoutMs is 0 and no config fallback, got nil")
 	}
-	if result != "done" {
-		t.Fatalf("expected result 'done', got %q", result)
+	if !strings.Contains(err.Error(), "no timeout configured") {
+		t.Fatalf("expected error to contain 'no timeout configured', got: %v", err)
 	}
 }
