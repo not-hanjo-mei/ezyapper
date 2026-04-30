@@ -61,7 +61,7 @@ func main() {
 	logger.Info("Memory service initialized")
 
 	// Initialize plugin manager
-	pluginManager := plugin.NewManager()
+	pluginManager := plugin.NewManager(cfg.Plugins.DefaultToolTimeoutMs)
 
 	// Create shared config store (copy-on-write via atomic.Value)
 	cfgStore := &atomic.Value{}

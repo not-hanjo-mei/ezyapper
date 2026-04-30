@@ -224,8 +224,9 @@ type WhitelistConfig struct {
 }
 
 type PluginsConfig struct {
-	Enabled    bool   `mapstructure:"enabled" yaml:"enabled"`
-	PluginsDir string `mapstructure:"plugins_dir" yaml:"plugins_dir"`
+	Enabled              bool   `mapstructure:"enabled" yaml:"enabled"`
+	PluginsDir           string `mapstructure:"plugins_dir" yaml:"plugins_dir"`
+	DefaultToolTimeoutMs int    `mapstructure:"default_tool_timeout_ms" yaml:"default_tool_timeout_ms"`
 }
 
 type MCPConfig struct {
@@ -425,6 +426,9 @@ func validateWeb(cfg *Config, errs *[]string) {
 }
 
 func validatePlugins(cfg *Config, errs *[]string) {
+	if cfg.Plugins.DefaultToolTimeoutMs < 0 {
+		cfg.Plugins.DefaultToolTimeoutMs = 0
+	}
 	if !cfg.Plugins.Enabled {
 		return
 	}

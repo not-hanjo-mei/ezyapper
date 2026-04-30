@@ -56,7 +56,7 @@ func TestManagerHelperProcess(t *testing.T) {
 }
 
 func TestEnablePluginAlreadyEnabled(t *testing.T) {
-	pm := NewManager()
+	pm := NewManager(0)
 	pm.plugins["demo"] = &Client{Name: "demo"}
 
 	if err := pm.EnablePlugin("demo"); err != nil {
@@ -65,7 +65,7 @@ func TestEnablePluginAlreadyEnabled(t *testing.T) {
 }
 
 func TestEnablePluginNotFound(t *testing.T) {
-	pm := NewManager()
+	pm := NewManager(0)
 
 	err := pm.EnablePlugin("missing")
 	if err == nil {
@@ -77,7 +77,7 @@ func TestEnablePluginNotFound(t *testing.T) {
 }
 
 func TestEnablePluginLoadFailureFromDisabled(t *testing.T) {
-	pm := NewManager()
+	pm := NewManager(0)
 	missingPath := filepath.Join(t.TempDir(), "missing-plugin")
 	pm.disabled["demo"] = disabledPlugin{
 		Info: Info{Name: "demo"},
@@ -94,7 +94,7 @@ func TestEnablePluginLoadFailureFromDisabled(t *testing.T) {
 }
 
 func TestDisablePluginNotFound(t *testing.T) {
-	pm := NewManager()
+	pm := NewManager(0)
 
 	err := pm.DisablePlugin("missing")
 	if err == nil {
@@ -106,7 +106,7 @@ func TestDisablePluginNotFound(t *testing.T) {
 }
 
 func TestDisablePluginMovesToDisabledRegistry(t *testing.T) {
-	pm := NewManager()
+	pm := NewManager(0)
 	pm.plugins["demo"] = &Client{
 		Name:      "demo",
 		Info:      Info{Name: "demo", Version: "1.0.0"},
@@ -136,7 +136,7 @@ func TestDisablePluginMovesToDisabledRegistry(t *testing.T) {
 }
 
 func TestShutdownSkipsCommandRuntimePlugins(t *testing.T) {
-	pm := NewManager()
+	pm := NewManager(0)
 	pm.plugins["command-plugin"] = &Client{
 		Name:    "command-plugin",
 		Info:    Info{Name: "command-plugin", Version: "1.0.0"},
@@ -340,7 +340,7 @@ func TestLoadPluginsFromDirCommandRuntimeWithoutLocalExecutable(t *testing.T) {
 		t.Fatalf("failed to write manifest: %v", err)
 	}
 
-	pm := NewManager()
+	pm := NewManager(0)
 	if err := pm.LoadPluginsFromDir(pluginsRoot); err != nil {
 		t.Fatalf("LoadPluginsFromDir returned error: %v", err)
 	}
@@ -371,5 +371,40 @@ func TestLoadPluginsFromDirCommandRuntimeWithoutLocalExecutable(t *testing.T) {
 	}
 	if strings.TrimSpace(envOutput) != "ok" {
 		t.Fatalf("unexpected check_env output: %q", envOutput)
+	}
+}
+
+func TestValidateToolSpec_Negative(t *testing.T) {
+	err := validateToolSpec(&ToolSpec{Name: "test", TimeoutMs: -1})
+	if err == nil {
+		t.Fatal("expected error for negative timeout_ms")
+	}
+	if !strings.Contains(err.Error(), "test") || !strings.Contains(err.Error(), "cannot be negative") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+func TestValidateToolSpec_MaxCap(t *testing.T) {
+	ts := &ToolSpec{Name: "test", TimeoutMs: 500000}
+	err := validateToolSpec(ts)
+	if err != nil {
+		t.Fatalf("expected no error for clamped timeout_ms, got %v", err)
+	}
+	if ts.TimeoutMs != 300000 {
+		t.Fatalf("expected timeout_ms clamped to 300000, got %d", ts.TimeoutMs)
+	}
+}
+
+func TestValidateToolSpec_Zero(t *testing.T) {
+	err := validateToolSpec(&ToolSpec{Name: "test", TimeoutMs: 0})
+	if err != nil {
+		t.Fatalf("expected no error for zero timeout_ms (use default), got %v", err)
+	}
+}
+
+func TestValidateToolSpec_OK(t *testing.T) {
+	err := validateToolSpec(&ToolSpec{Name: "test", TimeoutMs: 15000})
+	if err != nil {
+		t.Fatalf("expected no error for valid timeout_ms, got %v", err)
 	}
 }

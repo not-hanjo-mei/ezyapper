@@ -46,6 +46,21 @@ type ToolSpec struct {
 	Name        string                 `json:"name"`
 	Description string                 `json:"description"`
 	Parameters  map[string]interface{} `json:"parameters"`
+	TimeoutMs   int                    `json:"timeout_ms,omitempty"`
+}
+
+// validateToolSpec validates and normalizes a ToolSpec's TimeoutMs field.
+// Returns an error if TimeoutMs is negative. Clamps values > 300000 to 300000 with a warning.
+// A value of 0 means "use global default" and is accepted.
+func validateToolSpec(ts *ToolSpec) error {
+	if ts.TimeoutMs < 0 {
+		return fmt.Errorf("tool %q: timeout_ms cannot be negative", ts.Name)
+	}
+	if ts.TimeoutMs > 300000 {
+		logger.Warnf("tool %q: timeout_ms %d exceeds maximum 300000, clamping to 300000", ts.Name, ts.TimeoutMs)
+		ts.TimeoutMs = 300000
+	}
+	return nil
 }
 
 type pluginManifest struct {
@@ -209,16 +224,18 @@ type pluginLoadTarget struct {
 
 // Manager manages all plugins
 type Manager struct {
-	plugins  map[string]*Client
-	disabled map[string]disabledPlugin
-	mu       sync.RWMutex
+	plugins              map[string]*Client
+	disabled             map[string]disabledPlugin
+	mu                   sync.RWMutex
+	defaultToolTimeoutMs int
 }
 
 // NewManager creates a new plugin manager
-func NewManager() *Manager {
+func NewManager(defaultToolTimeoutMs int) *Manager {
 	return &Manager{
-		plugins:  make(map[string]*Client),
-		disabled: make(map[string]disabledPlugin),
+		plugins:              make(map[string]*Client),
+		disabled:             make(map[string]disabledPlugin),
+		defaultToolTimeoutMs: defaultToolTimeoutMs,
 	}
 }
 
@@ -354,6 +371,14 @@ func (pm *Manager) loadRPCPlugin(pluginPath string, pluginConfigDir string) erro
 		pluginTools = []ToolSpec{}
 	}
 
+	for i := range pluginTools {
+		if err := validateToolSpec(&pluginTools[i]); err != nil {
+			jsonClient.Close()
+			cmd.Process.Kill()
+			return fmt.Errorf("invalid tool %q in plugin %s: %w", pluginTools[i].Name, info.Name, err)
+		}
+	}
+
 	logger.Infof("Plugin loaded: %s v%s by %s (runtime: %s)", info.Name, info.Version, info.Author, pluginRuntimeJSONRPC)
 
 	pm.mu.Lock()
@@ -450,6 +475,12 @@ func (pm *Manager) loadCommandPlugin(
 			Description: toolDescription,
 			Parameters:  toolParameters,
 		})
+	}
+
+	for i := range tools {
+		if err := validateToolSpec(&tools[i]); err != nil {
+			return fmt.Errorf("invalid tool %q in plugin %s: %w", tools[i].Name, pluginName, err)
+		}
 	}
 
 	info := Info{

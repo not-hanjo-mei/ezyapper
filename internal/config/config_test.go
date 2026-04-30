@@ -788,6 +788,245 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 		t.Fatalf("expected decision.api_key validation error, got: %v", err)
 	}
 }
+func TestPluginsConfig_DefaultToolTimeoutMs_ParsesCorrectly(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	config := `schema_version: 3
+core:
+  discord:
+    token: "test-token"
+    bot_name: "TestBot"
+    reply_percentage: 0.15
+    cooldown_seconds: 5
+    max_responses_per_minute: 10
+  ai:
+    api_base_url: "https://api.openai.com/v1"
+    api_key: "test-key"
+    model: "gpt-4o-mini"
+    vision_model: "gpt-4o"
+    max_tokens: 1024
+    temperature: 0.8
+    retry_count: 1
+    timeout: 10
+    system_prompt: "test"
+    vision:
+      mode: "text_only"
+      max_images: 1
+memory_pipeline:
+  embedding:
+    model: "text-embedding-3-small"
+    retry_count: 1
+    timeout: 10
+  memory:
+    consolidation_interval: 50
+    short_term_limit: 20
+    retrieval:
+      top_k: 5
+      min_score: 0.75
+    consolidation:
+      enabled: false
+      max_messages: 20
+      system_prompt: "test"
+  qdrant:
+    host: "localhost"
+    port: 6334
+    vector_size: 1536
+access_control:
+  blacklist:
+    users: []
+    guilds: []
+    channels: []
+operations:
+  web:
+    port: 8080
+    username: "admin"
+    password: "test"
+    enabled: true
+  logging:
+    level: "info"
+    file: "logs/test.log"
+    max_size: 100
+    max_backups: 3
+    max_age: 30
+  plugins:
+    enabled: true
+    plugins_dir: "plugins"
+    default_tool_timeout_ms: 30000
+  mcp:
+    enabled: false
+    servers: []
+`
+	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Expected valid config, got error: %v", err)
+	}
+	if cfg.Plugins.DefaultToolTimeoutMs != 30000 {
+		t.Errorf("Expected DefaultToolTimeoutMs=30000, got %d", cfg.Plugins.DefaultToolTimeoutMs)
+	}
+}
+
+func TestPluginsConfig_DefaultToolTimeoutMs_OmitsDefaultsToZero(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	config := `schema_version: 3
+core:
+  discord:
+    token: "test-token"
+    bot_name: "TestBot"
+    reply_percentage: 0.15
+    cooldown_seconds: 5
+    max_responses_per_minute: 10
+  ai:
+    api_base_url: "https://api.openai.com/v1"
+    api_key: "test-key"
+    model: "gpt-4o-mini"
+    vision_model: "gpt-4o"
+    max_tokens: 1024
+    temperature: 0.8
+    retry_count: 1
+    timeout: 10
+    system_prompt: "test"
+    vision:
+      mode: "text_only"
+      max_images: 1
+memory_pipeline:
+  embedding:
+    model: "text-embedding-3-small"
+    retry_count: 1
+    timeout: 10
+  memory:
+    consolidation_interval: 50
+    short_term_limit: 20
+    retrieval:
+      top_k: 5
+      min_score: 0.75
+    consolidation:
+      enabled: false
+      max_messages: 20
+      system_prompt: "test"
+  qdrant:
+    host: "localhost"
+    port: 6334
+    vector_size: 1536
+access_control:
+  blacklist:
+    users: []
+    guilds: []
+    channels: []
+operations:
+  web:
+    port: 8080
+    username: "admin"
+    password: "test"
+    enabled: true
+  logging:
+    level: "info"
+    file: "logs/test.log"
+    max_size: 100
+    max_backups: 3
+    max_age: 30
+  plugins:
+    enabled: true
+    plugins_dir: "plugins"
+  mcp:
+    enabled: false
+    servers: []
+`
+	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Expected valid config, got error: %v", err)
+	}
+	if cfg.Plugins.DefaultToolTimeoutMs != 0 {
+		t.Errorf("Expected DefaultToolTimeoutMs=0 when omitted, got %d", cfg.Plugins.DefaultToolTimeoutMs)
+	}
+}
+
+func TestPluginsConfig_DefaultToolTimeoutMs_NegativeClampedToZero(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	config := `schema_version: 3
+core:
+  discord:
+    token: "test-token"
+    bot_name: "TestBot"
+    reply_percentage: 0.15
+    cooldown_seconds: 5
+    max_responses_per_minute: 10
+  ai:
+    api_base_url: "https://api.openai.com/v1"
+    api_key: "test-key"
+    model: "gpt-4o-mini"
+    vision_model: "gpt-4o"
+    max_tokens: 1024
+    temperature: 0.8
+    retry_count: 1
+    timeout: 10
+    system_prompt: "test"
+    vision:
+      mode: "text_only"
+      max_images: 1
+memory_pipeline:
+  embedding:
+    model: "text-embedding-3-small"
+    retry_count: 1
+    timeout: 10
+  memory:
+    consolidation_interval: 50
+    short_term_limit: 20
+    retrieval:
+      top_k: 5
+      min_score: 0.75
+    consolidation:
+      enabled: false
+      max_messages: 20
+      system_prompt: "test"
+  qdrant:
+    host: "localhost"
+    port: 6334
+    vector_size: 1536
+access_control:
+  blacklist:
+    users: []
+    guilds: []
+    channels: []
+operations:
+  web:
+    port: 8080
+    username: "admin"
+    password: "test"
+    enabled: true
+  logging:
+    level: "info"
+    file: "logs/test.log"
+    max_size: 100
+    max_backups: 3
+    max_age: 30
+  plugins:
+    enabled: true
+    plugins_dir: "plugins"
+    default_tool_timeout_ms: -1
+  mcp:
+    enabled: false
+    servers: []
+`
+	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Expected valid config, got error: %v", err)
+	}
+	if cfg.Plugins.DefaultToolTimeoutMs != 0 {
+		t.Errorf("Expected DefaultToolTimeoutMs=0 after clamping negative value, got %d", cfg.Plugins.DefaultToolTimeoutMs)
+	}
+}
+
 func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1},
