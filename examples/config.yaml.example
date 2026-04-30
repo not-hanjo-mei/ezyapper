@@ -331,4 +331,13 @@ operations:
     #   - name: filesystem
     #     type: stdio
     #     command: npx
-    #     args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/data"]
+    # args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/data"]
+
+# Emote LLM configuration (for examples/plugins/emote-go plugin)
+# emote:
+#   model: ""
+#   api_key: ""
+#   api_base_url: ""
+#   max_tokens: 1024     # thinking models need more tokens
+#   temperature: 0.1     # low for deterministic matching
+

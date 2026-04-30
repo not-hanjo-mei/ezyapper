@@ -38,9 +38,11 @@ type fileConfig struct {
 		Level   *string `yaml:"level"`
 	} `yaml:"logging"`
 	Emote *struct {
-		Model      *string `yaml:"model"`
-		ApiKey     *string `yaml:"api_key"`
-		ApiBaseURL *string `yaml:"api_base_url"`
+		Model       *string  `yaml:"model"`
+		ApiKey      *string  `yaml:"api_key"`
+		ApiBaseURL  *string  `yaml:"api_base_url"`
+		MaxTokens   *int     `yaml:"max_tokens"`
+		Temperature *float64 `yaml:"temperature"`
 	} `yaml:"emote"`
 	Discord *struct {
 		Token *string `yaml:"token"`
@@ -68,6 +70,8 @@ type Config struct {
 	EmoteModel                   string
 	EmoteApiKey                  string
 	EmoteApiBaseURL              string
+	EmoteMaxTokens               int
+	EmoteTemperature             float64
 	DiscordToken                 string
 }
 
@@ -86,6 +90,8 @@ func loadConfig(configPath string) (Config, error) {
 		LoggingEnabled:               true,
 		LoggingLevel:                 "info",
 		EmoteApiBaseURL:              "https://asus.omgpizzatnt.top:3000/v1",
+		EmoteMaxTokens:               1024,
+		EmoteTemperature:             0.1,
 	}
 
 	if strings.TrimSpace(configPath) == "" {
@@ -178,6 +184,12 @@ func loadConfig(configPath string) (Config, error) {
 		}
 		if fileCfg.Emote.ApiBaseURL != nil {
 			cfg.EmoteApiBaseURL = *fileCfg.Emote.ApiBaseURL
+		}
+		if fileCfg.Emote.MaxTokens != nil {
+			cfg.EmoteMaxTokens = *fileCfg.Emote.MaxTokens
+		}
+		if fileCfg.Emote.Temperature != nil {
+			cfg.EmoteTemperature = *fileCfg.Emote.Temperature
 		}
 	}
 

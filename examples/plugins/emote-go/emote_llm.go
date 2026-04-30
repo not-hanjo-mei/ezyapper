@@ -21,21 +21,25 @@ type emoteLLMResponse struct {
 }
 
 type EmoteLLMClient struct {
-	model      string
-	apiKey     string
-	baseURL    string
-	httpClient *http.Client
+	model       string
+	apiKey      string
+	baseURL     string
+	maxTokens   int
+	temperature float64
+	httpClient  *http.Client
 }
 
-func NewEmoteLLMClient(model, apiKey, baseURL string, timeout time.Duration) *EmoteLLMClient {
+func NewEmoteLLMClient(model, apiKey, baseURL string, maxTokens int, temperature float64, timeout time.Duration) *EmoteLLMClient {
 	if timeout == 0 {
 		timeout = 15 * time.Second
 	}
 	return &EmoteLLMClient{
-		model:      model,
-		apiKey:     apiKey,
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		httpClient: &http.Client{Timeout: timeout},
+		model:       model,
+		apiKey:      apiKey,
+		baseURL:     strings.TrimRight(baseURL, "/"),
+		maxTokens:   maxTokens,
+		temperature: temperature,
+		httpClient:  &http.Client{Timeout: timeout},
 	}
 }
 
@@ -50,8 +54,8 @@ func (c *EmoteLLMClient) Match(query string, emotes []EmoteEntry) ([]MatchResult
 			{"role": "system", "content": buildSystemPrompt()},
 			{"role": "user", "content": buildUserPrompt(query, emotes)},
 		},
-		"max_tokens":  500,
-		"temperature": 0.1,
+		"max_tokens":  c.maxTokens,
+		"temperature": c.temperature,
 	}
 
 	body, _ := json.Marshal(reqBody)

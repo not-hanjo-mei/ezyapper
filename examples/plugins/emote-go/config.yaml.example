@@ -59,6 +59,8 @@ emote:
   model: ""
   api_key: ""
   api_base_url: ""
+  max_tokens: 1024     # thinking models need more tokens
+  temperature: 0.1     # low for deterministic matching
 
 # Discord — token for independent message sending (same as main bot token)
 discord:

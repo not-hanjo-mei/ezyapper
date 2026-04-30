@@ -337,6 +337,8 @@ func main() {
 		config.EmoteModel,
 		config.EmoteApiKey,
 		config.EmoteApiBaseURL,
+		config.EmoteMaxTokens,
+		config.EmoteTemperature,
 		15*time.Second,
 	)
 	p.cdnRefresh = NewCDNRefreshClient(config.DiscordToken)
