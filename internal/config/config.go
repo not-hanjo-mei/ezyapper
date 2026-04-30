@@ -150,7 +150,6 @@ type DiscordConfig struct {
 	ConsolidationTimeoutSec    int             `mapstructure:"consolidation_timeout_sec" yaml:"consolidation_timeout_sec"`
 	TypingIndicatorIntervalSec int             `mapstructure:"typing_indicator_interval_sec" yaml:"typing_indicator_interval_sec"`
 	LongResponseDelayMs        int             `mapstructure:"long_response_delay_ms" yaml:"long_response_delay_ms"`
-	ChunkSplitDelaySec         int             `mapstructure:"chunk_split_delay_sec" yaml:"chunk_split_delay_sec"`
 	ReplyTruncationLength      int             `mapstructure:"reply_truncation_length" yaml:"reply_truncation_length"`
 	ImageCacheTTLMin           int             `mapstructure:"image_cache_ttl_min" yaml:"image_cache_ttl_min"`
 	ImageCacheMaxEntries       int             `mapstructure:"image_cache_max_entries" yaml:"image_cache_max_entries"`
@@ -433,7 +432,6 @@ func validateDiscord(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Discord.ConsolidationTimeoutSec, "discord.consolidation_timeout_sec", errs)
 	requirePositive(cfg.Discord.TypingIndicatorIntervalSec, "discord.typing_indicator_interval_sec", errs)
 	requirePositive(cfg.Discord.LongResponseDelayMs, "discord.long_response_delay_ms", errs)
-	requirePositive(cfg.Discord.ChunkSplitDelaySec, "discord.chunk_split_delay_sec", errs)
 	requirePositive(cfg.Discord.ReplyTruncationLength, "discord.reply_truncation_length", errs)
 	requirePositive(cfg.Discord.ImageCacheTTLMin, "discord.image_cache_ttl_min", errs)
 	requirePositive(cfg.Discord.ImageCacheMaxEntries, "discord.image_cache_max_entries", errs)

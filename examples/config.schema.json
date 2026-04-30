@@ -16,7 +16,7 @@
       "properties": {
         "discord": {
           "type": "object",
-          "required": ["token", "bot_name", "own_bot_id", "reply_percentage", "cooldown_seconds", "max_responses_per_minute"],
+          "required": ["token", "bot_name", "own_bot_id", "reply_percentage", "cooldown_seconds", "max_responses_per_minute", "rate_limit", "consolidation_timeout_sec", "typing_indicator_interval_sec", "long_response_delay_ms", "reply_truncation_length", "image_cache_ttl_min", "image_cache_max_entries"],
           "additionalProperties": false,
           "properties": {
             "token":                    { "type": "string" },
@@ -25,12 +25,26 @@
             "reply_percentage":         { "type": "number", "minimum": 0, "maximum": 1 },
             "cooldown_seconds":         { "type": "integer", "minimum": 1 },
             "max_responses_per_minute": { "type": "integer", "minimum": 1 },
-            "reply_to_bots":            { "type": "boolean" }
+            "reply_to_bots":            { "type": "boolean" },
+            "rate_limit": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["reset_period_seconds"],
+              "properties": {
+                "reset_period_seconds": { "type": "integer", "minimum": 1 }
+              }
+            },
+            "consolidation_timeout_sec":     { "type": "integer", "minimum": 1 },
+            "typing_indicator_interval_sec": { "type": "integer", "minimum": 1 },
+            "long_response_delay_ms":        { "type": "integer", "minimum": 1 },
+            "reply_truncation_length":       { "type": "integer", "minimum": 1 },
+            "image_cache_ttl_min":           { "type": "integer", "minimum": 1 },
+            "image_cache_max_entries":       { "type": "integer", "minimum": 1 }
           }
         },
         "ai": {
           "type": "object",
-          "required": ["api_base_url", "api_key", "model", "vision_model", "max_tokens", "temperature", "system_prompt", "vision"],
+          "required": ["api_base_url", "api_key", "model", "vision_model", "max_tokens", "temperature", "system_prompt", "vision", "http_timeout_sec", "max_tool_iterations", "max_image_bytes"],
           "additionalProperties": false,
           "properties": {
             "api_base_url":   { "type": "string" },
@@ -42,6 +56,11 @@
             "temperature":    { "type": "number", "minimum": 0, "maximum": 2 },
             "retry_count":    { "type": "integer", "minimum": 1 },
             "timeout":        { "type": "integer", "minimum": 1 },
+            "http_timeout_sec":           { "type": "integer", "minimum": 1 },
+            "max_tool_iterations":        { "type": "integer", "minimum": 1 },
+            "max_image_bytes":            { "type": "integer", "minimum": 1 },
+            "user_agent":                 { "type": "string" },
+            "require_image_content_type": { "type": "boolean" },
             "system_prompt":  { "type": "string" },
             "extra_params":   { "type": "object" },
             "vision": {
@@ -76,6 +95,7 @@
             "temperature":   { "type": "number", "minimum": 0, "maximum": 2 },
             "retry_count":   { "type": "integer", "minimum": 0 },
             "timeout":       { "type": "integer", "minimum": 1 },
+            "http_timeout_sec": { "type": "integer", "minimum": 1 },
             "system_prompt": { "type": "string" },
             "extra_params":  { "type": "object" }
           }
@@ -103,18 +123,24 @@
         },
         "memory": {
           "type": "object",
-          "required": ["consolidation_interval", "short_term_limit", "retrieval", "consolidation"],
+          "required": ["consolidation_interval", "short_term_limit", "max_paginated_limit", "retry_base_delay_ms", "retry_max_delay_ms", "max_retries", "retrieval", "consolidation"],
           "additionalProperties": false,
           "properties": {
             "consolidation_interval": { "type": "integer", "minimum": 1 },
             "short_term_limit":       { "type": "integer", "minimum": 1, "maximum": 500 },
+            "max_paginated_limit":    { "type": "integer", "minimum": 1 },
+            "retry_base_delay_ms":    { "type": "integer", "minimum": 1 },
+            "retry_max_delay_ms":     { "type": "integer", "minimum": 1 },
+            "max_retries":            { "type": "integer", "minimum": 1 },
             "retrieval": {
               "type": "object",
-              "required": ["top_k", "min_score"],
+              "required": ["top_k", "min_score", "default_top_k", "default_min_score"],
               "additionalProperties": false,
               "properties": {
                 "top_k":    { "type": "integer", "minimum": 0 },
-                "min_score": { "type": "number", "minimum": 0, "maximum": 1 }
+                "min_score": { "type": "number", "minimum": 0, "maximum": 1 },
+                "default_top_k":    { "type": "integer", "minimum": 1 },
+                "default_min_score": { "type": "number", "minimum": 0.01, "maximum": 1 }
               }
             },
             "consolidation": {
@@ -139,7 +165,9 @@
                 "vision_retry_count":  { "type": "integer", "minimum": 0 },
                 "vision_timeout":      { "type": "integer", "minimum": 1 },
                 "system_prompt":       { "type": "string" },
-                "extra_params":        { "type": "object" }
+                "extra_params":        { "type": "object" },
+                "memory_search_limit": { "type": "integer", "minimum": 1 },
+                "worker_queue_size":   { "type": "integer", "minimum": 1 }
               }
             }
           }
@@ -185,18 +213,26 @@
 
     "operations": {
       "type": "object",
-      "required": ["web", "logging", "plugins"],
-      "additionalProperties": false,
-      "properties": {
+          "required": ["web", "logging", "plugins", "operations"],
+          "additionalProperties": false,
+          "properties": {
         "web": {
           "type": "object",
-          "required": ["port", "username", "password", "enabled"],
+          "required": ["port", "username", "password", "enabled", "memories_page_limit", "session_ttl_min", "session_cleanup_interval_min", "log_default_lines", "log_max_lines", "log_max_read_bytes"],
           "additionalProperties": false,
           "properties": {
             "port":     { "type": "integer", "minimum": 1, "maximum": 65535 },
             "username": { "type": "string" },
             "password": { "type": "string" },
-            "enabled":  { "type": "boolean" }
+            "enabled":  { "type": "boolean" },
+            "memories_page_limit":          { "type": "integer", "minimum": 1 },
+            "content_truncation_length":    { "type": "integer", "minimum": 1 },
+            "session_ttl_min":              { "type": "integer", "minimum": 1 },
+            "session_cleanup_interval_min": { "type": "integer", "minimum": 1 },
+            "stats_query_timeout_sec":      { "type": "integer", "minimum": 1 },
+            "log_default_lines":            { "type": "integer", "minimum": 1 },
+            "log_max_lines":                { "type": "integer", "minimum": 1 },
+            "log_max_read_bytes":           { "type": "integer", "minimum": 1 }
           }
         },
         "logging": {
@@ -213,11 +249,18 @@
         },
         "plugins": {
           "type": "object",
-          "required": ["enabled", "plugins_dir"],
+          "required": ["enabled", "plugins_dir", "default_tool_timeout_ms", "startup_timeout_sec", "rpc_timeout_sec", "before_send_timeout_sec", "command_timeout_sec", "shutdown_timeout_sec", "disable_timeout_sec"],
           "additionalProperties": false,
           "properties": {
             "enabled":     { "type": "boolean" },
-            "plugins_dir": { "type": "string" }
+            "plugins_dir": { "type": "string" },
+            "default_tool_timeout_ms":  { "type": "integer", "minimum": 0 },
+            "startup_timeout_sec":      { "type": "integer", "minimum": 1 },
+            "rpc_timeout_sec":          { "type": "integer", "minimum": 1 },
+            "before_send_timeout_sec":  { "type": "integer", "minimum": 1 },
+            "command_timeout_sec":      { "type": "integer", "minimum": 1 },
+            "shutdown_timeout_sec":     { "type": "integer", "minimum": 1 },
+            "disable_timeout_sec":      { "type": "integer", "minimum": 1 }
           }
         },
         "mcp": {
@@ -241,6 +284,15 @@
                 }
               }
             }
+          }
+        },
+        "operations": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["shutdown_timeout_sec", "cleanup_interval_min"],
+          "properties": {
+            "shutdown_timeout_sec": { "type": "integer", "minimum": 1 },
+            "cleanup_interval_min": { "type": "integer", "minimum": 1 }
           }
         }
       }

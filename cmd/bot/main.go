@@ -284,6 +284,9 @@ func buildConsolidationVisionConfig(cfg *config.Config, baseConfig *config.AICon
 		visionAIConfig.Timeout = cfg.Memory.Consolidation.VisionTimeout
 	}
 
+	// VisionBase64 is a boolean override that is always applied (not zero-dependent)
+	visionAIConfig.VisionBase64 = cfg.Memory.Consolidation.VisionBase64
+
 	// Copy extra params from consolidation vision config (if any specific ones are set)
 	// Note: VisionConfig.ExtraParams is applied in VisionDescriber, not here
 

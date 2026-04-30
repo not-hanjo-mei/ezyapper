@@ -217,15 +217,6 @@ memory_pipeline:
     # Pagination limit for fetching older messages.
     max_paginated_limit: 100
 
-    # Max items in the embedding result cache.
-    embedding_cache_max_size: 500
-
-    # TTL for cached embedding results (minutes).
-    embedding_cache_ttl_min: 30
-
-    # Interval for evicting expired cache entries (minutes).
-    eviction_interval_min: 5
-
     # ── Retry settings for Qdrant operations ──
     # Base delay for exponential backoff (milliseconds).
     retry_base_delay_ms: 1000
