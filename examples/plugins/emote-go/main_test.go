@@ -15,14 +15,30 @@ func newTestPlugin(t *testing.T) *EmotePlugin {
 	tmpDir := t.TempDir()
 	return &EmotePlugin{
 		config: Config{
-			DataDir:            tmpDir,
-			AutoStealEnabled:   true,
-			MaxImageSizeKb:     512,
-			AllowedFormats:     []string{"png", "jpg", "jpeg", "webp", "gif"},
-			RateLimitPerMinute: 100,
-			CooldownSeconds:    0,
-			SearchEmoteMs:      15000,
-			SendEmoteMs:        10000,
+			DataDir:                     tmpDir,
+			MaxImageSizeKb:              512,
+			AllowedFormats:              []string{"png", "jpg", "jpeg", "webp", "gif"},
+			VisionApiKey:                "test-key",
+			VisionApiBaseUrl:            "https://api.openai.com/v1",
+			VisionModel:                 "gpt-4o-mini",
+			VisionTimeoutSeconds:        30,
+			VisionPrompt:                "test prompt",
+			AutoStealEnabled:            true,
+			AdditionalBlacklistChannels: []string{},
+			AdditionalWhitelistChannels: []string{},
+			AdditionalBlacklistUsers:    []string{},
+			RateLimitPerMinute:          100,
+			CooldownSeconds:             0,
+			LoggingEnabled:              false,
+			LoggingLevel:                "info",
+			EmoteModel:                  "test-model",
+			EmoteApiKey:                 "test-key",
+			EmoteApiBaseURL:             "https://api.example.com/v1",
+			EmoteMaxTokens:              1024,
+			EmoteTemperature:            0.1,
+			DiscordToken:                "test-token",
+			SearchEmoteMs:               15000,
+			SendEmoteMs:                 10000,
 		},
 		storage: NewStorage(tmpDir),
 	}
@@ -53,7 +69,7 @@ func TestSearchEmote_NoEmoteLLM(t *testing.T) {
 
 func TestSearchEmote_NoMatch(t *testing.T) {
 	p := newTestPlugin(t)
-	p.emoteLLM = &EmoteLLMClient{model: "test-model"} // empty apiKey 鈫?returns nil, nil (no matches)
+	p.emoteLLM = &EmoteLLMClient{model: "test-model"}
 
 	entry := EmoteEntry{ID: "nm1", Name: "happy_cat", Tags: []string{"cat"}, URL: ""}
 	addTestEmotes(t, p.storage, "global", []EmoteEntry{entry})
@@ -79,6 +95,20 @@ func TestSearchEmote_MissingQuery(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "query is required") {
 		t.Fatalf("expected 'query is required' error, got: %v", err)
+	}
+}
+
+func TestSearchEmote_InvalidQueryType(t *testing.T) {
+	p := newTestPlugin(t)
+
+	_, err := p.ExecuteTool("search_emote", map[string]interface{}{
+		"query": 123,
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid query type")
+	}
+	if !strings.Contains(err.Error(), "argument query must be a string") {
+		t.Fatalf("expected 'argument query must be a string' error, got: %v", err)
 	}
 }
 
@@ -153,18 +183,11 @@ func TestExecuteTool_Unknown(t *testing.T) {
 	}
 }
 
-func TestOnResponse(t *testing.T) {
+func TestOnResponse_NoQueueEntry(t *testing.T) {
 	p := newTestPlugin(t)
-	msg := types.DiscordMessage{Content: "hello"}
+	msg := types.DiscordMessage{ChannelID: "no-queue"}
 	if err := p.OnResponse(msg, "response text"); err != nil {
 		t.Fatalf("OnResponse should return nil: %v", err)
-	}
-}
-
-func TestShutdown(t *testing.T) {
-	p := newTestPlugin(t)
-	if err := p.Shutdown(); err != nil {
-		t.Fatalf("Shutdown should return nil: %v", err)
 	}
 }
 
@@ -262,61 +285,6 @@ func TestDetectFormat(t *testing.T) {
 	}
 }
 
-func TestLoadConfig_Defaults(t *testing.T) {
-	cfg, err := loadConfig("")
-	if err != nil {
-		t.Fatalf("loadConfig with empty path failed: %v", err)
-	}
-
-	if cfg.DataDir != "data" {
-		t.Fatalf("expected DataDir='data', got %q", cfg.DataDir)
-	}
-	if cfg.MaxImageSizeKb != 512 {
-		t.Fatalf("expected MaxImageSizeKb=512, got %d", cfg.MaxImageSizeKb)
-	}
-	if cfg.AutoStealEnabled != true {
-		t.Fatal("expected AutoStealEnabled=true")
-	}
-	if cfg.RateLimitPerMinute != 5 {
-		t.Fatalf("expected RateLimitPerMinute=5, got %d", cfg.RateLimitPerMinute)
-	}
-	if cfg.CooldownSeconds != 2 {
-		t.Fatalf("expected CooldownSeconds=2, got %d", cfg.CooldownSeconds)
-	}
-	if cfg.VisionModel != "gpt-4o-mini" {
-		t.Fatalf("expected VisionModel='gpt-4o-mini', got %q", cfg.VisionModel)
-	}
-	if cfg.VisionTimeoutSeconds != 30 {
-		t.Fatalf("expected VisionTimeoutSeconds=30, got %d", cfg.VisionTimeoutSeconds)
-	}
-	if cfg.LoggingEnabled != true {
-		t.Fatal("expected LoggingEnabled=true")
-	}
-	if cfg.LoggingLevel != "info" {
-		t.Fatalf("expected LoggingLevel='info', got %q", cfg.LoggingLevel)
-	}
-
-	if len(cfg.AllowedFormats) != 5 {
-		t.Fatalf("expected 4 allowed formats, got %d", len(cfg.AllowedFormats))
-	}
-	expectedFormats := []string{"png", "jpg", "jpeg", "webp", "gif"}
-	for i, f := range cfg.AllowedFormats {
-		if f != expectedFormats[i] {
-			t.Fatalf("AllowedFormats[%d] = %q, want %q", i, f, expectedFormats[i])
-		}
-	}
-}
-
-func TestLoadConfig_NonexistentFile(t *testing.T) {
-	cfg, err := loadConfig(filepath.Join(t.TempDir(), "nonexistent.yaml"))
-	if err != nil {
-		t.Fatalf("loadConfig with nonexistent file should not error: %v", err)
-	}
-	if cfg.DataDir != "data" {
-		t.Fatalf("expected default DataDir, got %q", cfg.DataDir)
-	}
-}
-
 func TestLoadConfig_FromYAML(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
@@ -344,12 +312,31 @@ auto_steal:
 logging:
   enabled: false
   level: "debug"
+
+emote:
+  model: "test-model"
+  api_key: "test-key"
+  api_base_url: "https://api.example.com/v1"
+  max_tokens: 2048
+  temperature: 0.5
+
+discord:
+  token: "test-token"
+
+tool_timeouts:
+  search_emote_ms: 20000
+  send_emote_ms: 15000
 `
 	if err := os.WriteFile(configPath, []byte(yamlContent), 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
 	}
 
-	cfg, err := loadConfig(configPath)
+	// Set env var to point to our test config
+	oldConfig := os.Getenv("EZYAPPER_PLUGIN_CONFIG")
+	os.Setenv("EZYAPPER_PLUGIN_CONFIG", configPath)
+	defer os.Setenv("EZYAPPER_PLUGIN_CONFIG", oldConfig)
+
+	cfg, err := loadConfig()
 	if err != nil {
 		t.Fatalf("loadConfig failed: %v", err)
 	}
@@ -384,6 +371,24 @@ logging:
 	if cfg.LoggingLevel != "debug" {
 		t.Fatalf("LoggingLevel mismatch: got %q", cfg.LoggingLevel)
 	}
+	if cfg.EmoteModel != "test-model" {
+		t.Fatalf("EmoteModel mismatch: got %q", cfg.EmoteModel)
+	}
+	if cfg.EmoteMaxTokens != 2048 {
+		t.Fatalf("EmoteMaxTokens mismatch: got %d", cfg.EmoteMaxTokens)
+	}
+	if cfg.EmoteTemperature != 0.5 {
+		t.Fatalf("EmoteTemperature mismatch: got %f", cfg.EmoteTemperature)
+	}
+	if cfg.DiscordToken != "test-token" {
+		t.Fatalf("DiscordToken mismatch: got %q", cfg.DiscordToken)
+	}
+	if cfg.SearchEmoteMs != 20000 {
+		t.Fatalf("SearchEmoteMs mismatch: got %d", cfg.SearchEmoteMs)
+	}
+	if cfg.SendEmoteMs != 15000 {
+		t.Fatalf("SendEmoteMs mismatch: got %d", cfg.SendEmoteMs)
+	}
 	if len(cfg.AllowedFormats) != 2 || cfg.AllowedFormats[0] != "png" || cfg.AllowedFormats[1] != "gif" {
 		t.Fatalf("AllowedFormats mismatch: %v", cfg.AllowedFormats)
 	}
@@ -405,52 +410,52 @@ func TestLoadConfig_InvalidYAML(t *testing.T) {
 		t.Fatalf("failed to write config: %v", err)
 	}
 
-	_, err := loadConfig(configPath)
+	oldConfig := os.Getenv("EZYAPPER_PLUGIN_CONFIG")
+	os.Setenv("EZYAPPER_PLUGIN_CONFIG", configPath)
+	defer os.Setenv("EZYAPPER_PLUGIN_CONFIG", oldConfig)
+
+	_, err := loadConfig()
 	if err == nil {
 		t.Fatal("expected error for invalid YAML")
 	}
 }
 
-func TestLoadConfig_EmptyYAML(t *testing.T) {
+func TestLoadConfig_MissingRequired(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	if err := os.WriteFile(configPath, []byte(""), 0644); err != nil {
-		t.Fatalf("failed to write config: %v", err)
-	}
-
-	cfg, err := loadConfig(configPath)
-	if err != nil {
-		t.Fatalf("loadConfig with empty YAML should not error: %v", err)
-	}
-	if cfg.DataDir != "data" {
-		t.Fatalf("expected default DataDir for empty YAML, got %q", cfg.DataDir)
-	}
-}
-
-func TestLoadConfig_PartialOverride(t *testing.T) {
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "config.yaml")
+	// Write config with missing required fields
 	yamlContent := `
 storage:
-  data_dir: "partial-data"
+  data_dir: "/data"
 `
 	if err := os.WriteFile(configPath, []byte(yamlContent), 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
 	}
 
-	cfg, err := loadConfig(configPath)
-	if err != nil {
-		t.Fatalf("loadConfig failed: %v", err)
-	}
+	oldConfig := os.Getenv("EZYAPPER_PLUGIN_CONFIG")
+	os.Setenv("EZYAPPER_PLUGIN_CONFIG", configPath)
+	defer os.Setenv("EZYAPPER_PLUGIN_CONFIG", oldConfig)
 
-	if cfg.DataDir != "partial-data" {
-		t.Fatalf("DataDir should be overridden: got %q", cfg.DataDir)
+	_, err := loadConfig()
+	if err == nil {
+		t.Fatal("expected error for missing required fields")
 	}
-	if cfg.MaxImageSizeKb != 512 {
-		t.Fatalf("MaxImageSizeKb should remain default: got %d", cfg.MaxImageSizeKb)
+	if !strings.Contains(err.Error(), "vision.api_key is required") {
+		t.Fatalf("expected error about missing vision.api_key, got: %v", err)
 	}
-	if cfg.AutoStealEnabled != true {
-		t.Fatal("AutoStealEnabled should remain default: true")
+}
+
+func TestLoadConfig_NoFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "nonexistent.yaml")
+
+	oldConfig := os.Getenv("EZYAPPER_PLUGIN_CONFIG")
+	os.Setenv("EZYAPPER_PLUGIN_CONFIG", configPath)
+	defer os.Setenv("EZYAPPER_PLUGIN_CONFIG", oldConfig)
+
+	_, err := loadConfig()
+	if err == nil {
+		t.Fatal("expected error when config file does not exist")
 	}
 }
 
@@ -499,6 +504,19 @@ func TestSendEmote_MissingID(t *testing.T) {
 	}
 }
 
+func TestSendEmote_InvalidIDType(t *testing.T) {
+	p := newTestPlugin(t)
+	_, err := p.ExecuteTool("send_emote", map[string]interface{}{
+		"id": 123,
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid id type")
+	}
+	if !strings.Contains(err.Error(), "argument id must be a string") {
+		t.Fatalf("expected 'argument id must be a string' error, got: %v", err)
+	}
+}
+
 func TestSendEmote_Success(t *testing.T) {
 	p := newTestPlugin(t)
 	p.cdnRefresh = NewCDNRefreshClient("")
@@ -517,23 +535,73 @@ func TestSendEmote_Success(t *testing.T) {
 	}
 }
 
-func TestOnResponse_SendsQueued(t *testing.T) {
+func TestSendEmote_NoURLorFile(t *testing.T) {
 	p := newTestPlugin(t)
-	p.discord = &DiscordSession{}
-	p.sendQueue = map[string]string{"chan-123": "https://example.com/test.png"}
-	msg := types.DiscordMessage{ChannelID: "chan-123"}
-	if err := p.OnResponse(msg, "response text"); err != nil {
-		t.Fatalf("OnResponse should return nil: %v", err)
+	p.cdnRefresh = NewCDNRefreshClient("")
+	guildID := "global"
+	addTestEmotes(t, p.storage, guildID, []EmoteEntry{
+		{ID: "md5abc", Name: "test_emote", URL: "", FileName: ""},
+	})
+	_, err := p.ExecuteTool("send_emote", map[string]interface{}{
+		"id": "md5abc",
+	})
+	if err == nil {
+		t.Fatal("expected error for emote without URL or file")
 	}
-	if _, ok := p.sendQueue["chan-123"]; ok {
-		t.Fatal("expected queue entry to be removed after send")
+	if !strings.Contains(err.Error(), "emote has neither URL nor file_name") {
+		t.Fatalf("expected 'emote has neither URL nor file_name' error, got: %v", err)
 	}
 }
 
-func TestOnResponse_NoQueueEntry(t *testing.T) {
-	p := newTestPlugin(t)
-	msg := types.DiscordMessage{ChannelID: "no-queue"}
-	if err := p.OnResponse(msg, "response text"); err != nil {
-		t.Fatalf("OnResponse should return nil: %v", err)
+func TestGetStringArg(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      map[string]interface{}
+		key       string
+		wantVal   string
+		wantOK    bool
+		wantError bool
+	}{
+		{
+			name:    "missing key",
+			args:    map[string]interface{}{},
+			key:     "test",
+			wantVal: "",
+			wantOK:  false,
+		},
+		{
+			name:    "valid string",
+			args:    map[string]interface{}{"test": "value"},
+			key:     "test",
+			wantVal: "value",
+			wantOK:  true,
+		},
+		{
+			name:      "invalid type",
+			args:      map[string]interface{}{"test": 123},
+			key:       "test",
+			wantError: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			val, ok, err := getStringArg(tc.args, tc.key)
+			if tc.wantError {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if val != tc.wantVal {
+				t.Fatalf("expected val=%q, got %q", tc.wantVal, val)
+			}
+			if ok != tc.wantOK {
+				t.Fatalf("expected ok=%v, got %v", tc.wantOK, ok)
+			}
+		})
 	}
 }

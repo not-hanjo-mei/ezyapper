@@ -59,7 +59,10 @@ func (s *StatsProvider) GetDashboardStats(ctx context.Context) (memory.GlobalSta
 }
 
 func (s *StatsProvider) countMemories(ctx context.Context) (int64, error) {
-	cfg := s.cfgStore.Load().(*config.Config)
+	cfg, ok := s.cfgStore.Load().(*config.Config)
+	if !ok {
+		return 0, fmt.Errorf("count memories: failed to load config")
+	}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(cfg.Web.StatsQueryTimeoutSec)*time.Second)
 	defer cancel()
 
@@ -79,7 +82,10 @@ func (s *StatsProvider) countMemories(ctx context.Context) (int64, error) {
 }
 
 func (s *StatsProvider) countProfiles(ctx context.Context) (int64, error) {
-	cfg := s.cfgStore.Load().(*config.Config)
+	cfg, ok := s.cfgStore.Load().(*config.Config)
+	if !ok {
+		return 0, fmt.Errorf("count profiles: failed to load config")
+	}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(cfg.Web.StatsQueryTimeoutSec)*time.Second)
 	defer cancel()
 

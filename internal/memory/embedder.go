@@ -7,20 +7,24 @@ import (
 	"sync"
 	"time"
 
-	"ezyapper/internal/ai"
 	"ezyapper/internal/logger"
 
 	"golang.org/x/sync/singleflight"
 )
 
-// AIEmbedder implements the Embedder interface using the AI client
+// embeddingClient is the subset of ai.Client methods used by AIEmbedder.
+type embeddingClient interface {
+	CreateEmbedding(ctx context.Context, text string, model string) ([]float32, error)
+}
+
+// AIEmbedder implements the Embedder interface using an AI embedding client.
 type AIEmbedder struct {
-	client *ai.Client
+	client embeddingClient
 	model  string
 }
 
 // NewAIEmbedder creates a new AI-based embedder that uses the configured embedding model.
-func NewAIEmbedder(client *ai.Client, model string) (*AIEmbedder, error) {
+func NewAIEmbedder(client embeddingClient, model string) (*AIEmbedder, error) {
 	if model == "" {
 		return nil, fmt.Errorf("embedding model is required")
 	}

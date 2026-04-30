@@ -21,7 +21,10 @@ const csrfCtxKey contextKey = "csrf_token"
 // CSRSTokenFromContext extracts the signed CSRF token from a request context.
 // Returns empty string if no token is set.
 func CSRFTokenFromContext(ctx context.Context) string {
-	t, _ := ctx.Value(csrfCtxKey).(string)
+	t, ok := ctx.Value(csrfCtxKey).(string)
+	if !ok {
+		return ""
+	}
 	return t
 }
 

@@ -398,6 +398,9 @@ func validateAI(cfg *Config, errs *[]string) {
 	requirePositive(cfg.AI.MaxToolIterations, "ai.max_tool_iterations", errs)
 	requirePositive(cfg.AI.MaxImageBytes, "ai.max_image_bytes", errs)
 	requireNonEmpty(cfg.AI.UserAgent, "ai.user_agent", errs)
+	if !cfg.AI.VisionBase64 {
+		fmt.Fprintf(os.Stderr, "WARNING: ai.vision_base64 is false — images will be sent as URLs (may not work with local endpoints)\n")
+	}
 }
 
 func validateVision(cfg *Config, errs *[]string) {
@@ -419,6 +422,9 @@ func validateVision(cfg *Config, errs *[]string) {
 	if cfg.AI.Vision.Mode == VisionModeHybrid && cfg.AI.Vision.DescriptionPrompt == "" {
 		*errs = append(*errs, "ai.vision.description_prompt is required when vision.mode is hybrid")
 	}
+	if cfg.AI.Vision.MaxTokens != 0 {
+		requirePositive(cfg.AI.Vision.MaxTokens, "ai.vision.max_tokens", errs)
+	}
 }
 
 func validateDiscord(cfg *Config, errs *[]string) {
@@ -434,6 +440,9 @@ func validateDiscord(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Discord.ReplyTruncationLength, "discord.reply_truncation_length", errs)
 	requirePositive(cfg.Discord.ImageCacheTTLMin, "discord.image_cache_ttl_min", errs)
 	requirePositive(cfg.Discord.ImageCacheMaxEntries, "discord.image_cache_max_entries", errs)
+	if !cfg.Discord.ReplyToBots {
+		fmt.Fprintf(os.Stderr, "WARNING: discord.reply_to_bots is false — bot will not respond to other bots\n")
+	}
 }
 
 func validateQdrant(cfg *Config, errs *[]string) {
@@ -445,9 +454,7 @@ func validateQdrant(cfg *Config, errs *[]string) {
 	if cfg.Embedding.RetryCount < 0 {
 		*errs = append(*errs, "embedding.retry_count must be greater than or equal to 0")
 	}
-	if cfg.Embedding.Timeout <= 0 {
-		*errs = append(*errs, "embedding.timeout must be greater than 0 when memory retrieval or consolidation is enabled")
-	}
+	requirePositive(cfg.Embedding.Timeout, "memory_pipeline.embedding.timeout", errs)
 	requireNonEmpty(cfg.Qdrant.Host, "qdrant.host", errs)
 	if cfg.Qdrant.Port <= 0 {
 		*errs = append(*errs, "qdrant.port must be greater than 0 when memory retrieval or consolidation is enabled")

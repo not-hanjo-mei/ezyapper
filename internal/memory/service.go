@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"ezyapper/internal/ai"
-	"ezyapper/internal/ai/vision"
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/utils"
@@ -135,7 +133,7 @@ type Embedder interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
 }
 
-func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedder, aiClient *ai.Client, visionDescriber *vision.VisionDescriber) (*MemoryService, error) {
+func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedder, aiClient aiChatCompleter, vd visionDescriber) (*MemoryService, error) {
 	if qdrantClient == nil {
 		return nil, fmt.Errorf("qdrant client is required")
 	}
@@ -173,7 +171,7 @@ func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedde
 		consolidationInterval: cfg.ConsolidationInterval,
 	}
 
-	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, visionDescriber, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit, cfg.RetryMaxRetries, cfg.RetryBaseDelayMs, cfg.RetryMaxDelayMs)
+	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, vd, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit, cfg.RetryMaxRetries, cfg.RetryBaseDelayMs, cfg.RetryMaxDelayMs)
 	service.worker = NewWorker(service.consolidator, cfg.WorkerQueueSize)
 	service.worker.Start(context.Background())
 

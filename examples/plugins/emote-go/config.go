@@ -2,9 +2,9 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -53,7 +53,8 @@ type fileConfig struct {
 	} `yaml:"tool_timeouts"`
 }
 
-// Config holds the fully resolved configuration with defaults applied.
+// Config holds the fully resolved configuration. All fields are required and
+// must be explicitly set in config.yaml — no implicit defaults.
 type Config struct {
 	DataDir                     string
 	MaxImageSizeKb              int
@@ -81,182 +82,283 @@ type Config struct {
 	SendEmoteMs                 int
 }
 
-func loadConfig(configPath string) (Config, error) {
-	cfg := Config{
-		DataDir:              "data",
-		MaxImageSizeKb:       512,
-		AllowedFormats:       []string{"png", "jpg", "jpeg", "webp", "gif"},
-		VisionApiBaseUrl:     "https://api.openai.com/v1",
-		VisionModel:          "gpt-4o-mini",
-		VisionTimeoutSeconds: 30,
-		VisionPrompt:         "Analyze this image and determine if it is a \"meme/emote/sticker\" suitable for a chat reaction library.",
-		AutoStealEnabled:     true,
-		RateLimitPerMinute:   5,
-		CooldownSeconds:      2,
-		LoggingEnabled:       true,
-		LoggingLevel:         "info",
-		EmoteApiBaseURL:      "https://asus.omgpizzatnt.top:3000/v1",
-		EmoteMaxTokens:       1024,
-		EmoteTemperature:     0.1,
+func pluginConfigPath() string {
+	if cfg := strings.TrimSpace(os.Getenv("EZYAPPER_PLUGIN_CONFIG")); cfg != "" {
+		return cfg
 	}
 
-	if strings.TrimSpace(configPath) == "" {
-		return cfg, nil
+	if dir := strings.TrimSpace(os.Getenv("EZYAPPER_PLUGIN_PATH")); dir != "" {
+		return filepath.Join(dir, "config.yaml")
 	}
 
-	data, err := os.ReadFile(configPath)
+	return "config.yaml"
+}
+
+// loadConfig loads and validates plugin config file.
+// All configuration values are required and there are no defaults.
+func loadConfig() (Config, error) {
+	var cfg Config
+	configPath := pluginConfigPath()
+
+	content, err := os.ReadFile(configPath)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return cfg, nil
-		}
-		return cfg, fmt.Errorf("failed to read config file %q: %w", configPath, err)
+		return cfg, fmt.Errorf(
+			"failed to read plugin config file: %s: %w\n"+
+				"where to configure:\n"+
+				"- create/edit %s\n"+
+				"- example: examples/plugins/emote-go/config.yaml.example\n"+
+				"- plugin folder path is available in env EZYAPPER_PLUGIN_PATH",
+			configPath, err, configPath,
+		)
 	}
 
-	if len(bytes.TrimSpace(data)) == 0 {
-		return cfg, nil
+	if len(bytes.TrimSpace(content)) == 0 {
+		return cfg, fmt.Errorf(
+			"plugin config file is empty: %s\n"+
+				"where to configure:\n"+
+				"- create/edit %s\n"+
+				"- example: examples/plugins/emote-go/config.yaml.example",
+			configPath, configPath,
+		)
 	}
 
-	var fileCfg fileConfig
-	if err := yaml.Unmarshal(data, &fileCfg); err != nil {
-		return cfg, fmt.Errorf("failed to parse config file %q: %w", configPath, err)
+	var raw fileConfig
+	decoder := yaml.NewDecoder(bytes.NewReader(content))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&raw); err != nil {
+		return cfg, fmt.Errorf(
+			"invalid plugin config file: %s: %w\n"+
+				"where to configure:\n"+
+				"- fix %s\n"+
+				"- example: examples/plugins/emote-go/config.yaml.example",
+			configPath, err, configPath,
+		)
 	}
 
-	if fileCfg.Storage != nil {
-		if fileCfg.Storage.DataDir != nil {
-			cfg.DataDir = *fileCfg.Storage.DataDir
-		}
-		if fileCfg.Storage.MaxImageSizeKb != nil {
-			cfg.MaxImageSizeKb = *fileCfg.Storage.MaxImageSizeKb
-		}
-		if fileCfg.Storage.AllowedFormats != nil {
-			cfg.AllowedFormats = *fileCfg.Storage.AllowedFormats
-		}
-	}
+	var errs []string
 
-	if fileCfg.Vision != nil {
-		if fileCfg.Vision.ApiKey != nil {
-			cfg.VisionApiKey = *fileCfg.Vision.ApiKey
-		}
-		if fileCfg.Vision.ApiBaseUrl != nil {
-			cfg.VisionApiBaseUrl = *fileCfg.Vision.ApiBaseUrl
-		}
-		if fileCfg.Vision.Model != nil {
-			cfg.VisionModel = *fileCfg.Vision.Model
-		}
-		if fileCfg.Vision.TimeoutSeconds != nil {
-			cfg.VisionTimeoutSeconds = *fileCfg.Vision.TimeoutSeconds
-		}
-		if fileCfg.Vision.Prompt != nil {
-			cfg.VisionPrompt = *fileCfg.Vision.Prompt
-		}
-	}
-
-	if fileCfg.AutoSteal != nil {
-		if fileCfg.AutoSteal.Enabled != nil {
-			cfg.AutoStealEnabled = *fileCfg.AutoSteal.Enabled
-		}
-		if fileCfg.AutoSteal.AdditionalBlacklistChannels != nil {
-			cfg.AdditionalBlacklistChannels = *fileCfg.AutoSteal.AdditionalBlacklistChannels
-		}
-		if fileCfg.AutoSteal.AdditionalWhitelistChannels != nil {
-			cfg.AdditionalWhitelistChannels = *fileCfg.AutoSteal.AdditionalWhitelistChannels
-		}
-		if fileCfg.AutoSteal.AdditionalBlacklistUsers != nil {
-			cfg.AdditionalBlacklistUsers = *fileCfg.AutoSteal.AdditionalBlacklistUsers
-		}
-		if fileCfg.AutoSteal.RateLimitPerMinute != nil {
-			cfg.RateLimitPerMinute = *fileCfg.AutoSteal.RateLimitPerMinute
-		}
-		if fileCfg.AutoSteal.CooldownSeconds != nil {
-			cfg.CooldownSeconds = *fileCfg.AutoSteal.CooldownSeconds
+	// storage.data_dir (required)
+	if raw.Storage == nil || raw.Storage.DataDir == nil {
+		errs = append(errs, "storage.data_dir is required")
+	} else {
+		cfg.DataDir = strings.TrimSpace(*raw.Storage.DataDir)
+		if cfg.DataDir == "" {
+			errs = append(errs, "storage.data_dir is required")
 		}
 	}
 
-	if fileCfg.Logging != nil {
-		if fileCfg.Logging.Enabled != nil {
-			cfg.LoggingEnabled = *fileCfg.Logging.Enabled
-		}
-		if fileCfg.Logging.Level != nil {
-			cfg.LoggingLevel = *fileCfg.Logging.Level
+	// storage.max_image_size_kb (required)
+	if raw.Storage == nil || raw.Storage.MaxImageSizeKb == nil {
+		errs = append(errs, "storage.max_image_size_kb is required")
+	} else {
+		cfg.MaxImageSizeKb = *raw.Storage.MaxImageSizeKb
+	}
+
+	// storage.allowed_formats (required)
+	if raw.Storage == nil || raw.Storage.AllowedFormats == nil {
+		errs = append(errs, "storage.allowed_formats is required")
+	} else {
+		cfg.AllowedFormats = *raw.Storage.AllowedFormats
+	}
+
+	// vision.api_key (required)
+	if raw.Vision == nil || raw.Vision.ApiKey == nil {
+		errs = append(errs, "vision.api_key is required")
+	} else {
+		cfg.VisionApiKey = strings.TrimSpace(*raw.Vision.ApiKey)
+	}
+
+	// vision.api_base_url (required)
+	if raw.Vision == nil || raw.Vision.ApiBaseUrl == nil {
+		errs = append(errs, "vision.api_base_url is required")
+	} else {
+		cfg.VisionApiBaseUrl = strings.TrimRight(strings.TrimSpace(*raw.Vision.ApiBaseUrl), "/")
+		if cfg.VisionApiBaseUrl == "" {
+			errs = append(errs, "vision.api_base_url is required")
 		}
 	}
 
-	if fileCfg.Emote != nil {
-		if fileCfg.Emote.Model != nil {
-			cfg.EmoteModel = *fileCfg.Emote.Model
-		}
-		if fileCfg.Emote.ApiKey != nil {
-			cfg.EmoteApiKey = *fileCfg.Emote.ApiKey
-		}
-		if fileCfg.Emote.ApiBaseURL != nil {
-			cfg.EmoteApiBaseURL = *fileCfg.Emote.ApiBaseURL
-		}
-		if fileCfg.Emote.MaxTokens != nil {
-			cfg.EmoteMaxTokens = *fileCfg.Emote.MaxTokens
-		}
-		if fileCfg.Emote.Temperature != nil {
-			cfg.EmoteTemperature = *fileCfg.Emote.Temperature
+	// vision.model (required)
+	if raw.Vision == nil || raw.Vision.Model == nil {
+		errs = append(errs, "vision.model is required")
+	} else {
+		cfg.VisionModel = strings.TrimSpace(*raw.Vision.Model)
+		if cfg.VisionModel == "" {
+			errs = append(errs, "vision.model is required")
 		}
 	}
 
-	if fileCfg.Discord != nil {
-		if fileCfg.Discord.Token != nil {
-			cfg.DiscordToken = *fileCfg.Discord.Token
+	// vision.timeout_seconds (required)
+	if raw.Vision == nil || raw.Vision.TimeoutSeconds == nil {
+		errs = append(errs, "vision.timeout_seconds is required")
+	} else {
+		cfg.VisionTimeoutSeconds = *raw.Vision.TimeoutSeconds
+	}
+
+	// vision.prompt (required)
+	if raw.Vision == nil || raw.Vision.Prompt == nil {
+		errs = append(errs, "vision.prompt is required")
+	} else {
+		cfg.VisionPrompt = strings.TrimSpace(*raw.Vision.Prompt)
+		if cfg.VisionPrompt == "" {
+			errs = append(errs, "vision.prompt is required")
 		}
 	}
 
-	if fileCfg.ToolTimeouts != nil {
-		if fileCfg.ToolTimeouts.SearchEmoteMs != nil {
-			cfg.SearchEmoteMs = *fileCfg.ToolTimeouts.SearchEmoteMs
+	// auto_steal.enabled (required)
+	if raw.AutoSteal == nil || raw.AutoSteal.Enabled == nil {
+		errs = append(errs, "auto_steal.enabled is required (explicit true or false)")
+	} else {
+		cfg.AutoStealEnabled = *raw.AutoSteal.Enabled
+	}
+
+	// auto_steal.additional_blacklist_channels (required)
+	if raw.AutoSteal == nil || raw.AutoSteal.AdditionalBlacklistChannels == nil {
+		errs = append(errs, "auto_steal.additional_blacklist_channels is required")
+	} else {
+		cfg.AdditionalBlacklistChannels = *raw.AutoSteal.AdditionalBlacklistChannels
+	}
+
+	// auto_steal.additional_whitelist_channels (required)
+	if raw.AutoSteal == nil || raw.AutoSteal.AdditionalWhitelistChannels == nil {
+		errs = append(errs, "auto_steal.additional_whitelist_channels is required")
+	} else {
+		cfg.AdditionalWhitelistChannels = *raw.AutoSteal.AdditionalWhitelistChannels
+	}
+
+	// auto_steal.additional_blacklist_users (required)
+	if raw.AutoSteal == nil || raw.AutoSteal.AdditionalBlacklistUsers == nil {
+		errs = append(errs, "auto_steal.additional_blacklist_users is required")
+	} else {
+		cfg.AdditionalBlacklistUsers = *raw.AutoSteal.AdditionalBlacklistUsers
+	}
+
+	// auto_steal.rate_limit_per_minute (required)
+	if raw.AutoSteal == nil || raw.AutoSteal.RateLimitPerMinute == nil {
+		errs = append(errs, "auto_steal.rate_limit_per_minute is required")
+	} else {
+		cfg.RateLimitPerMinute = *raw.AutoSteal.RateLimitPerMinute
+	}
+
+	// auto_steal.cooldown_seconds (required)
+	if raw.AutoSteal == nil || raw.AutoSteal.CooldownSeconds == nil {
+		errs = append(errs, "auto_steal.cooldown_seconds is required")
+	} else {
+		cfg.CooldownSeconds = *raw.AutoSteal.CooldownSeconds
+	}
+
+	// logging.enabled (required)
+	if raw.Logging == nil || raw.Logging.Enabled == nil {
+		errs = append(errs, "logging.enabled is required (explicit true or false)")
+	} else {
+		cfg.LoggingEnabled = *raw.Logging.Enabled
+	}
+
+	// logging.level (required)
+	if raw.Logging == nil || raw.Logging.Level == nil {
+		errs = append(errs, "logging.level is required")
+	} else {
+		cfg.LoggingLevel = strings.TrimSpace(*raw.Logging.Level)
+		if cfg.LoggingLevel == "" {
+			errs = append(errs, "logging.level is required")
 		}
-		if fileCfg.ToolTimeouts.SendEmoteMs != nil {
-			cfg.SendEmoteMs = *fileCfg.ToolTimeouts.SendEmoteMs
+	}
+
+	// emote.model (required)
+	if raw.Emote == nil || raw.Emote.Model == nil {
+		errs = append(errs, "emote.model is required")
+	} else {
+		cfg.EmoteModel = strings.TrimSpace(*raw.Emote.Model)
+	}
+
+	// emote.api_key (required)
+	if raw.Emote == nil || raw.Emote.ApiKey == nil {
+		errs = append(errs, "emote.api_key is required")
+	} else {
+		cfg.EmoteApiKey = strings.TrimSpace(*raw.Emote.ApiKey)
+	}
+
+	// emote.api_base_url (required)
+	if raw.Emote == nil || raw.Emote.ApiBaseURL == nil {
+		errs = append(errs, "emote.api_base_url is required")
+	} else {
+		cfg.EmoteApiBaseURL = strings.TrimRight(strings.TrimSpace(*raw.Emote.ApiBaseURL), "/")
+		if cfg.EmoteApiBaseURL == "" {
+			errs = append(errs, "emote.api_base_url is required")
 		}
+	}
+
+	// emote.max_tokens (required)
+	if raw.Emote == nil || raw.Emote.MaxTokens == nil {
+		errs = append(errs, "emote.max_tokens is required")
+	} else {
+		cfg.EmoteMaxTokens = *raw.Emote.MaxTokens
+	}
+
+	// emote.temperature (required)
+	if raw.Emote == nil || raw.Emote.Temperature == nil {
+		errs = append(errs, "emote.temperature is required")
+	} else {
+		cfg.EmoteTemperature = *raw.Emote.Temperature
+	}
+
+	// discord.token (required)
+	if raw.Discord == nil || raw.Discord.Token == nil {
+		errs = append(errs, "discord.token is required")
+	} else {
+		cfg.DiscordToken = strings.TrimSpace(*raw.Discord.Token)
+	}
+
+	// tool_timeouts.search_emote_ms (required)
+	if raw.ToolTimeouts == nil || raw.ToolTimeouts.SearchEmoteMs == nil {
+		errs = append(errs, "tool_timeouts.search_emote_ms is required")
+	} else {
+		cfg.SearchEmoteMs = *raw.ToolTimeouts.SearchEmoteMs
+	}
+
+	// tool_timeouts.send_emote_ms (required)
+	if raw.ToolTimeouts == nil || raw.ToolTimeouts.SendEmoteMs == nil {
+		errs = append(errs, "tool_timeouts.send_emote_ms is required")
+	} else {
+		cfg.SendEmoteMs = *raw.ToolTimeouts.SendEmoteMs
+	}
+
+	// Validate positive integers
+	if cfg.MaxImageSizeKb <= 0 {
+		errs = append(errs, "storage.max_image_size_kb must be a positive integer")
+	}
+	if cfg.VisionTimeoutSeconds <= 0 {
+		errs = append(errs, "vision.timeout_seconds must be a positive integer")
+	}
+	if cfg.RateLimitPerMinute < 0 {
+		errs = append(errs, "auto_steal.rate_limit_per_minute must be >= 0")
+	}
+	if cfg.CooldownSeconds < 0 {
+		errs = append(errs, "auto_steal.cooldown_seconds must be >= 0")
+	}
+	if cfg.EmoteMaxTokens <= 0 {
+		errs = append(errs, "emote.max_tokens must be a positive integer")
+	}
+	if cfg.EmoteTemperature < 0 || cfg.EmoteTemperature > 2 {
+		errs = append(errs, "emote.temperature must be between 0 and 2")
+	}
+	if cfg.SearchEmoteMs <= 0 {
+		errs = append(errs, "tool_timeouts.search_emote_ms must be a positive integer")
+	}
+	if cfg.SendEmoteMs <= 0 {
+		errs = append(errs, "tool_timeouts.send_emote_ms must be a positive integer")
+	}
+
+	if len(errs) > 0 {
+		return cfg, fmt.Errorf(
+			"configuration errors in %s: %s\n"+
+				"where to configure:\n"+
+				"- edit %s\n"+
+				"- example: examples/plugins/emote-go/config.yaml.example\n"+
+				"- plugin folder path is available in env EZYAPPER_PLUGIN_PATH",
+			configPath, strings.Join(errs, "; "), configPath,
+		)
 	}
 
 	return cfg, nil
-}
-
-// validateConfig checks the resolved Config for required fields and applies
-// runtime defaults/safeguards. Returns error only for fatal misconfiguration.
-// Non-fatal issues are fixed silently with a warning to stderr.
-func validateConfig(cfg *Config) error {
-	if cfg.DataDir == "" {
-		return fmt.Errorf("storage.data_dir is required")
-	}
-
-	if cfg.MaxImageSizeKb <= 0 {
-		fmt.Fprintf(os.Stderr, "[EMOTE] Warning: max_image_size_kb is %d, defaulting to 512\n", cfg.MaxImageSizeKb)
-		cfg.MaxImageSizeKb = 512
-	}
-
-	if len(cfg.AllowedFormats) == 0 {
-		return fmt.Errorf("storage.allowed_formats must have at least one format")
-	}
-
-	if cfg.AutoStealEnabled {
-		if cfg.VisionApiKey == "" {
-			fmt.Fprintf(os.Stderr, "[EMOTE] Warning: auto_steal enabled but vision.api_key is empty, disabling auto-steal\n")
-			cfg.AutoStealEnabled = false
-		}
-		if cfg.RateLimitPerMinute < 0 {
-			fmt.Fprintf(os.Stderr, "[EMOTE] Warning: rate_limit_per_minute is %d, defaulting to 5\n", cfg.RateLimitPerMinute)
-			cfg.RateLimitPerMinute = 5
-		}
-		if cfg.CooldownSeconds < 0 {
-			fmt.Fprintf(os.Stderr, "[EMOTE] Warning: cooldown_seconds is %d, defaulting to 2\n", cfg.CooldownSeconds)
-			cfg.CooldownSeconds = 2
-		}
-	}
-
-	// Emote LLM config is optional — empty values gracefully disable.
-
-	if cfg.SearchEmoteMs <= 0 {
-		return fmt.Errorf("tool_timeouts.search_emote_ms is required and must be > 0")
-	}
-	if cfg.SendEmoteMs <= 0 {
-		return fmt.Errorf("tool_timeouts.send_emote_ms is required and must be > 0")
-	}
-
-	return nil
 }

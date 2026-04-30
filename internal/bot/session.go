@@ -161,7 +161,10 @@ type historicalImageDescCacheEntry struct {
 
 // New creates a new Discord bot instance
 func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore memory.ProfileStore, conMgr consolidationManager, pluginMgr *plugin.Manager) (*Bot, error) {
-	cfg := cfgStore.Load().(*config.Config)
+	cfg, ok := cfgStore.Load().(*config.Config)
+	if !ok {
+		return nil, fmt.Errorf("failed to load config from config store")
+	}
 	// Create Discord session
 	session, err := discordgo.New("Bot " + cfg.Discord.Token)
 	if err != nil {

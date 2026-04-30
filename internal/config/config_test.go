@@ -1672,3 +1672,75 @@ func TestValidateAI_MissingMaxToolIterations(t *testing.T) {
 		t.Fatalf("expected ai.max_tool_iterations error, got: %v", err)
 	}
 }
+
+func TestValidate_VisionMaxTokensNegative(t *testing.T) {
+	cfg := &Config{
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		AI: AIConfig{
+			APIBaseURL: "https://api.example.com/v1",
+			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
+			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
+			Vision:         VisionConfig{Mode: VisionModeHybrid, MaxImages: 1, DescriptionPrompt: "desc", MaxTokens: -1},
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+		},
+		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
+		Memory: MemoryConfig{
+			ConsolidationInterval: 1,
+			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
+			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+		},
+		Qdrant:     QdrantConfig{Host: "localhost", Port: 6333, VectorSize: 1536},
+		Web:        WebConfig{Enabled: false},
+		Logging:    LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
+		Plugins:    PluginsConfig{Enabled: false},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
+	}
+	err := validate(cfg)
+	if err == nil {
+		t.Fatal("expected validation error for negative ai.vision.max_tokens")
+	}
+	if !strings.Contains(err.Error(), "ai.vision.max_tokens must be greater than 0") {
+		t.Fatalf("expected ai.vision.max_tokens error, got: %v", err)
+	}
+}
+
+func TestValidate_EmbeddingTimeoutZero(t *testing.T) {
+	cfg := &Config{
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		AI: AIConfig{
+			APIBaseURL: "https://api.example.com/v1",
+			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
+			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
+			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+		},
+		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 0},
+		Memory: MemoryConfig{
+			ConsolidationInterval: 1,
+			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
+			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+		},
+		Qdrant:     QdrantConfig{Host: "localhost", Port: 6333, VectorSize: 1536},
+		Web:        WebConfig{Enabled: false},
+		Logging:    LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
+		Plugins:    PluginsConfig{Enabled: false},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
+	}
+	err := validate(cfg)
+	if err == nil {
+		t.Fatal("expected validation error for embedding.timeout = 0 when memory is enabled")
+	}
+	if !strings.Contains(err.Error(), "memory_pipeline.embedding.timeout must be greater than 0") {
+		t.Fatalf("expected embedding.timeout error, got: %v", err)
+	}
+}

@@ -13,7 +13,7 @@ type DiscordSession struct {
 
 func (d *DiscordSession) Connect(token string) error {
 	if token == "" {
-		return nil // no token = silently disabled
+		return fmt.Errorf("discord token is empty")
 	}
 	var err error
 	d.session, err = discordgo.New("Bot " + token)
@@ -30,7 +30,7 @@ func (d *DiscordSession) Connect(token string) error {
 
 func (d *DiscordSession) SendMessage(channelID, content string) error {
 	if d.session == nil {
-		return nil // silently skip if not connected
+		return fmt.Errorf("discord session not connected")
 	}
 	_, err := d.session.ChannelMessageSend(channelID, content)
 	return err
@@ -38,7 +38,7 @@ func (d *DiscordSession) SendMessage(channelID, content string) error {
 
 func (d *DiscordSession) SendFile(channelID, path string) error {
 	if d.session == nil {
-		return nil
+		return fmt.Errorf("discord session not connected")
 	}
 	reader, err := os.Open(path)
 	if err != nil {

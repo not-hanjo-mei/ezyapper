@@ -99,18 +99,18 @@ func (p *EmotePlugin) OnResponse(msg types.DiscordMessage, response string) erro
 	// Connect Discord if needed (lazy)
 	if p.config.DiscordToken != "" && p.discord.session == nil {
 		if err := p.discord.Connect(p.config.DiscordToken); err != nil {
-			fmt.Fprintf(os.Stderr, "[EMOTE] failed to connect discord: %v\n", err)
+			return fmt.Errorf("failed to connect discord: %w", err)
 		}
 	}
 
 	if strings.HasPrefix(content, "__file__:") {
 		filePath := filepath.Join(p.config.DataDir, "global", "images", strings.TrimPrefix(content, "__file__:"))
 		if err := p.discord.SendFile(msg.ChannelID, filePath); err != nil {
-			fmt.Fprintf(os.Stderr, "[EMOTE] failed to send file: %v\n", err)
+			return fmt.Errorf("failed to send file: %w", err)
 		}
 	} else {
 		if err := p.discord.SendMessage(msg.ChannelID, content); err != nil {
-			fmt.Fprintf(os.Stderr, "[EMOTE] failed to send message: %v\n", err)
+			return fmt.Errorf("failed to send message: %w", err)
 		}
 	}
 	fmt.Fprintf(os.Stderr, "[EMOTE] OnResponse: sent URL to channel=%s\n", msg.ChannelID)
@@ -119,6 +119,11 @@ func (p *EmotePlugin) OnResponse(msg types.DiscordMessage, response string) erro
 
 // Shutdown is called when the plugin is being stopped.
 func (p *EmotePlugin) Shutdown() error {
+	if p.discord != nil {
+		if err := p.discord.Close(); err != nil {
+			return fmt.Errorf("failed to close discord session: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -170,141 +175,174 @@ func (p *EmotePlugin) ListTools() ([]plugin.ToolSpec, error) {
 func (p *EmotePlugin) ExecuteTool(name string, args map[string]interface{}) (string, error) {
 	switch name {
 	case "search_emote":
-		query, ok := args["query"].(string)
-		if !ok || query == "" {
-			return "", fmt.Errorf("query is required")
-		}
-		guildID, _ := args["guild_id"].(string)
-		if guildID == "" {
-			guildID = "global"
-		}
-
-		// Load emotes from global + guild
-		global, err := p.storage.LoadMetadata("global")
-		if err != nil {
-			return "", fmt.Errorf("failed to load global emotes: %w", err)
-		}
-		guild, err := p.storage.LoadMetadata(guildID)
-		if err != nil {
-			return "", fmt.Errorf("failed to load guild emotes: %w", err)
-		}
-
-		// Merge and dedup by ID
-		allEmotes := global.Emotes
-		seen := make(map[string]bool)
-		for _, e := range global.Emotes {
-			seen[e.ID] = true
-		}
-		for _, e := range guild.Emotes {
-			if !seen[e.ID] {
-				allEmotes = append(allEmotes, e)
-				seen[e.ID] = true
-			}
-		}
-
-		fmt.Fprintf(os.Stderr, "[EMOTE] search_emote: query=%q guild=%s emotes=%d\n", query, guildID, len(allEmotes))
-
-		if p.emoteLLM == nil {
-			return "", fmt.Errorf("emote LLM not configured")
-		}
-
-		matches, err := p.emoteLLM.Match(query, allEmotes)
-		if err != nil {
-			return "", fmt.Errorf("emote search failed: %w", err)
-		}
-		fmt.Fprintf(os.Stderr, "[EMOTE] search_emote: %d matches for %q\n", len(matches), query)
-
-		if len(matches) == 0 {
-			return "no matching emotes found", nil
-		}
-
-		// Build response with emote details
-		type SearchResult struct {
-			ID          string   `json:"id"`
-			Name        string   `json:"name"`
-			Description string   `json:"description"`
-			Tags        []string `json:"tags"`
-			Reason      string   `json:"reason"`
-		}
-		results := make([]SearchResult, 0, len(matches))
-		for _, m := range matches {
-			for _, e := range allEmotes {
-				if e.ID == m.ID {
-					results = append(results, SearchResult{
-						ID: e.ID, Name: e.Name, Description: e.Description,
-						Tags: e.Tags, Reason: m.Reason,
-					})
-					break
-				}
-			}
-		}
-
-		data, err := json.MarshalIndent(map[string]interface{}{"results": results}, "", "  ")
-		if err != nil {
-			return "", fmt.Errorf("failed to marshal search results: %w", err)
-		}
-		return string(data), nil
-
+		return p.executeSearchEmote(args)
 	case "send_emote":
-		id, ok := args["id"].(string)
-		if !ok || id == "" {
-			return "", fmt.Errorf("id is required")
-		}
-		guildID, _ := args["guild_id"].(string)
-		if guildID == "" {
-			guildID = "global"
-		}
-
-		// Search metadata for the emote (try guild first, then global)
-		var entry *EmoteEntry
-		for _, gid := range []string{guildID, "global"} {
-			mf, err := p.storage.LoadMetadata(gid)
-			if err != nil {
-				continue
-			}
-			for i := range mf.Emotes {
-				if mf.Emotes[i].ID == id {
-					e := mf.Emotes[i]
-					entry = &e
-					break
-				}
-			}
-			if entry != nil {
-				break
-			}
-		}
-		if entry == nil {
-			return "", fmt.Errorf("emote not found: %s", id)
-		}
-
-		// Resolve the output: CDN refresh if URL, or local file path
-		var sendContent string
-		if entry.URL != "" {
-			refreshed, err := p.cdnRefresh.RefreshURL(entry.URL)
-			if err != nil {
-				refreshed = entry.URL // fallback
-			}
-			sendContent = refreshed
-		} else if entry.FileName != "" {
-			sendContent = "__file__:" + entry.FileName
-		} else {
-			return "", fmt.Errorf("emote has neither URL nor file_name: %s", id)
-		}
-
-		// Queue for OnResponse
-		p.mu.Lock()
-		if p.lastChannelID != "" {
-			p.sendQueue[p.lastChannelID] = sendContent
-		}
-		p.mu.Unlock()
-
-		fmt.Fprintf(os.Stderr, "[EMOTE] send_emote: %s -> channel=%s\n", entry.Name, p.lastChannelID)
-
-		return fmt.Sprintf("sent %s", entry.Name), nil
-
+		return p.executeSendEmote(args)
 	default:
 		return "", fmt.Errorf("unknown tool: %s", name)
 	}
+}
+
+func (p *EmotePlugin) executeSearchEmote(args map[string]interface{}) (string, error) {
+	query, ok, err := getStringArg(args, "query")
+	if err != nil {
+		return "", err
+	}
+	if !ok || query == "" {
+		return "", fmt.Errorf("query is required")
+	}
+
+	guildID, _, err := getStringArg(args, "guild_id")
+	if err != nil {
+		return "", err
+	}
+	if guildID == "" {
+		guildID = "global"
+	}
+
+	// Load emotes from global + guild
+	global, err := p.storage.LoadMetadata("global")
+	if err != nil {
+		return "", fmt.Errorf("failed to load global emotes: %w", err)
+	}
+	guild, err := p.storage.LoadMetadata(guildID)
+	if err != nil {
+		return "", fmt.Errorf("failed to load guild emotes: %w", err)
+	}
+
+	// Merge and dedup by ID
+	allEmotes := global.Emotes
+	seen := make(map[string]bool)
+	for _, e := range global.Emotes {
+		seen[e.ID] = true
+	}
+	for _, e := range guild.Emotes {
+		if !seen[e.ID] {
+			allEmotes = append(allEmotes, e)
+			seen[e.ID] = true
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "[EMOTE] search_emote: query=%q guild=%s emotes=%d\n", query, guildID, len(allEmotes))
+
+	if p.emoteLLM == nil {
+		return "", fmt.Errorf("emote LLM not configured")
+	}
+
+	matches, err := p.emoteLLM.Match(query, allEmotes)
+	if err != nil {
+		return "", fmt.Errorf("emote search failed: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "[EMOTE] search_emote: %d matches for %q\n", len(matches), query)
+
+	if len(matches) == 0 {
+		return "no matching emotes found", nil
+	}
+
+	// Build response with emote details
+	type SearchResult struct {
+		ID          string   `json:"id"`
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		Tags        []string `json:"tags"`
+		Reason      string   `json:"reason"`
+	}
+	results := make([]SearchResult, 0, len(matches))
+	for _, m := range matches {
+		for _, e := range allEmotes {
+			if e.ID == m.ID {
+				results = append(results, SearchResult{
+					ID: e.ID, Name: e.Name, Description: e.Description,
+					Tags: e.Tags, Reason: m.Reason,
+				})
+				break
+			}
+		}
+	}
+
+	data, err := json.MarshalIndent(map[string]interface{}{"results": results}, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal search results: %w", err)
+	}
+	return string(data), nil
+}
+
+func (p *EmotePlugin) executeSendEmote(args map[string]interface{}) (string, error) {
+	id, ok, err := getStringArg(args, "id")
+	if err != nil {
+		return "", err
+	}
+	if !ok || id == "" {
+		return "", fmt.Errorf("id is required")
+	}
+
+	guildID, _, err := getStringArg(args, "guild_id")
+	if err != nil {
+		return "", err
+	}
+	if guildID == "" {
+		guildID = "global"
+	}
+
+	// Search metadata for the emote (try guild first, then global)
+	var entry *EmoteEntry
+	for _, gid := range []string{guildID, "global"} {
+		mf, err := p.storage.LoadMetadata(gid)
+		if err != nil {
+			continue
+		}
+		for i := range mf.Emotes {
+			if mf.Emotes[i].ID == id {
+				e := mf.Emotes[i]
+				entry = &e
+				break
+			}
+		}
+		if entry != nil {
+			break
+		}
+	}
+	if entry == nil {
+		return "", fmt.Errorf("emote not found: %s", id)
+	}
+
+	// Resolve the output: CDN refresh if URL, or local file path
+	var sendContent string
+	if entry.URL != "" {
+		refreshed, err := p.cdnRefresh.RefreshURL(entry.URL)
+		if err != nil {
+			return "", fmt.Errorf("failed to refresh CDN URL: %w", err)
+		}
+		sendContent = refreshed
+	} else if entry.FileName != "" {
+		sendContent = "__file__:" + entry.FileName
+	} else {
+		return "", fmt.Errorf("emote has neither URL nor file_name: %s", id)
+	}
+
+	// Queue for OnResponse
+	p.mu.Lock()
+	if p.lastChannelID != "" {
+		p.sendQueue[p.lastChannelID] = sendContent
+	}
+	p.mu.Unlock()
+
+	fmt.Fprintf(os.Stderr, "[EMOTE] send_emote: %s -> channel=%s\n", entry.Name, p.lastChannelID)
+
+	return fmt.Sprintf("sent %s", entry.Name), nil
+}
+
+// getStringArg extracts a string argument from the args map using comma-ok pattern.
+func getStringArg(args map[string]interface{}, key string) (string, bool, error) {
+	value, exists := args[key]
+	if !exists {
+		return "", false, nil
+	}
+	s, ok := value.(string)
+	if !ok {
+		return "", false, fmt.Errorf("argument %s must be a string", key)
+	}
+	return s, true, nil
 }
 
 func detectFormat(url string) string {
@@ -324,41 +362,78 @@ func isAllowedFormat(format string, allowed []string) bool {
 	return false
 }
 
-func main() {
-	configPath := strings.TrimSpace(os.Getenv("EZYAPPER_PLUGIN_CONFIG"))
-	config, err := loadConfig(configPath)
+func newEmotePlugin(cfg Config) (*EmotePlugin, error) {
+	dataDir := cfg.DataDir
+	if !filepath.IsAbs(dataDir) {
+		pluginRoot := pluginRuntimePath()
+		dataDir = filepath.Join(pluginRoot, dataDir)
+	}
+
+	dataDir, err := filepath.Abs(filepath.Clean(dataDir))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[EMOTE] Error loading config: %v\n", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("failed to resolve data dir: %w", err)
 	}
 
-	if err := validateConfig(&config); err != nil {
-		fmt.Fprintf(os.Stderr, "[EMOTE] Config validation error: %v\n", err)
-		os.Exit(1)
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create data dir %s: %w", dataDir, err)
 	}
 
-	p := &EmotePlugin{config: config}
-	p.storage = NewStorage(config.DataDir)
-	if config.VisionApiKey != "" {
+	p := &EmotePlugin{
+		config:    cfg,
+		storage:   NewStorage(dataDir),
+		sendQueue: make(map[string]string),
+	}
+
+	if cfg.VisionApiKey != "" {
 		p.vision = NewVisionClient(
-			config.VisionApiKey,
-			config.VisionApiBaseUrl,
-			config.VisionModel,
-			config.VisionPrompt,
-			time.Duration(config.VisionTimeoutSeconds)*time.Second,
+			cfg.VisionApiKey,
+			cfg.VisionApiBaseUrl,
+			cfg.VisionModel,
+			cfg.VisionPrompt,
+			time.Duration(cfg.VisionTimeoutSeconds)*time.Second,
 		)
 	}
+
 	p.emoteLLM = NewEmoteLLMClient(
-		config.EmoteModel,
-		config.EmoteApiKey,
-		config.EmoteApiBaseURL,
-		config.EmoteMaxTokens,
-		config.EmoteTemperature,
+		cfg.EmoteModel,
+		cfg.EmoteApiKey,
+		cfg.EmoteApiBaseURL,
+		cfg.EmoteMaxTokens,
+		cfg.EmoteTemperature,
 		15*time.Second,
 	)
-	p.cdnRefresh = NewCDNRefreshClient(config.DiscordToken)
+
+	p.cdnRefresh = NewCDNRefreshClient(cfg.DiscordToken)
 	p.discord = &DiscordSession{}
-	p.sendQueue = make(map[string]string)
+
+	return p, nil
+}
+
+func pluginRuntimePath() string {
+	if dir := strings.TrimSpace(os.Getenv("EZYAPPER_PLUGIN_PATH")); dir != "" {
+		return dir
+	}
+	return "."
+}
+
+func main() {
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[EMOTE] Failed to load configuration: %v\n", err)
+		os.Exit(1)
+	}
+
+	p, err := newEmotePlugin(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[EMOTE] Failed to initialize plugin: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Fprintf(os.Stderr, "[EMOTE] Plugin starting...\n")
+	if p.config.LoggingEnabled {
+		fmt.Fprintf(os.Stderr, "[EMOTE] Config: data_dir=%s, auto_steal=%v\n", p.config.DataDir, p.config.AutoStealEnabled)
+	}
+
 	if err := plugin.Serve(p); err != nil {
 		fmt.Fprintf(os.Stderr, "[EMOTE] Error: %v\n", err)
 		os.Exit(1)

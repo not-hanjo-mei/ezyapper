@@ -22,7 +22,11 @@ func LogsHandler(logFilePath string, cfgStore *atomic.Value, ts *TemplateSet) ht
 		}
 
 		ctx := r.Context()
-		cfg := cfgStore.Load().(*config.Config)
+		cfg, ok := cfgStore.Load().(*config.Config)
+		if !ok {
+			http.Error(w, "Internal configuration error", http.StatusInternalServerError)
+			return
+		}
 		csrfToken := CSRFTokenFromContext(ctx)
 
 		lines := cfg.Web.LogDefaultLines

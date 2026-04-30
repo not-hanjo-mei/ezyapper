@@ -161,7 +161,11 @@ func NewServer(cfgStore *atomic.Value, memStore memory.MemoryStore, profileStore
 		logger.Fatalf("[web] failed to generate CSRF secret: %v", err)
 	}
 
-	webCfg := cfgStore.Load().(*config.Config).Web
+	cfg, ok := cfgStore.Load().(*config.Config)
+	if !ok {
+		panic("configStore contains non-*config.Config value")
+	}
+	webCfg := cfg.Web
 	server := &Server{
 		configStore:      cfgStore,
 		memoryStore:      memStore,

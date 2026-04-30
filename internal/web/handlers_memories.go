@@ -53,7 +53,11 @@ func MemoriesHandler(cfgStore *atomic.Value, memStore memory.MemoryStore, ts *Te
 
 func handleMemoriesGET(w http.ResponseWriter, r *http.Request, cfgStore *atomic.Value, memStore memory.MemoryStore, ts *TemplateSet) {
 	ctx := r.Context()
-	cfg := cfgStore.Load().(*config.Config)
+	cfg, ok := cfgStore.Load().(*config.Config)
+	if !ok {
+		http.Error(w, "Internal configuration error", http.StatusInternalServerError)
+		return
+	}
 	userID := strings.TrimSpace(r.URL.Query().Get("userID"))
 	csrfToken := CSRFTokenFromContext(ctx)
 	flash := flashFromCookieMemories(r)

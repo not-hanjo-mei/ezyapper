@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"ezyapper/internal/ai"
-	"ezyapper/internal/ai/vision"
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/retry"
@@ -32,6 +31,11 @@ type aiChatCompleter interface {
 	CreateChatCompletion(ctx context.Context, req ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error)
 }
 
+// visionDescriber is the subset of vision.VisionDescriber methods used by Consolidator.
+type visionDescriber interface {
+	DescribeImages(ctx context.Context, imageURLs []string) ([]string, error)
+}
+
 // embedSleep overrides time.Sleep for retry tests. Nil means use real timers.
 var embedSleep func(time.Duration)
 
@@ -40,7 +44,7 @@ type Consolidator struct {
 	qdrant            qdrantStore
 	embedder          Embedder
 	aiClient          aiChatCompleter
-	visionDescriber   *vision.VisionDescriber
+	visionDescriber   visionDescriber
 	maxMessages       int
 	model             string
 	prompt            string
@@ -76,7 +80,7 @@ func (c *Consolidator) embedWithRetry(ctx context.Context, text string) ([]float
 }
 
 // NewConsolidator creates a new consolidator with the given Qdrant client, embedder, and AI configuration.
-func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient aiChatCompleter, visionDescriber *vision.VisionDescriber, cfg *config.ConsolidationConfig, ownBotID string, consolidationInterval int, memorySearchLimit int, retryMaxRetries int, retryBaseDelayMs int, retryMaxDelayMs int) *Consolidator {
+func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient aiChatCompleter, visionDescriber visionDescriber, cfg *config.ConsolidationConfig, ownBotID string, consolidationInterval int, memorySearchLimit int, retryMaxRetries int, retryBaseDelayMs int, retryMaxDelayMs int) *Consolidator {
 	return &Consolidator{
 		qdrant:            qdrant,
 		embedder:          embedder,
