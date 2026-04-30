@@ -31,7 +31,7 @@ func TestFetchRecentMessages(t *testing.T) {
 		{ID: "1", AuthorID: "u1", Content: "hello"},
 		{ID: "2", AuthorID: "u2", Content: "world"},
 	}
-	client := NewShortTermClient(&mockFetcher{messages: msgs})
+	client := NewShortTermClient(&mockFetcher{messages: msgs}, 500)
 
 	result, err := client.FetchRecentMessages(context.Background(), "chan", 10)
 	if err != nil {
@@ -48,7 +48,7 @@ func TestFetchUserMessages(t *testing.T) {
 		{ID: "2", AuthorID: "u2", Content: "world"},
 		{ID: "3", AuthorID: "u1", Content: "again"},
 	}
-	client := NewShortTermClient(&mockFetcher{messages: msgs})
+	client := NewShortTermClient(&mockFetcher{messages: msgs}, 500)
 
 	result, err := client.FetchUserMessages(context.Background(), "chan", "u1", 10)
 	if err != nil {
@@ -63,7 +63,7 @@ func TestFetchChannelMessages(t *testing.T) {
 	msgs := []types.DiscordMessage{
 		{ID: "1", Content: "hello"},
 	}
-	client := NewShortTermClient(&mockFetcher{messages: msgs})
+	client := NewShortTermClient(&mockFetcher{messages: msgs}, 500)
 
 	result, err := client.FetchChannelMessages(context.Background(), "chan", 10)
 	if err != nil {
@@ -75,7 +75,7 @@ func TestFetchChannelMessages(t *testing.T) {
 }
 
 func TestFetchRecentMessages_Error(t *testing.T) {
-	client := NewShortTermClient(&mockFetcher{err: errors.New("api down")})
+	client := NewShortTermClient(&mockFetcher{err: errors.New("api down")}, 500)
 
 	_, err := client.FetchRecentMessages(context.Background(), "chan", 10)
 	if err == nil {
@@ -101,7 +101,7 @@ func TestValidateLimit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("limit=%d", tt.limit), func(t *testing.T) {
-			got, err := validateLimit(tt.limit, "TestFunc")
+			got, err := validateLimit(tt.limit, 500, "TestFunc")
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("expected error, got nil")

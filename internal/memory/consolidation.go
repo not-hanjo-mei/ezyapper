@@ -19,11 +19,6 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 )
 
-const (
-	// defaultMemorySearchLimit is the number of recent memories fetched during consolidation.
-	defaultMemorySearchLimit = 10
-)
-
 // qdrantStore is the subset of QdrantClient methods used by Consolidator.
 type qdrantStore interface {
 	UpsertMemory(ctx context.Context, memory *Record) error
@@ -37,14 +32,15 @@ var embedSleep func(time.Duration)
 
 // Consolidator extracts and stores memories from conversation context using LLM analysis.
 type Consolidator struct {
-	qdrant          qdrantStore
-	embedder        Embedder
-	aiClient        *ai.Client
-	visionDescriber *vision.VisionDescriber
-	maxMessages     int
-	model           string
-	prompt          string
-	ownBotID        string // Bot's own ID to distinguish from other bots
+	qdrant            qdrantStore
+	embedder          Embedder
+	aiClient          *ai.Client
+	visionDescriber   *vision.VisionDescriber
+	maxMessages       int
+	model             string
+	prompt            string
+	ownBotID          string // Bot's own ID to distinguish from other bots
+	memorySearchLimit int
 
 	lastConsolidatedAt time.Time
 	mu                 sync.RWMutex
@@ -76,16 +72,17 @@ func embedWithRetry(ctx context.Context, embedder Embedder, text string) ([]floa
 }
 
 // NewConsolidator creates a new consolidator with the given Qdrant client, embedder, and AI configuration.
-func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient *ai.Client, visionDescriber *vision.VisionDescriber, cfg *config.ConsolidationConfig, ownBotID string, consolidationInterval int) *Consolidator {
+func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient *ai.Client, visionDescriber *vision.VisionDescriber, cfg *config.ConsolidationConfig, ownBotID string, consolidationInterval int, memorySearchLimit int) *Consolidator {
 	return &Consolidator{
-		qdrant:          qdrant,
-		embedder:        embedder,
-		aiClient:        aiClient,
-		visionDescriber: visionDescriber,
-		maxMessages:     consolidationInterval,
-		model:           cfg.Model,
-		prompt:          cfg.SystemPrompt,
-		ownBotID:        ownBotID,
+		qdrant:            qdrant,
+		embedder:          embedder,
+		aiClient:          aiClient,
+		visionDescriber:   visionDescriber,
+		maxMessages:       consolidationInterval,
+		model:             cfg.Model,
+		prompt:            cfg.SystemPrompt,
+		ownBotID:          ownBotID,
+		memorySearchLimit: memorySearchLimit,
 	}
 }
 
@@ -96,7 +93,7 @@ func (c *Consolidator) Process(ctx context.Context, userID string) error {
 
 	profile := c.getOrCreateProfile(ctx, userID)
 
-	memories, err := c.qdrant.GetMemoriesByUser(ctx, userID, defaultMemorySearchLimit)
+	memories, err := c.qdrant.GetMemoriesByUser(ctx, userID, c.memorySearchLimit)
 	if err != nil {
 		logger.Errorf("[consolidation] failed to get memories for user=%s: %v", userID, err)
 		return fmt.Errorf("failed to get memories: %w", err)

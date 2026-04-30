@@ -2,8 +2,10 @@ package web
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
+	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
 )
@@ -20,12 +22,14 @@ type profileCounter interface {
 type StatsProvider struct {
 	memStore     memory.MemoryStore
 	profileStore memory.ProfileStore
+	cfgStore     *atomic.Value
 }
 
-func NewStatsProvider(memStore memory.MemoryStore, profileStore memory.ProfileStore) *StatsProvider {
+func NewStatsProvider(memStore memory.MemoryStore, profileStore memory.ProfileStore, cfgStore *atomic.Value) *StatsProvider {
 	return &StatsProvider{
 		memStore:     memStore,
 		profileStore: profileStore,
+		cfgStore:     cfgStore,
 	}
 }
 
@@ -42,7 +46,8 @@ func (s *StatsProvider) GetDashboardStats(ctx context.Context) memory.GlobalStat
 }
 
 func (s *StatsProvider) countMemories(ctx context.Context, stats *memory.GlobalStats) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	cfg := s.cfgStore.Load().(*config.Config)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(cfg.Web.StatsQueryTimeoutSec)*time.Second)
 	defer cancel()
 
 	if mc, ok := s.memStore.(memoryCounter); ok {
@@ -60,7 +65,8 @@ func (s *StatsProvider) countMemories(ctx context.Context, stats *memory.GlobalS
 }
 
 func (s *StatsProvider) countProfiles(ctx context.Context, stats *memory.GlobalStats) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	cfg := s.cfgStore.Load().(*config.Config)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(cfg.Web.StatsQueryTimeoutSec)*time.Second)
 	defer cancel()
 
 	if pc, ok := s.profileStore.(profileCounter); ok {

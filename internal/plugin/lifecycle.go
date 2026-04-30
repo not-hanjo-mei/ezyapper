@@ -140,13 +140,13 @@ func (pm *Manager) loadRPCPlugin(pluginPath string, pluginConfigDir string) erro
 	jsonClient := newStdioJSONRPCClient(stdin, stdout)
 
 	var info Info
-	if err := callJSONRPCWithTimeout(jsonClient, &pm.wg, "info", map[string]interface{}{}, &info, pluginStartupTimeout); err != nil {
+	if err := callJSONRPCWithTimeout(jsonClient, &pm.wg, "info", map[string]interface{}{}, &info, time.Duration(pm.startupTimeoutSec)*time.Second); err != nil {
 		jsonClient.Close()
 		cmd.Process.Kill()
 		return fmt.Errorf("plugin failed to initialize jsonrpc: %w", err)
 	}
 
-	pluginTools, err := listPluginToolsJSONRPC(jsonClient, &pm.wg)
+	pluginTools, err := listPluginToolsJSONRPC(jsonClient, &pm.wg, time.Duration(pm.rpcTimeoutSec)*time.Second)
 	if err != nil {
 		logger.Warnf("Failed to list tools for plugin %s: %v", info.Name, err)
 		pluginTools = []ToolSpec{}
@@ -593,7 +593,7 @@ func (pm *Manager) shutdownPlugin(plugin *Client) error {
 		return nil
 	}
 
-	err := callPluginShutdownWithTimeout(plugin, pluginRPCTimeout)
+	err := callPluginShutdownWithTimeout(plugin, time.Duration(pm.rpcTimeoutSec)*time.Second)
 	if isBenignPluginShutdownError(err) {
 		return nil
 	}
@@ -677,7 +677,7 @@ func (pm *Manager) WaitForPending() error {
 	select {
 	case <-done:
 		return nil
-	case <-time.After(30 * time.Second):
+	case <-time.After(time.Duration(pm.shutdownTimeoutSec) * time.Second):
 		return fmt.Errorf("timeout waiting for pending plugin operations")
 	}
 }
@@ -694,7 +694,7 @@ func (pm *Manager) Shutdown(ctx context.Context) error {
 			errs = append(errs, fmt.Errorf("plugin %s shutdown error: %w", name, err))
 		}
 
-		pm.stopPluginProcess(plugin, 5*time.Second)
+		pm.stopPluginProcess(plugin, time.Duration(pm.shutdownTimeoutSec)*time.Second)
 	}
 
 	pm.plugins = make(map[string]*Client)
@@ -747,7 +747,7 @@ func (pm *Manager) DisablePlugin(name string) error {
 		logger.Warnf("Error shutting down plugin %s: %v", name, err)
 	}
 
-	pm.stopPluginProcess(plugin, 2*time.Second)
+	pm.stopPluginProcess(plugin, time.Duration(pm.disableTimeoutSec)*time.Second)
 
 	delete(pm.plugins, name)
 	pm.disabled[name] = disabledPlugin{

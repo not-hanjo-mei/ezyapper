@@ -39,17 +39,9 @@ const (
 	// PhaseSending currently sending the response
 	PhaseSending
 
-	// Timeouts and intervals
-	consolidationTimeout    = 5 * time.Minute
-	typingIndicatorInterval = 8 * time.Second
-
-	// Discord limits
+	// Discord platform limits (hardcoded — not user-configurable per Discord API specs)
 	discordMessageLimit = 2000
 	discordChunkLimit   = 1900
-
-	// Delays
-	longResponseDelay      = 500 * time.Millisecond
-	messageChunkSplitDelay = 8 * time.Second
 )
 
 // ProcessingMessage represents a message being processed
@@ -154,7 +146,11 @@ type Bot struct {
 
 // cfg returns the current config snapshot atomically
 func (b *Bot) cfg() *config.Config {
-	return b.configStore.Load().(*config.Config)
+	c, ok := b.configStore.Load().(*config.Config)
+	if !ok {
+		panic("configStore contains non-*config.Config value")
+	}
+	return c
 }
 
 type historicalImageDescCacheEntry struct {
@@ -162,11 +158,6 @@ type historicalImageDescCacheEntry struct {
 	descriptions []string
 	cachedAt     time.Time
 }
-
-const (
-	historicalImageDescCacheTTL        = 30 * time.Minute
-	historicalImageDescCacheMaxEntries = 2000
-)
 
 // New creates a new Discord bot instance
 func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore memory.ProfileStore, conMgr consolidationManager, pluginMgr *plugin.Manager) (*Bot, error) {
@@ -198,7 +189,7 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 	mcpManager := mcp.NewMCPManager(cfg.MCP.Servers)
 
 	// Create Discord client for short-term context
-	discordClient := memory.NewShortTermClient(NewDiscordMessageFetcher(session))
+	discordClient := memory.NewShortTermClient(NewDiscordMessageFetcher(session), cfg.Memory.MaxPaginatedLimit)
 
 	var decisionService *decision.DecisionService
 	if cfg.Decision.Enabled {
@@ -918,10 +909,11 @@ func (b *Bot) getHistoricalImageDescriptions(messageID string, imageURLs []strin
 		return nil, false
 	}
 
-	if entry.imageURLsKey != key || time.Since(entry.cachedAt) > historicalImageDescCacheTTL || len(entry.descriptions) == 0 {
+	cacheTTL := time.Duration(b.cfg().Discord.ImageCacheTTLMin) * time.Minute
+	if entry.imageURLsKey != key || time.Since(entry.cachedAt) > cacheTTL || len(entry.descriptions) == 0 {
 		b.historicalImageDescCacheMu.Lock()
 		if latest, exists := b.historicalImageDescCache[messageID]; exists {
-			if latest.imageURLsKey != key || time.Since(latest.cachedAt) > historicalImageDescCacheTTL || len(latest.descriptions) == 0 {
+			if latest.imageURLsKey != key || time.Since(latest.cachedAt) > cacheTTL || len(latest.descriptions) == 0 {
 				delete(b.historicalImageDescCache, messageID)
 			}
 		}
@@ -955,18 +947,20 @@ func (b *Bot) setHistoricalImageDescriptions(messageID string, imageURLs, descri
 
 func (b *Bot) pruneHistoricalImageDescCacheLocked() {
 	now := time.Now()
+	cacheTTL := time.Duration(b.cfg().Discord.ImageCacheTTLMin) * time.Minute
+	maxEntries := b.cfg().Discord.ImageCacheMaxEntries
 
 	for messageID, entry := range b.historicalImageDescCache {
-		if now.Sub(entry.cachedAt) > historicalImageDescCacheTTL {
+		if now.Sub(entry.cachedAt) > cacheTTL {
 			delete(b.historicalImageDescCache, messageID)
 		}
 	}
 
-	if len(b.historicalImageDescCache) <= historicalImageDescCacheMaxEntries {
+	if len(b.historicalImageDescCache) <= maxEntries {
 		return
 	}
 
-	for len(b.historicalImageDescCache) > historicalImageDescCacheMaxEntries {
+	for len(b.historicalImageDescCache) > maxEntries {
 		var oldestMessageID string
 		var oldestTime time.Time
 		first := true

@@ -28,9 +28,9 @@ type localUploadFile struct {
 	DeleteAfterUpload bool
 }
 
-// maintainTyping keeps the typing indicator alive by sending it every 8 seconds
-func maintainTyping(ctx context.Context, s *discordgo.Session, channelID string) {
-	ticker := time.NewTicker(typingIndicatorInterval)
+// maintainTyping keeps the typing indicator alive by sending it periodically
+func maintainTyping(ctx context.Context, s *discordgo.Session, channelID string, intervalSec int) {
+	ticker := time.NewTicker(time.Duration(intervalSec) * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -291,7 +291,7 @@ func (b *Bot) sendLongResponse(s *discordgo.Session, m *discordgo.MessageCreate,
 	// Send chunks
 	for i, chunk := range chunks {
 		if i > 0 {
-			time.Sleep(longResponseDelay) // Rate limit protection
+			time.Sleep(time.Duration(b.cfg().Discord.LongResponseDelayMs) * time.Millisecond) // Rate limit protection
 		}
 
 		var sentMsg *discordgo.Message

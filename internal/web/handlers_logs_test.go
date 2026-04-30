@@ -48,7 +48,7 @@ func TestLogsHandler_GET_ReturnsLogs(t *testing.T) {
 	logPath := writeTestLogFile(t, dir, logLines)
 
 	tmpl := testLogsTemplate()
-	handler := LogsHandler(logPath, tmpl)
+	handler := LogsHandler(logPath, newTestCfgStore(), tmpl)
 
 	req := httptest.NewRequest(http.MethodGet, "/logs?lines=3", nil)
 	rec := httptest.NewRecorder()
@@ -83,7 +83,7 @@ func TestLogsHandler_GET_DefaultLines(t *testing.T) {
 	logPath := writeTestLogFile(t, dir, logLines)
 
 	tmpl := testLogsTemplate()
-	handler := LogsHandler(logPath, tmpl)
+	handler := LogsHandler(logPath, newTestCfgStore(), tmpl)
 
 	req := httptest.NewRequest(http.MethodGet, "/logs", nil)
 	rec := httptest.NewRecorder()
@@ -130,7 +130,7 @@ func TestLogsHandler_GET_InvalidLines(t *testing.T) {
 	logPath := writeTestLogFile(t, dir, logLines)
 
 	tmpl := testLogsTemplate()
-	handler := LogsHandler(logPath, tmpl)
+	handler := LogsHandler(logPath, newTestCfgStore(), tmpl)
 
 	req := httptest.NewRequest(http.MethodGet, "/logs?lines=abc", nil)
 	rec := httptest.NewRecorder()
@@ -159,7 +159,7 @@ func TestLogsHandler_GET_LinesExceedsMax(t *testing.T) {
 	logPath := writeTestLogFile(t, dir, logLines)
 
 	tmpl := testLogsTemplate()
-	handler := LogsHandler(logPath, tmpl)
+	handler := LogsHandler(logPath, newTestCfgStore(), tmpl)
 
 	req := httptest.NewRequest(http.MethodGet, "/logs?lines=10000", nil)
 	rec := httptest.NewRecorder()
@@ -178,7 +178,7 @@ func TestLogsHandler_GET_LinesExceedsMax(t *testing.T) {
 
 func TestLogsHandler_FileNotFound(t *testing.T) {
 	tmpl := testLogsTemplate()
-	handler := LogsHandler("/nonexistent/path/to/logs.log", tmpl)
+	handler := LogsHandler("/nonexistent/path/to/logs.log", newTestCfgStore(), tmpl)
 
 	req := httptest.NewRequest(http.MethodGet, "/logs", nil)
 	rec := httptest.NewRecorder()
@@ -201,7 +201,7 @@ func TestLogsHandler_GET_NavItemsPresent(t *testing.T) {
 	logPath := writeTestLogFile(t, dir, logLines)
 
 	tmpl := testLogsTemplate()
-	handler := LogsHandler(logPath, tmpl)
+	handler := LogsHandler(logPath, newTestCfgStore(), tmpl)
 
 	req := httptest.NewRequest(http.MethodGet, "/logs", nil)
 	rec := httptest.NewRecorder()
@@ -227,7 +227,7 @@ func TestLogsHandler_GET_EmptyFile(t *testing.T) {
 	f.Close()
 
 	tmpl := testLogsTemplate()
-	handler := LogsHandler(logPath, tmpl)
+	handler := LogsHandler(logPath, newTestCfgStore(), tmpl)
 
 	req := httptest.NewRequest(http.MethodGet, "/logs", nil)
 	rec := httptest.NewRecorder()
@@ -245,7 +245,7 @@ func TestLogsHandler_GET_MethodNotAllowed(t *testing.T) {
 	logPath := writeTestLogFile(t, dir, logLines)
 
 	tmpl := testLogsTemplate()
-	handler := LogsHandler(logPath, tmpl)
+	handler := LogsHandler(logPath, newTestCfgStore(), tmpl)
 
 	req := httptest.NewRequest(http.MethodPost, "/logs", nil)
 	rec := httptest.NewRecorder()

@@ -58,7 +58,7 @@ func TestManagerHelperProcess(t *testing.T) {
 }
 
 func TestEnablePluginAlreadyEnabled(t *testing.T) {
-	pm := NewManager(0)
+	pm := NewManager(0, 90, 5, 180, 45, 5, 2)
 	pm.plugins["demo"] = &Client{Name: "demo"}
 
 	if err := pm.EnablePlugin("demo"); err != nil {
@@ -67,7 +67,7 @@ func TestEnablePluginAlreadyEnabled(t *testing.T) {
 }
 
 func TestEnablePluginNotFound(t *testing.T) {
-	pm := NewManager(0)
+	pm := NewManager(0, 90, 5, 180, 45, 5, 2)
 
 	err := pm.EnablePlugin("missing")
 	if err == nil {
@@ -79,7 +79,7 @@ func TestEnablePluginNotFound(t *testing.T) {
 }
 
 func TestEnablePluginLoadFailureFromDisabled(t *testing.T) {
-	pm := NewManager(0)
+	pm := NewManager(0, 90, 5, 180, 45, 5, 2)
 	missingPath := filepath.Join(t.TempDir(), "missing-plugin")
 	pm.disabled["demo"] = disabledPlugin{
 		Info: Info{Name: "demo"},
@@ -96,7 +96,7 @@ func TestEnablePluginLoadFailureFromDisabled(t *testing.T) {
 }
 
 func TestDisablePluginNotFound(t *testing.T) {
-	pm := NewManager(0)
+	pm := NewManager(0, 90, 5, 180, 45, 5, 2)
 
 	err := pm.DisablePlugin("missing")
 	if err == nil {
@@ -108,7 +108,7 @@ func TestDisablePluginNotFound(t *testing.T) {
 }
 
 func TestDisablePluginMovesToDisabledRegistry(t *testing.T) {
-	pm := NewManager(0)
+	pm := NewManager(0, 90, 5, 180, 45, 5, 2)
 	pm.plugins["demo"] = &Client{
 		Name:      "demo",
 		Info:      Info{Name: "demo", Version: "1.0.0"},
@@ -138,7 +138,7 @@ func TestDisablePluginMovesToDisabledRegistry(t *testing.T) {
 }
 
 func TestShutdownSkipsCommandRuntimePlugins(t *testing.T) {
-	pm := NewManager(0)
+	pm := NewManager(0, 90, 5, 180, 45, 5, 2)
 	pm.plugins["command-plugin"] = &Client{
 		Name:    "command-plugin",
 		Info:    Info{Name: "command-plugin", Version: "1.0.0"},
@@ -342,7 +342,7 @@ func TestLoadPluginsFromDirCommandRuntimeWithoutLocalExecutable(t *testing.T) {
 		t.Fatalf("failed to write manifest: %v", err)
 	}
 
-	pm := NewManager(0)
+	pm := NewManager(0, 90, 5, 180, 45, 5, 2)
 	if err := pm.LoadPluginsFromDir(pluginsRoot); err != nil {
 		t.Fatalf("LoadPluginsFromDir returned error: %v", err)
 	}
@@ -412,7 +412,7 @@ func TestValidateToolSpec_OK(t *testing.T) {
 }
 
 func TestToolSpecTimeoutMsPropagation(t *testing.T) {
-	pm := NewManager(0)
+	pm := NewManager(0, 90, 5, 180, 45, 5, 2)
 	pm.plugins["test-plugin"] = &Client{
 		Name:    "test-plugin",
 		runtime: pluginRuntimeJSONRPC,
@@ -485,7 +485,7 @@ func newTimeoutTestManager(t *testing.T, toolTimeoutMs int, toolDelay time.Durat
 	jsonClient, cleanup := newMockJSONRPCClient(toolDelay)
 	t.Cleanup(cleanup)
 
-	pm := NewManager(defaultToolTimeoutMs)
+	pm := NewManager(defaultToolTimeoutMs, 90, 5, 180, 45, 5, 2)
 	pm.plugins["mock-plugin"] = &Client{
 		Name:    "mock-plugin",
 		jsonrpc: jsonClient,
@@ -562,7 +562,7 @@ func TestExecuteToolTimeout_SuccessWithConfigTimeout(t *testing.T) {
 }
 
 func TestManagerDefaultToolTimeoutMsZero(t *testing.T) {
-	pm := NewManager(0)
+	pm := NewManager(0, 90, 5, 180, 45, 5, 2)
 	if pm.defaultToolTimeoutMs != 0 {
 		t.Fatalf("expected DefaultToolTimeoutMs=0, got %d", pm.defaultToolTimeoutMs)
 	}

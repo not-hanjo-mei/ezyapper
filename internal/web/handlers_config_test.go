@@ -23,6 +23,13 @@ core:
     reply_percentage: 0.5
     cooldown_seconds: 5
     max_responses_per_minute: 10
+    consolidation_timeout_sec: 300
+    typing_indicator_interval_sec: 5
+    long_response_delay_ms: 500
+    chunk_split_delay_sec: 2
+    reply_truncation_length: 200
+    image_cache_ttl_min: 60
+    image_cache_max_entries: 100
   ai:
     api_base_url: "https://api.openai.com"
     api_key: "sk-test"
@@ -47,11 +54,17 @@ memory_pipeline:
   memory:
     consolidation_interval: 10
     short_term_limit: 20
+    max_paginated_limit: 100
+    embedding_cache_max_size: 500
+    embedding_cache_ttl_min: 30
+    eviction_interval_min: 5
     retrieval:
       top_k: 0
       min_score: 0.0
     consolidation:
       enabled: false
+      memory_search_limit: 20
+      worker_queue_size: 10
   qdrant:
     host: "localhost"
     port: 6333
@@ -80,6 +93,9 @@ operations:
         type: "stdio"
         command: "echo"
         args: ["hello"]
+  operations:
+    shutdown_timeout_sec: 300
+    cleanup_interval_min: 5
 `
 
 func loadTestConfig(t *testing.T) *config.Config {

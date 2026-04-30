@@ -51,7 +51,7 @@ func testAuthTemplate() *template.Template {
 }
 
 func TestLoginHandler_GET_RendersLoginForm(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	handler := LoginHandler(store, "admin", "secret", testAuthTemplate())
@@ -95,7 +95,7 @@ func TestLoginHandler_GET_RendersLoginForm(t *testing.T) {
 }
 
 func TestLoginHandler_GET_RedirectsIfLoggedIn(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	session, err := store.CreateSession("admin")
@@ -122,7 +122,7 @@ func TestLoginHandler_GET_RedirectsIfLoggedIn(t *testing.T) {
 }
 
 func TestLoginHandler_POST_InvalidCredentials(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	handler := LoginHandler(store, "admin", "secret", testAuthTemplate())
@@ -163,7 +163,7 @@ func TestLoginHandler_POST_InvalidCredentials(t *testing.T) {
 }
 
 func TestLoginHandler_POST_ValidCredentials(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	handler := LoginHandler(store, "admin", "secret", testAuthTemplate())
@@ -213,7 +213,7 @@ func TestLoginHandler_POST_ValidCredentials(t *testing.T) {
 }
 
 func TestLoginHandler_POST_MissingUsername(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	handler := LoginHandler(store, "admin", "secret", testAuthTemplate())
@@ -251,7 +251,7 @@ func TestLoginHandler_POST_MissingUsername(t *testing.T) {
 }
 
 func TestLogoutHandler_POST_ClearsSession(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	session, err := store.CreateSession("admin")
@@ -302,7 +302,7 @@ func TestLogoutHandler_POST_ClearsSession(t *testing.T) {
 }
 
 func TestLogoutHandler_NoSession_StillRedirects(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	handler := LogoutHandler(store)
@@ -327,7 +327,7 @@ func TestLogoutHandler_NoSession_StillRedirects(t *testing.T) {
 }
 
 func TestLoginPageTemplate_RendersWithoutSidebar(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	handler := LoginHandler(store, "admin", "secret", testAuthTemplate())

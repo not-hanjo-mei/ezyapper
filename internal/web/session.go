@@ -25,19 +25,23 @@ type Session struct {
 // SessionStore provides an in-memory session store with periodic cleanup
 // of expired sessions.
 type SessionStore struct {
-	mu       sync.RWMutex
-	sessions map[string]*Session
-	stopCh   chan struct{}
-	stopped  bool
-	wg       *sync.WaitGroup
+	mu              sync.RWMutex
+	sessions        map[string]*Session
+	stopCh          chan struct{}
+	stopped         bool
+	wg              *sync.WaitGroup
+	ttl             time.Duration
+	cleanupInterval time.Duration
 }
 
 // NewSessionStore creates a new SessionStore and starts the cleanup goroutine.
 // Call Stop to stop the cleanup goroutine.
-func NewSessionStore() *SessionStore {
+func NewSessionStore(ttlMin int, cleanupIntervalMin int) *SessionStore {
 	store := &SessionStore{
-		sessions: make(map[string]*Session),
-		stopCh:   make(chan struct{}),
+		sessions:        make(map[string]*Session),
+		stopCh:          make(chan struct{}),
+		ttl:             time.Duration(ttlMin) * time.Minute,
+		cleanupInterval: time.Duration(cleanupIntervalMin) * time.Minute,
 	}
 	go store.cleanupLoop()
 	return store
@@ -57,7 +61,7 @@ func (s *SessionStore) CreateSession(username string) (*Session, error) {
 		ID:        hex.EncodeToString(b),
 		Username:  username,
 		CreatedAt: now,
-		ExpiresAt: now.Add(30 * time.Minute),
+		ExpiresAt: now.Add(s.ttl),
 	}
 
 	s.mu.Lock()
@@ -118,7 +122,7 @@ func (s *SessionStore) Stop() {
 }
 
 func (s *SessionStore) cleanupLoop() {
-	ticker := time.NewTicker(5 * time.Minute)
+	ticker := time.NewTicker(s.cleanupInterval)
 	defer ticker.Stop()
 	defer func() {
 		s.mu.RLock()

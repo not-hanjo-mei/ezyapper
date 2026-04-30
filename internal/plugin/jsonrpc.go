@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"ezyapper/internal/types"
 )
@@ -116,9 +117,9 @@ func (c *stdioJSONRPCClient) Call(method string, params interface{}, reply inter
 	}
 }
 
-func listPluginToolsJSONRPC(client *stdioJSONRPCClient, wg *sync.WaitGroup) ([]ToolSpec, error) {
+func listPluginToolsJSONRPC(client *stdioJSONRPCClient, wg *sync.WaitGroup, timeout time.Duration) ([]ToolSpec, error) {
 	var tools []ToolSpec
-	err := callJSONRPCWithTimeout(client, wg, "list_tools", map[string]interface{}{}, &tools, pluginRPCTimeout)
+	err := callJSONRPCWithTimeout(client, wg, "list_tools", map[string]interface{}{}, &tools, timeout)
 	if err != nil {
 		return nil, err
 	}

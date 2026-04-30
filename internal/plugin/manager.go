@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
 	"ezyapper/internal/logger"
 	"ezyapper/internal/types"
@@ -12,11 +13,17 @@ import (
 )
 
 // NewManager creates a new plugin manager
-func NewManager(defaultToolTimeoutMs int) *Manager {
+func NewManager(defaultToolTimeoutMs int, startupTimeoutSec int, rpcTimeoutSec int, beforeSendTimeoutSec int, commandTimeoutSec int, shutdownTimeoutSec int, disableTimeoutSec int) *Manager {
 	return &Manager{
 		plugins:              make(map[string]*Client),
 		disabled:             make(map[string]disabledPlugin),
 		defaultToolTimeoutMs: defaultToolTimeoutMs,
+		startupTimeoutSec:    startupTimeoutSec,
+		rpcTimeoutSec:        rpcTimeoutSec,
+		beforeSendTimeoutSec: beforeSendTimeoutSec,
+		commandTimeoutSec:    commandTimeoutSec,
+		shutdownTimeoutSec:   shutdownTimeoutSec,
+		disableTimeoutSec:    disableTimeoutSec,
 	}
 }
 
@@ -43,7 +50,7 @@ func (pm *Manager) OnMessage(ctx context.Context, m *discordgo.MessageCreate) (b
 		}
 
 		var shouldContinue bool
-		err := callPluginOnMessageWithTimeout(plugin, msg, &shouldContinue, pluginRPCTimeout)
+		err := callPluginOnMessageWithTimeout(plugin, msg, &shouldContinue, time.Duration(pm.rpcTimeoutSec)*time.Second)
 		if err != nil {
 			logger.Warnf("Plugin %s error in OnMessage: %v", plugin.Name, err)
 			continue
@@ -78,7 +85,7 @@ func (pm *Manager) OnResponse(ctx context.Context, m *discordgo.MessageCreate, r
 		}
 
 		var reply struct{}
-		err := callPluginOnResponseWithTimeout(plugin, args, &reply, pluginRPCTimeout)
+		err := callPluginOnResponseWithTimeout(plugin, args, &reply, time.Duration(pm.rpcTimeoutSec)*time.Second)
 		if err != nil {
 			logger.Warnf("Plugin %s error in OnResponse: %v", plugin.Name, err)
 		}
@@ -122,7 +129,7 @@ func (pm *Manager) BeforeSend(
 			plugin,
 			BeforeSendArgs{Message: msg, Response: currentResponse},
 			&reply,
-			pluginBeforeSendTimeout,
+			time.Duration(pm.beforeSendTimeoutSec)*time.Second,
 		)
 		if err != nil {
 			if isMethodNotFoundPluginError(err) {

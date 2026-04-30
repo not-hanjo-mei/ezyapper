@@ -164,12 +164,8 @@ type PluginTool struct {
 }
 
 const (
-	pluginStartupTimeout    = 90 * time.Second
-	pluginRPCTimeout        = 5 * time.Second
-	pluginBeforeSendTimeout = 180 * time.Second
-	pluginCommandTimeout    = 45 * time.Second
-	pluginRuntimeJSONRPC    = "jsonrpc"
-	pluginRuntimeCommand    = "command"
+	pluginRuntimeJSONRPC = "jsonrpc"
+	pluginRuntimeCommand = "command"
 )
 
 type disabledPlugin struct {
@@ -189,6 +185,12 @@ type Manager struct {
 	disabled             map[string]disabledPlugin
 	mu                   sync.RWMutex
 	defaultToolTimeoutMs int
+	startupTimeoutSec    int
+	rpcTimeoutSec        int
+	beforeSendTimeoutSec int
+	commandTimeoutSec    int
+	shutdownTimeoutSec   int
+	disableTimeoutSec    int
 	wg                   sync.WaitGroup // tracks in-flight goroutines (plugin loads, RPC calls, process shutdown)
 }
 
@@ -218,7 +220,7 @@ func (pm *Manager) ExecuteTool(pluginName string, toolName string, args map[stri
 	}
 
 	if plugin.runtime == pluginRuntimeCommand {
-		return executeCommandTool(plugin, toolName, args)
+		return pm.executeCommandTool(plugin, toolName, args)
 	}
 
 	if plugin.jsonrpc != nil {
@@ -269,7 +271,7 @@ func (pm *Manager) executeJSONRPCTool(plugin *Client, toolName string, args map[
 	return reply, nil
 }
 
-func executeCommandTool(plugin *Client, toolName string, args map[string]interface{}) (string, error) {
+func (pm *Manager) executeCommandTool(plugin *Client, toolName string, args map[string]interface{}) (string, error) {
 	if plugin == nil {
 		return "", fmt.Errorf("plugin is nil")
 	}
@@ -294,7 +296,7 @@ func executeCommandTool(plugin *Client, toolName string, args map[string]interfa
 		commandArgs = append(commandArgs, argText)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), pluginCommandTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(pm.commandTimeoutSec)*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, tool.CommandPath, commandArgs...)

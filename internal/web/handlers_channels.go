@@ -57,7 +57,11 @@ func ChannelsHandler(cfgStore *atomic.Value, discordInfo DiscordInfoProvider, ts
 }
 
 func handleChannelsGET(w http.ResponseWriter, r *http.Request, cfgStore *atomic.Value, info DiscordInfoProvider, ts *TemplateSet) {
-	cfg := cfgStore.Load().(*config.Config)
+	cfg, ok := cfgStore.Load().(*config.Config)
+	if !ok {
+		http.Error(w, "Internal configuration error", http.StatusInternalServerError)
+		return
+	}
 	ctx := r.Context()
 	csrfToken := CSRFTokenFromContext(ctx)
 	flash := flashFromCookieChannels(r)
@@ -144,7 +148,11 @@ func handleChannelsPOST(w http.ResponseWriter, r *http.Request, cfgStore *atomic
 		return
 	}
 
-	oldCfg := cfgStore.Load().(*config.Config)
+	oldCfg, ok := cfgStore.Load().(*config.Config)
+	if !ok {
+		http.Error(w, "Internal configuration error", http.StatusInternalServerError)
+		return
+	}
 	newCfg := *oldCfg
 
 	var target *[]string
@@ -199,7 +207,11 @@ func handleChannelsPOST(w http.ResponseWriter, r *http.Request, cfgStore *atomic
 }
 
 func renderChannelsError(w http.ResponseWriter, r *http.Request, cfgStore *atomic.Value, ts *TemplateSet, message string) {
-	cfg := cfgStore.Load().(*config.Config)
+	cfg, ok := cfgStore.Load().(*config.Config)
+	if !ok {
+		http.Error(w, "Internal configuration error", http.StatusInternalServerError)
+		return
+	}
 	ctx := r.Context()
 	csrfToken := CSRFTokenFromContext(ctx)
 

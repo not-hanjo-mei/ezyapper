@@ -104,7 +104,7 @@ func testMemoriesTemplate() *TemplateSet {
 func TestMemoriesHandler_GET_NoUserID(t *testing.T) {
 	store := &testMemStore{}
 	tmpl := testMemoriesTemplate()
-	handler := MemoriesHandler(store, tmpl)
+	handler := MemoriesHandler(newTestCfgStore(), store, tmpl)
 
 	req := httptest.NewRequest(http.MethodGet, "/memories", nil)
 	req = requestWithCSRF(req)
@@ -150,7 +150,7 @@ func TestMemoriesHandler_GET_WithUserID_HasMemories(t *testing.T) {
 		},
 	}
 	tmpl := testMemoriesTemplate()
-	handler := MemoriesHandler(store, tmpl)
+	handler := MemoriesHandler(newTestCfgStore(), store, tmpl)
 
 	req := httptest.NewRequest(http.MethodGet, "/memories?userID=user123", nil)
 	req = requestWithCSRF(req)
@@ -191,7 +191,7 @@ func TestMemoriesHandler_GET_WithUserID_NoMemories(t *testing.T) {
 		memories: []*memory.Record{},
 	}
 	tmpl := testMemoriesTemplate()
-	handler := MemoriesHandler(store, tmpl)
+	handler := MemoriesHandler(newTestCfgStore(), store, tmpl)
 
 	req := httptest.NewRequest(http.MethodGet, "/memories?userID=user_empty", nil)
 	req = requestWithCSRF(req)
@@ -215,7 +215,7 @@ func TestMemoriesHandler_GET_WithUserID_NoMemories(t *testing.T) {
 func TestMemoriesHandler_GET_InvalidUserID(t *testing.T) {
 	store := &testMemStore{}
 	tmpl := testMemoriesTemplate()
-	handler := MemoriesHandler(store, tmpl)
+	handler := MemoriesHandler(newTestCfgStore(), store, tmpl)
 
 	tests := []struct {
 		name   string
@@ -259,7 +259,7 @@ func TestMemoriesHandler_Delete_ValidOwnership(t *testing.T) {
 		memories: []*memory.Record{},
 	}
 	tmpl := testMemoriesTemplate()
-	handler := MemoriesHandler(store, tmpl)
+	handler := MemoriesHandler(newTestCfgStore(), store, tmpl)
 
 	form := url.Values{
 		"userID":   {"owner123"},
@@ -298,7 +298,7 @@ func TestMemoriesHandler_Delete_WrongOwnership(t *testing.T) {
 		},
 	}
 	tmpl := testMemoriesTemplate()
-	handler := MemoriesHandler(store, tmpl)
+	handler := MemoriesHandler(newTestCfgStore(), store, tmpl)
 
 	form := url.Values{
 		"userID":   {"attacker789"},
@@ -323,7 +323,7 @@ func TestMemoriesHandler_Delete_WrongOwnership(t *testing.T) {
 func TestMemoriesHandler_Delete_MissingParams(t *testing.T) {
 	store := &testMemStore{}
 	tmpl := testMemoriesTemplate()
-	handler := MemoriesHandler(store, tmpl)
+	handler := MemoriesHandler(newTestCfgStore(), store, tmpl)
 
 	tests := []struct {
 		name   string
@@ -359,7 +359,7 @@ func TestMemoriesHandler_Delete_MissingParams(t *testing.T) {
 func TestMemoriesHandler_NavItemsPresent(t *testing.T) {
 	store := &testMemStore{}
 	tmpl := testMemoriesTemplate()
-	handler := MemoriesHandler(store, tmpl)
+	handler := MemoriesHandler(newTestCfgStore(), store, tmpl)
 
 	req := httptest.NewRequest(http.MethodGet, "/memories", nil)
 	req = requestWithCSRF(req)
@@ -379,7 +379,7 @@ func TestMemoriesHandler_NavItemsPresent(t *testing.T) {
 func TestMemoriesHandler_MethodNotAllowed(t *testing.T) {
 	store := &testMemStore{}
 	tmpl := testMemoriesTemplate()
-	handler := MemoriesHandler(store, tmpl)
+	handler := MemoriesHandler(newTestCfgStore(), store, tmpl)
 
 	req := httptest.NewRequest(http.MethodPut, "/memories", nil)
 	req = requestWithCSRF(req)

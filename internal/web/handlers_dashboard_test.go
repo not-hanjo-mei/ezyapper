@@ -7,11 +7,26 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"ezyapper/internal/config"
 	"ezyapper/internal/memory"
 )
+
+func newTestCfgStore() *atomic.Value {
+	var v atomic.Value
+	v.Store(&config.Config{Web: config.WebConfig{
+		StatsQueryTimeoutSec:    5,
+		LogDefaultLines:         200,
+		LogMaxLines:             5000,
+		LogMaxReadBytes:         1048576,
+		MemoriesPageLimit:       50,
+		ContentTruncationLength: 500,
+	}})
+	return &v
+}
 
 // mockMemoryStore implements MemoryStore and memoryCounter for testing.
 type mockMemoryStore struct {
@@ -97,7 +112,7 @@ func testDashboardTemplate() *TemplateSet {
 func TestDashboardHandler_Returns200(t *testing.T) {
 	memStore := &mockMemoryStore{countMemories: 42, countProfiles: 7}
 	profStore := &mockProfileStore{countProfiles: 7}
-	stats := NewStatsProvider(memStore, profStore)
+	stats := NewStatsProvider(memStore, profStore, newTestCfgStore())
 	tmpl := testDashboardTemplate()
 	handler := DashboardHandler(stats, time.Now(), tmpl)
 
@@ -114,7 +129,7 @@ func TestDashboardHandler_Returns200(t *testing.T) {
 func TestDashboardHandler_ShowsStatsHTML(t *testing.T) {
 	memStore := &mockMemoryStore{countMemories: 42, countProfiles: 7}
 	profStore := &mockProfileStore{countProfiles: 7}
-	stats := NewStatsProvider(memStore, profStore)
+	stats := NewStatsProvider(memStore, profStore, newTestCfgStore())
 	tmpl := testDashboardTemplate()
 	handler := DashboardHandler(stats, time.Now(), tmpl)
 
@@ -138,7 +153,7 @@ func TestDashboardHandler_ShowsStatsHTML(t *testing.T) {
 func TestDashboardHandler_NoStatsAvailable(t *testing.T) {
 	memStore := &mockMemoryStore{countMemories: 0, countProfiles: 0, countErr: fmt.Errorf("qdrant unavailable")}
 	profStore := &mockProfileStore{countProfiles: 0, countErr: fmt.Errorf("qdrant unavailable")}
-	stats := NewStatsProvider(memStore, profStore)
+	stats := NewStatsProvider(memStore, profStore, newTestCfgStore())
 	tmpl := testDashboardTemplate()
 	handler := DashboardHandler(stats, time.Now(), tmpl)
 
@@ -163,7 +178,7 @@ func TestDashboardHandler_NoStatsAvailable(t *testing.T) {
 func TestDashboardHandler_MethodNotAllowed(t *testing.T) {
 	memStore := &mockMemoryStore{}
 	profStore := &mockProfileStore{}
-	stats := NewStatsProvider(memStore, profStore)
+	stats := NewStatsProvider(memStore, profStore, newTestCfgStore())
 	tmpl := testDashboardTemplate()
 	handler := DashboardHandler(stats, time.Now(), tmpl)
 
@@ -180,7 +195,7 @@ func TestDashboardHandler_MethodNotAllowed(t *testing.T) {
 func TestDashboardHandler_NavItemsPresent(t *testing.T) {
 	memStore := &mockMemoryStore{countMemories: 10, countProfiles: 3}
 	profStore := &mockProfileStore{countProfiles: 3}
-	stats := NewStatsProvider(memStore, profStore)
+	stats := NewStatsProvider(memStore, profStore, newTestCfgStore())
 	tmpl := testDashboardTemplate()
 	handler := DashboardHandler(stats, time.Now(), tmpl)
 
@@ -201,7 +216,7 @@ func TestDashboardHandler_NavItemsPresent(t *testing.T) {
 func TestDashboardHandler_UptimePresent(t *testing.T) {
 	memStore := &mockMemoryStore{}
 	profStore := &mockProfileStore{}
-	stats := NewStatsProvider(memStore, profStore)
+	stats := NewStatsProvider(memStore, profStore, newTestCfgStore())
 	startTime := time.Now().Add(-2 * time.Hour)
 	tmpl := testDashboardTemplate()
 	handler := DashboardHandler(stats, startTime, tmpl)

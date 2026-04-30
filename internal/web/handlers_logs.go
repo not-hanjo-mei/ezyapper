@@ -6,19 +6,15 @@ import (
 	"os"
 	"strconv"
 	"strings"
-)
+	"sync/atomic"
 
-const (
-	defaultLogLines = 200
-	maxLogLines     = 5000
-	minLogLines     = 10
-	maxReadSize     = 1 * 1024 * 1024
+	"ezyapper/internal/config"
+	"ezyapper/internal/logger"
 )
 
 // LogsHandler returns an http.HandlerFunc for GET /logs that renders the
-// log viewer page. Query param ?lines=N controls line count (default 200,
-// max 5000, min 10). Reads from the end of the file, capping to the last 1MB.
-func LogsHandler(logFilePath string, ts *TemplateSet) http.HandlerFunc {
+// log viewer page. Query param ?lines=N controls line count.
+func LogsHandler(logFilePath string, cfgStore *atomic.Value, ts *TemplateSet) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -26,19 +22,21 @@ func LogsHandler(logFilePath string, ts *TemplateSet) http.HandlerFunc {
 		}
 
 		ctx := r.Context()
+		cfg := cfgStore.Load().(*config.Config)
 		csrfToken := CSRFTokenFromContext(ctx)
 
-		lines := defaultLogLines
+		lines := cfg.Web.LogDefaultLines
 		if linesStr := r.URL.Query().Get("lines"); linesStr != "" {
 			if parsed, err := strconv.Atoi(linesStr); err == nil && parsed > 0 {
 				lines = parsed
-				if lines > maxLogLines {
-					lines = maxLogLines
+				if lines > cfg.Web.LogMaxLines {
+					logger.Warnf("[logs] requested lines=%d exceeds max=%d, capping", lines, cfg.Web.LogMaxLines)
+					lines = cfg.Web.LogMaxLines
 				}
 			}
 		}
 
-		logContent, totalLines, err := readLogTail(logFilePath, lines)
+		logContent, totalLines, err := readLogTail(logFilePath, lines, cfg.Web.LogMaxReadBytes)
 		var stats, displayContent string
 		if err != nil {
 			displayContent = err.Error()
@@ -74,7 +72,7 @@ func LogsHandler(logFilePath string, ts *TemplateSet) http.HandlerFunc {
 	}
 }
 
-func readLogTail(filePath string, n int) (string, int, error) {
+func readLogTail(filePath string, n int, maxReadSize int) (string, int, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -94,7 +92,7 @@ func readLogTail(filePath string, n int) (string, int, error) {
 		return "", 0, nil
 	}
 
-	readOffset := fileSize - maxReadSize
+	readOffset := fileSize - int64(maxReadSize)
 	if readOffset < 0 {
 		readOffset = 0
 	}

@@ -16,7 +16,7 @@ import (
 // --- SessionStore unit tests ---
 
 func TestCreateSession_GeneratesID(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	session, err := store.CreateSession("testuser")
@@ -29,7 +29,7 @@ func TestCreateSession_GeneratesID(t *testing.T) {
 }
 
 func TestCreateSession_SetsExpiry(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	before := time.Now()
@@ -50,7 +50,7 @@ func TestCreateSession_SetsExpiry(t *testing.T) {
 }
 
 func TestGetSession_FindsValidSession(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	session, err := store.CreateSession("testuser")
@@ -71,7 +71,7 @@ func TestGetSession_FindsValidSession(t *testing.T) {
 }
 
 func TestGetSession_ExpiredReturnsError(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	session, err := store.CreateSession("testuser")
@@ -94,7 +94,7 @@ func TestGetSession_ExpiredReturnsError(t *testing.T) {
 }
 
 func TestGetSession_NotFoundReturnsError(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	_, err := store.GetSession("nonexistent-id")
@@ -107,7 +107,7 @@ func TestGetSession_NotFoundReturnsError(t *testing.T) {
 }
 
 func TestDeleteSession_RemovesSession(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	session, err := store.CreateSession("testuser")
@@ -124,7 +124,7 @@ func TestDeleteSession_RemovesSession(t *testing.T) {
 }
 
 func TestCreateSession_UniqueIDs(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	s1, err := store.CreateSession("user1")
@@ -189,7 +189,7 @@ func testLoginTemplate() *template.Template {
 // --- SessionMiddleware tests ---
 
 func TestSessionMiddleware_RedirectsUnauthenticated(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	handler := &sessionTestHandler{}
@@ -227,7 +227,7 @@ func TestSessionMiddleware_RedirectsUnauthenticated(t *testing.T) {
 }
 
 func TestSessionMiddleware_AllowsAuthenticated(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	session, err := store.CreateSession("testuser")
@@ -269,7 +269,7 @@ func TestSessionMiddleware_AllowsAuthenticated(t *testing.T) {
 }
 
 func TestSessionMiddleware_ExcludesLoginPath(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	handler := &sessionTestHandler{}
@@ -293,7 +293,7 @@ func TestSessionMiddleware_ExcludesLoginPath(t *testing.T) {
 }
 
 func TestSessionMiddleware_ExcludesStaticPath(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	handler := &sessionTestHandler{}
@@ -327,7 +327,7 @@ func TestSessionMiddleware_ExcludesStaticPath(t *testing.T) {
 // --- SessionFromContext tests ---
 
 func TestSessionFromContext_ReturnsSession(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	session, err := store.CreateSession("testuser")
@@ -357,7 +357,7 @@ func TestSessionFromContext_EmptyWithoutMiddleware(t *testing.T) {
 // --- LoginHandler tests ---
 
 func TestLoginHandler_GET_RedirectsAuthenticated(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	session, err := store.CreateSession("admin")
@@ -385,7 +385,7 @@ func TestLoginHandler_GET_RedirectsAuthenticated(t *testing.T) {
 }
 
 func TestLoginHandler_GET_RendersForm(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	handler := LoginHandler(store, "admin", "secret", testLoginTemplate())
@@ -409,7 +409,7 @@ func TestLoginHandler_GET_RendersForm(t *testing.T) {
 // --- LogoutHandler tests ---
 
 func TestLogoutHandler_ClearsSession(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	session, err := store.CreateSession("admin")
@@ -463,7 +463,7 @@ func TestLogoutHandler_ClearsSession(t *testing.T) {
 }
 
 func TestLogoutHandler_NoSession(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	handler := LogoutHandler(store)
@@ -487,7 +487,7 @@ func TestLogoutHandler_NoSession(t *testing.T) {
 // --- Login + Logout integration via middleware ---
 
 func TestLoginLogoutFlow(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	tmpl := testLoginTemplate()
@@ -580,7 +580,7 @@ func TestLoginLogoutFlow(t *testing.T) {
 // --- Edge cases ---
 
 func TestSessionStore_Stop(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	// Stop should not panic
 	store.Stop()
 	// Calling Stop twice should not panic
@@ -588,7 +588,7 @@ func TestSessionStore_Stop(t *testing.T) {
 }
 
 func TestLogoutHandler_RejectsGET(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	handler := LogoutHandler(store)
@@ -603,7 +603,7 @@ func TestLogoutHandler_RejectsGET(t *testing.T) {
 }
 
 func TestLoginHandler_RejectsPUT(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	handler := LoginHandler(store, "admin", "secret", testLoginTemplate())
@@ -618,7 +618,7 @@ func TestLoginHandler_RejectsPUT(t *testing.T) {
 }
 
 func TestSessionMiddleware_ExpiredCookieRedirects(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	session, err := store.CreateSession("testuser")
@@ -663,7 +663,7 @@ func TestSessionMiddleware_ExpiredCookieRedirects(t *testing.T) {
 }
 
 func TestRequireAuthIsSessionMiddleware(t *testing.T) {
-	store := NewSessionStore()
+	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
 	handler := &sessionTestHandler{}

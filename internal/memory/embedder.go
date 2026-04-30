@@ -18,7 +18,6 @@ type AIEmbedder struct {
 	model  string
 }
 
-// NewAIEmbedder creates a new AI-based embedder
 // NewAIEmbedder creates a new AI-based embedder that uses the configured embedding model.
 func NewAIEmbedder(client *ai.Client, model string) (*AIEmbedder, error) {
 	if model == "" {
@@ -40,13 +39,7 @@ type cacheEntry struct {
 	insertedAt time.Time
 }
 
-const (
-	defaultCacheMaxSize = 2000
-	defaultCacheTTL     = 1 * time.Hour
-	evictionInterval    = 5 * time.Minute
-)
-
-// CachedEmbedder wraps an Embedder with an LRU cache and singleflight deduplication.
+// NewAIEmbedder creates a new AI-based embedder that uses the configured embedding model.
 type CachedEmbedder struct {
 	embedder Embedder
 	model    string
@@ -59,9 +52,10 @@ type CachedEmbedder struct {
 	now      func() time.Time
 	stopCh   <-chan struct{}
 	stop     chan struct{} // internal bidirectional channel for closing
+	eviction time.Duration
 }
 
-func newCachedEmbedder(embedder Embedder, model string, maxSize int, ttl time.Duration) *CachedEmbedder {
+func newCachedEmbedder(embedder Embedder, model string, maxSize int, ttl time.Duration, evictionInterval time.Duration) *CachedEmbedder {
 	stop := make(chan struct{})
 	e := &CachedEmbedder{
 		embedder: embedder,
@@ -73,6 +67,7 @@ func newCachedEmbedder(embedder Embedder, model string, maxSize int, ttl time.Du
 		now:      time.Now,
 		stopCh:   stop,
 		stop:     stop,
+		eviction: evictionInterval,
 	}
 	go e.evictLoop()
 	return e
@@ -125,11 +120,15 @@ func (e *CachedEmbedder) Embed(ctx context.Context, text string) ([]float32, err
 	if err != nil {
 		return nil, err
 	}
-	return result.([]float32), nil
+	vec, ok := result.([]float32)
+	if !ok {
+		return nil, fmt.Errorf("embedder: unexpected type from singleflight: %T", result)
+	}
+	return vec, nil
 }
 
 func (e *CachedEmbedder) evictLoop() {
-	ticker := time.NewTicker(evictionInterval)
+	ticker := time.NewTicker(e.eviction)
 	defer ticker.Stop()
 	for {
 		select {

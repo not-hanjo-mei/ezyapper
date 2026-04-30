@@ -29,6 +29,13 @@ core:
 		reply_percentage: 0.15
 		cooldown_seconds: 5
 		max_responses_per_minute: 10
+		consolidation_timeout_sec: 300
+		typing_indicator_interval_sec: 5
+		long_response_delay_ms: 500
+		chunk_split_delay_sec: 2
+		reply_truncation_length: 200
+		image_cache_ttl_min: 60
+		image_cache_max_entries: 100
 	ai:
 		api_base_url: "https://api.openai.com/v1"
 		api_key: "test-key"
@@ -47,6 +54,10 @@ memory_pipeline:
 	memory:
 		consolidation_interval: 50
 		short_term_limit: 20
+		max_paginated_limit: 100
+		embedding_cache_max_size: 500
+		embedding_cache_ttl_min: 30
+		eviction_interval_min: 5
 		retrieval:
 			top_k: 5
 			min_score: 0.75
@@ -54,6 +65,8 @@ memory_pipeline:
 			enabled: false
 			max_messages: 20
 			system_prompt: "test"
+			memory_search_limit: 20
+			worker_queue_size: 10
 	qdrant:
 		host: "localhost"
 		port: 6334
@@ -69,6 +82,14 @@ operations:
 		username: "admin"
 		password: "test"
 		enabled: true
+		memories_page_limit: 50
+		content_truncation_length: 500
+		session_ttl_min: 30
+		session_cleanup_interval_min: 5
+		stats_query_timeout_sec: 5
+		log_default_lines: 100
+		log_max_lines: 1000
+		log_max_read_bytes: 1048576
 	logging:
 		level: "info"
 		file: "logs/test.log"
@@ -78,9 +99,18 @@ operations:
 	plugins:
 		enabled: true
 		plugins_dir: "plugins"
+		startup_timeout_sec: 90
+		rpc_timeout_sec: 5
+		before_send_timeout_sec: 180
+		command_timeout_sec: 45
+		shutdown_timeout_sec: 5
+		disable_timeout_sec: 2
 	mcp:
 		enabled: false
 		servers: []
+	operations:
+		shutdown_timeout_sec: 300
+		cleanup_interval_min: 5
 `
 	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
 		t.Fatalf("Failed to write config: %v", err)
@@ -101,6 +131,13 @@ core:
 		reply_percentage: 0.15
 		cooldown_seconds: 5
 		max_responses_per_minute: 10
+		consolidation_timeout_sec: 300
+		typing_indicator_interval_sec: 5
+		long_response_delay_ms: 500
+		chunk_split_delay_sec: 2
+		reply_truncation_length: 200
+		image_cache_ttl_min: 60
+		image_cache_max_entries: 100
 	ai:
 		api_base_url: "https://api.openai.com/v1"
 		model: "gpt-4o-mini"
@@ -118,6 +155,10 @@ memory_pipeline:
 	memory:
 		consolidation_interval: 50
 		short_term_limit: 20
+		max_paginated_limit: 100
+		embedding_cache_max_size: 500
+		embedding_cache_ttl_min: 30
+		eviction_interval_min: 5
 		retrieval:
 			top_k: 5
 			min_score: 0.75
@@ -125,6 +166,8 @@ memory_pipeline:
 			enabled: false
 			max_messages: 20
 			system_prompt: "test"
+			memory_search_limit: 20
+			worker_queue_size: 10
 	qdrant:
 		host: "localhost"
 		port: 6334
@@ -140,6 +183,14 @@ operations:
 		username: "admin"
 		password: "test"
 		enabled: true
+		memories_page_limit: 50
+		content_truncation_length: 500
+		session_ttl_min: 30
+		session_cleanup_interval_min: 5
+		stats_query_timeout_sec: 5
+		log_default_lines: 100
+		log_max_lines: 1000
+		log_max_read_bytes: 1048576
 	logging:
 		level: "info"
 		file: "logs/test.log"
@@ -149,9 +200,18 @@ operations:
 	plugins:
 		enabled: true
 		plugins_dir: "plugins"
+		startup_timeout_sec: 90
+		rpc_timeout_sec: 5
+		before_send_timeout_sec: 180
+		command_timeout_sec: 45
+		shutdown_timeout_sec: 5
+		disable_timeout_sec: 2
 	mcp:
 		enabled: false
 		servers: []
+	operations:
+		shutdown_timeout_sec: 300
+		cleanup_interval_min: 5
 `
 	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
 		t.Fatalf("Failed to write config: %v", err)
@@ -164,11 +224,18 @@ operations:
 func TestValidate_InvalidReplyPercentage(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{
-			Token:              "test",
-			BotName:            "TestBot",
-			ReplyPercentage:    1.5,
-			CooldownSeconds:    5,
-			MaxResponsesPerMin: 10,
+			Token:                     "test",
+			BotName:                   "TestBot",
+			ReplyPercentage:           1.5,
+			CooldownSeconds:           5,
+			MaxResponsesPerMin:        10,
+			ConsolidationTimeoutSec:   300,
+			TypingIndicatorIntervalSec: 5,
+			LongResponseDelayMs:       500,
+			ChunkSplitDelaySec:        2,
+			ReplyTruncationLength:     200,
+			ImageCacheTTLMin:          60,
+			ImageCacheMaxEntries:      100,
 		},
 		AI: AIConfig{
 			APIBaseURL:   "https://api.openai.com/v1",
@@ -185,12 +252,18 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 		Memory: MemoryConfig{
 			ConsolidationInterval: 50,
 			ShortTermLimit:        20,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
 			Retrieval: RetrievalConfig{
 				TopK:     5,
 				MinScore: 0.75,
 			},
 			Consolidation: ConsolidationConfig{
-				Enabled: true,
+				Enabled:           true,
+				MemorySearchLimit: 20,
+				WorkerQueueSize:   10,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -199,10 +272,18 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 			VectorSize: 1536,
 		},
 		Web: WebConfig{
-			Port:     8080,
-			Username: "admin",
-			Password: "test",
-			Enabled:  true,
+			Port:                      8080,
+			Username:                  "admin",
+			Password:                  "test",
+			Enabled:                   true,
+			MemoriesPageLimit:         50,
+			ContentTruncationLength:   500,
+			SessionTTLMin:             30,
+			SessionCleanupIntervalMin: 5,
+			StatsQueryTimeoutSec:      5,
+			LogDefaultLines:           100,
+			LogMaxLines:               1000,
+			LogMaxReadBytes:           1048576,
 		},
 		Logging: LoggingConfig{
 			Level:      "info",
@@ -212,9 +293,16 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 			MaxAge:     30,
 		},
 		Plugins: PluginsConfig{
-			Enabled:    true,
-			PluginsDir: "plugins",
+			Enabled:              true,
+			PluginsDir:           "plugins",
+			StartupTimeoutSec:    90,
+			RPCTimeoutSec:        5,
+			BeforeSendTimeoutSec: 180,
+			CommandTimeoutSec:    45,
+			ShutdownTimeoutSec:   5,
+			DisableTimeoutSec:    2,
 		},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
 	err := validate(cfg)
 	if err == nil {
@@ -224,11 +312,18 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 func TestValidate_InvalidTemperature(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{
-			Token:              "test",
-			BotName:            "TestBot",
-			ReplyPercentage:    0.15,
-			CooldownSeconds:    5,
-			MaxResponsesPerMin: 10,
+			Token:                     "test",
+			BotName:                   "TestBot",
+			ReplyPercentage:           0.15,
+			CooldownSeconds:           5,
+			MaxResponsesPerMin:        10,
+			ConsolidationTimeoutSec:   300,
+			TypingIndicatorIntervalSec: 5,
+			LongResponseDelayMs:       500,
+			ChunkSplitDelaySec:        2,
+			ReplyTruncationLength:     200,
+			ImageCacheTTLMin:          60,
+			ImageCacheMaxEntries:      100,
 		},
 		AI: AIConfig{
 			APIBaseURL:   "https://api.openai.com/v1",
@@ -245,12 +340,18 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 		Memory: MemoryConfig{
 			ConsolidationInterval: 50,
 			ShortTermLimit:        20,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
 			Retrieval: RetrievalConfig{
 				TopK:     5,
 				MinScore: 0.75,
 			},
 			Consolidation: ConsolidationConfig{
-				Enabled: true,
+				Enabled:           true,
+				MemorySearchLimit: 20,
+				WorkerQueueSize:   10,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -259,10 +360,18 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 			VectorSize: 1536,
 		},
 		Web: WebConfig{
-			Port:     8080,
-			Username: "admin",
-			Password: "test",
-			Enabled:  true,
+			Port:                      8080,
+			Username:                  "admin",
+			Password:                  "test",
+			Enabled:                   true,
+			MemoriesPageLimit:         50,
+			ContentTruncationLength:   500,
+			SessionTTLMin:             30,
+			SessionCleanupIntervalMin: 5,
+			StatsQueryTimeoutSec:      5,
+			LogDefaultLines:           100,
+			LogMaxLines:               1000,
+			LogMaxReadBytes:           1048576,
 		},
 		Logging: LoggingConfig{
 			Level:      "info",
@@ -272,9 +381,16 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 			MaxAge:     30,
 		},
 		Plugins: PluginsConfig{
-			Enabled:    true,
-			PluginsDir: "plugins",
+			Enabled:              true,
+			PluginsDir:           "plugins",
+			StartupTimeoutSec:    90,
+			RPCTimeoutSec:        5,
+			BeforeSendTimeoutSec: 180,
+			CommandTimeoutSec:    45,
+			ShutdownTimeoutSec:   5,
+			DisableTimeoutSec:    2,
 		},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
 	err := validate(cfg)
 	if err == nil {
@@ -305,11 +421,18 @@ func TestFormatSystemPrompt(t *testing.T) {
 func TestValidate_MissingVisionMode(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{
-			Token:              "test",
-			BotName:            "TestBot",
-			ReplyPercentage:    0.15,
-			CooldownSeconds:    5,
-			MaxResponsesPerMin: 10,
+			Token:                     "test",
+			BotName:                   "TestBot",
+			ReplyPercentage:           0.15,
+			CooldownSeconds:           5,
+			MaxResponsesPerMin:        10,
+			ConsolidationTimeoutSec:   300,
+			TypingIndicatorIntervalSec: 5,
+			LongResponseDelayMs:       500,
+			ChunkSplitDelaySec:        2,
+			ReplyTruncationLength:     200,
+			ImageCacheTTLMin:          60,
+			ImageCacheMaxEntries:      100,
 		},
 		AI: AIConfig{
 			APIBaseURL:   "https://api.openai.com/v1",
@@ -329,12 +452,18 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 		Memory: MemoryConfig{
 			ConsolidationInterval: 50,
 			ShortTermLimit:        20,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
 			Retrieval: RetrievalConfig{
 				TopK:     5,
 				MinScore: 0.75,
 			},
 			Consolidation: ConsolidationConfig{
-				Enabled: true,
+				Enabled:           true,
+				MemorySearchLimit: 20,
+				WorkerQueueSize:   10,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -343,10 +472,18 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 			VectorSize: 1536,
 		},
 		Web: WebConfig{
-			Port:     8080,
-			Username: "admin",
-			Password: "test",
-			Enabled:  true,
+			Port:                      8080,
+			Username:                  "admin",
+			Password:                  "test",
+			Enabled:                   true,
+			MemoriesPageLimit:         50,
+			ContentTruncationLength:   500,
+			SessionTTLMin:             30,
+			SessionCleanupIntervalMin: 5,
+			StatsQueryTimeoutSec:      5,
+			LogDefaultLines:           100,
+			LogMaxLines:               1000,
+			LogMaxReadBytes:           1048576,
 		},
 		Logging: LoggingConfig{
 			Level:      "info",
@@ -356,9 +493,16 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 			MaxAge:     30,
 		},
 		Plugins: PluginsConfig{
-			Enabled:    true,
-			PluginsDir: "plugins",
+			Enabled:              true,
+			PluginsDir:           "plugins",
+			StartupTimeoutSec:    90,
+			RPCTimeoutSec:        5,
+			BeforeSendTimeoutSec: 180,
+			CommandTimeoutSec:    45,
+			ShutdownTimeoutSec:   5,
+			DisableTimeoutSec:    2,
 		},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
 	err := validate(cfg)
 	if err == nil {
@@ -371,11 +515,18 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 func TestValidate_MissingVisionMaxImages(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{
-			Token:              "test",
-			BotName:            "TestBot",
-			ReplyPercentage:    0.15,
-			CooldownSeconds:    5,
-			MaxResponsesPerMin: 10,
+			Token:                     "test",
+			BotName:                   "TestBot",
+			ReplyPercentage:           0.15,
+			CooldownSeconds:           5,
+			MaxResponsesPerMin:        10,
+			ConsolidationTimeoutSec:   300,
+			TypingIndicatorIntervalSec: 5,
+			LongResponseDelayMs:       500,
+			ChunkSplitDelaySec:        2,
+			ReplyTruncationLength:     200,
+			ImageCacheTTLMin:          60,
+			ImageCacheMaxEntries:      100,
 		},
 		AI: AIConfig{
 			APIBaseURL:   "https://api.openai.com/v1",
@@ -396,12 +547,18 @@ func TestValidate_MissingVisionMaxImages(t *testing.T) {
 		Memory: MemoryConfig{
 			ConsolidationInterval: 50,
 			ShortTermLimit:        20,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
 			Retrieval: RetrievalConfig{
 				TopK:     5,
 				MinScore: 0.75,
 			},
 			Consolidation: ConsolidationConfig{
-				Enabled: true,
+				Enabled:           true,
+				MemorySearchLimit: 20,
+				WorkerQueueSize:   10,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -410,10 +567,18 @@ func TestValidate_MissingVisionMaxImages(t *testing.T) {
 			VectorSize: 1536,
 		},
 		Web: WebConfig{
-			Port:     8080,
-			Username: "admin",
-			Password: "test",
-			Enabled:  true,
+			Port:                      8080,
+			Username:                  "admin",
+			Password:                  "test",
+			Enabled:                   true,
+			MemoriesPageLimit:         50,
+			ContentTruncationLength:   500,
+			SessionTTLMin:             30,
+			SessionCleanupIntervalMin: 5,
+			StatsQueryTimeoutSec:      5,
+			LogDefaultLines:           100,
+			LogMaxLines:               1000,
+			LogMaxReadBytes:           1048576,
 		},
 		Logging: LoggingConfig{
 			Level:      "info",
@@ -423,9 +588,16 @@ func TestValidate_MissingVisionMaxImages(t *testing.T) {
 			MaxAge:     30,
 		},
 		Plugins: PluginsConfig{
-			Enabled:    true,
-			PluginsDir: "plugins",
+			Enabled:              true,
+			PluginsDir:           "plugins",
+			StartupTimeoutSec:    90,
+			RPCTimeoutSec:        5,
+			BeforeSendTimeoutSec: 180,
+			CommandTimeoutSec:    45,
+			ShutdownTimeoutSec:   5,
+			DisableTimeoutSec:    2,
 		},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
 	err := validate(cfg)
 	if err == nil {
@@ -438,11 +610,18 @@ func TestValidate_MissingVisionMaxImages(t *testing.T) {
 func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{
-			Token:              "test",
-			BotName:            "TestBot",
-			ReplyPercentage:    0.15,
-			CooldownSeconds:    5,
-			MaxResponsesPerMin: 10,
+			Token:                     "test",
+			BotName:                   "TestBot",
+			ReplyPercentage:           0.15,
+			CooldownSeconds:           5,
+			MaxResponsesPerMin:        10,
+			ConsolidationTimeoutSec:   300,
+			TypingIndicatorIntervalSec: 5,
+			LongResponseDelayMs:       500,
+			ChunkSplitDelaySec:        2,
+			ReplyTruncationLength:     200,
+			ImageCacheTTLMin:          60,
+			ImageCacheMaxEntries:      100,
 		},
 		AI: AIConfig{
 			APIBaseURL:   "https://api.openai.com/v1",
@@ -464,12 +643,18 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 		Memory: MemoryConfig{
 			ConsolidationInterval: 50,
 			ShortTermLimit:        20,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
 			Retrieval: RetrievalConfig{
 				TopK:     5,
 				MinScore: 0.75,
 			},
 			Consolidation: ConsolidationConfig{
-				Enabled: true,
+				Enabled:           true,
+				MemorySearchLimit: 20,
+				WorkerQueueSize:   10,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -478,10 +663,18 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 			VectorSize: 1536,
 		},
 		Web: WebConfig{
-			Port:     8080,
-			Username: "admin",
-			Password: "test",
-			Enabled:  true,
+			Port:                      8080,
+			Username:                  "admin",
+			Password:                  "test",
+			Enabled:                   true,
+			MemoriesPageLimit:         50,
+			ContentTruncationLength:   500,
+			SessionTTLMin:             30,
+			SessionCleanupIntervalMin: 5,
+			StatsQueryTimeoutSec:      5,
+			LogDefaultLines:           100,
+			LogMaxLines:               1000,
+			LogMaxReadBytes:           1048576,
 		},
 		Logging: LoggingConfig{
 			Level:      "info",
@@ -491,9 +684,16 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 			MaxAge:     30,
 		},
 		Plugins: PluginsConfig{
-			Enabled:    true,
-			PluginsDir: "plugins",
+			Enabled:              true,
+			PluginsDir:           "plugins",
+			StartupTimeoutSec:    90,
+			RPCTimeoutSec:        5,
+			BeforeSendTimeoutSec: 180,
+			CommandTimeoutSec:    45,
+			ShutdownTimeoutSec:   5,
+			DisableTimeoutSec:    2,
 		},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
 	err := validate(cfg)
 	if err == nil {
@@ -506,11 +706,18 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{
-			Token:              "test",
-			BotName:            "TestBot",
-			ReplyPercentage:    0.15,
-			CooldownSeconds:    5,
-			MaxResponsesPerMin: 10,
+			Token:                     "test",
+			BotName:                   "TestBot",
+			ReplyPercentage:           0.15,
+			CooldownSeconds:           5,
+			MaxResponsesPerMin:        10,
+			ConsolidationTimeoutSec:   300,
+			TypingIndicatorIntervalSec: 5,
+			LongResponseDelayMs:       500,
+			ChunkSplitDelaySec:        2,
+			ReplyTruncationLength:     200,
+			ImageCacheTTLMin:          60,
+			ImageCacheMaxEntries:      100,
 		},
 		AI: AIConfig{
 			APIBaseURL:   "https://api.openai.com/v1",
@@ -535,13 +742,19 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 		Memory: MemoryConfig{
 			ConsolidationInterval: 50,
 			ShortTermLimit:        20,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
 			Retrieval: RetrievalConfig{
 				TopK:     0,
 				MinScore: 0.75,
 			},
 			Consolidation: ConsolidationConfig{
-				Enabled:      true,
-				SystemPrompt: "extract",
+				Enabled:           true,
+				SystemPrompt:      "extract",
+				MemorySearchLimit: 20,
+				WorkerQueueSize:   10,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -550,10 +763,18 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			VectorSize: 1536,
 		},
 		Web: WebConfig{
-			Port:     8080,
-			Username: "admin",
-			Password: "test",
-			Enabled:  true,
+			Port:                      8080,
+			Username:                  "admin",
+			Password:                  "test",
+			Enabled:                   true,
+			MemoriesPageLimit:         50,
+			ContentTruncationLength:   500,
+			SessionTTLMin:             30,
+			SessionCleanupIntervalMin: 5,
+			StatsQueryTimeoutSec:      5,
+			LogDefaultLines:           100,
+			LogMaxLines:               1000,
+			LogMaxReadBytes:           1048576,
 		},
 		Logging: LoggingConfig{
 			Level:      "info",
@@ -563,9 +784,16 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			MaxAge:     30,
 		},
 		Plugins: PluginsConfig{
-			Enabled:    true,
-			PluginsDir: "plugins",
+			Enabled:              true,
+			PluginsDir:           "plugins",
+			StartupTimeoutSec:    90,
+			RPCTimeoutSec:        5,
+			BeforeSendTimeoutSec: 180,
+			CommandTimeoutSec:    45,
+			ShutdownTimeoutSec:   5,
+			DisableTimeoutSec:    2,
 		},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
 	err := validate(cfg)
 	if err != nil {
@@ -574,7 +802,7 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 }
 func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1},
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
@@ -585,13 +813,18 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
 			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
 		},
 		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:     WebConfig{Enabled: false},
 		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
 		Plugins: PluginsConfig{Enabled: false},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
 	err := validate(cfg)
 	if err != nil {
@@ -600,7 +833,7 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 }
 func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1},
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
@@ -611,13 +844,18 @@ func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
 			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
 		},
 		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:     WebConfig{Enabled: false},
 		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
 		Plugins: PluginsConfig{Enabled: false, PluginsDir: ""},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
 	err := validate(cfg)
 	if err != nil {
@@ -626,7 +864,7 @@ func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 }
 func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1},
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
@@ -637,8 +875,12 @@ func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
 			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
 		},
 		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:     WebConfig{Enabled: false},
@@ -648,6 +890,7 @@ func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 			Enabled: true,
 			Servers: []MCPServer{{Name: "", Type: "stdio", Command: ""}},
 		},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
 	err := validate(cfg)
 	if err == nil {
@@ -662,7 +905,7 @@ func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 }
 func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1},
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
@@ -673,13 +916,18 @@ func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *test
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
 			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
 		},
 		Qdrant:  QdrantConfig{},
 		Web:     WebConfig{Enabled: false},
 		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
 		Plugins: PluginsConfig{Enabled: false},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
 	err := validate(cfg)
 	if err != nil {
@@ -688,7 +936,7 @@ func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *test
 }
 func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1},
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
@@ -699,13 +947,18 @@ func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
 			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
 		},
 		Qdrant:  QdrantConfig{},
 		Web:     WebConfig{Enabled: false},
 		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
 		Plugins: PluginsConfig{Enabled: false},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
 	err := validate(cfg)
 	if err == nil {
@@ -720,7 +973,7 @@ func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T
 }
 func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1},
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
@@ -731,13 +984,18 @@ func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
 			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
 		},
 		Qdrant:  QdrantConfig{Host: "localhost", Port: 6334, VectorSize: 3072},
 		Web:     WebConfig{Enabled: false},
 		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
 		Plugins: PluginsConfig{Enabled: false},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
 	err := validate(cfg)
 	if err == nil {
@@ -749,7 +1007,7 @@ func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 }
 func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1},
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
@@ -760,13 +1018,18 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
 			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
 		},
 		Qdrant:  QdrantConfig{},
 		Web:     WebConfig{Enabled: false},
 		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
 		Plugins: PluginsConfig{Enabled: false},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 		Decision: DecisionConfig{
 			Enabled:      true,
 			Model:        "gpt-4o-mini",
@@ -799,6 +1062,13 @@ core:
     reply_percentage: 0.15
     cooldown_seconds: 5
     max_responses_per_minute: 10
+    consolidation_timeout_sec: 300
+    typing_indicator_interval_sec: 5
+    long_response_delay_ms: 500
+    chunk_split_delay_sec: 2
+    reply_truncation_length: 200
+    image_cache_ttl_min: 60
+    image_cache_max_entries: 100
   ai:
     api_base_url: "https://api.openai.com/v1"
     api_key: "test-key"
@@ -820,6 +1090,10 @@ memory_pipeline:
   memory:
     consolidation_interval: 50
     short_term_limit: 20
+    max_paginated_limit: 100
+    embedding_cache_max_size: 500
+    embedding_cache_ttl_min: 30
+    eviction_interval_min: 5
     retrieval:
       top_k: 5
       min_score: 0.75
@@ -827,6 +1101,8 @@ memory_pipeline:
       enabled: false
       max_messages: 20
       system_prompt: "test"
+      memory_search_limit: 20
+      worker_queue_size: 10
   qdrant:
     host: "localhost"
     port: 6334
@@ -842,6 +1118,14 @@ operations:
     username: "admin"
     password: "test"
     enabled: true
+    memories_page_limit: 50
+    content_truncation_length: 500
+    session_ttl_min: 30
+    session_cleanup_interval_min: 5
+    stats_query_timeout_sec: 5
+    log_default_lines: 100
+    log_max_lines: 1000
+    log_max_read_bytes: 1048576
   logging:
     level: "info"
     file: "logs/test.log"
@@ -852,9 +1136,18 @@ operations:
     enabled: true
     plugins_dir: "plugins"
     default_tool_timeout_ms: 30000
+    startup_timeout_sec: 90
+    rpc_timeout_sec: 5
+    before_send_timeout_sec: 180
+    command_timeout_sec: 45
+    shutdown_timeout_sec: 5
+    disable_timeout_sec: 2
   mcp:
     enabled: false
     servers: []
+  operations:
+    shutdown_timeout_sec: 300
+    cleanup_interval_min: 5
 `
 	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
 		t.Fatalf("Failed to write config: %v", err)
@@ -879,6 +1172,13 @@ core:
     reply_percentage: 0.15
     cooldown_seconds: 5
     max_responses_per_minute: 10
+    consolidation_timeout_sec: 300
+    typing_indicator_interval_sec: 5
+    long_response_delay_ms: 500
+    chunk_split_delay_sec: 2
+    reply_truncation_length: 200
+    image_cache_ttl_min: 60
+    image_cache_max_entries: 100
   ai:
     api_base_url: "https://api.openai.com/v1"
     api_key: "test-key"
@@ -900,6 +1200,10 @@ memory_pipeline:
   memory:
     consolidation_interval: 50
     short_term_limit: 20
+    max_paginated_limit: 100
+    embedding_cache_max_size: 500
+    embedding_cache_ttl_min: 30
+    eviction_interval_min: 5
     retrieval:
       top_k: 5
       min_score: 0.75
@@ -907,6 +1211,8 @@ memory_pipeline:
       enabled: false
       max_messages: 20
       system_prompt: "test"
+      memory_search_limit: 20
+      worker_queue_size: 10
   qdrant:
     host: "localhost"
     port: 6334
@@ -922,6 +1228,14 @@ operations:
     username: "admin"
     password: "test"
     enabled: true
+    memories_page_limit: 50
+    content_truncation_length: 500
+    session_ttl_min: 30
+    session_cleanup_interval_min: 5
+    stats_query_timeout_sec: 5
+    log_default_lines: 100
+    log_max_lines: 1000
+    log_max_read_bytes: 1048576
   logging:
     level: "info"
     file: "logs/test.log"
@@ -931,9 +1245,18 @@ operations:
   plugins:
     enabled: true
     plugins_dir: "plugins"
+    startup_timeout_sec: 90
+    rpc_timeout_sec: 5
+    before_send_timeout_sec: 180
+    command_timeout_sec: 45
+    shutdown_timeout_sec: 5
+    disable_timeout_sec: 2
   mcp:
     enabled: false
     servers: []
+  operations:
+    shutdown_timeout_sec: 300
+    cleanup_interval_min: 5
 `
 	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
 		t.Fatalf("Failed to write config: %v", err)
@@ -958,6 +1281,13 @@ core:
     reply_percentage: 0.15
     cooldown_seconds: 5
     max_responses_per_minute: 10
+    consolidation_timeout_sec: 300
+    typing_indicator_interval_sec: 5
+    long_response_delay_ms: 500
+    chunk_split_delay_sec: 2
+    reply_truncation_length: 200
+    image_cache_ttl_min: 60
+    image_cache_max_entries: 100
   ai:
     api_base_url: "https://api.openai.com/v1"
     api_key: "test-key"
@@ -979,6 +1309,10 @@ memory_pipeline:
   memory:
     consolidation_interval: 50
     short_term_limit: 20
+    max_paginated_limit: 100
+    embedding_cache_max_size: 500
+    embedding_cache_ttl_min: 30
+    eviction_interval_min: 5
     retrieval:
       top_k: 5
       min_score: 0.75
@@ -986,6 +1320,8 @@ memory_pipeline:
       enabled: false
       max_messages: 20
       system_prompt: "test"
+      memory_search_limit: 20
+      worker_queue_size: 10
   qdrant:
     host: "localhost"
     port: 6334
@@ -1001,6 +1337,14 @@ operations:
     username: "admin"
     password: "test"
     enabled: true
+    memories_page_limit: 50
+    content_truncation_length: 500
+    session_ttl_min: 30
+    session_cleanup_interval_min: 5
+    stats_query_timeout_sec: 5
+    log_default_lines: 100
+    log_max_lines: 1000
+    log_max_read_bytes: 1048576
   logging:
     level: "info"
     file: "logs/test.log"
@@ -1011,9 +1355,18 @@ operations:
     enabled: true
     plugins_dir: "plugins"
     default_tool_timeout_ms: -1
+    startup_timeout_sec: 90
+    rpc_timeout_sec: 5
+    before_send_timeout_sec: 180
+    command_timeout_sec: 45
+    shutdown_timeout_sec: 5
+    disable_timeout_sec: 2
   mcp:
     enabled: false
     servers: []
+  operations:
+    shutdown_timeout_sec: 300
+    cleanup_interval_min: 5
 `
 	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
 		t.Fatalf("Failed to write config: %v", err)
@@ -1029,7 +1382,7 @@ operations:
 
 func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1},
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ChunkSplitDelaySec: 2, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
@@ -1040,13 +1393,18 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			EmbeddingCacheMaxSize: 500,
+			EmbeddingCacheTTLMin:  30,
+			EvictionIntervalMin:   5,
 			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
 		},
 		Qdrant:  QdrantConfig{},
 		Web:     WebConfig{Enabled: false},
 		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
 		Plugins: PluginsConfig{Enabled: false},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 		Decision: DecisionConfig{
 			Enabled:      true,
 			Model:        "gpt-4o-mini",

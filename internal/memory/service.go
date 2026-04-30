@@ -121,6 +121,9 @@ type ServiceConfig struct {
 	MinScore              float64
 	Consolidation         *config.ConsolidationConfig
 	OwnBotID              string // Bot's own Discord ID to distinguish from other bots
+	MemorySearchLimit     int
+	WorkerQueueSize       int
+	MaxPaginatedLimit     int
 }
 
 // Embedder defines the interface for generating embeddings
@@ -167,8 +170,8 @@ func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedde
 		consolidationInterval: cfg.ConsolidationInterval,
 	}
 
-	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, visionDescriber, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval)
-	service.worker = NewWorker(service.consolidator)
+	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, visionDescriber, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit)
+	service.worker = NewWorker(service.consolidator, cfg.WorkerQueueSize)
 	service.worker.Start(context.Background())
 
 	logger.Info("Memory service initialized")
@@ -513,7 +516,7 @@ func (s *MemoryService) GetUserStats(ctx context.Context, userID string) (*UserS
 
 	memoryLimit := s.config.TopK
 	if memoryLimit <= 0 {
-		memoryLimit = 50
+		memoryLimit = s.config.MemorySearchLimit
 	}
 
 	memories, err := s.GetMemories(ctx, userID, memoryLimit)

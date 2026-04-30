@@ -74,8 +74,8 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 			if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
 				msg.ReplyToUsername = m.ReferencedMessage.Author.Username
 				content := m.ReferencedMessage.Content
-				if len(content) > 100 {
-					content = content[:100]
+				if len(content) > b.cfg().Discord.ReplyTruncationLength {
+					content = content[:b.cfg().Discord.ReplyTruncationLength]
 				}
 				msg.ReplyToContent = content
 			} else {
@@ -152,7 +152,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 
 	s.ChannelTyping(m.ChannelID)
 	typingCtx, cancelTyping := context.WithCancel(ctx)
-	go maintainTyping(typingCtx, s, m.ChannelID)
+	go maintainTyping(typingCtx, s, m.ChannelID, b.cfg().Discord.TypingIndicatorIntervalSec)
 	defer cancelTyping()
 
 	mc := ModeContext{

@@ -62,7 +62,14 @@ func main() {
 	logger.Info("Memory service initialized")
 
 	// Initialize plugin manager
-	pluginManager := plugin.NewManager(cfg.Plugins.DefaultToolTimeoutMs)
+	pluginManager := plugin.NewManager(cfg.Plugins.DefaultToolTimeoutMs,
+		cfg.Plugins.StartupTimeoutSec,
+		cfg.Plugins.RPCTimeoutSec,
+		cfg.Plugins.BeforeSendTimeoutSec,
+		cfg.Plugins.CommandTimeoutSec,
+		cfg.Plugins.ShutdownTimeoutSec,
+		cfg.Plugins.DisableTimeoutSec,
+	)
 
 	// Create shared config store (copy-on-write via atomic.Value)
 	cfgStore := &atomic.Value{}
@@ -87,7 +94,7 @@ func main() {
 	}
 
 	// Start cleanup routine
-	go runCleanupRoutine(discordBot)
+	go runCleanupRoutine(cfg, discordBot)
 
 	logger.Info("Bot is now running. Press CTRL+C to exit.")
 
@@ -99,7 +106,7 @@ func main() {
 	logger.Info("Shutting down...")
 
 	// Graceful shutdown
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.Operations.ShutdownTimeoutSec)*time.Second)
 	defer cancel()
 
 	// Stop web server
@@ -175,6 +182,9 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 		MinScore:              cfg.Memory.Retrieval.MinScore,
 		Consolidation:         &cfg.Memory.Consolidation,
 		OwnBotID:              cfg.Discord.OwnBotID,
+		MemorySearchLimit:     cfg.Memory.Consolidation.MemorySearchLimit,
+		WorkerQueueSize:       cfg.Memory.Consolidation.WorkerQueueSize,
+		MaxPaginatedLimit:     cfg.Memory.MaxPaginatedLimit,
 	}
 
 	return memory.NewService(memoryCfg, qdrantClient, embedder, consolidationAIClient, visionDescriber)
@@ -201,8 +211,8 @@ func buildEmbeddingAIConfig(cfg *config.Config) *config.AIConfig {
 }
 
 // runCleanupRoutine runs periodic cleanup tasks
-func runCleanupRoutine(discordBot *bot.Bot) {
-	ticker := time.NewTicker(1 * time.Hour)
+func runCleanupRoutine(cfg *config.Config, discordBot *bot.Bot) {
+	ticker := time.NewTicker(time.Duration(cfg.Operations.CleanupIntervalMin) * time.Minute)
 	defer ticker.Stop()
 
 	for range ticker.C {

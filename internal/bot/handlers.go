@@ -110,8 +110,8 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
 			msg.ReplyToUsername = m.ReferencedMessage.Author.Username
 			content := m.ReferencedMessage.Content
-			if len(content) > 100 {
-				content = content[:100]
+			if len(content) > b.cfg().Discord.ReplyTruncationLength {
+				content = content[:b.cfg().Discord.ReplyTruncationLength]
 			}
 			msg.ReplyToContent = content
 		} else {

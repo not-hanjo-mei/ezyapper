@@ -15,7 +15,11 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 
 		switch r.Method {
 		case http.MethodGet:
-			cfg := cfgStore.Load().(*config.Config)
+			cfg, ok := cfgStore.Load().(*config.Config)
+			if !ok {
+				http.Error(w, "Internal configuration error", http.StatusInternalServerError)
+				return
+			}
 			data := cfg
 			csrfToken := CSRFTokenFromContext(ctx)
 			flash := flashFromCookie(r)
@@ -45,7 +49,11 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 				return
 			}
 
-			oldCfg := cfgStore.Load().(*config.Config)
+			oldCfg, ok := cfgStore.Load().(*config.Config)
+			if !ok {
+				http.Error(w, "Internal configuration error", http.StatusInternalServerError)
+				return
+			}
 			newCfg := *oldCfg
 
 			if v := r.FormValue("bot_name"); v != "" {
@@ -154,7 +162,11 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 }
 
 func renderConfigError(w http.ResponseWriter, r *http.Request, ts *TemplateSet, cfgStore *atomic.Value, message string) {
-	cfg := cfgStore.Load().(*config.Config)
+	cfg, ok := cfgStore.Load().(*config.Config)
+	if !ok {
+		http.Error(w, "Internal configuration error", http.StatusInternalServerError)
+		return
+	}
 	ctx := r.Context()
 	csrfToken := CSRFTokenFromContext(ctx)
 

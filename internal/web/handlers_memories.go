@@ -4,9 +4,11 @@ import (
 	"encoding/base64"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 
+	"ezyapper/internal/config"
 	"ezyapper/internal/memory"
 )
 
@@ -32,13 +34,13 @@ type memoriesPageData struct {
 // GET  /memories          — search form with no results
 // GET  /memories?userID=X — list memories for user X
 // POST /memories/delete   — delete a memory (ownership-verified)
-func MemoriesHandler(memStore memory.MemoryStore, ts *TemplateSet) http.HandlerFunc {
+func MemoriesHandler(cfgStore *atomic.Value, memStore memory.MemoryStore, ts *TemplateSet) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 
 		switch {
 		case r.Method == http.MethodGet && path == "/memories":
-			handleMemoriesGET(w, r, memStore, ts)
+			handleMemoriesGET(w, r, cfgStore, memStore, ts)
 		case r.Method == http.MethodPost && path == "/memories/delete":
 			handleMemoriesDelete(w, r, memStore)
 		default:
@@ -47,8 +49,9 @@ func MemoriesHandler(memStore memory.MemoryStore, ts *TemplateSet) http.HandlerF
 	}
 }
 
-func handleMemoriesGET(w http.ResponseWriter, r *http.Request, memStore memory.MemoryStore, ts *TemplateSet) {
+func handleMemoriesGET(w http.ResponseWriter, r *http.Request, cfgStore *atomic.Value, memStore memory.MemoryStore, ts *TemplateSet) {
 	ctx := r.Context()
+	cfg := cfgStore.Load().(*config.Config)
 	userID := strings.TrimSpace(r.URL.Query().Get("userID"))
 	csrfToken := CSRFTokenFromContext(ctx)
 	flash := flashFromCookieMemories(r)
@@ -58,11 +61,11 @@ func handleMemoriesGET(w http.ResponseWriter, r *http.Request, memStore memory.M
 
 	if userID != "" {
 		searched = true
-		memories, err := memStore.GetMemories(ctx, userID, 50)
+		memories, err := memStore.GetMemories(ctx, userID, cfg.Web.MemoriesPageLimit)
 		if err == nil {
 			entries = make([]memoryDisplayEntry, 0, len(memories))
 			for _, m := range memories {
-				entries = append(entries, toDisplayEntry(m))
+				entries = append(entries, toDisplayEntry(m, cfg.Web.ContentTruncationLength))
 			}
 		}
 	}
@@ -130,10 +133,10 @@ func handleMemoriesDelete(w http.ResponseWriter, r *http.Request, memStore memor
 	http.Redirect(w, r, "/memories?userID="+userID, http.StatusSeeOther)
 }
 
-func toDisplayEntry(m *memory.Record) memoryDisplayEntry {
+func toDisplayEntry(m *memory.Record, truncLen int) memoryDisplayEntry {
 	content := m.Content
-	if len(content) > 200 {
-		content = truncateToWord(content, 200)
+	if len(content) > truncLen {
+		content = truncateToWord(content, truncLen)
 	}
 
 	createdAt := m.CreatedAt.Format(time.RFC3339)

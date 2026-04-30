@@ -34,7 +34,7 @@ func (m *mockEmbedder) count(text string) int {
 // TestCachedEmbedder_Hit verifies that identical requests hit the cache.
 func TestCachedEmbedder_Hit(t *testing.T) {
 	mock := newMockEmbedder()
-	e := newCachedEmbedder(mock, "test-model", 2000, 1*time.Hour)
+	e := newCachedEmbedder(mock, "test-model", 2000, 1*time.Hour, 1*time.Minute)
 	ctx := context.Background()
 
 	// First call hits API.
@@ -62,7 +62,7 @@ func TestCachedEmbedder_Hit(t *testing.T) {
 // TestCachedEmbedder_Miss verifies that different texts are separate cache keys.
 func TestCachedEmbedder_Miss(t *testing.T) {
 	mock := newMockEmbedder()
-	e := newCachedEmbedder(mock, "test-model", 2000, 1*time.Hour)
+	e := newCachedEmbedder(mock, "test-model", 2000, 1*time.Hour, 1*time.Minute)
 	ctx := context.Background()
 
 	e.Embed(ctx, "hello")
@@ -79,7 +79,7 @@ func TestCachedEmbedder_Miss(t *testing.T) {
 // TestCachedEmbedder_TTL verifies entries expire after TTL.
 func TestCachedEmbedder_TTL(t *testing.T) {
 	mock := newMockEmbedder()
-	e := newCachedEmbedder(mock, "test-model", 2000, 100*time.Millisecond)
+	e := newCachedEmbedder(mock, "test-model", 2000, 100*time.Millisecond, 1*time.Minute)
 	ctx := context.Background()
 
 	e.Embed(ctx, "hello")
@@ -98,7 +98,7 @@ func TestCachedEmbedder_TTL(t *testing.T) {
 // TestCachedEmbedder_MaxSize verifies oldest entry is evicted when cache is full.
 func TestCachedEmbedder_MaxSize(t *testing.T) {
 	mock := newMockEmbedder()
-	e := newCachedEmbedder(mock, "test-model", 3, 1*time.Hour)
+	e := newCachedEmbedder(mock, "test-model", 3, 1*time.Hour, 1*time.Minute)
 	ctx := context.Background()
 
 	e.Embed(ctx, "a")
@@ -129,8 +129,8 @@ func TestCachedEmbedder_MaxSize(t *testing.T) {
 // TestCachedEmbedder_ModelChange verifies the model is part of the cache key.
 func TestCachedEmbedder_ModelChange(t *testing.T) {
 	mock := newMockEmbedder()
-	eA := newCachedEmbedder(mock, "model-A", 2000, 1*time.Hour)
-	eB := newCachedEmbedder(mock, "model-B", 2000, 1*time.Hour)
+	eA := newCachedEmbedder(mock, "model-A", 2000, 1*time.Hour, 1*time.Minute)
+	eB := newCachedEmbedder(mock, "model-B", 2000, 1*time.Hour, 1*time.Minute)
 	ctx := context.Background()
 
 	eA.Embed(ctx, "hello")
@@ -145,7 +145,7 @@ func TestCachedEmbedder_ModelChange(t *testing.T) {
 // TestCachedEmbedder_Concurrency verifies singleflight deduplication under load.
 func TestCachedEmbedder_Concurrency(t *testing.T) {
 	mock := newMockEmbedder()
-	e := newCachedEmbedder(mock, "test-model", 2000, 1*time.Hour)
+	e := newCachedEmbedder(mock, "test-model", 2000, 1*time.Hour, 1*time.Minute)
 	ctx := context.Background()
 
 	n := 50

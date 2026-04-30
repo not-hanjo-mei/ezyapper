@@ -41,7 +41,11 @@ type Server struct {
 }
 
 func (s *Server) cfg() *config.Config {
-	return s.configStore.Load().(*config.Config)
+	c, ok := s.configStore.Load().(*config.Config)
+	if !ok {
+		panic("configStore contains non-*config.Config value")
+	}
+	return c
 }
 
 type DiscordMessageFetcher interface {
@@ -157,6 +161,7 @@ func NewServer(cfgStore *atomic.Value, memStore memory.MemoryStore, profileStore
 		logger.Fatalf("[web] failed to generate CSRF secret: %v", err)
 	}
 
+	webCfg := cfgStore.Load().(*config.Config).Web
 	server := &Server{
 		configStore:      cfgStore,
 		memoryStore:      memStore,
@@ -167,7 +172,7 @@ func NewServer(cfgStore *atomic.Value, memStore memory.MemoryStore, profileStore
 		discordFetcher:   discordFetcher,
 		discordInfo:      discordInfo,
 		webDir:           findWebDir(),
-		sessionStore:     NewSessionStore(),
+		sessionStore:     NewSessionStore(webCfg.SessionTTLMin, webCfg.SessionCleanupIntervalMin),
 		csrfSecret:       csrfSecret,
 		runtimeApplier:   runtimeApplier,
 		toolRefresher:    toolRefresher,
@@ -206,7 +211,7 @@ func (s *Server) setupRoutes() {
 	mux.HandleFunc("/logout", LogoutHandler(s.sessionStore))
 
 	// Dashboard
-	stats := NewStatsProvider(s.memoryStore, s.profileStore)
+	stats := NewStatsProvider(s.memoryStore, s.profileStore, s.configStore)
 	mux.HandleFunc("/", DashboardHandler(stats, s.startTime, ts))
 
 	// Configuration
@@ -221,7 +226,7 @@ func (s *Server) setupRoutes() {
 	mux.HandleFunc("/channels/whitelist/remove", chHandler)
 
 	// Memories
-	memHandler := MemoriesHandler(s.memoryStore, ts)
+	memHandler := MemoriesHandler(s.configStore, s.memoryStore, ts)
 	mux.HandleFunc("/memories", memHandler)
 	mux.HandleFunc("/memories/delete", memHandler)
 
@@ -236,7 +241,7 @@ func (s *Server) setupRoutes() {
 	mux.HandleFunc("/plugins/toggle", plugHandler)
 
 	// Logs
-	mux.HandleFunc("/logs", LogsHandler(s.cfg().Logging.File, ts))
+	mux.HandleFunc("/logs", LogsHandler(s.cfg().Logging.File, s.configStore, ts))
 
 	// Chain middleware: Security 鈫?CSRF 鈫?Session 鈫?mux
 	s.router = Chain(mux,

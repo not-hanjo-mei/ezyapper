@@ -65,6 +65,7 @@ func NewDecisionService(cfg *config.DecisionConfig) (*DecisionService, error) {
 
 	httpTimeout := time.Duration(cfg.Timeout) * time.Second * 2
 	if httpTimeout < 30*time.Second {
+		logger.Warnf("[decision] computed HTTP timeout %v is below minimum of 30s; clamping to 30s", httpTimeout)
 		httpTimeout = 30 * time.Second
 	}
 	httpClient := &http.Client{Timeout: httpTimeout}

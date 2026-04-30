@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"ezyapper/internal/memory"
 	"ezyapper/internal/types"
 	"ezyapper/internal/utils"
 
@@ -290,15 +289,15 @@ func TestBuildConversationHistory_WithRename(t *testing.T) {
 		{
 			ID:       "msg1",
 			AuthorID: "user1",
-			Username: "鍗婃潯鍛?,
-			Content:  "澶у濂?,
+			Username: "OriginalName",
+			Content:  "Hello everyone",
 			IsBot:    false,
 		},
 		{
 			ID:              "msg2",
 			AuthorID:        "user1",
-			Username:        "xxx_鍗婃潯鍛?,
-			Content:         "鎴戞妸鍚嶅瓧鏀逛簡",
+			Username:        "NewName",
+			Content:         "I renamed myself",
 			IsBot:           false,
 			ReplyToID:       "msg0",
 			ReplyToUsername: "Mei",
@@ -320,7 +319,7 @@ func TestBuildConversationHistory_WithRename(t *testing.T) {
 		{
 			ID:              "msg5",
 			AuthorID:        "user1",
-			Username:        "xxx_鍗婃潯鍛?,
+			Username:        "NewName",
 			Content:         "Same name again",
 			IsBot:           false,
 			ReplyToID:       "msgX",
@@ -339,12 +338,12 @@ func TestBuildConversationHistory_WithRename(t *testing.T) {
 	)
 
 	// First message should have NO rename marker (first appearance)
-	if !strings.Contains(result, "[User] 鍗婃潯鍛?(ID:user1): 澶у濂?) {
+	if !strings.Contains(result, "[User] OriginalName (ID:user1): Hello everyone") {
 		t.Error("expected first message of user1 without rename marker")
 	}
 
-	// Second message (user1 renamed to xxx_鍗婃潯鍛? should have rename marker + reply marker
-	expectedLine := "[User] xxx_鍗婃潯鍛?(ID:user1): 鎴戞妸鍚嶅瓧鏀逛簡 (was @鍗婃潯鍛? (replying to @Mei)"
+	// Second message (user1 renamed to NewName) should have rename marker + reply marker
+	expectedLine := "[User] NewName (ID:user1): I renamed myself (was @OriginalName) (replying to @Mei)"
 	if !strings.Contains(result, expectedLine) {
 		t.Errorf("expected rename marker before reply marker\n  want: %s\n  got:\n%s", expectedLine, result)
 	}

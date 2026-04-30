@@ -25,6 +25,7 @@ type Config struct {
 	Plugins   PluginsConfig   `mapstructure:"plugins" yaml:"plugins"`
 	MCP       MCPConfig       `mapstructure:"mcp" yaml:"mcp"`
 	Decision  DecisionConfig  `mapstructure:"decision" yaml:"decision"`
+	Operations OperationsConfig `mapstructure:"operations" yaml:"operations"`
 
 	configPath string `yaml:"-"`
 }
@@ -57,10 +58,17 @@ type accessControlGroup struct {
 }
 
 type operationsGroup struct {
-	Web     WebConfig     `mapstructure:"web" yaml:"web"`
-	Logging LoggingConfig `mapstructure:"logging" yaml:"logging"`
-	Plugins PluginsConfig `mapstructure:"plugins" yaml:"plugins"`
-	MCP     MCPConfig     `mapstructure:"mcp" yaml:"mcp"`
+	Web     WebConfig        `mapstructure:"web" yaml:"web"`
+	Logging LoggingConfig    `mapstructure:"logging" yaml:"logging"`
+	Plugins PluginsConfig    `mapstructure:"plugins" yaml:"plugins"`
+	MCP     MCPConfig        `mapstructure:"mcp" yaml:"mcp"`
+	Ops     OperationsConfig `mapstructure:"operations" yaml:"operations"`
+}
+
+// OperationsConfig holds operational runtime settings.
+type OperationsConfig struct {
+	ShutdownTimeoutSec int `mapstructure:"shutdown_timeout_sec" yaml:"shutdown_timeout_sec"`
+	CleanupIntervalMin int `mapstructure:"cleanup_interval_min" yaml:"cleanup_interval_min"`
 }
 
 func (f fileConfig) toRuntimeConfig() Config {
@@ -77,6 +85,7 @@ func (f fileConfig) toRuntimeConfig() Config {
 		Logging:   f.Operations.Logging,
 		Plugins:   f.Operations.Plugins,
 		MCP:       f.Operations.MCP,
+		Operations: f.Operations.Ops,
 	}
 }
 
@@ -102,6 +111,7 @@ func toFileConfig(cfg *Config) fileConfig {
 			Logging: cfg.Logging,
 			Plugins: cfg.Plugins,
 			MCP:     cfg.MCP,
+			Ops:     cfg.Operations,
 		},
 	}
 }
@@ -122,13 +132,20 @@ type DecisionConfig struct {
 
 // DiscordConfig holds Discord bot specific settings
 type DiscordConfig struct {
-	Token              string  `mapstructure:"token" yaml:"token"`
-	BotName            string  `mapstructure:"bot_name" yaml:"bot_name"`
-	OwnBotID           string  `mapstructure:"own_bot_id" yaml:"own_bot_id"` // Bot's own ID to distinguish from other bots
-	ReplyPercentage    float64 `mapstructure:"reply_percentage" yaml:"reply_percentage"`
-	CooldownSeconds    int     `mapstructure:"cooldown_seconds" yaml:"cooldown_seconds"`
-	MaxResponsesPerMin int     `mapstructure:"max_responses_per_minute" yaml:"max_responses_per_minute"`
-	ReplyToBots        bool    `mapstructure:"reply_to_bots" yaml:"reply_to_bots"`
+	Token                     string  `mapstructure:"token" yaml:"token"`
+	BotName                   string  `mapstructure:"bot_name" yaml:"bot_name"`
+	OwnBotID                  string  `mapstructure:"own_bot_id" yaml:"own_bot_id"` // Bot's own ID to distinguish from other bots
+	ReplyPercentage           float64 `mapstructure:"reply_percentage" yaml:"reply_percentage"`
+	CooldownSeconds           int     `mapstructure:"cooldown_seconds" yaml:"cooldown_seconds"`
+	MaxResponsesPerMin        int     `mapstructure:"max_responses_per_minute" yaml:"max_responses_per_minute"`
+	ReplyToBots               bool    `mapstructure:"reply_to_bots" yaml:"reply_to_bots"`
+	ConsolidationTimeoutSec   int     `mapstructure:"consolidation_timeout_sec" yaml:"consolidation_timeout_sec"`
+	TypingIndicatorIntervalSec int    `mapstructure:"typing_indicator_interval_sec" yaml:"typing_indicator_interval_sec"`
+	LongResponseDelayMs       int     `mapstructure:"long_response_delay_ms" yaml:"long_response_delay_ms"`
+	ChunkSplitDelaySec        int     `mapstructure:"chunk_split_delay_sec" yaml:"chunk_split_delay_sec"`
+	ReplyTruncationLength     int     `mapstructure:"reply_truncation_length" yaml:"reply_truncation_length"`
+	ImageCacheTTLMin          int     `mapstructure:"image_cache_ttl_min" yaml:"image_cache_ttl_min"`
+	ImageCacheMaxEntries      int     `mapstructure:"image_cache_max_entries" yaml:"image_cache_max_entries"`
 }
 
 // AIConfig holds AI/LLM settings for chat
@@ -158,10 +175,14 @@ type EmbeddingConfig struct {
 }
 
 type MemoryConfig struct {
-	ConsolidationInterval int                 `mapstructure:"consolidation_interval" yaml:"consolidation_interval"`
-	ShortTermLimit        int                 `mapstructure:"short_term_limit" yaml:"short_term_limit"`
-	Retrieval             RetrievalConfig     `mapstructure:"retrieval" yaml:"retrieval"`
-	Consolidation         ConsolidationConfig `mapstructure:"consolidation" yaml:"consolidation"`
+	ConsolidationInterval  int                 `mapstructure:"consolidation_interval" yaml:"consolidation_interval"`
+	ShortTermLimit         int                 `mapstructure:"short_term_limit" yaml:"short_term_limit"`
+	MaxPaginatedLimit      int                 `mapstructure:"max_paginated_limit" yaml:"max_paginated_limit"`
+	EmbeddingCacheMaxSize  int                 `mapstructure:"embedding_cache_max_size" yaml:"embedding_cache_max_size"`
+	EmbeddingCacheTTLMin   int                 `mapstructure:"embedding_cache_ttl_min" yaml:"embedding_cache_ttl_min"`
+	EvictionIntervalMin    int                 `mapstructure:"eviction_interval_min" yaml:"eviction_interval_min"`
+	Retrieval              RetrievalConfig     `mapstructure:"retrieval" yaml:"retrieval"`
+	Consolidation          ConsolidationConfig `mapstructure:"consolidation" yaml:"consolidation"`
 }
 
 type ConsolidationConfig struct {
@@ -183,6 +204,8 @@ type ConsolidationConfig struct {
 	VisionTimeout     int                    `mapstructure:"vision_timeout" yaml:"vision_timeout"`
 	SystemPrompt      string                 `mapstructure:"system_prompt" yaml:"system_prompt"`
 	ExtraParams       map[string]interface{} `mapstructure:"extra_params" yaml:"extra_params"`
+	MemorySearchLimit int                    `mapstructure:"memory_search_limit" yaml:"memory_search_limit"`
+	WorkerQueueSize   int                    `mapstructure:"worker_queue_size" yaml:"worker_queue_size"`
 }
 
 type RetrievalConfig struct {
@@ -191,10 +214,18 @@ type RetrievalConfig struct {
 }
 
 type WebConfig struct {
-	Port     int    `mapstructure:"port" yaml:"port"`
-	Username string `mapstructure:"username" yaml:"username"`
-	Password string `mapstructure:"password" yaml:"password"`
-	Enabled  bool   `mapstructure:"enabled" yaml:"enabled"`
+	Port                      int    `mapstructure:"port" yaml:"port"`
+	Username                  string `mapstructure:"username" yaml:"username"`
+	Password                  string `mapstructure:"password" yaml:"password"`
+	Enabled                   bool   `mapstructure:"enabled" yaml:"enabled"`
+	MemoriesPageLimit         int    `mapstructure:"memories_page_limit" yaml:"memories_page_limit"`
+	ContentTruncationLength   int    `mapstructure:"content_truncation_length" yaml:"content_truncation_length"`
+	SessionTTLMin             int    `mapstructure:"session_ttl_min" yaml:"session_ttl_min"`
+	SessionCleanupIntervalMin int    `mapstructure:"session_cleanup_interval_min" yaml:"session_cleanup_interval_min"`
+	StatsQueryTimeoutSec      int    `mapstructure:"stats_query_timeout_sec" yaml:"stats_query_timeout_sec"`
+	LogDefaultLines           int    `mapstructure:"log_default_lines" yaml:"log_default_lines"`
+	LogMaxLines               int    `mapstructure:"log_max_lines" yaml:"log_max_lines"`
+	LogMaxReadBytes           int    `mapstructure:"log_max_read_bytes" yaml:"log_max_read_bytes"`
 }
 
 type LoggingConfig struct {
@@ -228,6 +259,12 @@ type PluginsConfig struct {
 	Enabled              bool   `mapstructure:"enabled" yaml:"enabled"`
 	PluginsDir           string `mapstructure:"plugins_dir" yaml:"plugins_dir"`
 	DefaultToolTimeoutMs int    `mapstructure:"default_tool_timeout_ms" yaml:"default_tool_timeout_ms"`
+	StartupTimeoutSec    int    `mapstructure:"startup_timeout_sec" yaml:"startup_timeout_sec"`
+	RPCTimeoutSec        int    `mapstructure:"rpc_timeout_sec" yaml:"rpc_timeout_sec"`
+	BeforeSendTimeoutSec int    `mapstructure:"before_send_timeout_sec" yaml:"before_send_timeout_sec"`
+	CommandTimeoutSec    int    `mapstructure:"command_timeout_sec" yaml:"command_timeout_sec"`
+	ShutdownTimeoutSec   int    `mapstructure:"shutdown_timeout_sec" yaml:"shutdown_timeout_sec"`
+	DisableTimeoutSec    int    `mapstructure:"disable_timeout_sec" yaml:"disable_timeout_sec"`
 }
 
 type MCPConfig struct {
@@ -368,6 +405,13 @@ func validateDiscord(cfg *Config, errs *[]string) {
 	if cfg.Discord.ReplyPercentage < 0 || cfg.Discord.ReplyPercentage > 1 {
 		*errs = append(*errs, "discord.reply_percentage must be between 0 and 1")
 	}
+	requirePositive(cfg.Discord.ConsolidationTimeoutSec, "discord.consolidation_timeout_sec", errs)
+	requirePositive(cfg.Discord.TypingIndicatorIntervalSec, "discord.typing_indicator_interval_sec", errs)
+	requirePositive(cfg.Discord.LongResponseDelayMs, "discord.long_response_delay_ms", errs)
+	requirePositive(cfg.Discord.ChunkSplitDelaySec, "discord.chunk_split_delay_sec", errs)
+	requirePositive(cfg.Discord.ReplyTruncationLength, "discord.reply_truncation_length", errs)
+	requirePositive(cfg.Discord.ImageCacheTTLMin, "discord.image_cache_ttl_min", errs)
+	requirePositive(cfg.Discord.ImageCacheMaxEntries, "discord.image_cache_max_entries", errs)
 }
 
 func validateQdrant(cfg *Config, errs *[]string) {
@@ -398,12 +442,18 @@ func validateQdrant(cfg *Config, errs *[]string) {
 func validateMemory(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Memory.ConsolidationInterval, "memory.consolidation_interval", errs)
 	requirePositive(cfg.Memory.ShortTermLimit, "memory.short_term_limit", errs)
+	requirePositive(cfg.Memory.MaxPaginatedLimit, "memory.max_paginated_limit", errs)
+	requirePositive(cfg.Memory.EmbeddingCacheMaxSize, "memory.embedding_cache_max_size", errs)
+	requirePositive(cfg.Memory.EmbeddingCacheTTLMin, "memory.embedding_cache_ttl_min", errs)
+	requirePositive(cfg.Memory.EvictionIntervalMin, "memory.eviction_interval_min", errs)
 	if cfg.Memory.Retrieval.TopK < 0 {
 		*errs = append(*errs, "memory.retrieval.top_k must be greater than or equal to 0")
 	}
 	if cfg.Memory.Retrieval.MinScore < 0 || cfg.Memory.Retrieval.MinScore > 1 {
 		*errs = append(*errs, "memory.retrieval.min_score must be between 0 and 1")
 	}
+	requirePositive(cfg.Memory.Consolidation.MemorySearchLimit, "memory.consolidation.memory_search_limit", errs)
+	requirePositive(cfg.Memory.Consolidation.WorkerQueueSize, "memory.consolidation.worker_queue_size", errs)
 }
 
 func validateRateLimit(cfg *Config, errs *[]string) {
@@ -424,6 +474,14 @@ func validateWeb(cfg *Config, errs *[]string) {
 	if cfg.Web.Password == "" {
 		*errs = append(*errs, "web.password is required when web is enabled")
 	}
+	requirePositive(cfg.Web.MemoriesPageLimit, "web.memories_page_limit", errs)
+	requirePositive(cfg.Web.ContentTruncationLength, "web.content_truncation_length", errs)
+	requirePositive(cfg.Web.SessionTTLMin, "web.session_ttl_min", errs)
+	requirePositive(cfg.Web.SessionCleanupIntervalMin, "web.session_cleanup_interval_min", errs)
+	requirePositive(cfg.Web.StatsQueryTimeoutSec, "web.stats_query_timeout_sec", errs)
+	requirePositive(cfg.Web.LogDefaultLines, "web.log_default_lines", errs)
+	requirePositive(cfg.Web.LogMaxLines, "web.log_max_lines", errs)
+	requirePositive(cfg.Web.LogMaxReadBytes, "web.log_max_read_bytes", errs)
 }
 
 func validatePlugins(cfg *Config, errs *[]string) {
@@ -437,6 +495,12 @@ func validatePlugins(cfg *Config, errs *[]string) {
 	if cfg.Plugins.DefaultToolTimeoutMs == 0 {
 		fmt.Fprintf(os.Stderr, "[config][WARNING] plugins.default_tool_timeout_ms is 0 — tool execution will fail unless per-tool timeouts are set in plugin config\n")
 	}
+	requirePositive(cfg.Plugins.StartupTimeoutSec, "plugins.startup_timeout_sec", errs)
+	requirePositive(cfg.Plugins.RPCTimeoutSec, "plugins.rpc_timeout_sec", errs)
+	requirePositive(cfg.Plugins.BeforeSendTimeoutSec, "plugins.before_send_timeout_sec", errs)
+	requirePositive(cfg.Plugins.CommandTimeoutSec, "plugins.command_timeout_sec", errs)
+	requirePositive(cfg.Plugins.ShutdownTimeoutSec, "plugins.shutdown_timeout_sec", errs)
+	requirePositive(cfg.Plugins.DisableTimeoutSec, "plugins.disable_timeout_sec", errs)
 }
 
 func validateBlacklist(cfg *Config, errs *[]string) {
@@ -449,6 +513,8 @@ func validateOperations(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Logging.MaxSize, "logging.max_size", errs)
 	requirePositive(cfg.Logging.MaxBackups, "logging.max_backups", errs)
 	requirePositive(cfg.Logging.MaxAge, "logging.max_age", errs)
+	requirePositive(cfg.Operations.ShutdownTimeoutSec, "operations.shutdown_timeout_sec", errs)
+	requirePositive(cfg.Operations.CleanupIntervalMin, "operations.cleanup_interval_min", errs)
 }
 
 func validatePrompt(cfg *Config, errs *[]string) {

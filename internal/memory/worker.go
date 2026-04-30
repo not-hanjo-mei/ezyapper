@@ -28,10 +28,10 @@ type Worker struct {
 }
 
 // NewWorker creates a new consolidation worker
-func NewWorker(consolidator *Consolidator) *Worker {
+func NewWorker(consolidator *Consolidator, queueSize int) *Worker {
 	return &Worker{
 		consolidator: consolidator,
-		triggers:     make(chan Trigger, 100),
+		triggers:     make(chan Trigger, queueSize),
 		pending:      make(map[string]bool),
 		done:         make(chan struct{}),
 	}

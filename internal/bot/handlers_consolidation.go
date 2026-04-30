@@ -4,6 +4,7 @@ package bot
 import (
 	"context"
 	"runtime/debug"
+	"time"
 
 	"ezyapper/internal/logger"
 )
@@ -50,7 +51,7 @@ func (b *Bot) triggerChannelConsolidation(ctx context.Context, channelID string,
 			}
 		}()
 
-		consolidationCtx, cancel := context.WithTimeout(b.ctx, consolidationTimeout)
+		consolidationCtx, cancel := context.WithTimeout(b.ctx, time.Duration(b.cfg().Discord.ConsolidationTimeoutSec)*time.Second)
 		defer cancel()
 
 		channelMessages := b.getAndClearChannelMessageBuffer(channelID)
