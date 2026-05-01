@@ -219,7 +219,7 @@
 
     "operations": {
       "type": "object",
-          "required": ["web", "logging", "plugins", "operations"],
+          "required": ["web", "logging", "plugins", "runtime"],
           "additionalProperties": false,
           "properties": {
         "web": {
@@ -308,7 +308,7 @@
             }
           }
         },
-        "operations": {
+        "runtime": {
           "type": "object",
           "additionalProperties": false,
           "required": ["shutdown_timeout_sec", "cleanup_interval_min"],

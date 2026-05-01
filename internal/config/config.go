@@ -63,7 +63,7 @@ type operationsGroup struct {
 	Logging LoggingConfig    `mapstructure:"logging" yaml:"logging"`
 	Plugins PluginsConfig    `mapstructure:"plugins" yaml:"plugins"`
 	MCP     MCPConfig        `mapstructure:"mcp" yaml:"mcp"`
-	Ops     OperationsConfig `mapstructure:"operations" yaml:"operations"`
+	Ops     OperationsConfig `mapstructure:"runtime" yaml:"runtime"`
 }
 
 // OperationsConfig holds operational runtime settings.
@@ -539,8 +539,8 @@ func validateOperations(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Logging.MaxSize, "logging.max_size", errs)
 	requirePositive(cfg.Logging.MaxBackups, "logging.max_backups", errs)
 	requirePositive(cfg.Logging.MaxAge, "logging.max_age", errs)
-	requirePositive(cfg.Operations.ShutdownTimeoutSec, "operations.shutdown_timeout_sec", errs)
-	requirePositive(cfg.Operations.CleanupIntervalMin, "operations.cleanup_interval_min", errs)
+	requirePositive(cfg.Operations.ShutdownTimeoutSec, "operations.runtime.shutdown_timeout_sec", errs)
+	requirePositive(cfg.Operations.CleanupIntervalMin, "operations.runtime.cleanup_interval_min", errs)
 }
 
 func validatePrompt(cfg *Config, errs *[]string) {

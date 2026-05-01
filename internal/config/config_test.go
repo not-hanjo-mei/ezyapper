@@ -1301,7 +1301,7 @@ operations:
   mcp:
     enabled: false
     servers: []
-  operations:
+  runtime:
     shutdown_timeout_sec: 300
     cleanup_interval_min: 5
 `
@@ -1418,7 +1418,7 @@ operations:
   mcp:
     enabled: false
     servers: []
-  operations:
+  runtime:
     shutdown_timeout_sec: 300
     cleanup_interval_min: 5
 `
@@ -1536,7 +1536,7 @@ operations:
   mcp:
     enabled: false
     servers: []
-  operations:
+  runtime:
     shutdown_timeout_sec: 300
     cleanup_interval_min: 5
 `

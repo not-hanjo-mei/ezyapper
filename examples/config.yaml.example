@@ -374,7 +374,7 @@ operations:
     #     url: "http://localhost:8080/sse"
 
   # ── Operational Settings ──────────────────────────────
-  operations:
+  runtime:
     # Graceful shutdown grace period (seconds).
     shutdown_timeout_sec: 300
 
