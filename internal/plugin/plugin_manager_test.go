@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -57,6 +58,10 @@ func TestManagerHelperProcess(t *testing.T) {
 		}
 
 		fmt.Fprint(os.Stdout, "ok")
+		os.Exit(0)
+	case "sleep":
+		time.Sleep(5 * time.Second)
+		fmt.Fprint(os.Stdout, "woke up")
 		os.Exit(0)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown helper command: %s", command)
@@ -584,5 +589,115 @@ func TestToolSpecTimeoutMsZeroRequiresConfig(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no timeout configured") {
 		t.Fatalf("expected error to contain 'no timeout configured', got: %v", err)
+	}
+}
+
+func TestManifestToolSpec_HasTimeoutMs(t *testing.T) {
+	typ := reflect.TypeOf(manifestToolSpec{})
+	field, ok := typ.FieldByName("TimeoutMs")
+	if !ok {
+		t.Fatal("manifestToolSpec does not have TimeoutMs field")
+	}
+	tag := field.Tag.Get("json")
+	if tag != "timeout_ms,omitempty" {
+		t.Fatalf("expected json tag 'timeout_ms,omitempty', got %q", tag)
+	}
+}
+
+func TestLoadCommandPlugin_UsesPerToolTimeout(t *testing.T) {
+	pluginDir := t.TempDir()
+
+	manifest := pluginManifest{
+		Runtime: pluginRuntimeCommand,
+		Name:    "test-plugin",
+		Version: "1.0.0",
+		Tools: []manifestToolSpec{
+			{
+				Name:        "test-tool",
+				Description: "test",
+				Command:     "echo",
+				Args:        []string{"hello"},
+				TimeoutMs:   5000,
+			},
+		},
+	}
+
+	manifestBytes, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		t.Fatalf("failed to marshal manifest: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, "plugin.json")
+	if err := os.WriteFile(manifestPath, manifestBytes, 0o644); err != nil {
+		t.Fatalf("failed to write manifest: %v", err)
+	}
+
+	loaded, err := loadPluginManifest(pluginDir)
+	if err != nil {
+		t.Fatalf("loadPluginManifest returned error: %v", err)
+	}
+	if loaded == nil {
+		t.Fatal("expected manifest, got nil")
+	}
+	if len(loaded.Tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(loaded.Tools))
+	}
+	if loaded.Tools[0].TimeoutMs != 5000 {
+		t.Fatalf("expected TimeoutMs=5000, got %d", loaded.Tools[0].TimeoutMs)
+	}
+}
+
+func TestExecuteCommandTool_PerToolTimeout(t *testing.T) {
+	t.Setenv("GO_WANT_PLUGIN_HELPER_PROCESS", "1")
+
+	pluginsRoot := t.TempDir()
+	pluginDir := filepath.Join(pluginsRoot, "timeout-plugin")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("failed to create plugin directory: %v", err)
+	}
+
+	manifest := pluginManifest{
+		Runtime:     pluginRuntimeCommand,
+		Name:        "timeout-plugin",
+		Version:     "1.0.0",
+		Description: "timeout test",
+		Tools: []manifestToolSpec{
+			{
+				Name:        "slow_tool",
+				Description: "a slow tool that exceeds per-tool timeout",
+				Command:     os.Args[0],
+				Args:        []string{"-test.run=TestManagerHelperProcess", "--", "sleep"},
+				TimeoutMs:   2000,
+			},
+		},
+	}
+
+	manifestBytes, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		t.Fatalf("failed to marshal manifest: %v", err)
+	}
+
+	manifestPath := filepath.Join(pluginDir, "plugin.json")
+	if err := os.WriteFile(manifestPath, manifestBytes, 0o644); err != nil {
+		t.Fatalf("failed to write manifest: %v", err)
+	}
+
+	pm := NewManager(0, 90, 5, 180, 30, 5, 2)
+	if err := pm.LoadPluginsFromDir(pluginsRoot); err != nil {
+		t.Fatalf("LoadPluginsFromDir returned error: %v", err)
+	}
+
+	start := time.Now()
+	_, err = pm.ExecuteTool("timeout-plugin", "slow_tool", map[string]interface{}{})
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if !strings.Contains(err.Error(), "plugin command timeout") {
+		t.Fatalf("expected 'plugin command timeout' error, got: %v", err)
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("expected timeout within ~2 seconds (per-tool), but took %v (global fallback?)", elapsed)
 	}
 }

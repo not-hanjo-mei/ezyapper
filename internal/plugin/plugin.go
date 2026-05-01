@@ -74,6 +74,7 @@ type manifestToolSpec struct {
 	Command     string                 `json:"command"`
 	Args        []string               `json:"args"`
 	ArgKeys     []string               `json:"arg_keys"`
+	TimeoutMs   int                    `json:"timeout_ms,omitempty"`
 }
 
 type commandTool struct {
@@ -296,7 +297,21 @@ func (pm *Manager) executeCommandTool(plugin *Client, toolName string, args map[
 		commandArgs = append(commandArgs, argText)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(pm.commandTimeoutSec)*time.Second)
+	var timeoutSec int
+	for _, t := range plugin.tools {
+		if t.Name == toolName && t.TimeoutMs > 0 {
+			timeoutSec = t.TimeoutMs / 1000
+			if t.TimeoutMs%1000 > 0 {
+				timeoutSec++ // round up to nearest second
+			}
+			break
+		}
+	}
+	if timeoutSec == 0 {
+		timeoutSec = pm.commandTimeoutSec
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, tool.CommandPath, commandArgs...)

@@ -256,6 +256,7 @@ func (pm *Manager) loadCommandPlugin(
 			Name:        toolName,
 			Description: toolDescription,
 			Parameters:  toolParameters,
+			TimeoutMs:   rawTool.TimeoutMs,
 		})
 	}
 
