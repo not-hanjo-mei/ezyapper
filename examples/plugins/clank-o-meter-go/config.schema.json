@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/not-hanjo-mei/ezyapper/main/examples/plugins/clank-o-meter-go/config.schema.json",
+  "title": "EZyapper clank-o-meter-go Plugin Config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tool_timeouts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 300000
+      }
+    }
+  }
+}

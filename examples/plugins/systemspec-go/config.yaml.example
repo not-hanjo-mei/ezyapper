@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=./config.schema.json
 # SystemSpec Plugin Configuration
 # Tool execution timeouts in milliseconds
 
