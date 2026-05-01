@@ -4,9 +4,10 @@
   "title": "EZyapper Plugin Manifest",
   "description": "JSON Schema for plugin.json manifest files (command and JSON-RPC runtimes)",
   "type": "object",
-  "required": ["runtime", "name", "version", "author", "description", "priority", "tools"],
+  "required": ["$schema", "runtime", "name", "version", "author", "description", "priority", "tools"],
   "additionalProperties": false,
   "properties": {
+    "$schema": { "type": "string", "format": "uri" },
     "runtime": { "type": "string", "enum": ["jsonrpc", "command"] },
     "name": { "type": "string" },
     "version": { "type": "string" },
