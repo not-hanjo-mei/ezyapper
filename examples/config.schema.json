@@ -218,7 +218,7 @@
           "properties": {
         "web": {
           "type": "object",
-          "required": ["port", "username", "password", "enabled", "memories_page_limit", "session_ttl_min", "session_cleanup_interval_min", "log_default_lines", "log_max_lines", "log_max_read_bytes"],
+          "required": ["port", "username", "password", "enabled", "memories_page_limit", "content_truncation_length", "session_ttl_min", "session_cleanup_interval_min", "stats_query_timeout_sec", "log_default_lines", "log_max_lines", "log_max_read_bytes"],
           "additionalProperties": false,
           "properties": {
             "port":     { "type": "integer", "minimum": 1, "maximum": 65535 },

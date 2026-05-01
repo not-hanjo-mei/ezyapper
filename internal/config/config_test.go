@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1696,4 +1697,45 @@ func TestDiscordConfig_ChunkSplitDelaySec_NotExist(t *testing.T) {
 				f.Name, yamlTag, mapTag)
 		}
 	}
+}
+
+func TestConfigSchema_HasRequiredWebFields(t *testing.T) {
+	schemaPath := filepath.Join("..", "..", "examples", "config.schema.json")
+	data, err := os.ReadFile(schemaPath)
+	if err != nil {
+		t.Fatalf("Failed to read schema file: %v", err)
+	}
+
+	var root map[string]interface{}
+	if err := json.Unmarshal(data, &root); err != nil {
+		t.Fatalf("Failed to parse schema JSON: %v", err)
+	}
+
+	// Navigate: properties.operations.properties.web.required
+	props, _ := root["properties"].(map[string]interface{})
+	ops, _ := props["operations"].(map[string]interface{})
+	opsProps, _ := ops["properties"].(map[string]interface{})
+	web, _ := opsProps["web"].(map[string]interface{})
+	reqRaw, _ := web["required"].([]interface{})
+
+	var requiredFields []string
+	for _, r := range reqRaw {
+		s, ok := r.(string)
+		if !ok {
+			t.Fatalf("Expected string in required array, got %T", r)
+		}
+		requiredFields = append(requiredFields, s)
+	}
+
+	checkField := func(name string) {
+		for _, f := range requiredFields {
+			if f == name {
+				return
+			}
+		}
+		t.Errorf("Required field %q not found in operations.web.required array", name)
+	}
+
+	checkField("content_truncation_length")
+	checkField("stats_query_timeout_sec")
 }
