@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ezyapper.dev/plugins/emote-go/config.schema.json",
+  "title": "Emote Plugin Configuration",
+  "description": "Configuration schema for the EZyapper Emote Plugin — semantic emote search, Discord CDN refresh, and auto-steal.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["storage", "vision", "auto_steal", "logging", "tool_timeouts", "emote", "discord"],
+  "properties": {
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["data_dir", "max_image_size_kb", "allowed_formats"],
+      "properties": {
+        "data_dir": {
+          "type": "string",
+          "description": "Path to data directory (relative to plugin directory)."
+        },
+        "max_image_size_kb": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum image file size in KB."
+        },
+        "allowed_formats": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Allowed image file extensions (e.g. png, jpg, webp, gif)."
+        }
+      }
+    },
+    "vision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_key", "api_base_url", "model", "timeout_seconds", "prompt"],
+      "properties": {
+        "api_key": {
+          "type": "string",
+          "description": "OpenAI-compatible API key for vision analysis."
+        },
+        "api_base_url": {
+          "type": "string",
+          "description": "OpenAI-compatible API base URL."
+        },
+        "model": {
+          "type": "string",
+          "description": "Vision-capable model name (e.g. gpt-4o-mini)."
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum time in seconds for vision analysis."
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Prompt used to analyze images for emote suitability."
+        }
+      }
+    },
+    "auto_steal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "additional_blacklist_channels", "additional_whitelist_channels", "additional_blacklist_users", "rate_limit_per_minute", "cooldown_seconds"],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable automatic emote stealing from message image attachments."
+        },
+        "additional_blacklist_channels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Channel IDs where stealing is blocked (extends main bot blacklist)."
+        },
+        "additional_whitelist_channels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Channel IDs where stealing is always allowed. If set, only these channels work."
+        },
+        "additional_blacklist_users": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "User IDs whose images are never stolen."
+        },
+        "rate_limit_per_minute": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Maximum steals per minute per channel."
+        },
+        "cooldown_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Minimum seconds between steals."
+        }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "level"],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable plugin logging."
+        },
+        "level": {
+          "type": "string",
+          "description": "Log level (debug, info, warn, error)."
+        }
+      }
+    },
+    "tool_timeouts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["search_emote_ms", "send_emote_ms"],
+      "properties": {
+        "search_emote_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Timeout in milliseconds for semantic emote search via LLM API."
+        },
+        "send_emote_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Timeout in milliseconds for Discord CDN refresh and message send."
+        }
+      }
+    },
+    "emote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "api_key", "api_base_url", "max_tokens", "temperature"],
+      "properties": {
+        "model": {
+          "type": "string",
+          "description": "Model name for semantic emote search LLM."
+        },
+        "api_key": {
+          "type": "string",
+          "description": "OpenAI-compatible API key for the emote LLM."
+        },
+        "api_base_url": {
+          "type": "string",
+          "description": "OpenAI-compatible API base URL for the emote LLM."
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum tokens for emote LLM responses."
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Temperature for emote LLM (0-2, lower is more deterministic)."
+        }
+      }
+    },
+    "discord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["token"],
+      "properties": {
+        "token": {
+          "type": "string",
+          "description": "Discord bot token for independent message sending (typically same as main bot)."
+        }
+      }
+    }
+  }
+}

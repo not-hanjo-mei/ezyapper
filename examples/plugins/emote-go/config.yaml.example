@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=./config.schema.json
 # EZyapper Emote Plugin Configuration
 # This plugin auto-steals emotes from message image attachments
 # and provides tools for LLM to search/list/get emotes.
