@@ -32,15 +32,13 @@ var retrySleep func(time.Duration)
 
 // QdrantClient wraps the Qdrant client
 type QdrantClient struct {
-	client          *qdrant.Client
-	host            string
-	port            int
-	vectorSize      int
-	maxRetries      int
-	baseBackoff     time.Duration
-	maxBackoff      time.Duration
-	defaultTopK     int
-	defaultMinScore float64
+	client      *qdrant.Client
+	host        string
+	port        int
+	vectorSize  int
+	maxRetries  int
+	baseBackoff time.Duration
+	maxBackoff  time.Duration
 }
 
 const (
@@ -79,7 +77,7 @@ func isRetryableGrpc(err error) bool {
 }
 
 // NewQdrantClient creates a new Qdrant client using configuration from config package.
-func NewQdrantClient(cfg *config.QdrantConfig, retryMaxRetries, retryBaseDelayMs, retryMaxDelayMs int, defaultTopK int, defaultMinScore float64) (*QdrantClient, error) {
+func NewQdrantClient(cfg *config.QdrantConfig, retryMaxRetries, retryBaseDelayMs, retryMaxDelayMs int) (*QdrantClient, error) {
 	qdrantCfg := &qdrant.Config{
 		Host: cfg.Host,
 		Port: cfg.Port,
@@ -97,15 +95,13 @@ func NewQdrantClient(cfg *config.QdrantConfig, retryMaxRetries, retryBaseDelayMs
 	}
 
 	qc := &QdrantClient{
-		client:          client,
-		host:            cfg.Host,
-		port:            cfg.Port,
-		vectorSize:      cfg.VectorSize,
-		maxRetries:      retryMaxRetries,
-		baseBackoff:     time.Duration(retryBaseDelayMs) * time.Millisecond,
-		maxBackoff:      time.Duration(retryMaxDelayMs) * time.Millisecond,
-		defaultTopK:     defaultTopK,
-		defaultMinScore: defaultMinScore,
+		client:      client,
+		host:        cfg.Host,
+		port:        cfg.Port,
+		vectorSize:  cfg.VectorSize,
+		maxRetries:  retryMaxRetries,
+		baseBackoff: time.Duration(retryBaseDelayMs) * time.Millisecond,
+		maxBackoff:  time.Duration(retryMaxDelayMs) * time.Millisecond,
 	}
 
 	// Initialize collections
@@ -247,10 +243,10 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error 
 	return nil
 }
 
-// SearchMemories searches for similar memories
+// SearchMemories searches for similar memories. opts must be non-nil.
 func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embedding []float32, opts *SearchOptions) ([]*Record, error) {
 	if opts == nil {
-		opts = &SearchOptions{TopK: qc.defaultTopK, MinScore: qc.defaultMinScore}
+		return nil, fmt.Errorf("search options are required")
 	}
 
 	limit := uint64(opts.TopK)

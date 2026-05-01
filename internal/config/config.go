@@ -221,10 +221,8 @@ type ConsolidationConfig struct {
 }
 
 type RetrievalConfig struct {
-	TopK            int     `mapstructure:"top_k" yaml:"top_k"`
-	MinScore        float64 `mapstructure:"min_score" yaml:"min_score"`
-	DefaultTopK     int     `mapstructure:"default_top_k" yaml:"default_top_k"`
-	DefaultMinScore float64 `mapstructure:"default_min_score" yaml:"default_min_score"`
+	TopK     int     `mapstructure:"top_k" yaml:"top_k"`
+	MinScore float64 `mapstructure:"min_score" yaml:"min_score"`
 }
 
 type WebConfig struct {
@@ -464,10 +462,6 @@ func validateQdrant(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Memory.RetryBaseDelayMs, "memory.retry_base_delay_ms", errs)
 	requirePositive(cfg.Memory.RetryMaxDelayMs, "memory.retry_max_delay_ms", errs)
 	requirePositive(cfg.Memory.MaxRetries, "memory.max_retries", errs)
-	requirePositive(cfg.Memory.Retrieval.DefaultTopK, "memory.retrieval.default_top_k", errs)
-	if cfg.Memory.Retrieval.DefaultMinScore <= 0 || cfg.Memory.Retrieval.DefaultMinScore > 1 {
-		*errs = append(*errs, "memory.retrieval.default_min_score must be between 0 and 1 (exclusive of 0) when memory is enabled")
-	}
 }
 
 func validateMemory(cfg *Config, errs *[]string) {

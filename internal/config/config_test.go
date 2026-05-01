@@ -861,10 +861,8 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			RetryMaxDelayMs:  30000,
 			MaxRetries:       3,
 			Retrieval: RetrievalConfig{
-				TopK:            0,
-				MinScore:        0.75,
-				DefaultTopK:     5,
-				DefaultMinScore: 0.75,
+				TopK:     0,
+				MinScore: 0.75,
 			},
 			Consolidation: ConsolidationConfig{
 				Enabled:           true,
@@ -935,7 +933,7 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 			RetryBaseDelayMs: 1000,
 			RetryMaxDelayMs:  30000,
 			MaxRetries:       3,
-			Retrieval:        RetrievalConfig{TopK: 1, MinScore: 0.5, DefaultTopK: 5, DefaultMinScore: 0.75},
+			Retrieval:        RetrievalConfig{TopK: 1, MinScore: 0.5},
 			Consolidation:    ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
 		},
 		Qdrant:     QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
@@ -968,7 +966,7 @@ func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 			RetryBaseDelayMs: 1000,
 			RetryMaxDelayMs:  30000,
 			MaxRetries:       3,
-			Retrieval:        RetrievalConfig{TopK: 1, MinScore: 0.5, DefaultTopK: 5, DefaultMinScore: 0.75},
+			Retrieval:        RetrievalConfig{TopK: 1, MinScore: 0.5},
 			Consolidation:    ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
 		},
 		Qdrant:     QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
@@ -1255,8 +1253,6 @@ memory_pipeline:
     retrieval:
       top_k: 5
       min_score: 0.75
-      default_top_k: 5
-      default_min_score: 0.75
     consolidation:
       enabled: false
       max_messages: 20
@@ -1375,8 +1371,6 @@ memory_pipeline:
     retrieval:
       top_k: 5
       min_score: 0.75
-      default_top_k: 5
-      default_min_score: 0.75
     consolidation:
       enabled: false
       max_messages: 20
@@ -1494,8 +1488,6 @@ memory_pipeline:
     retrieval:
       top_k: 5
       min_score: 0.75
-      default_top_k: 5
-      default_min_score: 0.75
     consolidation:
       enabled: false
       max_messages: 20

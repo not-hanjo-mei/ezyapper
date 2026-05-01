@@ -66,8 +66,7 @@ memory_pipeline:
     retrieval:
       top_k: 0
       min_score: 0.0
-      default_top_k: 5
-      default_min_score: 0.75
+
     consolidation:
       enabled: false
       memory_search_limit: 20

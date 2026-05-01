@@ -234,12 +234,6 @@ memory_pipeline:
       # Memories below this score are filtered out.
       min_score: 0.75
 
-      # Default top_k used when the caller doesn't specify one.
-      default_top_k: 5
-
-      # Default min_score used when the caller doesn't specify one.
-      default_min_score: 0.75
-
     # ── Memory Consolidation ──
     consolidation:
       # Enable writing new long-term memories.

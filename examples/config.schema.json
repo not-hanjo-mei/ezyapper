@@ -134,13 +134,11 @@
             "max_retries":            { "type": "integer", "minimum": 1 },
             "retrieval": {
               "type": "object",
-              "required": ["top_k", "min_score", "default_top_k", "default_min_score"],
+              "required": ["top_k", "min_score"],
               "additionalProperties": false,
               "properties": {
                 "top_k":    { "type": "integer", "minimum": 0 },
-                "min_score": { "type": "number", "minimum": 0, "maximum": 1 },
-                "default_top_k":    { "type": "integer", "minimum": 1 },
-                "default_min_score": { "type": "number", "minimum": 0.01, "maximum": 1 }
+                "min_score": { "type": "number", "minimum": 0, "maximum": 1 }
               }
             },
             "consolidation": {
