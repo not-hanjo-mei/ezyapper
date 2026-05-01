@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=./config.schema.json
 max_messages: 6
 time_window_seconds: 10
 ignore_bots: true
