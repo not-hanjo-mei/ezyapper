@@ -1829,29 +1829,42 @@ func TestConfigSchema_HasRequiredWebFields(t *testing.T) {
 		t.Fatalf("Failed to parse schema JSON: %v", err)
 	}
 
-	// Navigate: properties.operations.properties.web.required
+	// Navigate: properties.operations.properties.web.allOf[0].then.required
 	props, _ := root["properties"].(map[string]interface{})
 	ops, _ := props["operations"].(map[string]interface{})
 	opsProps, _ := ops["properties"].(map[string]interface{})
 	web, _ := opsProps["web"].(map[string]interface{})
-	reqRaw, _ := web["required"].([]interface{})
 
-	var requiredFields []string
-	for _, r := range reqRaw {
+	// web.required should only have "enabled"
+	reqRaw, _ := web["required"].([]interface{})
+	if len(reqRaw) != 1 || reqRaw[0].(string) != "enabled" {
+		t.Errorf("expected web.required to be [\"enabled\"], got %v", reqRaw)
+	}
+
+	// Conditional fields are in allOf[0].then.required
+	allOf, _ := web["allOf"].([]interface{})
+	if len(allOf) == 0 {
+		t.Fatalf("expected web.allOf to contain conditional requirements")
+	}
+	thenBlock, _ := allOf[0].(map[string]interface{})["then"].(map[string]interface{})
+	thenReq, _ := thenBlock["required"].([]interface{})
+
+	var thenRequiredFields []string
+	for _, r := range thenReq {
 		s, ok := r.(string)
 		if !ok {
-			t.Fatalf("Expected string in required array, got %T", r)
+			t.Fatalf("Expected string in allOf.then.required array, got %T", r)
 		}
-		requiredFields = append(requiredFields, s)
+		thenRequiredFields = append(thenRequiredFields, s)
 	}
 
 	checkField := func(name string) {
-		for _, f := range requiredFields {
+		for _, f := range thenRequiredFields {
 			if f == name {
 				return
 			}
 		}
-		t.Errorf("Required field %q not found in operations.web.required array", name)
+		t.Errorf("Required field %q not found in operations.web.allOf[0].then.required array", name)
 	}
 
 	checkField("content_truncation_length")
@@ -1890,6 +1903,58 @@ func TestPluginManifestSchema_ValidatesExistingFiles(t *testing.T) {
 		errs := validatePluginManifest(parsed)
 		for _, e := range errs {
 			t.Errorf("%s: %s", m.name, e)
+		}
+	}
+}
+
+func TestAllSchemas_ValidateAgainstExamples(t *testing.T) {
+	pluginDirs := []string{
+		"datetime-zig", "datetime-java",
+		"clank-o-meter-zig", "systemspec-c",
+	}
+	for _, dir := range pluginDirs {
+		path := filepath.Join("..", "..", "examples", "plugins", dir, "plugin.json")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Errorf("plugin.json [%s]: read error: %v", dir, err)
+			continue
+		}
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(data, &parsed); err != nil {
+			t.Errorf("plugin.json [%s]: not valid JSON: %v", dir, err)
+		}
+	}
+
+	pluginConfigDirs := []string{
+		"antispam-go", "datetime-go", "clank-o-meter-go",
+		"systemspec-go", "openai-tts-go", "kimi-tools-go", "emote-go",
+	}
+	for _, dir := range pluginConfigDirs {
+		path := filepath.Join("..", "..", "examples", "plugins", dir, "config.yaml.example")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Errorf("config.yaml.example [%s]: read error: %v", dir, err)
+			continue
+		}
+		if len(data) == 0 {
+			t.Errorf("config.yaml.example [%s]: file is empty", dir)
+		}
+	}
+
+	schemaFiles := []string{
+		"examples/plugin.schema.json",
+		"examples/config.schema.json",
+	}
+	for _, rel := range schemaFiles {
+		path := filepath.Join("..", "..", rel)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Errorf("schema [%s]: read error: %v", rel, err)
+			continue
+		}
+		var parsed interface{}
+		if err := json.Unmarshal(data, &parsed); err != nil {
+			t.Errorf("schema [%s]: not valid JSON: %v", rel, err)
 		}
 	}
 }
