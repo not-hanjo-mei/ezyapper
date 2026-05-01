@@ -459,6 +459,10 @@ func (pm *Manager) LoadPluginsFromDir(dir string) error {
 	targets := make([]pluginLoadTarget, 0, len(entries))
 
 	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+
 		if entry.IsDir() {
 			pluginDir := toAbsolutePath(filepath.Join(dir, entry.Name()))
 
