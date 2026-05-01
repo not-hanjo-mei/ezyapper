@@ -44,6 +44,12 @@ operations:
     plugins_dir: "plugins"
 ```
 
+Make config.yaml uneditable if it disappears:
+
+```bash
+chmod 0444 plugins/emote-go/config.yaml
+```
+
 Restart the bot.
 
 ## Configuration
