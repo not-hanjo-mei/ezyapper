@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=./config.schema.json
 # Datetime plugin configuration
 # If omitted, plugin uses system timezone.
 

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/not-hanjo-mei/ezyapper/main/examples/plugins/datetime-go/config.schema.json",
+  "title": "Datetime Go Plugin Configuration",
+  "description": "JSON Schema for datetime-go plugin config.yaml. Mirrors fileConfig validation constraints.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "timezone": {
+      "type": "string",
+      "description": "IANA timezone string (e.g. 'Asia/Shanghai') or UTC offset label (e.g. 'UTC+09'). If omitted with no fixed offset, system timezone is used."
+    },
+    "utc_offset_hours": {
+      "type": "integer",
+      "description": "Fixed UTC offset in hours. Lower priority than utc_offset_minutes."
+    },
+    "utc_offset_minutes": {
+      "type": "integer",
+      "description": "Fixed UTC offset in minutes. Higher priority than utc_offset_hours."
+    },
+    "tool_timeouts": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per-tool timeout overrides in milliseconds.",
+      "properties": {
+        "get_current_datetime_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 300000,
+          "description": "Timeout for get_current_datetime tool in milliseconds."
+        }
+      }
+    }
+  }
+}
