@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/not-hanjo-mei/ezyapper/main/examples/plugins/openai-tts-go/config.schema.json",
+  "title": "OpenAI TTS Plugin Configuration",
+  "description": "JSON Schema for openai-tts-go plugin config.yaml. Mirrors Go struct (ttsConfigFile/ttsRewriterFile) validation constraints.",
+  "type": "object",
+  "required": [
+    "api_base_url",
+    "api_key",
+    "model",
+    "voice",
+    "format",
+    "speed",
+    "timeout_seconds",
+    "output_dir",
+    "max_text_chars",
+    "rewriter",
+    "tool_timeouts"
+  ],
+  "additionalProperties": false,
+  "anyOf": [
+    { "required": ["upload_memory_threshold"] },
+    { "required": ["upload_memory_threshold_bytes"] }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "rewriter": {
+            "properties": { "enabled": { "const": true } },
+            "required": ["enabled"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "rewriter": {
+            "required": [
+              "api_base_url",
+              "api_key",
+              "model",
+              "timeout_seconds",
+              "retry_count",
+              "max_tokens",
+              "temperature",
+              "prompt"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "api_base_url": {
+      "type": "string",
+      "description": "OpenAI-compatible API base URL (required, trailing slash stripped)"
+    },
+    "api_key": {
+      "type": "string",
+      "description": "API key for the TTS provider"
+    },
+    "model": {
+      "type": "string",
+      "description": "TTS model name (e.g. gpt-4o-mini-tts)"
+    },
+    "voice": {
+      "type": "string",
+      "description": "Default TTS voice (e.g. alloy, echo, fable, onyx, nova, shimmer)"
+    },
+    "format": {
+      "type": "string",
+      "enum": ["mp3", "opus", "aac", "flac", "wav", "pcm"],
+      "description": "Default audio output format"
+    },
+    "speed": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 4,
+      "description": "Default playback speed in range (0, 4]"
+    },
+    "timeout_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "HTTP request timeout in seconds"
+    },
+    "output_dir": {
+      "type": "string",
+      "description": "Output directory for generated audio files (relative to plugin dir or absolute)"
+    },
+    "max_text_chars": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum accepted text length for one tool call"
+    },
+    "upload_memory_threshold": {
+      "type": "string",
+      "description": "Before-send upload threshold with unit (B, KB, MB, GB). Example: '1MB', '512KB'. In-memory if <= threshold, temp file if >"
+    },
+    "upload_memory_threshold_bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Alternative to upload_memory_threshold: exact byte count"
+    },
+    "headers": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Optional extra HTTP headers (must not override Authorization)"
+    },
+    "rewriter": {
+      "type": "object",
+      "required": ["enabled"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable AI-based text/instructions rewriting (explicit true or false required)"
+        },
+        "api_base_url": {
+          "type": "string",
+          "description": "Rewrite model API base URL (required when enabled=true)"
+        },
+        "api_key": {
+          "type": "string",
+          "description": "Rewrite model API key (required when enabled=true)"
+        },
+        "model": {
+          "type": "string",
+          "description": "Rewrite model name (required when enabled=true)"
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Rewrite API timeout in seconds (required when enabled=true)"
+        },
+        "retry_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Rewrite retry count (required when enabled=true)"
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Max output tokens for rewrite completion (required when enabled=true)"
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Rewrite temperature, 0-2 (required when enabled=true)"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Rewrite system prompt template (required when enabled=true)"
+        }
+      }
+    },
+    "tool_timeouts": {
+      "type": "object",
+      "required": ["generate_tts_audio_ms"],
+      "additionalProperties": false,
+      "properties": {
+        "generate_tts_audio_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Tool execution timeout in milliseconds for generate_tts_audio"
+        }
+      }
+    }
+  }
+}

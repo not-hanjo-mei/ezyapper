@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=./config.schema.json
 # OpenAI-compatible TTS plugin configuration.
 # This plugin uses strict config validation with no implicit defaults.
 
