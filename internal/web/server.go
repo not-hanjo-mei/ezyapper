@@ -93,32 +93,6 @@ func findWebDir() string {
 	return "./web"
 }
 
-func findTemplateDir() string {
-	candidates := []string{
-		"./internal/web/templates",
-		"../internal/web/templates",
-		"../../internal/web/templates",
-		"./templates",
-	}
-
-	if exe, err := os.Executable(); err == nil {
-		exeDir := filepath.Dir(exe)
-		candidates = append(candidates,
-			filepath.Join(exeDir, "internal", "web", "templates"),
-			filepath.Join(exeDir, "templates"),
-		)
-	}
-
-	for _, dir := range candidates {
-		layoutsDir := filepath.Join(dir, "layouts")
-		if info, err := os.Stat(layoutsDir); err == nil && info.IsDir() {
-			return dir
-		}
-	}
-
-	return "./internal/web/templates"
-}
-
 func findStaticDir() string {
 	candidates := []string{
 		"./internal/web/static",
@@ -200,7 +174,7 @@ func securityHeaders(next http.Handler) http.Handler {
 func (s *Server) setupRoutes() {
 	mux := http.NewServeMux()
 
-	tmpl, err := LoadTemplates(findTemplateDir())
+	tmpl, err := LoadTemplates()
 	if err != nil {
 		logger.Fatalf("[web] Failed to load templates: %v", err)
 	}

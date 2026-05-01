@@ -1,12 +1,16 @@
 package web
 
 import (
+	"embed"
 	"fmt"
 	"html/template"
 	"net/http"
 	"path/filepath"
 	"time"
 )
+
+//go:embed templates/layouts/*.html templates/partials/*.html templates/pages/*.html
+var templateFS embed.FS
 
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
@@ -30,48 +34,40 @@ func (ts *TemplateSet) Login() *template.Template {
 	return ts.loginTmpl
 }
 
-func LoadTemplates(basePath string) (*TemplateSet, error) {
+func LoadTemplates() (*TemplateSet, error) {
 	funcs := templateFuncs()
 
-	base := template.New("").Funcs(funcs)
-
-	dirs := []string{"layouts", "partials"}
-	for _, dir := range dirs {
-		pattern := filepath.Join(basePath, dir, "*.html")
-		matches, err := filepath.Glob(pattern)
-		if err != nil {
-			return nil, fmt.Errorf("glob %s: %w", pattern, err)
-		}
-		if len(matches) == 0 {
-			continue
-		}
-		base, err = base.ParseFiles(matches...)
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", dir, err)
-		}
+	base, err := template.New("").Funcs(funcs).ParseFS(templateFS,
+		"templates/layouts/*.html",
+		"templates/partials/*.html",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("parse layouts/partials: %w", err)
 	}
 
-	pagesPattern := filepath.Join(basePath, "pages", "*.html")
-	pageFiles, err := filepath.Glob(pagesPattern)
+	entries, err := templateFS.ReadDir("templates/pages")
 	if err != nil {
-		return nil, fmt.Errorf("glob pages: %w", err)
+		return nil, fmt.Errorf("read pages: %w", err)
 	}
 
 	ts := &TemplateSet{
-		templates: make(map[string]*template.Template, len(pageFiles)),
+		templates: make(map[string]*template.Template, len(entries)),
 	}
 
-	for _, pageFile := range pageFiles {
-		pageName := pageKey(filepath.Base(pageFile))
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".html" {
+			continue
+		}
+		pageName := pageKey(entry.Name())
 
 		pageTmpl, err := base.Clone()
 		if err != nil {
-			return nil, fmt.Errorf("clone for %s: %w", pageFile, err)
+			return nil, fmt.Errorf("clone for %s: %w", entry.Name(), err)
 		}
 
-		pageTmpl, err = pageTmpl.ParseFiles(pageFile)
+		pageTmpl, err = pageTmpl.ParseFS(templateFS, "templates/pages/"+entry.Name())
 		if err != nil {
-			return nil, fmt.Errorf("parse page %s: %w", pageFile, err)
+			return nil, fmt.Errorf("parse page %s: %w", entry.Name(), err)
 		}
 
 		if pageName == "login" {
