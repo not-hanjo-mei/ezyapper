@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -20,6 +21,123 @@ func TestLoad_MissingRequired(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for missing config, got nil")
 	}
+}
+
+func validatePluginManifest(manifest map[string]interface{}) []string {
+	var errs []string
+
+	requiredFields := []string{"runtime", "name", "version", "author", "description", "priority", "tools"}
+	for _, f := range requiredFields {
+		if _, ok := manifest[f]; !ok {
+			errs = append(errs, fmt.Sprintf("missing required field: %q", f))
+		}
+	}
+
+	allowed := map[string]bool{
+		"runtime": true, "name": true, "version": true, "author": true,
+		"description": true, "priority": true, "tools": true,
+	}
+	for k := range manifest {
+		if !allowed[k] {
+			errs = append(errs, fmt.Sprintf("unknown top-level field: %q", k))
+		}
+	}
+
+	if r, ok := manifest["runtime"]; ok {
+		rs, ok := r.(string)
+		if !ok {
+			errs = append(errs, "runtime must be a string")
+		} else if rs != "jsonrpc" && rs != "command" {
+			errs = append(errs, fmt.Sprintf("runtime %q not in enum [jsonrpc, command]", rs))
+		}
+	}
+
+	if p, ok := manifest["priority"]; ok {
+		switch p.(type) {
+		case float64, int:
+			// valid: JSON decodes as float64, Go map literal as int
+		default:
+			errs = append(errs, "priority must be an integer")
+		}
+	}
+
+	if t, ok := manifest["tools"]; ok {
+		tools, ok := t.([]interface{})
+		if !ok {
+			errs = append(errs, "tools must be an array")
+		} else {
+			for i, ti := range tools {
+				tool, ok := ti.(map[string]interface{})
+				if !ok {
+					errs = append(errs, fmt.Sprintf("tools[%d] must be an object", i))
+					continue
+				}
+
+				for _, f := range []string{"name", "description", "parameters"} {
+					if _, ok := tool[f]; !ok {
+						errs = append(errs, fmt.Sprintf("tools[%d] missing required field: %q", i, f))
+					}
+				}
+
+				toolAllowed := map[string]bool{
+					"name": true, "description": true, "parameters": true,
+					"command": true, "args": true, "arg_keys": true, "timeout_ms": true,
+				}
+				for k := range tool {
+					if !toolAllowed[k] {
+						errs = append(errs, fmt.Sprintf("tools[%d] unknown field: %q", i, k))
+					}
+				}
+
+				if tm, ok := tool["timeout_ms"]; ok {
+					var tmVal float64
+					switch v := tm.(type) {
+					case float64:
+						tmVal = v
+					case int:
+						tmVal = float64(v)
+					default:
+						errs = append(errs, fmt.Sprintf("tools[%d].timeout_ms must be an integer", i))
+						continue
+					}
+					if tmVal < 0 {
+						errs = append(errs, fmt.Sprintf("tools[%d].timeout_ms must be >= 0", i))
+					}
+					if tmVal > 300000 {
+						errs = append(errs, fmt.Sprintf("tools[%d].timeout_ms must be <= 300000", i))
+					}
+				}
+
+				if args, ok := tool["args"]; ok {
+					argsArr, ok := args.([]interface{})
+					if !ok {
+						errs = append(errs, fmt.Sprintf("tools[%d].args must be an array", i))
+					} else {
+						for j, a := range argsArr {
+							if _, ok := a.(string); !ok {
+								errs = append(errs, fmt.Sprintf("tools[%d].args[%d] must be a string", i, j))
+							}
+						}
+					}
+				}
+
+				if ak, ok := tool["arg_keys"]; ok {
+					akArr, ok := ak.([]interface{})
+					if !ok {
+						errs = append(errs, fmt.Sprintf("tools[%d].arg_keys must be an array", i))
+					} else {
+						for j, a := range akArr {
+							if _, ok := a.(string); !ok {
+								errs = append(errs, fmt.Sprintf("tools[%d].arg_keys[%d] must be a string", i, j))
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return errs
 }
 func TestLoad_MissingDiscordToken(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -1738,4 +1856,117 @@ func TestConfigSchema_HasRequiredWebFields(t *testing.T) {
 
 	checkField("content_truncation_length")
 	checkField("stats_query_timeout_sec")
+}
+
+func TestPluginManifestSchema_ValidatesExistingFiles(t *testing.T) {
+	schemaPath := filepath.Join("..", "..", "examples", "plugin.schema.json")
+	if _, err := os.ReadFile(schemaPath); err != nil {
+		t.Fatalf("Failed to read schema file: %v", err)
+	}
+
+	manifests := []struct {
+		name string
+		path string
+	}{
+		{"datetime-zig", filepath.Join("..", "..", "examples", "plugins", "datetime-zig", "plugin.json")},
+		{"datetime-java", filepath.Join("..", "..", "examples", "plugins", "datetime-java", "plugin.json")},
+		{"clank-o-meter-zig", filepath.Join("..", "..", "examples", "plugins", "clank-o-meter-zig", "plugin.json")},
+		{"systemspec-c", filepath.Join("..", "..", "examples", "plugins", "systemspec-c", "plugin.json")},
+	}
+
+	for _, m := range manifests {
+		data, err := os.ReadFile(m.path)
+		if err != nil {
+			t.Errorf("Failed to read %s manifest: %v", m.name, err)
+			continue
+		}
+
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(data, &parsed); err != nil {
+			t.Errorf("Failed to parse %s manifest: %v", m.name, err)
+			continue
+		}
+
+		errs := validatePluginManifest(parsed)
+		for _, e := range errs {
+			t.Errorf("%s: %s", m.name, e)
+		}
+	}
+}
+
+func TestPluginManifestSchema_RejectsInvalid(t *testing.T) {
+	t.Run("missing runtime", func(t *testing.T) {
+		manifest := map[string]interface{}{
+			"name":        "test",
+			"version":     "1.0.0",
+			"author":      "test",
+			"description": "test",
+			"priority":    10,
+			"tools":       []interface{}{},
+		}
+		errs := validatePluginManifest(manifest)
+		var found bool
+		for _, e := range errs {
+			if strings.Contains(e, "runtime") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected error about missing runtime, got: %v", errs)
+		}
+	})
+
+	t.Run("negative timeout_ms", func(t *testing.T) {
+		manifest := map[string]interface{}{
+			"runtime":     "command",
+			"name":        "test",
+			"version":     "1.0.0",
+			"author":      "test",
+			"description": "test",
+			"priority":    10,
+			"tools": []interface{}{
+				map[string]interface{}{
+					"name":        "tool1",
+					"description": "a tool",
+					"parameters":  map[string]interface{}{},
+					"timeout_ms":  -1,
+				},
+			},
+		}
+		errs := validatePluginManifest(manifest)
+		var found bool
+		for _, e := range errs {
+			if strings.Contains(e, "timeout_ms") && strings.Contains(e, ">= 0") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected error about negative timeout_ms, got: %v", errs)
+		}
+	})
+
+	t.Run("invalid runtime", func(t *testing.T) {
+		manifest := map[string]interface{}{
+			"runtime":     "invalid",
+			"name":        "test",
+			"version":     "1.0.0",
+			"author":      "test",
+			"description": "test",
+			"priority":    10,
+			"tools":       []interface{}{},
+		}
+		errs := validatePluginManifest(manifest)
+		var found bool
+		for _, e := range errs {
+			if strings.Contains(e, "runtime") && strings.Contains(e, "enum") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected error about invalid runtime, got: %v", errs)
+		}
+	})
 }
