@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Kimi Tools Plugin Configuration",
+  "description": "Configuration schema for the kimi-tools-go plugin. All fields are required per the plugin's strict validation.",
+  "type": "object",
+  "properties": {
+    "base_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Kimi API base URL, e.g. https://api.moonshot.cn/v1"
+    },
+    "api_key": {
+      "type": "string",
+      "description": "Kimi API key"
+    },
+    "timeout_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "HTTP client timeout in seconds"
+    },
+    "tool_timeouts": {
+      "type": "object",
+      "properties": {
+        "default_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300000,
+          "description": "Default timeout for tool execution in milliseconds"
+        }
+      },
+      "required": ["default_ms"],
+      "additionalProperties": false,
+      "description": "Tool execution timeout settings"
+    },
+    "formulas": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "List of formula URIs to load tools from (e.g. moonshot/web-search:latest)"
+    }
+  },
+  "required": [
+    "base_url",
+    "api_key",
+    "timeout_seconds",
+    "tool_timeouts",
+    "formulas"
+  ],
+  "additionalProperties": false
+}
