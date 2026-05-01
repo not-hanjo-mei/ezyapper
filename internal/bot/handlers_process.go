@@ -149,19 +149,31 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		logger.Warnf("Failed to get profile: %v", err)
 		profile = &memory.Profile{UserID: m.Author.ID}
 	}
-	profile.DisplayName = m.Author.Username
+	displayName := m.Author.GlobalName
+	if displayName == "" {
+		displayName = m.Author.Username
+	}
+	profile.DisplayName = displayName
 
 	s.ChannelTyping(m.ChannelID)
 	typingCtx, cancelTyping := context.WithCancel(ctx)
 	go maintainTyping(typingCtx, s, m.ChannelID, b.cfg().Discord.TypingIndicatorIntervalSec)
 	defer cancelTyping()
 
+	replyToUsername, replyToContent := extractReplyInfo(m)
+	if len(replyToContent) > b.cfg().Discord.ReplyTruncationLength {
+		logger.Warnf("[processing] reply content truncated from %d to %d chars", len(replyToContent), b.cfg().Discord.ReplyTruncationLength)
+		replyToContent = replyToContent[:b.cfg().Discord.ReplyTruncationLength]
+	}
+
 	mc := ModeContext{
 		AIClient:        ai.NewClient(&b.cfg().AI, b.toolRegistry),
 		UserContent:     m.Content,
 		Username:        m.Author.Username,
 		UserID:          m.Author.ID,
-		ReplyToUsername: extractReplyToUsername(m),
+		DisplayName:     displayName,
+		ReplyToUsername: replyToUsername,
+		ReplyToContent:  replyToContent,
 		GuildID:         m.GuildID,
 		ChannelID:       m.ChannelID,
 		MessageID:       m.ID,

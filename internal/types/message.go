@@ -18,6 +18,7 @@ type DiscordMessage struct {
 	GuildID           string    `json:"guild_id"`
 	AuthorID          string    `json:"author_id"`
 	Username          string    `json:"username"`
+	DisplayName       string    `json:"display_name"`
 	Content           string    `json:"content"`
 	ImageURLs         []string  `json:"image_urls,omitempty"`
 	ImageDescriptions []string  `json:"image_descriptions,omitempty"` // Cached image descriptions to avoid redundant API calls
@@ -35,16 +36,22 @@ type DiscordMessage struct {
 // FromDiscordgo converts a discordgo.MessageCreate to a DiscordMessage,
 // filling all canonical fields including reply metadata and image URLs.
 func FromDiscordgo(m *discordgo.MessageCreate) DiscordMessage {
+	displayName := m.Author.GlobalName
+	if displayName == "" {
+		displayName = m.Author.Username
+	}
+
 	msg := DiscordMessage{
-		ID:        m.ID,
-		ChannelID: m.ChannelID,
-		GuildID:   m.GuildID,
-		AuthorID:  m.Author.ID,
-		Username:  m.Author.Username,
-		Content:   m.Content,
-		ImageURLs: extractImageURLsFromMessage(m.Message),
-		Timestamp: m.Timestamp,
-		IsBot:     m.Author.Bot,
+		ID:          m.ID,
+		ChannelID:   m.ChannelID,
+		GuildID:     m.GuildID,
+		AuthorID:    m.Author.ID,
+		Username:    m.Author.Username,
+		DisplayName: displayName,
+		Content:     m.Content,
+		ImageURLs:   extractImageURLsFromMessage(m.Message),
+		Timestamp:   m.Timestamp,
+		IsBot:       m.Author.Bot,
 	}
 
 	if m.MessageReference != nil {

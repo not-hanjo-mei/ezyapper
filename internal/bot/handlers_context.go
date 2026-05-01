@@ -75,10 +75,11 @@ func (b *Bot) buildDynamicContext(authorName string, profile *memory.Profile, me
 
 	// Add relevant memories.
 	if len(memories) > 0 {
-		context.WriteString("\n\nRelevant context from previous conversations:")
+		context.WriteString("\n\n<memory>\n")
 		for _, mem := range memories {
-			context.WriteString(fmt.Sprintf("\n- %s", mem.Summary))
+			context.WriteString(fmt.Sprintf("[%s] %s\n", mem.MemoryType, mem.Summary))
 		}
+		context.WriteString("</memory>")
 		logger.Debugf("[memory] added %d memories to dynamic context", len(memories))
 	}
 

@@ -23,7 +23,9 @@ type ModeContext struct {
 	UserContent     string
 	Username        string
 	UserID          string
+	DisplayName     string
 	ReplyToUsername string
+	ReplyToContent  string
 	GuildID         string
 	ChannelID       string
 	MessageID       string
@@ -38,15 +40,17 @@ type GenerateContext struct {
 	ImageDescriptions []string
 }
 
-// extractReplyToUsername extracts the username of the message being replied to.
-func extractReplyToUsername(m *discordgo.MessageCreate) string {
-	if m.MessageReference != nil {
-		if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
-			return m.ReferencedMessage.Author.Username
-		}
-		return "(deleted message)"
+// extractReplyInfo extracts reply-to username and content from the message reference.
+func extractReplyInfo(m *discordgo.MessageCreate) (username string, content string) {
+	if m.MessageReference == nil {
+		return "", ""
 	}
-	return ""
+	if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
+		username = m.ReferencedMessage.Author.Username
+		content = m.ReferencedMessage.Content
+		return
+	}
+	return "(deleted message)", ""
 }
 
 // generateResponse generates an AI response for a message
@@ -168,7 +172,7 @@ func (b *Bot) handleTextOnlyMode(ctx context.Context, mc ModeContext, req ai.Cha
 		fullContent.WriteString("\n\n")
 	}
 	fullContent.WriteString("<currentMessage>\n")
-	fullContent.WriteString(formatMessageXML(mc.Username, mc.UserID, mc.UserContent, time.Now(), mc.ReplyToUsername))
+	fullContent.WriteString(formatMessageXML(mc.DisplayName, mc.Username, mc.UserID, mc.UserContent, time.Now(), mc.ReplyToUsername, mc.ReplyToContent))
 	fullContent.WriteString("\n</currentMessage>")
 
 	return b.completeTextWithTools(ctx, mc.AIClient, req, fullContent.String())
@@ -192,7 +196,7 @@ func (b *Bot) handleHybridMode(ctx context.Context, mc ModeContext, req ai.ChatC
 
 	if len(imageURLs) == 0 {
 		// No images - format and send
-		fullContent.WriteString(formatMessageXML(mc.Username, mc.UserID, currentMsgContent.String(), time.Now(), mc.ReplyToUsername))
+		fullContent.WriteString(formatMessageXML(mc.DisplayName, mc.Username, mc.UserID, currentMsgContent.String(), time.Now(), mc.ReplyToUsername, mc.ReplyToContent))
 		fullContent.WriteString("\n</currentMessage>")
 		return b.completeTextWithTools(ctx, mc.AIClient, req, fullContent.String())
 	}
@@ -206,7 +210,7 @@ func (b *Bot) handleHybridMode(ctx context.Context, mc ModeContext, req ai.ChatC
 		visionDescriber := b.getVisionDescriber()
 		if visionDescriber == nil {
 			logger.Warnf("[hybrid] vision describer unavailable, continuing without image descriptions")
-			fullContent.WriteString(formatMessageXML(mc.Username, mc.UserID, currentMsgContent.String(), time.Now(), mc.ReplyToUsername))
+			fullContent.WriteString(formatMessageXML(mc.DisplayName, mc.Username, mc.UserID, currentMsgContent.String(), time.Now(), mc.ReplyToUsername, mc.ReplyToContent))
 			fullContent.WriteString("\n</currentMessage>")
 			return b.completeTextWithTools(ctx, mc.AIClient, req, fullContent.String())
 		}
@@ -217,7 +221,7 @@ func (b *Bot) handleHybridMode(ctx context.Context, mc ModeContext, req ai.ChatC
 		if err != nil {
 			logger.Warnf("Failed to describe images: %v", err)
 			// Description failed - format without image descriptions
-			fullContent.WriteString(formatMessageXML(mc.Username, mc.UserID, currentMsgContent.String(), time.Now(), mc.ReplyToUsername))
+			fullContent.WriteString(formatMessageXML(mc.DisplayName, mc.Username, mc.UserID, currentMsgContent.String(), time.Now(), mc.ReplyToUsername, mc.ReplyToContent))
 			fullContent.WriteString("\n</currentMessage>")
 			return b.completeTextWithTools(ctx, mc.AIClient, req, fullContent.String())
 		}
@@ -231,7 +235,7 @@ func (b *Bot) handleHybridMode(ctx context.Context, mc ModeContext, req ai.ChatC
 		}
 	}
 
-	fullContent.WriteString(formatMessageXML(mc.Username, mc.UserID, currentMsgContent.String(), time.Now(), mc.ReplyToUsername))
+	fullContent.WriteString(formatMessageXML(mc.DisplayName, mc.Username, mc.UserID, currentMsgContent.String(), time.Now(), mc.ReplyToUsername, mc.ReplyToContent))
 	fullContent.WriteString("\n</currentMessage>")
 
 	return b.completeTextWithTools(ctx, mc.AIClient, req, fullContent.String())
@@ -251,7 +255,7 @@ func (b *Bot) handleMultimodalMode(ctx context.Context, mc ModeContext, req ai.C
 	}
 
 	// Wrap user content in XML format for multimodal mode
-	wrappedContent := "<currentMessage>\n" + formatMessageXML(mc.Username, mc.UserID, mc.UserContent, time.Now(), mc.ReplyToUsername) + "\n</currentMessage>"
+	wrappedContent := "<currentMessage>\n" + formatMessageXML(mc.DisplayName, mc.Username, mc.UserID, mc.UserContent, time.Now(), mc.ReplyToUsername, mc.ReplyToContent) + "\n</currentMessage>"
 
 	resp, err := mc.AIClient.CreateVisionCompletionWithTools(
 		ctx,

@@ -17,9 +17,12 @@ import (
 
 func TestExtractReplyToUsername_NoReference(t *testing.T) {
 	m := &discordgo.MessageCreate{Message: &discordgo.Message{}}
-	result := extractReplyToUsername(m)
+	result, content := extractReplyInfo(m)
 	if result != "" {
-		t.Fatalf("expected empty, got %q", result)
+		t.Fatalf("expected empty username, got %q", result)
+	}
+	if content != "" {
+		t.Fatalf("expected empty content, got %q", content)
 	}
 }
 
@@ -30,9 +33,12 @@ func TestExtractReplyToUsername_DeletedMessage(t *testing.T) {
 			ReferencedMessage: nil,
 		},
 	}
-	result := extractReplyToUsername(m)
+	result, content := extractReplyInfo(m)
 	if result != "(deleted message)" {
 		t.Fatalf("expected '(deleted message)', got %q", result)
+	}
+	if content != "" {
+		t.Fatalf("expected empty content, got %q", content)
 	}
 }
 
@@ -45,7 +51,7 @@ func TestExtractReplyToUsername_ValidReply(t *testing.T) {
 			},
 		},
 	}
-	result := extractReplyToUsername(m)
+	result, _ := extractReplyInfo(m)
 	if result != "Alice" {
 		t.Fatalf("expected 'Alice', got %q", result)
 	}
@@ -98,12 +104,12 @@ func TestShouldSendGenerationFallback_Cancelled(t *testing.T) {
 }
 
 func TestFormatMessageXML_Basic(t *testing.T) {
-	result := formatMessageXML("Alice", "123", "hello", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), "")
+	result := formatMessageXML("Alice", "Alice", "123", "hello", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), "", "")
 	if !strings.Contains(result, "Alice") {
 		t.Fatalf("expected Alice in output: %s", result)
 	}
-	if !strings.Contains(result, "UserID=123") {
-		t.Fatalf("expected UserID=123 in output: %s", result)
+	if !strings.Contains(result, "ID:123") {
+		t.Fatalf("expected ID:123 in output: %s", result)
 	}
 	if !strings.Contains(result, "hello") {
 		t.Fatalf("expected hello in output: %s", result)
@@ -111,14 +117,14 @@ func TestFormatMessageXML_Basic(t *testing.T) {
 }
 
 func TestFormatMessageXML_WithReply(t *testing.T) {
-	result := formatMessageXML("Alice", "123", "hi", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), "Bob")
+	result := formatMessageXML("Alice", "Alice", "123", "hi", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), "Bob", "")
 	if !strings.Contains(result, "replying to @Bob") {
 		t.Fatalf("expected reply mention in output: %s", result)
 	}
 }
 
 func TestFormatMessageXML_ReplyToDeleted(t *testing.T) {
-	result := formatMessageXML("Alice", "123", "hi", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), "(deleted message)")
+	result := formatMessageXML("Alice", "Alice", "123", "hi", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), "(deleted message)", "")
 	if !strings.Contains(result, "replying to deleted message") {
 		t.Fatalf("expected 'replying to deleted message' in output: %s", result)
 	}

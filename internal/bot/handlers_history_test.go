@@ -143,11 +143,11 @@ func TestBuildConversationHistory_ResolvedMentions(t *testing.T) {
 	}
 
 	// Message format should still be correct
-	if !strings.Contains(result, "[User] Alice (ID:user1)") {
-		t.Error("expected message format [User] Alice (ID:user1)")
+	if !strings.Contains(result, "[User] Alice (Alice, ID:user1)") {
+		t.Error("expected message format [User] Alice (Alice, ID:user1)")
 	}
-	if !strings.Contains(result, "[User] Bob (ID:user2)") {
-		t.Error("expected message format [User] Bob (ID:user2)")
+	if !strings.Contains(result, "[User] Bob (Bob, ID:user2)") {
+		t.Error("expected message format [User] Bob (Bob, ID:user2)")
 	}
 
 	// Context tags should be present
@@ -194,13 +194,13 @@ func TestBuildConversationHistory_WithReply(t *testing.T) {
 	if !strings.Contains(result, "(replying to @Alice)") {
 		t.Error("expected reply marker '(replying to @Alice)' for Bob's message")
 	}
-	if strings.Contains(result, "I agree") && !strings.Contains(result, "I agree (replying to @Alice)") {
+	if strings.Contains(result, "I agree") && !strings.Contains(result, `I agree" (replying to @Alice)`) {
 		t.Error("expected '(replying to @Alice)' appended to Bob's content")
 	}
-	if !strings.Contains(result, "[User] Bob (ID:user2)") {
+	if !strings.Contains(result, "[User] Bob (Bob, ID:user2)") {
 		t.Error("expected base format preserved for Bob")
 	}
-	if !strings.Contains(result, "[User] Alice (ID:user1)") {
+	if !strings.Contains(result, "[User] Alice (Alice, ID:user1)") {
 		t.Error("expected base format preserved for Alice")
 	}
 	// Alice's message has no reply
@@ -336,15 +336,13 @@ func TestBuildConversationHistory_WithRename(t *testing.T) {
 		nil,
 	)
 
-	// First message should have NO rename marker (first appearance)
-	if !strings.Contains(result, "[User] OriginalName (ID:user1): Hello everyone") {
-		t.Error("expected first message of user1 without rename marker")
+	if !strings.Contains(result, `[User] OriginalName (OriginalName, ID:user1): "Hello everyone" (was @NewName)`) {
+		t.Error("expected oldest user1 message to have rename marker (was @NewName)")
 	}
 
-	// Second message (user1 renamed to NewName) should have rename marker + reply marker
-	expectedLine := "[User] NewName (ID:user1): I renamed myself (was @OriginalName) (replying to @Mei)"
+	expectedLine := `[User] NewName (NewName, ID:user1): "I renamed myself" (replying to @Mei)`
 	if !strings.Contains(result, expectedLine) {
-		t.Errorf("expected rename marker before reply marker\n  want: %s\n  got:\n%s", expectedLine, result)
+		t.Errorf("expected NewName message with reply marker but no rename\n  want: %s\n  got:\n%s", expectedLine, result)
 	}
 
 	// Bot message should NOT have rename marker even though bot1 username hasn't changed
@@ -353,7 +351,7 @@ func TestBuildConversationHistory_WithRename(t *testing.T) {
 	}
 
 	// Alice's first message should have no rename marker
-	if !strings.Contains(result, "[User] Alice (ID:user2): First message") {
+	if !strings.Contains(result, `[User] Alice (Alice, ID:user2): "First message"`) {
 		t.Error("expected Alice's first message without rename marker")
 	}
 

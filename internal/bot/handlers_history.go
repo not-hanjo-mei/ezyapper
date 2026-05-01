@@ -21,18 +21,29 @@ type UserInfo struct {
 	Username string
 }
 
-// formatMessageXML formats a single message in XML style with UserID and timestamp (UTC)
-// If replyToUsername is set, appends an inline reply marker so the LLM sees "who replied to whom."
-// Special case "(deleted message)" renders without @ prefix.
-func formatMessageXML(username, userID, content string, timestamp time.Time, replyToUsername string) string {
-	if replyToUsername != "" {
-		if replyToUsername == "(deleted message)" {
-			content = content + " (replying to deleted message)"
-		} else {
-			content = content + " (replying to @" + replyToUsername + ")"
-		}
+// formatMessageXML formats a single message in unified style:
+//
+//	displayname (username, ID:id): "content"
+//	displayname (username, ID:id): "content" (replying to @parent: "parent content")
+//	displayname (username, ID:id): "content" (replying to deleted message)
+//
+// Reply marker is placed OUTSIDE the content quotes.
+func formatMessageXML(displayName, username, userID, content string, timestamp time.Time, replyToUsername, replyToContent string) string {
+	base := fmt.Sprintf(`[%s] %s (%s, ID:%s): "%s"`, timestamp.UTC().Format(time.RFC3339), displayName, username, userID, content)
+
+	if replyToUsername == "" {
+		return base
 	}
-	return fmt.Sprintf(`"%s"{UserID=%s,Time=%s}: "%s"`, username, userID, timestamp.UTC().Format(time.RFC3339), content)
+
+	if replyToUsername == "(deleted message)" {
+		return base + " (replying to deleted message)"
+	}
+
+	if replyToContent != "" {
+		return base + fmt.Sprintf(` (replying to @%s: "%s")`, replyToUsername, replyToContent)
+	}
+
+	return base + fmt.Sprintf(" (replying to @%s)", replyToUsername)
 }
 
 // shouldEnrichRecentHistoricalImages checks if recent historical images should be enriched
@@ -211,17 +222,22 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 	// Track AuthorID -> most recent Username for rename detection
 	seenNames := make(map[string]string)
 
-	// Process messages and build history
-	for i, msg := range messages {
+	// Process messages in reverse (Discord returns newest first, we need oldest first)
+	for i := len(messages) - 1; i >= 0; i-- {
+		msg := messages[i]
 		// Skip the current message being processed
 		if msg.ID == currentMsgID {
 			continue
 		}
 
-		// Determine role - only mark current bot as "Assistant", everyone else is "User"
+		// Determine role: Assistant (self), Bot (other bots), User (humans)
 		role := "User"
-		if msg.IsBot && msg.AuthorID == botID {
-			role = "Assistant"
+		if msg.IsBot {
+			if msg.AuthorID == botID {
+				role = "Assistant"
+			} else {
+				role = "Bot"
+			}
 		}
 
 		// Build content with optional image descriptions
@@ -275,8 +291,10 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 		if msg.ReplyToID != "" {
 			if msg.ReplyToUsername == "(deleted message)" {
 				replyMarker = " (replying to deleted message)"
+			} else if msg.ReplyToContent != "" {
+				replyMarker = fmt.Sprintf(" (replying to @%s: %q)", msg.ReplyToUsername, msg.ReplyToContent)
 			} else {
-				replyMarker = " (replying to @" + msg.ReplyToUsername + ")"
+				replyMarker = fmt.Sprintf(" (replying to @%s)", msg.ReplyToUsername)
 			}
 		}
 
@@ -291,7 +309,12 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 
 		// Write formatted message with mention IDs replaced by readable usernames and channel names
 		displayContent := ReplaceMentions(content, userMappings, channelMappings)
-		result.WriteString(fmt.Sprintf("  [%s] %s (ID:%s): %s%s%s\n", role, msg.Username, msg.AuthorID, displayContent, renameMarker, replyMarker))
+		timeStr := msg.Timestamp.UTC().Format(time.RFC3339)
+		displayName := msg.DisplayName
+		if displayName == "" {
+			displayName = msg.Username
+		}
+		result.WriteString(fmt.Sprintf("[%s] [%s] %s (%s, ID:%s): \"%s\"%s%s\n", timeStr, role, displayName, msg.Username, msg.AuthorID, displayContent, renameMarker, replyMarker))
 	}
 
 	result.WriteString("</context>")
