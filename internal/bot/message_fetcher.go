@@ -14,12 +14,13 @@ const discordAPIMaxLimit = 100
 
 // DiscordMessageFetcher implements memory.MessageFetcher using the Discord session.
 type DiscordMessageFetcher struct {
-	session *discordgo.Session
+	session               *discordgo.Session
+	replyTruncationLength int
 }
 
 // NewDiscordMessageFetcher creates a new Discord-backed message fetcher.
-func NewDiscordMessageFetcher(session *discordgo.Session) *DiscordMessageFetcher {
-	return &DiscordMessageFetcher{session: session}
+func NewDiscordMessageFetcher(session *discordgo.Session, replyTruncationLength int) *DiscordMessageFetcher {
+	return &DiscordMessageFetcher{session: session, replyTruncationLength: replyTruncationLength}
 }
 
 // FetchMessages implements memory.MessageFetcher by paginating the Discord API
@@ -92,9 +93,9 @@ func (f *DiscordMessageFetcher) convertMessage(msg *discordgo.Message) types.Dis
 		if msg.ReferencedMessage != nil && msg.ReferencedMessage.Author != nil {
 			d.ReplyToUsername = msg.ReferencedMessage.Author.Username
 			content := msg.ReferencedMessage.Content
-			if len(content) > 100 {
-				logger.Warnf("reply content truncated from %d to 100 chars", len(content))
-				content = content[:100]
+			if len(content) > f.replyTruncationLength {
+				logger.Warnf("reply content truncated from %d to %d chars", len(content), f.replyTruncationLength)
+				content = content[:f.replyTruncationLength]
 			}
 			d.ReplyToContent = content
 		} else {

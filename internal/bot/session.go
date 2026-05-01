@@ -192,7 +192,7 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 	mcpManager := mcp.NewMCPManager(cfg.MCP.Servers)
 
 	// Create Discord client for short-term context
-	discordClient := memory.NewShortTermClient(NewDiscordMessageFetcher(session), cfg.Memory.MaxPaginatedLimit)
+	discordClient := memory.NewShortTermClient(NewDiscordMessageFetcher(session, cfg.Discord.ReplyTruncationLength), cfg.Memory.MaxPaginatedLimit)
 
 	var decisionService *decision.DecisionService
 	if cfg.Decision.Enabled {
