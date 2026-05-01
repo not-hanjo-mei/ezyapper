@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -1095,7 +1096,6 @@ core:
     consolidation_timeout_sec: 300
     typing_indicator_interval_sec: 5
     long_response_delay_ms: 500
-    chunk_split_delay_sec: 2
     reply_truncation_length: 200
     image_cache_ttl_min: 60
     image_cache_max_entries: 100
@@ -1216,7 +1216,6 @@ core:
     consolidation_timeout_sec: 300
     typing_indicator_interval_sec: 5
     long_response_delay_ms: 500
-    chunk_split_delay_sec: 2
     reply_truncation_length: 200
     image_cache_ttl_min: 60
     image_cache_max_entries: 100
@@ -1336,7 +1335,6 @@ core:
     consolidation_timeout_sec: 300
     typing_indicator_interval_sec: 5
     long_response_delay_ms: 500
-    chunk_split_delay_sec: 2
     reply_truncation_length: 200
     image_cache_ttl_min: 60
     image_cache_max_entries: 100
@@ -1684,5 +1682,18 @@ func TestValidate_EmbeddingTimeoutZero(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "memory_pipeline.embedding.timeout must be greater than 0") {
 		t.Fatalf("expected embedding.timeout error, got: %v", err)
+	}
+}
+
+func TestDiscordConfig_ChunkSplitDelaySec_NotExist(t *testing.T) {
+	dcType := reflect.TypeOf(DiscordConfig{})
+	for i := range dcType.NumField() {
+		f := dcType.Field(i)
+		yamlTag := f.Tag.Get("yaml")
+		mapTag := f.Tag.Get("mapstructure")
+		if yamlTag == "chunk_split_delay_sec" || mapTag == "chunk_split_delay_sec" {
+			t.Fatalf("DiscordConfig field %q still has chunk_split_delay_sec tag (yaml=%q, mapstructure=%q)",
+				f.Name, yamlTag, mapTag)
+		}
 	}
 }

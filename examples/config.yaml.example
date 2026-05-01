@@ -55,9 +55,6 @@ core:
     # Delay before sending a response flagged as "long" (milliseconds).
     long_response_delay_ms: 500
 
-    # Delay between sending each chunk of a split response (seconds).
-    chunk_split_delay_sec: 2
-
     # Character limit for reply truncation (Discord max: 2000).
     reply_truncation_length: 2000
 
