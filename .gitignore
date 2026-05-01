@@ -43,6 +43,8 @@ logs/
 *.db-journal
 temp.*
 tmp.*
+temp/
+tmp/
 
 # OS
 .DS_Store
