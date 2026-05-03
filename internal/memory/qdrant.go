@@ -234,8 +234,7 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error 
 		})
 	}, retry.WithErrorClassifier(isRetryableGrpc), retry.WithBaseDelay(qc.baseBackoff), retry.WithMaxDelay(qc.maxBackoff))
 	if err != nil {
-		logger.Errorf("[UpsertMemory] failed to upsert memory for userID=%s: %v", memory.UserID, err)
-		return fmt.Errorf("failed to upsert memory: %w", err)
+		return fmt.Errorf("upsert memory for userID=%s: %w", memory.UserID, err)
 	}
 	logger.Debugf("[UpsertMemory] successfully stored memoryID=%s for userID=%s", memID, memory.UserID)
 	return nil
@@ -324,8 +323,7 @@ func (qc *QdrantClient) GetMemoriesByUser(ctx context.Context, userID string, li
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
 	if err != nil {
-		logger.Errorf("[GetMemoriesByUser] failed to query memories for userID=%s: %v", userID, err)
-		return nil, fmt.Errorf("failed to query memories: %w", err)
+		return nil, fmt.Errorf("query memories for userID=%s: %w", userID, err)
 	}
 
 	memories := []*Record{}
@@ -354,8 +352,7 @@ func (qc *QdrantClient) GetMemory(ctx context.Context, memoryID string) (*Record
 		WithPayload: qdrant.NewWithPayload(true),
 	})
 	if err != nil {
-		logger.Errorf("[GetMemory] failed to get memoryID=%s: %v", memoryID, err)
-		return nil, fmt.Errorf("failed to get memory: %w", err)
+		return nil, fmt.Errorf("get memory %s: %w", memoryID, err)
 	}
 
 	if len(points) == 0 {
@@ -381,8 +378,7 @@ func (qc *QdrantClient) DeleteMemory(ctx context.Context, memoryID string) error
 		Points:         qdrant.NewPointsSelector(qdrant.NewID(memoryID)),
 	})
 	if err != nil {
-		logger.Errorf("[DeleteMemory] failed to delete memoryID=%s: %v", memoryID, err)
-		return fmt.Errorf("failed to delete memory: %w", err)
+		return fmt.Errorf("delete memory %s: %w", memoryID, err)
 	}
 
 	logger.Infof("[DeleteMemory] successfully deleted memoryID=%s", memoryID)
@@ -402,8 +398,7 @@ func (qc *QdrantClient) DeleteUserMemories(ctx context.Context, userID string) e
 		}),
 	})
 	if err != nil {
-		logger.Errorf("[DeleteUserMemories] failed to delete memories for userID=%s: %v", userID, err)
-		return fmt.Errorf("failed to delete user memories: %w", err)
+		return fmt.Errorf("delete user memories for userID=%s: %w", userID, err)
 	}
 
 	logger.Infof("[DeleteUserMemories] successfully deleted all memories for userID=%s", userID)
@@ -447,8 +442,7 @@ func (qc *QdrantClient) UpsertProfile(ctx context.Context, profile *Profile) err
 		})
 	}, retry.WithErrorClassifier(isRetryableGrpc), retry.WithBaseDelay(qc.baseBackoff), retry.WithMaxDelay(qc.maxBackoff))
 	if err != nil {
-		logger.Errorf("[UpsertProfile] failed to upsert profile for userID=%s: %v", profile.UserID, err)
-		return fmt.Errorf("failed to upsert profile: %w", err)
+		return fmt.Errorf("upsert profile for userID=%s: %w", profile.UserID, err)
 	}
 	logger.Debugf("[UpsertProfile] successfully stored profile for userID=%s", profile.UserID)
 	return nil
@@ -522,8 +516,7 @@ func (qc *QdrantClient) DeleteProfile(ctx context.Context, userID string) error 
 		Points:         qdrant.NewPointsSelector(qdrant.NewIDNum(numID)),
 	})
 	if err != nil {
-		logger.Errorf("[DeleteProfile] failed to delete profile for userID=%s: %v", userID, err)
-		return fmt.Errorf("failed to delete profile: %w", err)
+		return fmt.Errorf("delete profile for userID=%s: %w", userID, err)
 	}
 
 	logger.Infof("[DeleteProfile] successfully deleted profile for userID=%s", userID)

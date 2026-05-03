@@ -197,8 +197,7 @@ func (s *MemoryService) Search(ctx context.Context, userID string, query string,
 
 	embedding, err := s.embedder.Embed(ctx, query)
 	if err != nil {
-		logger.Errorf("[MemoryService.Search] failed to generate embedding for userID=%s: %v", userID, err)
-		return nil, fmt.Errorf("failed to generate query embedding: %w", err)
+		return nil, fmt.Errorf("generate embedding for userID=%s: %w", userID, err)
 	}
 
 	memories, err := s.qdrant.SearchMemories(ctx, userID, embedding, opts)
