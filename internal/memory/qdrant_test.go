@@ -188,7 +188,3 @@ func TestRetryWithBackoff_ResourceExhausted_Retryable(t *testing.T) {
 		t.Fatalf("expected 4 calls, got %d", calls.Load())
 	}
 }
-
-func init() {
-	retrySleep = func(time.Duration) {}
-}

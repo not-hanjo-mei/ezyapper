@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -14,8 +15,9 @@ import (
 
 var embedSleep func(time.Duration) // test-only override for retry sleep; unused in production
 
-func init() {
+func TestMain(m *testing.M) {
 	logger.Init(logger.Config{Level: "info"})
+	os.Exit(m.Run())
 }
 
 // retryableEmbedder returns errors for the first failCount calls, then succeeds.

@@ -324,13 +324,11 @@ func (s *MemoryService) DeleteUserData(ctx context.Context, userID string) error
 
 	// Delete all memories
 	if err := s.qdrant.DeleteUserMemories(ctx, userID); err != nil {
-		logger.Errorf("[MemoryService.DeleteUserData] failed to delete memories for userID=%s: %v", userID, err)
 		return fmt.Errorf("failed to delete memories: %w", err)
 	}
 
 	// Delete profile
 	if err := s.qdrant.DeleteProfile(ctx, userID); err != nil {
-		logger.Errorf("[MemoryService.DeleteUserData] failed to delete profile for userID=%s: %v", userID, err)
 		return fmt.Errorf("failed to delete profile: %w", err)
 	}
 
@@ -346,7 +344,6 @@ func (s *MemoryService) DeleteUserData(ctx context.Context, userID string) error
 func (s *MemoryService) ConsolidateWithMessages(ctx context.Context, userID string, messages []*DiscordMessage) error {
 	logger.Infof("[MemoryService.ConsolidateWithMessages] starting consolidation for userID=%s with %d messages", userID, len(messages))
 	if err := s.consolidator.ProcessWithMessages(ctx, userID, messages); err != nil {
-		logger.Errorf("[MemoryService.ConsolidateWithMessages] consolidation failed for userID=%s: %v", userID, err)
 		return err
 	}
 	logger.Infof("[MemoryService.ConsolidateWithMessages] completed consolidation for userID=%s", userID)
