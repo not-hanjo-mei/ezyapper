@@ -10,7 +10,6 @@ import (
 
 const payloadSchemaVersion = 2
 
-// memoryToPayload converts a Record struct to Qdrant payload
 func (qc *QdrantClient) memoryToPayload(memory *Record) map[string]*qdrant.Value {
 	payload := make(map[string]*qdrant.Value)
 	payload["schema_version"] = &qdrant.Value{Kind: &qdrant.Value_IntegerValue{IntegerValue: payloadSchemaVersion}}
@@ -49,7 +48,6 @@ func (qc *QdrantClient) memoryToPayload(memory *Record) map[string]*qdrant.Value
 	return payload
 }
 
-// payloadToMemory converts Qdrant payload to a Record struct
 func (qc *QdrantClient) payloadToMemory(payload map[string]*qdrant.Value, id string) (*Record, error) {
 	memory := &Record{ID: id}
 
@@ -129,7 +127,6 @@ func (qc *QdrantClient) payloadToMemory(payload map[string]*qdrant.Value, id str
 	return memory, nil
 }
 
-// profileToPayload converts a Profile struct to Qdrant payload
 func (qc *QdrantClient) profileToPayload(profile *Profile) map[string]*qdrant.Value {
 	payload := make(map[string]*qdrant.Value)
 	payload["schema_version"] = &qdrant.Value{Kind: &qdrant.Value_IntegerValue{IntegerValue: payloadSchemaVersion}}
@@ -174,7 +171,6 @@ func (qc *QdrantClient) profileToPayload(profile *Profile) map[string]*qdrant.Va
 	return payload
 }
 
-// payloadToProfile converts Qdrant payload to a Profile struct
 func (qc *QdrantClient) payloadToProfile(payload map[string]*qdrant.Value, userID string) (*Profile, error) {
 	if err := validatePayloadSchema(payload); err != nil {
 		return nil, fmt.Errorf("invalid profile payload schema: %w", err)

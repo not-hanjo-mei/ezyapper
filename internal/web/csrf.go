@@ -15,7 +15,6 @@ import (
 // contextKey is an unexported type for context keys to prevent collisions.
 type contextKey string
 
-// csrfCtxKey is the context key for the CSRF token value.
 const csrfCtxKey contextKey = "csrf_token"
 
 // CSRSTokenFromContext extracts the signed CSRF token from a request context.
@@ -127,13 +126,11 @@ func CSRFMiddleware(secret []byte) Middleware {
 					return
 				}
 
-				// Verify HMAC signature of form field value
 				formRaw, err := verifySignedToken(formToken, secret)
 				if err != nil {
 					http.Error(w, "CSRF validation failed", http.StatusForbidden)
 					return
 				}
-				// Verify HMAC signature of cookie value
 				cookieRaw, err := verifySignedToken(cookie.Value, secret)
 				if err != nil {
 					http.Error(w, "CSRF validation failed", http.StatusForbidden)

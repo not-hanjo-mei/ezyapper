@@ -20,7 +20,6 @@ import (
 	"ezyapper/internal/logger"
 )
 
-// LoadPlugin loads a plugin from a binary path
 func (pm *Manager) LoadPlugin(pluginPath string) error {
 	absPath := toAbsolutePath(pluginPath)
 	return pm.loadPluginWithConfig(absPath, resolvePluginConfigDir(absPath))
@@ -443,7 +442,6 @@ func resolvePluginCommandPath(command string, pluginDir string) (string, error) 
 	return resolveExecutablePath(filepath.Join(absPluginDir, trimmedCommand))
 }
 
-// LoadPluginsFromDir loads all plugins from a directory
 func (pm *Manager) LoadPluginsFromDir(dir string) error {
 	dir = toAbsolutePath(dir)
 
@@ -692,7 +690,6 @@ func (pm *Manager) WaitForPending() error {
 	}
 }
 
-// Shutdown gracefully stops all plugins
 func (pm *Manager) Shutdown(ctx context.Context) error {
 	pm.mu.Lock()
 
@@ -720,7 +717,6 @@ func (pm *Manager) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// EnablePlugin loads a disabled plugin back into memory.
 func (pm *Manager) EnablePlugin(name string) error {
 	pm.mu.RLock()
 	if _, exists := pm.plugins[name]; exists {
@@ -743,7 +739,6 @@ func (pm *Manager) EnablePlugin(name string) error {
 	return nil
 }
 
-// DisablePlugin stops and removes a plugin
 func (pm *Manager) DisablePlugin(name string) error {
 	pm.mu.Lock()
 	plugin, exists := pm.plugins[name]

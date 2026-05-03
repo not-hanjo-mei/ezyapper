@@ -165,13 +165,11 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 	if !ok {
 		return nil, fmt.Errorf("failed to load config from config store")
 	}
-	// Create Discord session
 	session, err := discordgo.New("Bot " + cfg.Discord.Token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Discord session: %w", err)
 	}
 
-	// Set intents
 	session.Identify.Intents = discordgo.IntentsGuilds |
 		discordgo.IntentsGuildMessages |
 		discordgo.IntentsMessageContent |
@@ -182,13 +180,10 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 	session.StateEnabled = true
 	session.State.TrackMembers = true
 
-	// Create tool registry
 	toolRegistry := tools.NewToolRegistry()
 
-	// Use provided plugin manager
 	pluginManager := pluginMgr
 
-	// Create MCP manager
 	mcpManager := mcp.NewMCPManager(cfg.MCP.Servers)
 
 	// Create Discord client for short-term context
@@ -231,7 +226,6 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 		processingMessages:       make(map[string]*ProcessingMessage),
 	}
 
-	// Register Discord tools
 	discordTools := tools.NewDiscordTools(session)
 	discordTools.RegisterTools(toolRegistry)
 
@@ -241,7 +235,6 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 		return nil, fmt.Errorf("failed to apply runtime config: %w", err)
 	}
 
-	// Register event handlers
 	bot.registerHandlers()
 
 	return bot, nil
@@ -251,7 +244,6 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 func (b *Bot) Start(ctx context.Context) error {
 	logger.Info("Starting Discord bot...")
 
-	// Open WebSocket connection
 	if err := b.session.Open(); err != nil {
 		return fmt.Errorf("failed to open Discord connection: %w", err)
 	}
@@ -269,7 +261,6 @@ func (b *Bot) Start(ctx context.Context) error {
 		}
 	}
 
-	// Load plugins
 	if b.cfg().Plugins.Enabled {
 		if err := b.pluginManager.LoadPluginsFromDir(b.cfg().Plugins.PluginsDir); err != nil {
 			logger.Warnf("Failed to load plugins: %v", err)
@@ -286,14 +277,12 @@ func (b *Bot) Stop() error {
 
 	b.cancel()
 
-	// Close MCP connections
 	if b.mcpManager != nil {
 		if err := b.mcpManager.Close(); err != nil {
 			logger.Warnf("Error closing MCP connections: %v", err)
 		}
 	}
 
-	// Close Discord connection
 	if err := b.session.Close(); err != nil {
 		return fmt.Errorf("failed to close Discord connection: %w", err)
 	}
@@ -435,14 +424,12 @@ func (b *Bot) GetMember(guildID, userID string) (*discordgo.Member, error) {
 
 // IsBotMentioned checks if the bot is mentioned in a message
 func (b *Bot) IsBotMentioned(m *discordgo.MessageCreate) bool {
-	// Check direct mention
 	for _, mention := range m.Mentions {
 		if mention.ID == b.session.State.User.ID {
 			return true
 		}
 	}
 
-	// Check @everyone or @here if bot has permissions
 	if m.MentionEveryone {
 		return true
 	}
@@ -452,7 +439,6 @@ func (b *Bot) IsBotMentioned(m *discordgo.MessageCreate) bool {
 
 // IsChannelAllowed checks if the bot should respond in a channel
 func (b *Bot) IsChannelAllowed(channelID string) bool {
-	// Check blacklist
 	for _, id := range b.cfg().Blacklist.Channels {
 		if id == channelID {
 			return false
@@ -644,44 +630,35 @@ func (b *Bot) registerPluginTools() {
 // ShouldRespond determines if the bot should respond to a message
 // The context is used to cancel the LLM decision if the message is edited
 func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, recentMessages []*types.DiscordMessage) (bool, string) {
-	// Ignore bot's own messages
 	if m.Author.ID == b.session.State.User.ID {
 		return false, "own message"
 	}
 
-	// Ignore other bot messages if not configured to reply
 	if m.Author.Bot && !b.cfg().Discord.ReplyToBots {
 		return false, "bot message"
 	}
 
-	// Check if user is blacklisted
 	if b.IsUserBlacklisted(m.Author.ID) {
 		return false, "user blacklisted"
 	}
 
-	// Check if channel is allowed
 	if !b.IsChannelAllowed(m.ChannelID) {
 		return false, "channel not allowed"
 	}
 
-	// Check rate limit
 	if !b.CheckRateLimit(m.ChannelID, m.Author.ID) {
 		return false, "rate limited"
 	}
 
-	// Always respond if mentioned
 	if b.IsBotMentioned(m) {
 		return true, "mentioned"
 	}
 
-	// Check if replying to bot's message
 	if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil && m.ReferencedMessage.Author.ID == b.session.State.User.ID {
 		return true, "reply to bot"
 	}
 
-	// Use LLM decision if enabled
 	if b.decisionService != nil && b.cfg().Decision.Enabled {
-		// Create a timeout context that accommodates all retries plus buffer
 		// Total timeout = (timeout per attempt) * (retry_count + 2) to allow for all retries plus overhead
 		totalTimeout := time.Duration(b.cfg().Decision.Timeout) * time.Second * time.Duration(b.cfg().Decision.RetryCount+2)
 		decisionCtx, cancel := context.WithTimeout(ctx, totalTimeout)
@@ -690,7 +667,6 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 		imageCount := len(extractImageURLs(m.Message))
 		decisionMessages := b.getRecentMessagesForDecision(m.ID, recentMessages)
 
-		// Build message info with author and reply metadata
 		msgInfo := decision.MessageInfo{
 			AuthorName: m.Author.Username,
 			AuthorID:   m.Author.ID,
@@ -713,7 +689,6 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 		return false, fmt.Sprintf("llm decision: %s", result.Reason)
 	}
 
-	// Fallback to random reply
 	if !b.ShouldRandomReply() {
 		return false, "probability check failed"
 	}
@@ -771,7 +746,7 @@ func (b *Bot) registerProcessingMessage(messageID, channelID, authorID, content 
 		ChannelID:       channelID,
 		AuthorID:        authorID,
 		Content:         content,
-		OriginalContent: content, // Store original content
+		OriginalContent: content,
 		EditCount:       0,
 		Phase:           PhaseReceived,
 	}

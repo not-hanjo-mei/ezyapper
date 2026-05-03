@@ -120,7 +120,6 @@ func findStaticDir() string {
 
 // NewServer creates a new web server with the given stores, plugin manager, and Discord info provider.
 func NewServer(cfgStore *atomic.Value, memStore memory.MemoryStore, profileStore memory.ProfileStore, conMgr memory.ConsolidationManager, pluginManager *plugin.Manager, discordFetcher DiscordMessageFetcher, discordInfo DiscordInfoProvider) *Server {
-	// Extract optional interfaces from the concrete implementations passed in
 	var runtimeApplier RuntimeConfigApplier
 	if ra, ok := discordFetcher.(RuntimeConfigApplier); ok {
 		runtimeApplier = ra
@@ -178,25 +177,23 @@ func (s *Server) setupRoutes() {
 	if err != nil {
 		logger.Fatalf("[web] Failed to load templates: %v", err)
 	}
-	ts := tmpl
-
 	// Static files
 	staticDir := findStaticDir()
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
 
 	// Auth routes (excluded from session requirement via SessionMiddleware)
-	mux.HandleFunc("/login", LoginHandler(s.sessionStore, s.cfg().Web.Username, s.cfg().Web.Password, ts.Login(), s.cfg().Web.SessionTTLMin))
+	mux.HandleFunc("/login", LoginHandler(s.sessionStore, s.cfg().Web.Username, s.cfg().Web.Password, tmpl.Login(), s.cfg().Web.SessionTTLMin))
 	mux.HandleFunc("/logout", LogoutHandler(s.sessionStore))
 
 	// Dashboard
 	stats := NewStatsProvider(s.memoryStore, s.profileStore, s.configStore)
-	mux.HandleFunc("/", DashboardHandler(stats, s.startTime, ts))
+	mux.HandleFunc("/", DashboardHandler(stats, s.startTime, tmpl))
 
 	// Configuration
-	mux.HandleFunc("/config", ConfigHandler(s.configStore, ts, s.runtimeApplier))
+	mux.HandleFunc("/config", ConfigHandler(s.configStore, tmpl, s.runtimeApplier))
 
 	// Channels (exact + sub-paths for blacklist/whitelist CRUD)
-	chHandler := ChannelsHandler(s.configStore, s.discordInfo, ts)
+	chHandler := ChannelsHandler(s.configStore, s.discordInfo, tmpl)
 	mux.HandleFunc("/channels", chHandler)
 	mux.HandleFunc("/channels/blacklist/add", chHandler)
 	mux.HandleFunc("/channels/blacklist/remove", chHandler)
@@ -204,22 +201,22 @@ func (s *Server) setupRoutes() {
 	mux.HandleFunc("/channels/whitelist/remove", chHandler)
 
 	// Memories
-	memHandler := MemoriesHandler(s.configStore, s.memoryStore, ts)
+	memHandler := MemoriesHandler(s.configStore, s.memoryStore, tmpl)
 	mux.HandleFunc("/memories", memHandler)
 	mux.HandleFunc("/memories/delete", memHandler)
 
 	// Profiles
-	profHandler := ProfilesHandler(s.profileStore, ts)
+	profHandler := ProfilesHandler(s.profileStore, tmpl)
 	mux.HandleFunc("/profiles", profHandler)
 	mux.HandleFunc("/profiles/update", profHandler)
 
 	// Plugins
-	plugHandler := PluginsHandler(s.pluginManager, s.toolRefresher, ts)
+	plugHandler := PluginsHandler(s.pluginManager, s.toolRefresher, tmpl)
 	mux.HandleFunc("/plugins", plugHandler)
 	mux.HandleFunc("/plugins/toggle", plugHandler)
 
 	// Logs
-	mux.HandleFunc("/logs", LogsHandler(s.cfg().Logging.File, s.configStore, ts))
+	mux.HandleFunc("/logs", LogsHandler(s.cfg().Logging.File, s.configStore, tmpl))
 
 	// Chain middleware: Security 鈫?CSRF 鈫?Session 鈫?mux
 	s.router = Chain(mux,

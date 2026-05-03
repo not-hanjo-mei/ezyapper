@@ -12,7 +12,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-// registerHandlers registers all Discord event handlers
 func (b *Bot) registerHandlers() {
 	b.session.AddHandler(b.onReady)
 	b.session.AddHandler(b.onMessageCreate)
@@ -23,11 +22,9 @@ func (b *Bot) registerHandlers() {
 	b.session.AddHandler(b.onGuildLeave)
 }
 
-// onReady handles the ready event
 func (b *Bot) onReady(s *discordgo.Session, r *discordgo.Ready) {
 	logger.Infof("Bot is ready! Serving %d guilds", len(r.Guilds))
 
-	// Set status
 	s.UpdateStatusComplex(discordgo.UpdateStatusData{
 		Status: "online",
 		Activities: []*discordgo.Activity{
@@ -39,7 +36,6 @@ func (b *Bot) onReady(s *discordgo.Session, r *discordgo.Ready) {
 	})
 }
 
-// onMessageCreate handles new message events
 func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	ctx := b.ctx
 
@@ -53,7 +49,6 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		return
 	}
 
-	// Log detailed raw message information
 	logger.Debugf("[message] RAW MESSAGE RECEIVED:")
 	logger.Debugf("  MessageID: %s", m.ID)
 	logger.Debugf("  Content: %q", m.Content)
@@ -89,7 +84,6 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		logger.Debugf("    Mentioned users: %v", mentionList)
 	}
 
-	// Log immediately when message is received
 	logger.Infof("[message] received: content=%q author=%s channel=%s guild=%s",
 		m.Content, m.Author.Username, m.ChannelID, m.GuildID)
 
@@ -129,10 +123,8 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		}
 	}
 
-	// Register message for processing tracking
 	pm := b.registerProcessingMessage(m.ID, m.ChannelID, m.Author.ID, m.Content)
 
-	// Create a cancellable context for this message processing
 	messageCtx, cancel := context.WithCancel(ctx)
 	pm.CancelFunc = cancel
 
@@ -152,7 +144,6 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		}
 	}
 
-	// Determine if we should respond
 	pm.SetPhase(PhaseDeciding)
 	shouldRespond, reason := b.ShouldRespond(messageCtx, m, recentMessages)
 	logger.Infof("Message from %s: shouldRespond=%v, reason=%s", m.Author.Username, shouldRespond, reason)
@@ -169,7 +160,6 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		return
 	}
 
-	// Process message in goroutine to not block
 	b.wg.Add(1)
 	go b.processMessage(messageCtx, s, m, pm, recentMessages)
 }

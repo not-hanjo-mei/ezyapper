@@ -110,7 +110,6 @@ type BeforeSendProvider interface {
 	BeforeSend(msg types.DiscordMessage, response string) (BeforeSendResult, error)
 }
 
-// Info contains plugin metadata
 type Info struct {
 	Name        string `json:"name"`
 	Version     string `json:"version"`
@@ -180,7 +179,6 @@ type pluginLoadTarget struct {
 	configDir  string
 }
 
-// Manager manages all plugins
 type Manager struct {
 	plugins              map[string]*Client
 	disabled             map[string]disabledPlugin

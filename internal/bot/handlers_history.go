@@ -96,7 +96,6 @@ func (b *Bot) buildConversationHistory(ctx context.Context, messages []*types.Di
 			role = openai.ChatMessageRoleAssistant
 		}
 
-		// If message has no images, add as text-only and continue
 		if len(msg.ImageURLs) == 0 {
 			result = append(result, openai.ChatCompletionMessage{
 				Role:    role,
@@ -105,14 +104,12 @@ func (b *Bot) buildConversationHistory(ctx context.Context, messages []*types.Di
 			continue
 		}
 
-		// Handle images based on vision mode
 		switch b.cfg().AI.Vision.Mode {
 		case config.VisionModeHybrid:
 			content := msg.Content
 			if visionDescriber != nil {
 				var descriptions []string
 
-				// Check if we have cached descriptions
 				if len(msg.ImageDescriptions) > 0 {
 					descriptions = msg.ImageDescriptions
 					logger.Debugf("[vision] using cached image descriptions for message %s count=%d", msg.ID, len(descriptions))
@@ -126,7 +123,6 @@ func (b *Bot) buildConversationHistory(ctx context.Context, messages []*types.Di
 					logger.Debugf("[vision] skipping uncached historical image descriptions for message %s", msg.ID)
 				}
 
-				// Add descriptions to content
 				for j, desc := range descriptions {
 					if j < b.cfg().AI.Vision.MaxImages || b.cfg().AI.Vision.MaxImages == 0 {
 						content = fmt.Sprintf("%s\n[Image %d: %s]", content, j+1, desc)
@@ -185,11 +181,9 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 	var result strings.Builder
 	result.WriteString("<context>\n")
 
-	// Track the most recent image message for on-demand enrichment
 	var mostRecentImageIndex int = -1
 	visionDescriber := b.getVisionDescriber()
 
-	// Find the most recent image message (excluding current message)
 	for i, msg := range messages {
 		if msg.ID == currentMsgID {
 			continue
@@ -220,13 +214,11 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 		}
 	}
 
-	// Track AuthorID -> most recent Username for rename detection
 	seenNames := make(map[string]string)
 
 	// Process messages in reverse (Discord returns newest first, we need oldest first)
 	for i := len(messages) - 1; i >= 0; i-- {
 		msg := messages[i]
-		// Skip the current message being processed
 		if msg.ID == currentMsgID {
 			continue
 		}
@@ -241,18 +233,14 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 			}
 		}
 
-		// Build content with optional image descriptions
 		content := msg.Content
 
-		// Handle images based on vision mode
 		if len(msg.ImageURLs) > 0 && b.cfg().AI.Vision.Mode != config.VisionModeTextOnly {
-			// Check if this is the most recent image message and on-demand enrichment is allowed
 			isMostRecentImage := (i == mostRecentImageIndex && allowOnDemandRecentImageEnrichment)
 
 			var descriptions []string
 			haveCachedDescriptions := false
 
-			// Try to get cached descriptions first
 			if len(msg.ImageDescriptions) > 0 {
 				descriptions = msg.ImageDescriptions
 				haveCachedDescriptions = true
@@ -263,7 +251,6 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 				logger.Debugf("[history] using bot-cache descriptions for message %s", msg.ID)
 			}
 
-			// On-demand enrichment for most recent image only
 			if isMostRecentImage && !haveCachedDescriptions && visionDescriber != nil {
 				logger.Debugf("[history] performing on-demand enrichment for most recent image message %s", msg.ID)
 				freshDescriptions, err := visionDescriber.DescribeImages(ctx, msg.ImageURLs)
@@ -277,7 +264,6 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 				}
 			}
 
-			// Add image descriptions to content if available
 			if haveCachedDescriptions {
 				for j, desc := range descriptions {
 					if j < b.cfg().AI.Vision.MaxImages || b.cfg().AI.Vision.MaxImages == 0 {
@@ -287,7 +273,6 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 			}
 		}
 
-		// Build inline reply marker if this message is a reply
 		replyMarker := ""
 		if msg.ReplyToID != "" {
 			if msg.ReplyToUsername == "(deleted message)" {
@@ -299,7 +284,6 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 			}
 		}
 
-		// Detect rename: if AuthorID was seen before with a different Username
 		renameMarker := ""
 		if msg.AuthorID != botID && msg.Username != "(deleted message)" {
 			if oldName, seen := seenNames[msg.AuthorID]; seen && oldName != msg.Username {
@@ -308,7 +292,6 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 		}
 		seenNames[msg.AuthorID] = msg.Username
 
-		// Write formatted message with mention IDs replaced by readable usernames and channel names
 		displayContent := ReplaceMentions(content, userMappings, channelMappings)
 		timeStr := msg.Timestamp.UTC().Format(time.RFC3339)
 		displayName := msg.DisplayName

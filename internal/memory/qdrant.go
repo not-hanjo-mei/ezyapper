@@ -206,7 +206,6 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error 
 		memory.ID = uuid.New().String()
 	}
 
-	// Update timestamps
 	if memory.CreatedAt.IsZero() {
 		memory.CreatedAt = time.Now()
 	}
@@ -219,7 +218,6 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error 
 	memID := memory.ID
 	embedding := memory.Embedding
 
-	// UUID 必须在重试之前生成以防止重复记录
 	_, err := retry.Retry(ctx, qc.maxRetries, func(ctx context.Context) (*qdrant.UpdateResult, error) {
 		return qc.client.Upsert(ctx, &qdrant.UpsertPoints{
 			CollectionName: CollectionMemories,
@@ -248,7 +246,6 @@ func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embed
 
 	limit := uint64(opts.TopK)
 
-	// Build filter for user_id
 	filter := &qdrant.Filter{
 		Must: []*qdrant.Condition{
 			qdrant.NewMatch("user_id", userID),
@@ -264,7 +261,6 @@ func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embed
 		filter.Should = conditions
 	}
 
-	// Perform search using Query API
 	results, err := qc.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: CollectionMemories,
 		Query:          qdrant.NewQuery(embedding...),
@@ -276,7 +272,6 @@ func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embed
 		return nil, fmt.Errorf("failed to search memories: %w", err)
 	}
 
-	// Convert results to memories
 	var memories []*Record
 	logger.Debugf("[SearchMemories] got %d results, min_score=%.4f", len(results), opts.MinScore)
 	for i, result := range results {

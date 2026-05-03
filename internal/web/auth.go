@@ -31,7 +31,6 @@ func (l *loginRateLimiter) allow(ip string) bool {
 	now := time.Now()
 	cutoff := now.Add(-l.window)
 
-	// Filter out expired attempts
 	recent := l.attempts[ip][:0]
 	for _, t := range l.attempts[ip] {
 		if t.After(cutoff) {

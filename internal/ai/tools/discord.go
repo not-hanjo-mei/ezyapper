@@ -12,18 +12,12 @@ import (
 )
 
 const (
-	// defaultSearchLimit is the default number of members returned by searchGuildMembers.
-	defaultSearchLimit = 10
-	// maxSearchLimit is the maximum number of members searchGuildMembers can return.
-	maxSearchLimit = 50
-	// discordMemberFetchLimit is Discord's API limit for GuildMembers requests.
-	discordMemberFetchLimit = 1000
-	// maxChannelMemberLimit is the max number of members returned by getChannelMembers.
-	maxChannelMemberLimit = 100
-	// defaultChannelMemberLimit is the default number of members returned by getChannelMembers.
+	defaultSearchLimit        = 10
+	maxSearchLimit            = 50
+	discordMemberFetchLimit   = 1000
+	maxChannelMemberLimit     = 100
 	defaultChannelMemberLimit = 20
-	// maxRecentMessageLimit caps the number of recent messages that can be fetched.
-	maxRecentMessageLimit = 10
+	maxRecentMessageLimit     = 10
 )
 
 type DiscordTools struct {
@@ -452,27 +446,8 @@ func (d *DiscordTools) searchGuildMembers(ctx context.Context, args map[string]a
 	// Try to get members from state cache first (enables substring search)
 	guild, err := d.session.State.Guild(guildID)
 	if err == nil && len(guild.Members) > 0 {
-		// Search in cached members
 		for _, member := range guild.Members {
-			if member.User == nil {
-				continue
-			}
-
-			username := strings.ToLower(member.User.Username)
-			nick := strings.ToLower(member.Nick)
-			globalName := strings.ToLower(member.User.GlobalName)
-			displayName := member.Nick
-			if displayName == "" {
-				displayName = member.User.GlobalName
-			}
-			if displayName == "" {
-				displayName = member.User.Username
-			}
-
-			// Substring match (case-insensitive) - search in username, nick, and global_name
-			if strings.Contains(username, queryLower) ||
-				strings.Contains(nick, queryLower) ||
-				strings.Contains(globalName, queryLower) {
+			if matched, displayName := matchMember(member, queryLower); matched {
 				result = append(result, map[string]any{
 					"id":           member.User.ID,
 					"username":     member.User.Username,
@@ -489,31 +464,12 @@ func (d *DiscordTools) searchGuildMembers(ctx context.Context, args map[string]a
 	// If no results from state cache, fetch members from API and search locally
 	// This handles large guilds where state might not have all members
 	if len(result) == 0 {
-		// Fetch up to 1000 members (Discord's max limit for GuildMembers)
 		allMembers, err := d.session.GuildMembers(guildID, "", discordMemberFetchLimit)
 		if err != nil {
 			logger.Warnf("[tools] GuildMembers API fetch failed for guild=%s: %v, falling back to Discord search", guildID, err)
 		} else {
 			for _, member := range allMembers {
-				if member.User == nil {
-					continue
-				}
-
-				username := strings.ToLower(member.User.Username)
-				nick := strings.ToLower(member.Nick)
-				globalName := strings.ToLower(member.User.GlobalName)
-				displayName := member.Nick
-				if displayName == "" {
-					displayName = member.User.GlobalName
-				}
-				if displayName == "" {
-					displayName = member.User.Username
-				}
-
-				// Substring match (case-insensitive) - search in username, nick, and global_name
-				if strings.Contains(username, queryLower) ||
-					strings.Contains(nick, queryLower) ||
-					strings.Contains(globalName, queryLower) {
+				if matched, displayName := matchMember(member, queryLower); matched {
 					result = append(result, map[string]any{
 						"id":           member.User.ID,
 						"username":     member.User.Username,
@@ -549,6 +505,32 @@ func (d *DiscordTools) searchGuildMembers(ctx context.Context, args map[string]a
 	}
 
 	return marshalJSON(result)
+}
+
+// matchMember checks if a guild member's username, nickname, or global name
+// contains the query string (case-insensitive). Returns match result and display name.
+func matchMember(member *discordgo.Member, queryLower string) (matched bool, displayName string) {
+	if member.User == nil {
+		return false, ""
+	}
+
+	username := strings.ToLower(member.User.Username)
+	nick := strings.ToLower(member.Nick)
+	globalName := strings.ToLower(member.User.GlobalName)
+	displayName = member.Nick
+	if displayName == "" {
+		displayName = member.User.GlobalName
+	}
+	if displayName == "" {
+		displayName = member.User.Username
+	}
+
+	if strings.Contains(username, queryLower) ||
+		strings.Contains(nick, queryLower) ||
+		strings.Contains(globalName, queryLower) {
+		return true, displayName
+	}
+	return false, ""
 }
 
 // getStringArg extracts a required string argument from the args map.

@@ -42,7 +42,6 @@ type cacheEntry struct {
 	insertedAt time.Time
 }
 
-// NewAIEmbedder creates a new AI-based embedder that uses the configured embedding model.
 type CachedEmbedder struct {
 	embedder Embedder
 	model    string

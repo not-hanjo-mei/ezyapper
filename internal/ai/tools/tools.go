@@ -93,14 +93,12 @@ func (r *ToolRegistry) GetSchemaHash() string {
 // rebuildSchemaLocked rebuilds the cached schema with alphabetically sorted tools.
 // Must be called with lock held.
 func (r *ToolRegistry) rebuildSchemaLocked() {
-	// Sort tool names alphabetically for stable ordering
 	names := make([]string, 0, len(r.tools))
 	for name := range r.tools {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 
-	// Build ordered schema
 	tools := make([]openai.Tool, 0, len(names))
 	for _, name := range names {
 		tool := r.tools[name]

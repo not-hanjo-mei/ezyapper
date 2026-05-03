@@ -13,21 +13,16 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-// processMessageWithoutImages processes a message without image handling (text-only mode).
 func (b *Bot) processMessageWithoutImages(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, recentMessages []*types.DiscordMessage) {
 	defer b.wg.Done()
 	b.processMessageCore(ctx, s, m, pm, false, recentMessages)
 }
 
-// processMessage processes a message and generates a response (with image handling).
 func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, recentMessages []*types.DiscordMessage) {
 	defer b.wg.Done()
 	b.processMessageCore(ctx, s, m, pm, true, recentMessages)
 }
 
-// processMessageCore is the shared processing pipeline used by both text-only and
-// image-capable paths. When withImages is false, image extraction and the
-// image-enriched DiscordMessage struct are skipped.
 func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, withImages bool, recentMessages []*types.DiscordMessage) {
 	if err := ctx.Err(); err != nil {
 		logger.Infof("[processing] Message %s cancelled before starting", m.ID)
@@ -115,7 +110,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		}
 	}
 
-	if withImages && msg != nil {
+	if withImages {
 		for i, recentMsg := range recentMessages {
 			if recentMsg.ID == m.ID {
 				recentMessages[i] = msg

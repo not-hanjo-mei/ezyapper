@@ -32,14 +32,12 @@ func init() {
 func main() {
 	pflag.Parse()
 
-	// Load configuration
 	cfg, err := config.Load(configFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Initialize logger
 	if err := logger.Init(logger.Config{
 		Level:      cfg.Logging.Level,
 		File:       cfg.Logging.File,
@@ -53,7 +51,6 @@ func main() {
 
 	logger.Info("Starting EZyapper")
 
-	// Initialize Qdrant memory service
 	memoryService, err := initMemoryService(cfg)
 	if err != nil {
 		logger.Fatalf("Failed to initialize memory service: %v", err)
@@ -61,7 +58,6 @@ func main() {
 	defer memoryService.Close()
 	logger.Info("Memory service initialized")
 
-	// Initialize plugin manager
 	pluginManager := plugin.NewManager(cfg.Plugins.DefaultToolTimeoutMs,
 		cfg.Plugins.StartupTimeoutSec,
 		cfg.Plugins.RPCTimeoutSec,
@@ -75,19 +71,16 @@ func main() {
 	cfgStore := &atomic.Value{}
 	cfgStore.Store(cfg)
 
-	// Initialize Discord bot
 	discordBot, err := bot.New(cfgStore, memoryService, memoryService, memoryService, pluginManager)
 	if err != nil {
 		logger.Fatalf("Failed to create Discord bot: %v", err)
 	}
 
-	// Start Discord bot
 	ctx := context.Background()
 	if err := discordBot.Start(ctx); err != nil {
 		logger.Fatalf("Failed to start Discord bot: %v", err)
 	}
 
-	// Initialize web server
 	s := discordBot.GetSession()
 	discordAdapter := web.NewDiscordAdapter(
 		func(channelID string) string {
@@ -121,23 +114,19 @@ func main() {
 		logger.Warnf("Failed to start web server: %v", err)
 	}
 
-	// Start cleanup routine
 	go runCleanupRoutine(cfg, discordBot)
 
 	logger.Info("Bot is now running. Press CTRL+C to exit.")
 
-	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	logger.Info("Shutting down...")
 
-	// Graceful shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.Operations.ShutdownTimeoutSec)*time.Second)
 	defer cancel()
 
-	// Stop web server
 	if err := webServer.Stop(shutdownCtx); err != nil {
 		logger.Warnf("Error stopping web server: %v", err)
 	}
@@ -146,12 +135,10 @@ func main() {
 		logger.Warnf("Error during bot shutdown: %v", err)
 	}
 
-	// Stop Discord bot
 	if err := discordBot.Stop(); err != nil {
 		logger.Warnf("Error stopping Discord bot: %v", err)
 	}
 
-	// Shutdown plugins
 	if err := pluginManager.Shutdown(shutdownCtx); err != nil {
 		logger.Warnf("Error shutting down plugins: %v", err)
 	}

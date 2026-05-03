@@ -186,7 +186,6 @@ func (s *MemoryService) Store(ctx context.Context, m *Record) error {
 	return nil
 }
 
-// Search performs semantic memory search
 func (s *MemoryService) Search(ctx context.Context, userID string, query string, opts *SearchOptions) ([]*Record, error) {
 	if opts == nil {
 		opts = &SearchOptions{
@@ -197,7 +196,6 @@ func (s *MemoryService) Search(ctx context.Context, userID string, query string,
 
 	logger.Debugf("[MemoryService.Search] searching for userID=%s query=%.50s topK=%d", userID, query, opts.TopK)
 
-	// Generate query embedding
 	embedding, err := s.embedder.Embed(ctx, query)
 	if err != nil {
 		logger.Errorf("[MemoryService.Search] failed to generate embedding for userID=%s: %v", userID, err)
@@ -214,7 +212,6 @@ func (s *MemoryService) Search(ctx context.Context, userID string, query string,
 	return memories, nil
 }
 
-// HybridSearch performs hybrid search (semantic + keyword)
 func (s *MemoryService) HybridSearch(ctx context.Context, userID string, query string, keywords []string, opts *SearchOptions) ([]*Record, error) {
 	if opts == nil {
 		opts = &SearchOptions{
@@ -223,7 +220,6 @@ func (s *MemoryService) HybridSearch(ctx context.Context, userID string, query s
 		}
 	}
 
-	// Generate query embedding
 	embedding, err := s.embedder.Embed(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate query embedding: %w", err)
@@ -243,7 +239,6 @@ func (s *MemoryService) HybridSearch(ctx context.Context, userID string, query s
 	return memories, nil
 }
 
-// filterByKeywords filters memories by keywords
 func (s *MemoryService) filterByKeywords(memories []*Record, keywords []string) []*Record {
 	var filtered []*Record
 	for _, m := range memories {
@@ -257,7 +252,6 @@ func (s *MemoryService) filterByKeywords(memories []*Record, keywords []string) 
 	return filtered
 }
 
-// GetMemories retrieves all memories for a user
 func (s *MemoryService) GetMemories(ctx context.Context, userID string, limit int) ([]*Record, error) {
 	logger.Debugf("[MemoryService.GetMemories] retrieving memories for userID=%s limit=%d", userID, limit)
 	memories, err := s.qdrant.GetMemoriesByUser(ctx, userID, limit)
@@ -269,7 +263,6 @@ func (s *MemoryService) GetMemories(ctx context.Context, userID string, limit in
 	return memories, nil
 }
 
-// GetMemory retrieves a single memory by ID
 func (s *MemoryService) GetMemory(ctx context.Context, memoryID string) (*Record, error) {
 	logger.Debugf("[MemoryService.GetMemory] retrieving memoryID=%s", memoryID)
 	memory, err := s.qdrant.GetMemory(ctx, memoryID)
@@ -281,7 +274,6 @@ func (s *MemoryService) GetMemory(ctx context.Context, memoryID string) (*Record
 	return memory, nil
 }
 
-// GetProfile retrieves a user profile
 func (s *MemoryService) GetProfile(ctx context.Context, userID string) (*Profile, error) {
 	logger.Debugf("[MemoryService.GetProfile] retrieving profile for userID=%s", userID)
 	profile, err := s.qdrant.GetProfile(ctx, userID)
@@ -307,7 +299,6 @@ func (s *MemoryService) GetProfile(ctx context.Context, userID string) (*Profile
 	return profile, nil
 }
 
-// UpdateProfile updates a user profile
 func (s *MemoryService) UpdateProfile(ctx context.Context, p *Profile) error {
 	logger.Debugf("[MemoryService.UpdateProfile] updating profile for userID=%s", p.UserID)
 	if err := s.qdrant.UpsertProfile(ctx, p); err != nil {
@@ -318,7 +309,6 @@ func (s *MemoryService) UpdateProfile(ctx context.Context, p *Profile) error {
 	return nil
 }
 
-// DeleteMemory deletes a single memory
 func (s *MemoryService) DeleteMemory(ctx context.Context, memoryID string) error {
 	logger.Warnf("[MemoryService.DeleteMemory] deleting memoryID=%s", memoryID)
 	if err := s.qdrant.DeleteMemory(ctx, memoryID); err != nil {
@@ -329,7 +319,6 @@ func (s *MemoryService) DeleteMemory(ctx context.Context, memoryID string) error
 	return nil
 }
 
-// DeleteUserData deletes all data for a user
 func (s *MemoryService) DeleteUserData(ctx context.Context, userID string) error {
 	logger.Warnf("[MemoryService.DeleteUserData] deleting all data for userID=%s", userID)
 
@@ -354,7 +343,6 @@ func (s *MemoryService) DeleteUserData(ctx context.Context, userID string) error
 	return nil
 }
 
-// ConsolidateWithMessages executes consolidation with provided messages
 func (s *MemoryService) ConsolidateWithMessages(ctx context.Context, userID string, messages []*DiscordMessage) error {
 	logger.Infof("[MemoryService.ConsolidateWithMessages] starting consolidation for userID=%s with %d messages", userID, len(messages))
 	if err := s.consolidator.ProcessWithMessages(ctx, userID, messages); err != nil {
@@ -374,7 +362,6 @@ func (s *MemoryService) IncrementMessageCount(ctx context.Context, userID string
 
 	logger.Debugf("[MemoryService.IncrementMessageCount] userID=%s count=%d/%d", userID, count, s.consolidationInterval)
 
-	// Update profile last active time
 	profile, err := s.GetProfile(ctx, userID)
 	if err != nil {
 		logger.Warnf("[MemoryService.IncrementMessageCount] failed to get profile for userID=%s: %v", userID, err)
@@ -389,7 +376,6 @@ func (s *MemoryService) IncrementMessageCount(ctx context.Context, userID string
 	return count, nil
 }
 
-// ShouldConsolidate checks if consolidation should be triggered for a user
 func (s *MemoryService) ShouldConsolidate(userID string) bool {
 	s.counterMu.RLock()
 	defer s.counterMu.RUnlock()
@@ -408,7 +394,6 @@ func (s *MemoryService) ResetMessageCount(userID string) {
 	s.messageCounters[userID] = 0
 }
 
-// IncrementChannelMessageCount increments the channel message counter
 func (s *MemoryService) IncrementChannelMessageCount(ctx context.Context, channelID string) (int, error) {
 	s.counterMu.Lock()
 	defer s.counterMu.Unlock()
@@ -420,7 +405,6 @@ func (s *MemoryService) IncrementChannelMessageCount(ctx context.Context, channe
 	return count, nil
 }
 
-// ResetChannelMessageCount resets the channel message counter
 func (s *MemoryService) ResetChannelMessageCount(channelID string) {
 	s.counterMu.Lock()
 	defer s.counterMu.Unlock()
@@ -447,7 +431,6 @@ func (s *MemoryService) ConsumeChannelMessageCount(channelID string, consumed in
 	return remaining
 }
 
-// ConsolidateChannel executes batch consolidation for all users in a channel
 func (s *MemoryService) ConsolidateChannel(ctx context.Context, channelID string, messages []*DiscordMessage) error {
 	logger.Infof("[MemoryService.ConsolidateChannel] starting batch consolidation for channel=%s with %d messages", channelID, len(messages))
 
@@ -486,7 +469,6 @@ func (s *MemoryService) CountProfiles(ctx context.Context) (int64, error) {
 	return int64(count), err
 }
 
-// GetUserStats retrieves user statistics
 func (s *MemoryService) GetUserStats(ctx context.Context, userID string) (*UserStats, error) {
 	logger.Debugf("[MemoryService.GetUserStats] retrieving stats for userID=%s", userID)
 
@@ -520,7 +502,6 @@ func (s *MemoryService) GetUserStats(ctx context.Context, userID string) (*UserS
 	return stats, nil
 }
 
-// Close closes the service and its connections
 func (s *MemoryService) Close() error {
 	return s.qdrant.Close()
 }

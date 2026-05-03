@@ -260,12 +260,10 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 	return stored, errors.Join(errs...)
 }
 
-// ProcessChannelMessages executes batch consolidation for all users in a channel
 // ProcessChannelMessages performs batch consolidation for all users identified in the channel messages.
 func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID string, messages []*DiscordMessage) error {
 	start := time.Now()
 
-	// Collect unique user IDs from messages
 	userIDSet := make(map[string]bool)
 	for _, msg := range messages {
 		userIDSet[msg.AuthorID] = true
@@ -283,12 +281,10 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 		messages = messages[:c.maxMessages]
 	}
 
-	// Build conversation with timestamp and user identification
 	conversation, imageCount := c.buildConversationText(ctx, messages, "")
 
 	logger.Infof("[consolidation] built conversation length=%d chars images=%d users=%v", len(conversation), imageCount, targetUserIDs)
 
-	// Analyze conversation with batch extraction for all users
 	batchExtracts, err := c.analyzeConversationBatch(ctx, conversation, targetUserIDs)
 	if err != nil {
 		logger.Errorf("[consolidation] analyzeConversationBatch failed for channel=%s: %v", channelID, err)
@@ -302,7 +298,6 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 
 	logger.Infof("[consolidation] extracted memories for %d users from channel=%s", len(batchExtracts), channelID)
 
-	// Store memories for each user
 	totalStored := 0
 	var allErrs []error
 	for _, userExtract := range batchExtracts {
@@ -469,7 +464,6 @@ func (c *Consolidator) analyzeConversationBatch(ctx context.Context, conversatio
 
 	logger.Debugf("[consolidation] preparing LLM prompt with conversation length=%d", len(conversation))
 
-	// Build messages: system prompt contains extraction rules and target user list
 	targetUsersStr := strings.Join(targetUserIDs, ", ")
 	systemPrompt := fmt.Sprintf("%s\n\nTarget UserIDs: %s (extract memories for these users only)", c.prompt, targetUsersStr)
 

@@ -118,7 +118,6 @@ func (d *DecisionService) ShouldRespondWithInfo(ctx context.Context, botName str
 	logger.Debugf("  Image count: %d", imageCount)
 	logger.Debugf("  Recent messages count: %d", len(recentMessages))
 
-	// Append image info to message content if images are present
 	content := msgInfo.Content
 	if imageCount > 0 {
 		content += fmt.Sprintf("\n\n[User attached %d image(s) to this message]", imageCount)
@@ -138,7 +137,6 @@ func (d *DecisionService) ShouldRespondWithInfo(ctx context.Context, botName str
 		Temperature: d.config.Temperature,
 	}
 
-	// Apply extra parameters from config
 	ai.ApplyExtraParams(&req, d.config.ExtraParams, "[decision]")
 
 	resp, err := retry.Retry(ctx, d.config.RetryCount, func(ctx context.Context) (openai.ChatCompletionResponse, error) {

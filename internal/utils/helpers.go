@@ -5,12 +5,10 @@ import (
 	"ezyapper/internal/types"
 )
 
-// ExtractImageURLs returns the image URLs from a DiscordMessage.
 func ExtractImageURLs(msg *types.DiscordMessage) []string {
 	return msg.ImageURLs
 }
 
-// Contains checks if a string slice contains a specific item
 func Contains(slice []string, item string) bool {
 	for _, s := range slice {
 		if s == item {
@@ -20,8 +18,7 @@ func Contains(slice []string, item string) bool {
 	return false
 }
 
-// SplitMessage splits a long message into chunks at word boundaries
-// This is used for Discord's 2000 character limit
+// SplitMessage splits at word boundaries for Discord's 2000 character limit.
 func SplitMessage(content string, maxLen int) []string {
 	if maxLen <= 0 {
 		return []string{content}
