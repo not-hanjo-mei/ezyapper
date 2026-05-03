@@ -170,7 +170,6 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 
 	extracted, err := c.analyzeConversation(ctx, conversation, []string{userID})
 	if err != nil {
-		logger.Errorf("[consolidation] analyzeConversation failed for user=%s: %v", userID, err)
 		return fmt.Errorf("analyzeConversation: %w", err)
 	}
 	if len(extracted) == 0 {
@@ -208,8 +207,7 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 
 	// Persist profile after memory storage succeeds
 	if err := c.qdrant.UpsertProfile(ctx, profile); err != nil {
-		logger.Errorf("[consolidation] failed to update profile for user=%s: %v", userID, err)
-		return fmt.Errorf("failed to update profile: %w", err)
+		return fmt.Errorf("update profile for user=%s: %w", userID, err)
 	}
 	logger.Infof("[consolidation] updated profile for user=%s before=[%s] after=[%s]",
 		userID, profileBefore, profileAfter)
@@ -288,7 +286,6 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 
 	batchExtracts, err := c.analyzeConversationBatch(ctx, conversation, targetUserIDs)
 	if err != nil {
-		logger.Errorf("[consolidation] analyzeConversationBatch failed for channel=%s: %v", channelID, err)
 		return fmt.Errorf("analyzeConversationBatch: %w", err)
 	}
 	if len(batchExtracts) == 0 {
@@ -492,7 +489,6 @@ func (c *Consolidator) analyzeConversation(ctx context.Context, conversation str
 	logger.Debug("[consolidation] sending request to LLM for memory extraction")
 	resp, err := c.aiClient.CreateChatCompletion(ctx, req)
 	if err != nil {
-		logger.Errorf("[consolidation] LLM request failed: %v", err)
 		return nil, fmt.Errorf("consolidation: LLM request failed: %w", err)
 	}
 
@@ -506,7 +502,6 @@ func (c *Consolidator) analyzeConversation(ctx context.Context, conversation str
 
 	extracts := []Extract{}
 	if err := json.Unmarshal([]byte(content), &extracts); err != nil {
-		logger.Errorf("[consolidation] failed to parse LLM response as JSON: %v", err)
 		logger.Debugf("[consolidation] raw LLM response: %s", resp.Content)
 		return nil, fmt.Errorf("consolidation: failed to parse LLM response: %w", err)
 	}
@@ -554,7 +549,6 @@ func (c *Consolidator) analyzeConversationBatch(ctx context.Context, conversatio
 	logger.Debug("[consolidation] sending batch request to LLM for memory extraction")
 	resp, err := c.aiClient.CreateChatCompletion(ctx, req)
 	if err != nil {
-		logger.Errorf("[consolidation] LLM batch request failed: %v", err)
 		return nil, fmt.Errorf("consolidation: LLM batch request failed: %w", err)
 	}
 
@@ -566,7 +560,6 @@ func (c *Consolidator) analyzeConversationBatch(ctx context.Context, conversatio
 
 	batchExtracts := []UserMemoryExtract{}
 	if err := json.Unmarshal([]byte(content), &batchExtracts); err != nil {
-		logger.Errorf("[consolidation] failed to parse LLM batch response as JSON: %v", err)
 		logger.Debugf("[consolidation] raw LLM response: %s", resp.Content)
 		return nil, fmt.Errorf("consolidation: failed to parse LLM batch response: %w", err)
 	}

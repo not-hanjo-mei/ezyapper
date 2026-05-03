@@ -302,7 +302,6 @@ func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embed
 // GetMemoriesByUser retrieves all memories for a user
 func (qc *QdrantClient) GetMemoriesByUser(ctx context.Context, userID string, limit int) ([]*Record, error) {
 	if limit <= 0 {
-		logger.Errorf("[GetMemoriesByUser] invalid limit=%d, must be greater than 0", limit)
 		return nil, fmt.Errorf("limit must be greater than 0, got: %d", limit)
 	}
 

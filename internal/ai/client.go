@@ -289,7 +289,6 @@ func (c *Client) CreateChatCompletion(ctx context.Context, req ChatCompletionReq
 	}
 
 	if len(resp.Choices) == 0 {
-		logger.Errorf("[ai] no response choices returned from LLM")
 		return nil, fmt.Errorf("no response choices returned")
 	}
 
@@ -330,7 +329,7 @@ func applyExtraParamsToStruct(req interface{}, extraParams map[string]interface{
 
 	v := reflect.ValueOf(req)
 	if v.Kind() != reflect.Ptr || v.IsNil() {
-		logger.Warnf("[ai] extra params: invalid request type %T", logPrefix, req)
+		logger.Warnf("%s extra params: invalid request type %T", logPrefix, req)
 		return
 	}
 	reqValue := v.Elem()
