@@ -344,7 +344,9 @@ func (s *MemoryService) ConsolidateWithMessages(ctx context.Context, userID stri
 	return nil
 }
 
-// IncrementMessageCount increments the message counter and checks if consolidation should trigger
+// IncrementMessageCount increments the message counter and checks if consolidation should trigger.
+// The in-memory counter is authoritative during runtime; profile.MessageCount is synced to Qdrant
+// periodically (every consolidationInterval) for restart recovery.
 func (s *MemoryService) IncrementMessageCount(ctx context.Context, userID string) (int, error) {
 	s.counterMu.Lock()
 	s.messageCounters[userID]++
@@ -353,10 +355,12 @@ func (s *MemoryService) IncrementMessageCount(ctx context.Context, userID string
 
 	logger.Debugf("[MemoryService.IncrementMessageCount] userID=%s count=%d/%d", userID, count, s.consolidationInterval)
 
-	profile, err := s.GetProfile(ctx, userID)
-	if err != nil {
-		logger.Warnf("[MemoryService.IncrementMessageCount] failed to get profile for userID=%s: %v", userID, err)
-	} else {
+	if count%s.consolidationInterval == 0 {
+		profile, err := s.GetProfile(ctx, userID)
+		if err != nil {
+			logger.Warnf("[MemoryService.IncrementMessageCount] failed to get profile for userID=%s: %v", userID, err)
+			return count, nil
+		}
 		profile.LastActiveAt = time.Now()
 		if count > profile.MessageCount {
 			profile.MessageCount = count
