@@ -90,7 +90,6 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 
 	guild, err := b.GetGuild(m.GuildID)
 	if err != nil {
-		logger.Errorf("Failed to get guild: %v", err)
 		b.clearProcessingMessage(pm, m.ID)
 		return
 	}
@@ -212,7 +211,6 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 	}
 
 	if err := b.sendResponse(ctx, s, m, response); err != nil {
-		logger.Errorf("Failed to send response: %v", err)
 		b.clearProcessingMessage(pm, m.ID)
 		return
 	}
