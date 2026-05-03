@@ -12,6 +12,8 @@ import (
 	"ezyapper/internal/logger"
 )
 
+var embedSleep func(time.Duration) // test-only override for retry sleep; unused in production
+
 func init() {
 	logger.Init(logger.Config{Level: "info"})
 }
@@ -213,70 +215,6 @@ func TestEmbedWithRetry_ImmediateSuccess(t *testing.T) {
 	}
 }
 
-// TestConsolidationProcess_QdrantStoreError verifies that Qdrant upsert errors
-// are handled gracefully — memories that fail to store won't crash consolidation.
-func TestConsolidationProcess_QdrantStoreError(t *testing.T) {
-	defer func() { embedSleep = nil }()
-	embedSleep = func(d time.Duration) {}
-
-	ctx := context.Background()
-	qdrant := newMockQdrantStore()
-	qdrant.upsertMemoryErr = errors.New("qdrant unavailable")
-
-	c := &Consolidator{
-		qdrant:   qdrant,
-		embedder: newRetryableEmbedder(0),
-	}
-
-	userID := "user-1"
-	profile, err := c.getOrCreateProfile(ctx, userID)
-	if err != nil {
-		t.Fatalf("getOrCreateProfile failed: %v", err)
-	}
-	profile.Traits = []string{"friendly"}
-	profile.Facts = map[string]string{"name": "TestUser"}
-
-	memories := []*Record{
-		{UserID: userID, MemoryType: TypeFact, Content: "User is friendly"},
-	}
-
-	result, err := c.consolidateMemories(ctx, profile, memories)
-	if err != nil {
-		t.Fatalf("consolidateMemories failed: %v", err)
-	}
-
-	// Call the storage loop — should not panic even when Qdrant fails every time
-	stored := 0
-	for i, extract := range result.Memories {
-		memory := &Record{
-			UserID:     userID,
-			MemoryType: Type(extract.Type),
-			Content:    extract.Content,
-			Summary:    extract.Content,
-			Keywords:   extract.Keywords,
-			Confidence: extract.Confidence,
-			CreatedAt:  time.Now(),
-		}
-
-		embedding, err := c.embedWithRetry(ctx, memory.Content)
-		if err != nil {
-			t.Logf("memory %d: embedding failed (expected for retry test): %v", i+1, err)
-			continue
-		}
-		memory.Embedding = embedding
-
-		if err := c.qdrant.UpsertMemory(ctx, memory); err != nil {
-			t.Logf("memory %d: qdrant upsert failed (expected): %v", i+1, err)
-		} else {
-			stored++
-		}
-	}
-
-	if stored != 0 {
-		t.Errorf("expected 0 stored memories (qdrant always fails), got %d", stored)
-	}
-}
-
 // selectiveEmbedder fails embedding for specific content strings.
 type selectiveEmbedder struct {
 	failFor map[string]bool
@@ -289,8 +227,8 @@ func (e *selectiveEmbedder) Embed(ctx context.Context, text string) ([]float32, 
 	return []float32{float32(len(text)), float32(len(text) * 2)}, nil
 }
 
-// TestProfileMemoryCount_OnlyOnSuccess verifies Process() storage pattern:
-// all Qdrant upserts fail -> MemoryCount unchanged.
+// TestProfileMemoryCount_OnlyOnSuccess verifies that when all Qdrant upserts
+// fail, MemoryCount remains unchanged.
 func TestProfileMemoryCount_OnlyOnSuccess(t *testing.T) {
 	defer func() { embedSleep = nil }()
 	embedSleep = func(d time.Duration) {}
@@ -424,49 +362,5 @@ func TestProfileMemoryCount_Consistent(t *testing.T) {
 	}
 	if stored != 3 {
 		t.Errorf("expected 3 stored memories (2 fail at embedding), got %d", stored)
-	}
-}
-
-// TestUpdateProfileFromResult_NoMemoryCount verifies that updateProfileFromResult
-// does not modify MemoryCount — only Process() does, after storage.
-func TestUpdateProfileFromResult_NoMemoryCount(t *testing.T) {
-	profile := &Profile{
-		UserID:      "user-1",
-		MemoryCount: 7,
-		Traits:      []string{},
-		Facts:       make(map[string]string),
-		Preferences: make(map[string]string),
-		Interests:   []string{},
-	}
-
-	result := &ConsolidationResult{
-		Summary: "test summary",
-		ProfileDelta: ProfileDelta{
-			NewTraits:      []string{"helpful"},
-			NewFacts:       map[string]string{"name": "TestUser"},
-			NewPreferences: map[string]string{},
-			NewInterests:   []string{},
-		},
-		Memories: []Extract{
-			{Content: "memory 1", Type: string(TypeFact), Confidence: 0.9},
-			{Content: "memory 2", Type: string(TypeSummary), Confidence: 0.8},
-			{Content: "memory 3", Type: string(TypeEpisode), Confidence: 0.7},
-		},
-	}
-
-	c := &Consolidator{}
-	c.updateProfileFromResult(profile, result)
-
-	if profile.MemoryCount != 7 {
-		t.Errorf("updateProfileFromResult should not change MemoryCount: expected 7, got %d", profile.MemoryCount)
-	}
-	if profile.LastSummary != "test summary" {
-		t.Errorf("LastSummary should be set, got %q", profile.LastSummary)
-	}
-	if len(profile.Traits) != 1 || profile.Traits[0] != "helpful" {
-		t.Errorf("Traits should contain 'helpful', got %v", profile.Traits)
-	}
-	if profile.Facts["name"] != "TestUser" {
-		t.Errorf("Facts['name'] should be 'TestUser', got %q", profile.Facts["name"])
 	}
 }

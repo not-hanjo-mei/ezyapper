@@ -1,11 +1,52 @@
 package web
 
 import (
+	"crypto/subtle"
 	"html/template"
+	"net"
 	"net/http"
+	"sync"
+	"time"
 
 	"ezyapper/internal/logger"
 )
+
+// loginRateLimiter provides simple in-memory rate limiting for login attempts.
+// It tracks attempts per IP within a sliding window and rejects requests
+// that exceed the configured maximum.
+type loginRateLimiter struct {
+	mu          sync.Mutex
+	attempts    map[string][]time.Time
+	maxAttempts int
+	window      time.Duration
+}
+
+// allow reports whether a login attempt from the given IP should be permitted.
+// It cleans up expired entries and returns false if the IP has exceeded the
+// attempt limit within the configured time window.
+func (l *loginRateLimiter) allow(ip string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := time.Now()
+	cutoff := now.Add(-l.window)
+
+	// Filter out expired attempts
+	recent := l.attempts[ip][:0]
+	for _, t := range l.attempts[ip] {
+		if t.After(cutoff) {
+			recent = append(recent, t)
+		}
+	}
+	l.attempts[ip] = recent
+
+	if len(recent) >= l.maxAttempts {
+		return false
+	}
+
+	l.attempts[ip] = append(l.attempts[ip], now)
+	return true
+}
 
 // LoginHandler returns an http.HandlerFunc for GET and POST /login.
 //
@@ -17,7 +58,13 @@ import (
 // and the user is redirected to "/". On failure, the login page is re-rendered
 // with an "Invalid credentials" error message. The error message does not
 // distinguish between unknown username and wrong password.
-func LoginHandler(store *SessionStore, username, password string, loginTmpl *template.Template) http.HandlerFunc {
+func LoginHandler(store *SessionStore, username, password string, loginTmpl *template.Template, sessionTTLMin int) http.HandlerFunc {
+	limiter := &loginRateLimiter{
+		attempts:    make(map[string][]time.Time),
+		maxAttempts: 5,
+		window:      time.Minute,
+	}
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -36,6 +83,12 @@ func LoginHandler(store *SessionStore, username, password string, loginTmpl *tem
 			}
 
 		case http.MethodPost:
+			clientIP := clientIP(r)
+			if !limiter.allow(clientIP) {
+				http.Error(w, "Too many login attempts. Please try again later.", http.StatusTooManyRequests)
+				return
+			}
+
 			if err := r.ParseForm(); err != nil {
 				renderLoginError(w, loginTmpl, "Invalid credentials")
 				return
@@ -44,7 +97,7 @@ func LoginHandler(store *SessionStore, username, password string, loginTmpl *tem
 			formUser := r.FormValue("username")
 			formPass := r.FormValue("password")
 
-			if formUser == "" || formPass == "" || formUser != username || formPass != password {
+			if formUser == "" || formPass == "" || formUser != username || subtle.ConstantTimeCompare([]byte(formPass), []byte(password)) != 1 {
 				renderLoginError(w, loginTmpl, "Invalid credentials")
 				return
 			}
@@ -61,7 +114,7 @@ func LoginHandler(store *SessionStore, username, password string, loginTmpl *tem
 				Path:     "/",
 				HttpOnly: true,
 				SameSite: http.SameSiteStrictMode,
-				MaxAge:   1800,
+				MaxAge:   sessionTTLMin * 60,
 			})
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 
@@ -69,6 +122,22 @@ func LoginHandler(store *SessionStore, username, password string, loginTmpl *tem
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	}
+}
+
+// clientIP extracts the client IP address from the request, checking common
+// proxy headers before falling back to RemoteAddr.
+func clientIP(r *http.Request) string {
+	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
+		return ip
+	}
+	if ip := r.Header.Get("X-Real-IP"); ip != "" {
+		return ip
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 // LogoutHandler returns an http.HandlerFunc for POST /logout.

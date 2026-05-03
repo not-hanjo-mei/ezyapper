@@ -79,18 +79,26 @@ func verifySignedToken(signed string, secret []byte) (string, error) {
 //  2. Verifying the HMAC signature of the form field "csrf_token"
 //  3. Comparing the extracted original tokens for equality
 //
-// POST /login and POST /logout are excluded from CSRF validation.
+// POST /login is excluded from CSRF validation.
 func CSRFMiddleware(secret []byte) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Exclude POST /login and /logout from CSRF validation
-			if r.Method == http.MethodPost && (r.URL.Path == "/login" || r.URL.Path == "/logout") {
+			// Exclude POST /login from CSRF validation
+			if r.Method == http.MethodPost && r.URL.Path == "/login" {
 				next.ServeHTTP(w, r)
 				return
 			}
 
 			switch r.Method {
 			case http.MethodGet, http.MethodHead:
+				// Reuse existing valid CSRF cookie if present
+				if cookie, err := r.Cookie("csrf_token"); err == nil {
+					if _, verifyErr := verifySignedToken(cookie.Value, secret); verifyErr == nil {
+						ctx := context.WithValue(r.Context(), csrfCtxKey, cookie.Value)
+						next.ServeHTTP(w, r.WithContext(ctx))
+						return
+					}
+				}
 				token, err := GenerateCSRFToken()
 				if err != nil {
 					http.Error(w, "Internal server error", http.StatusInternalServerError)

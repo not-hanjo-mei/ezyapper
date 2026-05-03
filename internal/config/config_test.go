@@ -1543,12 +1543,12 @@ operations:
 	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
 		t.Fatalf("Failed to write config: %v", err)
 	}
-	cfg, err := Load(configPath)
-	if err != nil {
-		t.Fatalf("Expected valid config, got error: %v", err)
+	_, err := Load(configPath)
+	if err == nil {
+		t.Fatal("expected validation error for negative plugins.default_tool_timeout_ms")
 	}
-	if cfg.Plugins.DefaultToolTimeoutMs != 0 {
-		t.Errorf("Expected DefaultToolTimeoutMs=0 after clamping negative value, got %d", cfg.Plugins.DefaultToolTimeoutMs)
+	if !strings.Contains(err.Error(), "plugins.default_tool_timeout_ms must be non-negative") {
+		t.Fatalf("expected default_tool_timeout_ms error, got: %v", err)
 	}
 }
 
@@ -2026,4 +2026,93 @@ func TestPluginManifestSchema_RejectsInvalid(t *testing.T) {
 			t.Errorf("expected error about invalid runtime, got: %v", errs)
 		}
 	})
+}
+
+func TestValidate_PluginsDefaultToolTimeoutMsNegative(t *testing.T) {
+	cfg := &Config{
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		AI: AIConfig{
+			APIBaseURL: "https://api.example.com/v1",
+			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
+			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
+			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+		},
+		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
+		Memory: MemoryConfig{
+			ConsolidationInterval: 1,
+			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			RetryBaseDelayMs:      1000,
+			RetryMaxDelayMs:       30000,
+			MaxRetries:            3,
+			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+		},
+		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
+		Web:     WebConfig{Enabled: false},
+		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
+		Plugins: PluginsConfig{
+			Enabled:              true,
+			PluginsDir:           "/opt/plugins",
+			DefaultToolTimeoutMs: -1,
+			StartupTimeoutSec:    30,
+			RPCTimeoutSec:        30,
+			BeforeSendTimeoutSec: 30,
+			CommandTimeoutSec:    30,
+			ShutdownTimeoutSec:   30,
+			DisableTimeoutSec:    30,
+		},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
+	}
+	err := validate(cfg)
+	if err == nil {
+		t.Fatal("expected validation error for negative plugins.default_tool_timeout_ms")
+	}
+	if !strings.Contains(err.Error(), "plugins.default_tool_timeout_ms must be non-negative") {
+		t.Fatalf("expected default_tool_timeout_ms error, got: %v", err)
+	}
+}
+
+func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
+	cfg := &Config{
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		AI: AIConfig{
+			APIBaseURL: "https://api.example.com/v1",
+			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
+			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
+			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+		},
+		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
+		Memory: MemoryConfig{
+			ConsolidationInterval: 1,
+			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			RetryBaseDelayMs:      1000,
+			RetryMaxDelayMs:       30000,
+			MaxRetries:            3,
+			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+		},
+		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
+		Web:     WebConfig{Enabled: false},
+		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
+		Plugins: PluginsConfig{
+			Enabled:              true,
+			PluginsDir:           "/opt/plugins",
+			DefaultToolTimeoutMs: 5000,
+			StartupTimeoutSec:    30,
+			RPCTimeoutSec:        30,
+			BeforeSendTimeoutSec: 30,
+			CommandTimeoutSec:    30,
+			ShutdownTimeoutSec:   30,
+			DisableTimeoutSec:    30,
+		},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
+	}
+	err := validate(cfg)
+	if err != nil {
+		t.Fatalf("expected validation to pass with positive default_tool_timeout_ms, got: %v", err)
+	}
 }

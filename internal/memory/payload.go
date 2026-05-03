@@ -22,8 +22,8 @@ func (qc *QdrantClient) memoryToPayload(memory *Record) map[string]*qdrant.Value
 	payload["content"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: memory.Content}}
 	payload["summary"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: memory.Summary}}
 	payload["confidence"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: memory.Confidence}}
-	payload["created_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(memory.CreatedAt.Unix())}}
-	payload["updated_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(memory.UpdatedAt.Unix())}}
+	payload["created_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(memory.CreatedAt.UnixMilli()) / 1000.0}}
+	payload["updated_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(memory.UpdatedAt.UnixMilli()) / 1000.0}}
 	payload["access_count"] = &qdrant.Value{Kind: &qdrant.Value_IntegerValue{IntegerValue: int64(memory.AccessCount)}}
 
 	var keywordValues []*qdrant.Value
@@ -87,12 +87,12 @@ func (qc *QdrantClient) payloadToMemory(payload map[string]*qdrant.Value, id str
 	if err != nil {
 		return nil, err
 	}
-	memory.CreatedAt = time.Unix(int64(createdAt), 0)
+	memory.CreatedAt = time.UnixMilli(int64(createdAt * 1000))
 	updatedAt, err := getRequiredDouble(payload, "updated_at")
 	if err != nil {
 		return nil, err
 	}
-	memory.UpdatedAt = time.Unix(int64(updatedAt), 0)
+	memory.UpdatedAt = time.UnixMilli(int64(updatedAt * 1000))
 	accessCount, err := getRequiredInt(payload, "access_count")
 	if err != nil {
 		return nil, err
@@ -139,9 +139,9 @@ func (qc *QdrantClient) profileToPayload(profile *Profile) map[string]*qdrant.Va
 	payload["personality_summary"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: profile.PersonalitySummary}}
 	payload["message_count"] = &qdrant.Value{Kind: &qdrant.Value_IntegerValue{IntegerValue: int64(profile.MessageCount)}}
 	payload["memory_count"] = &qdrant.Value{Kind: &qdrant.Value_IntegerValue{IntegerValue: int64(profile.MemoryCount)}}
-	payload["first_seen_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(profile.FirstSeenAt.Unix())}}
-	payload["last_active_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(profile.LastActiveAt.Unix())}}
-	payload["last_consolidated_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(profile.LastConsolidatedAt.Unix())}}
+	payload["first_seen_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(profile.FirstSeenAt.UnixMilli()) / 1000.0}}
+	payload["last_active_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(profile.LastActiveAt.UnixMilli()) / 1000.0}}
+	payload["last_consolidated_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(profile.LastConsolidatedAt.UnixMilli()) / 1000.0}}
 
 	var traitValues []*qdrant.Value
 	for _, t := range profile.Traits {
@@ -209,17 +209,17 @@ func (qc *QdrantClient) payloadToProfile(payload map[string]*qdrant.Value, userI
 	if err != nil {
 		return nil, err
 	}
-	profile.FirstSeenAt = time.Unix(int64(firstSeenAt), 0)
+	profile.FirstSeenAt = time.UnixMilli(int64(firstSeenAt * 1000))
 	lastActiveAt, err := getRequiredDouble(payload, "last_active_at")
 	if err != nil {
 		return nil, err
 	}
-	profile.LastActiveAt = time.Unix(int64(lastActiveAt), 0)
+	profile.LastActiveAt = time.UnixMilli(int64(lastActiveAt * 1000))
 	lastConsolidatedAt, err := getRequiredDouble(payload, "last_consolidated_at")
 	if err != nil {
 		return nil, err
 	}
-	profile.LastConsolidatedAt = time.Unix(int64(lastConsolidatedAt), 0)
+	profile.LastConsolidatedAt = time.UnixMilli(int64(lastConsolidatedAt * 1000))
 
 	traits, err := getRequiredList(payload, "traits")
 	if err != nil {

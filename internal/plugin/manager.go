@@ -29,11 +29,12 @@ func NewManager(defaultToolTimeoutMs int, startupTimeoutSec int, rpcTimeoutSec i
 // Returns false if any plugin wants to block the message
 func (pm *Manager) OnMessage(ctx context.Context, msg types.DiscordMessage) (bool, error) {
 	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
 	plugins := make([]*Client, 0, len(pm.plugins))
 	for _, p := range pm.plugins {
 		plugins = append(plugins, p)
 	}
-	pm.mu.RUnlock()
 
 	// Sort by priority (highest first)
 	sort.Slice(plugins, func(i, j int) bool {
@@ -63,11 +64,12 @@ func (pm *Manager) OnMessage(ctx context.Context, msg types.DiscordMessage) (boo
 // OnResponse calls all plugins' OnResponse methods
 func (pm *Manager) OnResponse(ctx context.Context, msg types.DiscordMessage, response string) error {
 	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
 	plugins := make([]*Client, 0, len(pm.plugins))
 	for _, p := range pm.plugins {
 		plugins = append(plugins, p)
 	}
-	pm.mu.RUnlock()
 
 	args := ResponseArgs{
 		Message:  msg,
@@ -96,11 +98,12 @@ func (pm *Manager) BeforeSend(
 	response string,
 ) (string, []LocalFile, bool, error) {
 	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
 	plugins := make([]*Client, 0, len(pm.plugins))
 	for _, p := range pm.plugins {
 		plugins = append(plugins, p)
 	}
-	pm.mu.RUnlock()
 
 	sort.Slice(plugins, func(i, j int) bool {
 		return plugins[i].priority > plugins[j].priority

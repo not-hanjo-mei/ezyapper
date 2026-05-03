@@ -2,6 +2,9 @@ package bot
 
 import (
 	"testing"
+	"time"
+
+	"ezyapper/internal/types"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -81,4 +84,61 @@ func TestOnMessageReactionAddGuard(t *testing.T) {
 	assertNoPanic(t, func() {
 		b.onMessageReactionAdd(nil, nil)
 	})
+}
+
+func TestFromDiscordgo_ImageURLsPopulated(t *testing.T) {
+	m := &discordgo.MessageCreate{
+		Message: &discordgo.Message{
+			ID:        "msg-img-1",
+			ChannelID: "chan-1",
+			GuildID:   "guild-1",
+			Content:   "check this image",
+			Author: &discordgo.User{
+				ID:         "user-1",
+				Username:   "alice",
+				GlobalName: "Alice Display",
+			},
+			Timestamp: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+			Attachments: []*discordgo.MessageAttachment{
+				{
+					URL:         "https://cdn.discord.com/attachments/x/y/image.png",
+					ContentType: "image/png",
+				},
+			},
+		},
+	}
+
+	msg := types.FromDiscordgo(m)
+
+	if len(msg.ImageURLs) != 1 {
+		t.Errorf("expected 1 image URL, got %d", len(msg.ImageURLs))
+	}
+	if msg.ImageURLs[0] != "https://cdn.discord.com/attachments/x/y/image.png" {
+		t.Errorf("unexpected image URL: %s", msg.ImageURLs[0])
+	}
+
+	if msg.DisplayName != "Alice Display" {
+		t.Errorf("expected DisplayName 'Alice Display', got %q", msg.DisplayName)
+	}
+}
+
+func TestFromDiscordgo_NoImages(t *testing.T) {
+	m := &discordgo.MessageCreate{
+		Message: &discordgo.Message{
+			ID:        "msg-txt-1",
+			ChannelID: "chan-1",
+			GuildID:   "guild-1",
+			Content:   "plain text message",
+			Author: &discordgo.User{
+				ID:       "user-1",
+				Username: "bob",
+			},
+		},
+	}
+
+	msg := types.FromDiscordgo(m)
+
+	if len(msg.ImageURLs) != 0 {
+		t.Errorf("expected 0 image URLs, got %d", len(msg.ImageURLs))
+	}
 }

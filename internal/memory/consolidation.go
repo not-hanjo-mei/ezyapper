@@ -36,9 +36,6 @@ type visionDescriber interface {
 	DescribeImages(ctx context.Context, imageURLs []string) ([]string, error)
 }
 
-// embedSleep overrides time.Sleep for retry tests. Nil means use real timers.
-var embedSleep func(time.Duration)
-
 // Consolidator extracts and stores memories from conversation context using LLM analysis.
 type Consolidator struct {
 	qdrant            qdrantStore
@@ -94,154 +91,6 @@ func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient aiChatCom
 		retryMaxRetries:   retryMaxRetries,
 		retryBaseDelay:    time.Duration(retryBaseDelayMs) * time.Millisecond,
 		retryMaxDelay:     time.Duration(retryMaxDelayMs) * time.Millisecond,
-	}
-}
-
-// Process consolidates memories for a single user, updating their profile and storing extracted memories.
-func (c *Consolidator) Process(ctx context.Context, userID string) error {
-	start := time.Now()
-	logger.Infof("[consolidation] starting for user=%s", userID)
-
-	profile, err := c.getOrCreateProfile(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("getOrCreateProfile: %w", err)
-	}
-
-	memories, err := c.qdrant.GetMemoriesByUser(ctx, userID, c.memorySearchLimit)
-	if err != nil {
-		logger.Errorf("[consolidation] failed to get memories for user=%s: %v", userID, err)
-		return fmt.Errorf("failed to get memories: %w", err)
-	}
-	logger.Infof("[consolidation] retrieved %d existing memories for user=%s", len(memories), userID)
-
-	result, err := c.consolidateMemories(ctx, profile, memories)
-	if err != nil {
-		logger.Errorf("[consolidation] consolidation logic failed for user=%s: %v", userID, err)
-		return fmt.Errorf("consolidation failed: %w", err)
-	}
-
-	c.updateProfileFromResult(profile, result)
-	profile.LastConsolidatedAt = time.Now()
-
-	if err := c.qdrant.UpsertProfile(ctx, profile); err != nil {
-		logger.Errorf("[consolidation] failed to update profile for user=%s: %v", userID, err)
-		return fmt.Errorf("failed to update profile: %w", err)
-	}
-	logger.Infof("[consolidation] updated profile for user=%s", userID)
-
-	stored, err := c.storeMemories(ctx, userID, result.Memories)
-	if err != nil {
-		logger.Warnf("[consolidation] some memories failed to store for user=%s: %v", userID, err)
-	}
-
-	if stored > 0 {
-		profile.MemoryCount += stored
-		if err := c.qdrant.UpsertProfile(ctx, profile); err != nil {
-			logger.Warnf("[consolidation] failed to update memory_count for user=%s: %v", userID, err)
-		}
-	}
-
-	c.setLastConsolidatedAt(time.Now())
-
-	elapsed := time.Since(start)
-	logger.Infof("[consolidation] completed for user=%s duration=%s memories_stored=%d/%d",
-		userID, elapsed, stored, len(result.Memories))
-	return nil
-}
-
-func (c *Consolidator) consolidateMemories(ctx context.Context, profile *Profile, memories []*Record) (*ConsolidationResult, error) {
-	var memoryContext strings.Builder
-	for _, m := range memories {
-		if m.MemoryType == TypeSummary {
-			memoryContext.WriteString(m.Content)
-			memoryContext.WriteString("\n")
-		}
-	}
-
-	summary := c.generateSummary(profile, memoryContext.String())
-	extractedMemories := c.extractMemories(profile, summary)
-	delta := c.buildProfileDelta(profile, summary)
-
-	return &ConsolidationResult{
-		Summary:      summary,
-		ProfileDelta: delta,
-		Memories:     extractedMemories,
-	}, nil
-}
-
-func (c *Consolidator) generateSummary(profile *Profile, context string) string {
-	var parts []string
-
-	if profile.LastSummary != "" {
-		parts = append(parts, profile.LastSummary)
-	}
-
-	if len(profile.Traits) > 0 {
-		parts = append(parts, fmt.Sprintf("Traits: %s", strings.Join(profile.Traits, ", ")))
-	}
-
-	if len(profile.Facts) > 0 {
-		var facts []string
-		for k, v := range profile.Facts {
-			facts = append(facts, fmt.Sprintf("%s: %s", k, v))
-		}
-		parts = append(parts, fmt.Sprintf("Facts: %s", strings.Join(facts, ", ")))
-	}
-
-	if len(profile.Preferences) > 0 {
-		var prefs []string
-		for k, v := range profile.Preferences {
-			prefs = append(prefs, fmt.Sprintf("%s: %s", k, v))
-		}
-		parts = append(parts, fmt.Sprintf("Preferences: %s", strings.Join(prefs, ", ")))
-	}
-
-	if context != "" {
-		parts = append(parts, fmt.Sprintf("Recent context: %s", context))
-	}
-
-	return strings.Join(parts, "; ")
-}
-
-func (c *Consolidator) extractMemories(profile *Profile, summary string) []Extract {
-	var extracts []Extract
-
-	for _, trait := range profile.Traits {
-		extracts = append(extracts, Extract{
-			Content:    fmt.Sprintf("User is %s", trait),
-			Type:       string(TypeFact),
-			Confidence: 0.8,
-			Keywords:   []string{"trait", trait},
-		})
-	}
-
-	for key, value := range profile.Facts {
-		extracts = append(extracts, Extract{
-			Content:    fmt.Sprintf("User's %s is %s", key, value),
-			Type:       string(TypeFact),
-			Confidence: 0.9,
-			Keywords:   []string{"fact", key, value},
-		})
-	}
-
-	for key, value := range profile.Preferences {
-		extracts = append(extracts, Extract{
-			Content:    fmt.Sprintf("User prefers %s: %s", key, value),
-			Type:       string(TypeFact),
-			Confidence: 0.85,
-			Keywords:   []string{"preference", key, value},
-		})
-	}
-
-	return extracts
-}
-
-func (c *Consolidator) buildProfileDelta(profile *Profile, summary string) ProfileDelta {
-	return ProfileDelta{
-		NewTraits:      profile.Traits,
-		NewFacts:       profile.Facts,
-		NewPreferences: profile.Preferences,
-		NewInterests:   profile.Interests,
 	}
 }
 
@@ -352,7 +201,10 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 
 	stored, err := c.storeMemories(ctx, userID, extracted)
 	if err != nil {
-		logger.Warnf("[consolidation] some memories failed to store for user=%s: %v", userID, err)
+		if stored == 0 {
+			return fmt.Errorf("failed to store memories for user=%s: %w", userID, err)
+		}
+		logger.Warnf("[consolidation] partial failure storing memories for user=%s: %v", userID, err)
 	}
 
 	if stored > 0 {
@@ -452,6 +304,7 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 
 	// Store memories for each user
 	totalStored := 0
+	var allErrs []error
 	for _, userExtract := range batchExtracts {
 		userID := userExtract.UserID
 		extracts := userExtract.Memories
@@ -476,7 +329,11 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 
 		stored, err := c.storeMemories(ctx, userID, extracts)
 		if err != nil {
-			logger.Warnf("[consolidation] some memories failed to store for user=%s: %v", userID, err)
+			if stored == 0 {
+				allErrs = append(allErrs, fmt.Errorf("user=%s: %w", userID, err))
+				continue
+			}
+			logger.Warnf("[consolidation] partial failure storing memories for user=%s: %v", userID, err)
 		}
 		if stored > 0 {
 			profile.MemoryCount += stored
@@ -493,6 +350,10 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 	elapsed := time.Since(start)
 	logger.Infof("[consolidation] completed batch consolidation for channel=%s duration=%s messages=%d users=%d total_memories=%d",
 		channelID, elapsed, len(messages), len(targetUserIDs), totalStored)
+
+	if len(allErrs) > 0 {
+		return fmt.Errorf("batch consolidation partial failures: %w", errors.Join(allErrs...))
+	}
 	return nil
 }
 
@@ -655,6 +516,11 @@ func (c *Consolidator) analyzeConversationBatch(ctx context.Context, conversatio
 }
 
 func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []Extract) {
+	// TODO: Heuristic extraction uses English-only strings.Contains patterns
+	// ("name is", "lives in", "software engineer", etc.). This fragile approach
+	// should be replaced with structured LLM output parsing that supports any
+	// language the LLM produces. The function currently only works for English
+	// conversation extracts.
 	interestsAdded := 0
 	factsAdded := 0
 
@@ -750,30 +616,5 @@ func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []
 	}
 	if interestsAdded > 0 {
 		logger.Infof("[consolidation] added %d new interests to profile for user=%s", interestsAdded, profile.UserID)
-	}
-}
-
-func (c *Consolidator) updateProfileFromResult(profile *Profile, result *ConsolidationResult) {
-	profile.LastSummary = result.Summary
-	// MemoryCount is updated AFTER storage in Process() — not here
-
-	for _, trait := range result.ProfileDelta.NewTraits {
-		if !utils.Contains(profile.Traits, trait) {
-			profile.Traits = append(profile.Traits, trait)
-		}
-	}
-
-	for k, v := range result.ProfileDelta.NewFacts {
-		profile.Facts[k] = v
-	}
-
-	for k, v := range result.ProfileDelta.NewPreferences {
-		profile.Preferences[k] = v
-	}
-
-	for _, interest := range result.ProfileDelta.NewInterests {
-		if !utils.Contains(profile.Interests, interest) {
-			profile.Interests = append(profile.Interests, interest)
-		}
 	}
 }

@@ -99,7 +99,10 @@ func TestExtractLimit_Negative(t *testing.T) {
 // --- marshalJSON tests ---
 
 func TestMarshalJSON_Basic(t *testing.T) {
-	result := marshalJSON(map[string]interface{}{"hello": "world"})
+	result, err := marshalJSON(map[string]interface{}{"hello": "world"})
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
 	if !strings.Contains(result, "hello") {
 		t.Fatalf("expected JSON, got: %s", result)
 	}
@@ -109,9 +112,12 @@ func TestMarshalJSON_Basic(t *testing.T) {
 }
 
 func TestMarshalJSON_Error(t *testing.T) {
-	result := marshalJSON(make(chan int))
-	if !strings.Contains(result, "error") {
-		t.Fatalf("expected error message, got: %s", result)
+	_, err := marshalJSON(make(chan int))
+	if err == nil {
+		t.Fatal("expected error for unmarshalable type, got nil")
+	}
+	if !strings.Contains(err.Error(), "failed to marshal result") {
+		t.Fatalf("expected marshal error, got: %v", err)
 	}
 }
 
@@ -305,5 +311,19 @@ func TestNewDiscordTools_WithSession(t *testing.T) {
 	dt := NewDiscordTools(session)
 	if dt.session != session {
 		t.Fatal("expected populated session")
+	}
+}
+
+func TestMarshalJSON_PropagatesErrorToHandler(t *testing.T) {
+	handler := func(ctx context.Context, args map[string]any) (string, error) {
+		return marshalJSON(make(chan int))
+	}
+
+	result, err := handler(context.Background(), nil)
+	if err == nil {
+		t.Fatalf("expected error for unmarshalable type, got success with result: %q", result)
+	}
+	if !strings.Contains(err.Error(), "failed to marshal result") {
+		t.Fatalf("expected marshal error, got: %v", err)
 	}
 }

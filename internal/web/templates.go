@@ -110,15 +110,16 @@ func formatDuration(seconds int64) string {
 	d := time.Duration(seconds) * time.Second
 	h := int(d.Hours())
 	m := int(d.Minutes()) % 60
+	s := int(seconds % 60)
 	if h > 24 {
 		days := h / 24
 		h = h % 24
-		return fmt.Sprintf("%dd %dh", days, h)
+		return fmt.Sprintf("%dd %dh %dm %ds", days, h, m, s)
 	}
 	if h > 0 {
-		return fmt.Sprintf("%dh %dm", h, m)
+		return fmt.Sprintf("%dh %dm %ds", h, m, s)
 	}
-	return fmt.Sprintf("%dm", m)
+	return fmt.Sprintf("%dm %ds", m, s)
 }
 
 func dictFunc(values ...any) (map[string]any, error) {

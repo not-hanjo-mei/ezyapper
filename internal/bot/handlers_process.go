@@ -15,11 +15,13 @@ import (
 
 // processMessageWithoutImages processes a message without image handling (text-only mode).
 func (b *Bot) processMessageWithoutImages(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, recentMessages []*types.DiscordMessage) {
+	defer b.wg.Done()
 	b.processMessageCore(ctx, s, m, pm, false, recentMessages)
 }
 
 // processMessage processes a message and generates a response (with image handling).
 func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, recentMessages []*types.DiscordMessage) {
+	defer b.wg.Done()
 	b.processMessageCore(ctx, s, m, pm, true, recentMessages)
 }
 

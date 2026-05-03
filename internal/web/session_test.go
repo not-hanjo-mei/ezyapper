@@ -365,7 +365,7 @@ func TestLoginHandler_GET_RedirectsAuthenticated(t *testing.T) {
 		t.Fatalf("CreateSession failed: %v", err)
 	}
 
-	handler := LoginHandler(store, "admin", "secret", testLoginTemplate())
+	handler := LoginHandler(store, "admin", "secret", testLoginTemplate(), 30)
 
 	// Create request with session in context (simulating middleware)
 	r := httptest.NewRequest("GET", "/login", nil)
@@ -388,7 +388,7 @@ func TestLoginHandler_GET_RendersForm(t *testing.T) {
 	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
-	handler := LoginHandler(store, "admin", "secret", testLoginTemplate())
+	handler := LoginHandler(store, "admin", "secret", testLoginTemplate(), 30)
 
 	r := httptest.NewRequest("GET", "/login", nil)
 	rr := httptest.NewRecorder()
@@ -491,7 +491,7 @@ func TestLoginLogoutFlow(t *testing.T) {
 	defer store.Stop()
 
 	tmpl := testLoginTemplate()
-	loginHandler := LoginHandler(store, "admin", "secret", tmpl)
+	loginHandler := LoginHandler(store, "admin", "secret", tmpl, 30)
 	logoutHandler := LogoutHandler(store)
 
 	mux := http.NewServeMux()
@@ -606,7 +606,7 @@ func TestLoginHandler_RejectsPUT(t *testing.T) {
 	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
-	handler := LoginHandler(store, "admin", "secret", testLoginTemplate())
+	handler := LoginHandler(store, "admin", "secret", testLoginTemplate(), 30)
 
 	r := httptest.NewRequest("PUT", "/login", nil)
 	rr := httptest.NewRecorder()

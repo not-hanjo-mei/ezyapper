@@ -27,9 +27,6 @@ func discordIDToUint64(discordID string) (uint64, error) {
 	return id, nil
 }
 
-// retrySleep overrides time.Sleep for tests. Nil means use real time.Sleep.
-var retrySleep func(time.Duration)
-
 // QdrantClient wraps the Qdrant client
 type QdrantClient struct {
 	client      *qdrant.Client
@@ -315,8 +312,8 @@ func (qc *QdrantClient) GetMemoriesByUser(ctx context.Context, userID string, li
 		},
 	}
 
-	limitPtr := uint64(limit)
-	results, err := qc.client.Query(ctx, &qdrant.QueryPoints{
+	limitPtr := uint32(limit)
+	results, err := qc.client.Scroll(ctx, &qdrant.ScrollPoints{
 		CollectionName: CollectionMemories,
 		Filter:         filter,
 		Limit:          &limitPtr,
@@ -421,8 +418,9 @@ func (qc *QdrantClient) UpsertProfile(ctx context.Context, profile *Profile) err
 	payload := qc.profileToPayload(profile)
 
 	embedding := profile.Embedding
-	if len(embedding) == 0 {
-		embedding = make([]float32, qc.vectorSize)
+	var vectors *qdrant.Vectors
+	if len(embedding) > 0 {
+		vectors = qdrant.NewVectors(embedding...)
 	}
 
 	numID, err := discordIDToUint64(profile.UserID)
@@ -436,7 +434,7 @@ func (qc *QdrantClient) UpsertProfile(ctx context.Context, profile *Profile) err
 			Points: []*qdrant.PointStruct{
 				{
 					Id:      qdrant.NewIDNum(numID),
-					Vectors: qdrant.NewVectors(embedding...),
+					Vectors: vectors,
 					Payload: payload,
 				},
 			},

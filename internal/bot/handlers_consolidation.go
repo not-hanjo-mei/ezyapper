@@ -28,13 +28,8 @@ func (b *Bot) triggerChannelConsolidation(ctx context.Context, channelID string,
 
 	logger.Infof("[consolidation] triggering for channel=%s: count=%d >= interval=%d", channelID, count, b.cfg().Memory.ConsolidationInterval)
 
-	triggerCount := count
-	if triggerCount < b.cfg().Memory.ConsolidationInterval {
-		triggerCount = b.cfg().Memory.ConsolidationInterval
-	}
-
 	b.wg.Add(1)
-	go func(consumedCount int) {
+	go func() {
 		defer b.wg.Done()
 
 		defer func() {
@@ -43,15 +38,7 @@ func (b *Bot) triggerChannelConsolidation(ctx context.Context, channelID string,
 			}
 		}()
 
-		defer func() {
-			remaining := b.consolidation.ConsumeChannelMessageCount(channelID, consumedCount)
-			b.finishChannelConsolidation(channelID)
-			if remaining >= b.cfg().Memory.ConsolidationInterval {
-				b.triggerChannelConsolidation(b.ctx, channelID, remaining)
-			}
-		}()
-
-		consolidationCtx, cancel := context.WithTimeout(b.ctx, time.Duration(b.cfg().Discord.ConsolidationTimeoutSec)*time.Second)
+		consolidationCtx, cancel := context.WithTimeout(ctx, time.Duration(b.cfg().Discord.ConsolidationTimeoutSec)*time.Second)
 		defer cancel()
 
 		channelMessages := b.getAndClearChannelMessageBuffer(channelID)
@@ -60,6 +47,7 @@ func (b *Bot) triggerChannelConsolidation(ctx context.Context, channelID string,
 			fetchedMessages, err := b.discordClient.FetchChannelMessages(consolidationCtx, channelID, b.cfg().Memory.ConsolidationInterval)
 			if err != nil {
 				logger.Warnf("[consolidation] failed to fetch messages from Discord for channel=%s: %v", channelID, err)
+				b.finishChannelConsolidation(channelID)
 				return
 			}
 			channelMessages = fetchedMessages
@@ -67,8 +55,20 @@ func (b *Bot) triggerChannelConsolidation(ctx context.Context, channelID string,
 
 		if len(channelMessages) == 0 {
 			logger.Warnf("[consolidation] no messages available for channel=%s", channelID)
+			b.finishChannelConsolidation(channelID)
 			return
 		}
+
+		// Consume counter by actual number of messages processed — not by trigger-time
+		// count which may have diverged due to concurrent buffer/counter mutations.
+		consumed := len(channelMessages)
+		defer func() {
+			remaining := b.consolidation.ConsumeChannelMessageCount(channelID, consumed)
+			b.finishChannelConsolidation(channelID)
+			if remaining >= b.cfg().Memory.ConsolidationInterval {
+				b.triggerChannelConsolidation(b.ctx, channelID, remaining)
+			}
+		}()
 
 		logger.Infof("[consolidation] starting batch for channel=%s with %d messages", channelID, len(channelMessages))
 		if err := b.consolidation.ConsolidateChannel(consolidationCtx, channelID, channelMessages); err != nil {
@@ -76,5 +76,5 @@ func (b *Bot) triggerChannelConsolidation(ctx context.Context, channelID string,
 		} else {
 			logger.Infof("[consolidation] completed successfully for channel=%s", channelID)
 		}
-	}(triggerCount)
+	}()
 }

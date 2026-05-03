@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"ezyapper/internal/types"
@@ -40,6 +41,7 @@ type stdioJSONRPCClient struct {
 	dec    *json.Decoder
 	mu     sync.Mutex
 	nextID int64
+	dead   atomic.Bool
 }
 
 func newStdioJSONRPCClient(stdin io.WriteCloser, stdout io.ReadCloser) *stdioJSONRPCClient {
@@ -68,6 +70,10 @@ func (c *stdioJSONRPCClient) Close() {
 func (c *stdioJSONRPCClient) Call(method string, params interface{}, reply interface{}) error {
 	if c == nil {
 		return fmt.Errorf("jsonrpc client is nil")
+	}
+
+	if c.dead.Load() {
+		return fmt.Errorf("jsonrpc client is dead: transport timed out and connection is stale")
 	}
 
 	c.mu.Lock()

@@ -10,10 +10,12 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"ezyapper/internal/logger"
+	"ezyapper/internal/types"
 )
 
 func TestMain(m *testing.M) {
@@ -700,4 +702,185 @@ func TestExecuteCommandTool_PerToolTimeout(t *testing.T) {
 	if elapsed > 5*time.Second {
 		t.Fatalf("expected timeout within ~2 seconds (per-tool), but took %v (global fallback?)", elapsed)
 	}
+}
+
+func TestConcurrentExecuteToolAndDisablePluginNoPanic(t *testing.T) {
+	jsonClient, cleanup := newMockJSONRPCClient(200 * time.Millisecond)
+	t.Cleanup(cleanup)
+
+	pm := NewManager(10000, 90, 5, 180, 45, 5, 2)
+	pm.plugins["test"] = &Client{
+		Name:    "test",
+		jsonrpc: jsonClient,
+		runtime: pluginRuntimeJSONRPC,
+		tools: []ToolSpec{
+			{Name: "tool", Description: "test tool", TimeoutMs: 5000},
+		},
+		priority: 10,
+	}
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, err := pm.ExecuteTool("test", "tool", map[string]interface{}{})
+		errCh <- err
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := pm.DisablePlugin("test")
+		errCh <- err
+	}()
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			t.Logf("operation error (expected): %v", err)
+		}
+	}
+}
+
+func TestConcurrentOnMessageAndDisablePluginNoPanic(t *testing.T) {
+	jsonClient, cleanup := newMockJSONRPCClient(200 * time.Millisecond)
+	t.Cleanup(cleanup)
+
+	pm := NewManager(10000, 90, 5, 180, 45, 5, 2)
+	pm.plugins["test"] = &Client{
+		Name:    "test",
+		Info:    Info{Name: "test", Priority: 10},
+		jsonrpc: jsonClient,
+		runtime: pluginRuntimeJSONRPC,
+		tools: []ToolSpec{
+			{Name: "tool", Description: "test tool", TimeoutMs: 5000},
+		},
+		priority: 10,
+	}
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, err := pm.OnMessage(context.Background(), types.DiscordMessage{Username: "user", Content: "hello"})
+		if err != nil {
+			t.Logf("OnMessage error (expected): %v", err)
+		}
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := pm.DisablePlugin("test")
+		if err != nil {
+			t.Logf("DisablePlugin error (expected): %v", err)
+		}
+	}()
+
+	wg.Wait()
+}
+
+func TestWaitForPending_SuccessWhenNoPendingOperations(t *testing.T) {
+	pm := NewManager(0, 90, 5, 180, 45, 1, 2)
+
+	err := pm.WaitForPending()
+	if err != nil {
+		t.Fatalf("expected nil error for no pending operations, got %v", err)
+	}
+}
+
+func TestWaitForPending_TimeoutWhenOperationsBlocking(t *testing.T) {
+	pm := NewManager(0, 90, 5, 180, 45, 1, 2)
+
+	pm.wg.Add(1)
+
+	err := pm.WaitForPending()
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if !strings.Contains(err.Error(), "timeout waiting for pending plugin operations") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	pm.wg.Done()
+}
+
+func TestWaitForPending_RecoversFromPanic(t *testing.T) {
+	pm := NewManager(0, 90, 5, 180, 45, 1, 2)
+
+	err := pm.WaitForPending()
+	if err != nil {
+		t.Fatalf("expected nil error for no pending operations, got %v", err)
+	}
+
+	pm.wg.Add(1)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- pm.WaitForPending()
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected timeout error, got nil")
+		}
+		if !strings.Contains(err.Error(), "timeout waiting for pending plugin operations") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("WaitForPending did not return within 5 seconds (deadlock or crash)")
+	}
+
+	pm.wg.Done()
+}
+
+func TestConcurrentBeforeSendAndDisablePluginNoPanic(t *testing.T) {
+	jsonClient, cleanup := newMockJSONRPCClient(200 * time.Millisecond)
+	t.Cleanup(cleanup)
+
+	pm := NewManager(10000, 90, 5, 180, 45, 5, 2)
+	pm.plugins["test"] = &Client{
+		Name:    "test",
+		Info:    Info{Name: "test", Priority: 10},
+		jsonrpc: jsonClient,
+		runtime: pluginRuntimeJSONRPC,
+		tools: []ToolSpec{
+			{Name: "tool", Description: "test tool", TimeoutMs: 5000},
+		},
+		priority: 10,
+	}
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, _, _, err := pm.BeforeSend(context.Background(), types.DiscordMessage{Username: "user", Content: "hello"}, "response")
+		if err != nil {
+			t.Logf("BeforeSend error (expected): %v", err)
+		}
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := pm.DisablePlugin("test")
+		if err != nil {
+			t.Logf("DisablePlugin error (expected): %v", err)
+		}
+	}()
+
+	wg.Wait()
 }

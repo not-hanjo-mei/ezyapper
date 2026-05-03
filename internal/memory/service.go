@@ -54,9 +54,6 @@ type ProfileStore interface {
 
 // ConsolidationManager groups consolidation trigger and execution operations.
 type ConsolidationManager interface {
-	// Consolidate executes consolidation for a user
-	Consolidate(ctx context.Context, userID string) error
-
 	// ConsolidateWithMessages executes consolidation with provided messages
 	ConsolidateWithMessages(ctx context.Context, userID string, messages []*DiscordMessage) error
 
@@ -98,7 +95,6 @@ type MemoryService struct {
 	consolidator *Consolidator
 	embedder     Embedder
 	config       *ServiceConfig
-	worker       *Worker
 
 	// Message counters for consolidation triggering (user-level for backward compat)
 	messageCounters map[string]int
@@ -120,7 +116,6 @@ type ServiceConfig struct {
 	Consolidation         *config.ConsolidationConfig
 	OwnBotID              string // Bot's own Discord ID to distinguish from other bots
 	MemorySearchLimit     int
-	WorkerQueueSize       int
 	MaxPaginatedLimit     int
 	RetryMaxRetries       int
 	RetryBaseDelayMs      int
@@ -172,8 +167,6 @@ func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedde
 	}
 
 	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, vd, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit, cfg.RetryMaxRetries, cfg.RetryBaseDelayMs, cfg.RetryMaxDelayMs)
-	service.worker = NewWorker(service.consolidator, cfg.WorkerQueueSize)
-	service.worker.Start(context.Background())
 
 	logger.Info("Memory service initialized")
 	return service, nil
@@ -361,17 +354,6 @@ func (s *MemoryService) DeleteUserData(ctx context.Context, userID string) error
 	return nil
 }
 
-// Consolidate executes consolidation for a user
-func (s *MemoryService) Consolidate(ctx context.Context, userID string) error {
-	logger.Infof("[MemoryService.Consolidate] starting consolidation for userID=%s", userID)
-	if err := s.consolidator.Process(ctx, userID); err != nil {
-		logger.Errorf("[MemoryService.Consolidate] consolidation failed for userID=%s: %v", userID, err)
-		return err
-	}
-	logger.Infof("[MemoryService.Consolidate] completed consolidation for userID=%s", userID)
-	return nil
-}
-
 // ConsolidateWithMessages executes consolidation with provided messages
 func (s *MemoryService) ConsolidateWithMessages(ctx context.Context, userID string, messages []*DiscordMessage) error {
 	logger.Infof("[MemoryService.ConsolidateWithMessages] starting consolidation for userID=%s with %d messages", userID, len(messages))
@@ -386,10 +368,9 @@ func (s *MemoryService) ConsolidateWithMessages(ctx context.Context, userID stri
 // IncrementMessageCount increments the message counter and checks if consolidation should trigger
 func (s *MemoryService) IncrementMessageCount(ctx context.Context, userID string) (int, error) {
 	s.counterMu.Lock()
-	defer s.counterMu.Unlock()
-
 	s.messageCounters[userID]++
 	count := s.messageCounters[userID]
+	s.counterMu.Unlock()
 
 	logger.Debugf("[MemoryService.IncrementMessageCount] userID=%s count=%d/%d", userID, count, s.consolidationInterval)
 
@@ -541,6 +522,5 @@ func (s *MemoryService) GetUserStats(ctx context.Context, userID string) (*UserS
 
 // Close closes the service and its connections
 func (s *MemoryService) Close() error {
-	s.worker.Stop()
 	return s.qdrant.Close()
 }

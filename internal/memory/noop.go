@@ -47,8 +47,6 @@ func (s *NoopService) DeleteMemory(ctx context.Context, memoryID string) error {
 
 func (s *NoopService) DeleteUserData(ctx context.Context, userID string) error { return nil }
 
-func (s *NoopService) Consolidate(ctx context.Context, userID string) error { return nil }
-
 func (s *NoopService) ConsolidateWithMessages(ctx context.Context, userID string, messages []*DiscordMessage) error {
 	return nil
 }

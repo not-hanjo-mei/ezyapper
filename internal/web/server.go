@@ -185,7 +185,7 @@ func (s *Server) setupRoutes() {
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
 
 	// Auth routes (excluded from session requirement via SessionMiddleware)
-	mux.HandleFunc("/login", LoginHandler(s.sessionStore, s.cfg().Web.Username, s.cfg().Web.Password, ts.Login()))
+	mux.HandleFunc("/login", LoginHandler(s.sessionStore, s.cfg().Web.Username, s.cfg().Web.Password, ts.Login(), s.cfg().Web.SessionTTLMin))
 	mux.HandleFunc("/logout", LogoutHandler(s.sessionStore))
 
 	// Dashboard

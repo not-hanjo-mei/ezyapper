@@ -11,6 +11,8 @@ import (
 	"sort"
 	"sync"
 
+	"ezyapper/internal/logger"
+
 	openai "github.com/sashabaranov/go-openai"
 )
 
@@ -113,23 +115,30 @@ func (r *ToolRegistry) rebuildSchemaLocked() {
 	}
 
 	r.cachedSchema = tools
-	r.schemaHash = computeToolSchemaHash(tools)
+	hash, err := computeToolSchemaHash(tools)
+	if err != nil {
+		// Schema hash is non-critical; log warning and continue
+		logger.Warnf("failed to compute tool schema hash: %v", err)
+	}
+	r.schemaHash = hash
 }
 
 // computeToolSchemaHash generates a SHA-256 hash of the tool schema
 // for use as a cache key identifier.
-func computeToolSchemaHash(tools []openai.Tool) string {
+func computeToolSchemaHash(tools []openai.Tool) (string, error) {
 	h := sha256.New()
 	for _, tool := range tools {
 		if tool.Function != nil {
 			h.Write([]byte(tool.Function.Name))
 			h.Write([]byte(tool.Function.Description))
-			if params, err := json.Marshal(tool.Function.Parameters); err == nil {
-				h.Write(params)
+			params, err := json.Marshal(tool.Function.Parameters)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal tool parameters for %q: %w", tool.Function.Name, err)
 			}
+			h.Write(params)
 		}
 	}
-	return hex.EncodeToString(h.Sum(nil))[:16]
+	return hex.EncodeToString(h.Sum(nil))[:16], nil
 }
 
 // HandleToolCall processes a tool call from the LLM and executes the corresponding tool

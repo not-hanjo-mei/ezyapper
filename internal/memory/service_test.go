@@ -35,7 +35,6 @@ func TestNewService_Valid(t *testing.T) {
 			Model:        "gpt-4",
 			SystemPrompt: "test",
 		},
-		WorkerQueueSize: 100,
 	}
 	svc, err := NewService(cfg, &QdrantClient{}, emb, nil, nil)
 	if err != nil {
@@ -54,7 +53,6 @@ func TestNewService_NilQdrant(t *testing.T) {
 		TopK:                  5,
 		MinScore:              0.5,
 		Consolidation:         &config.ConsolidationConfig{Model: "gpt-4", SystemPrompt: "test"},
-		WorkerQueueSize:       100,
 	}
 	_, err := NewService(cfg, nil, &svcEmbedder{}, nil, nil)
 	if err == nil {
@@ -72,7 +70,6 @@ func TestNewService_NilEmbedder(t *testing.T) {
 		TopK:                  5,
 		MinScore:              0.5,
 		Consolidation:         &config.ConsolidationConfig{Model: "gpt-4", SystemPrompt: "test"},
-		WorkerQueueSize:       100,
 	}
 	_, err := NewService(cfg, &QdrantClient{}, nil, nil, nil)
 	if err == nil {
@@ -87,7 +84,6 @@ func TestNewService_InvalidConsolidationInterval(t *testing.T) {
 		TopK:                  5,
 		MinScore:              0.5,
 		Consolidation:         &config.ConsolidationConfig{Model: "gpt-4", SystemPrompt: "test"},
-		WorkerQueueSize:       100,
 	}
 	_, err := NewService(cfg, &QdrantClient{}, &svcEmbedder{}, nil, nil)
 	if err == nil {
@@ -102,7 +98,6 @@ func TestNewService_InvalidShortTermLimit(t *testing.T) {
 		TopK:                  5,
 		MinScore:              0.5,
 		Consolidation:         &config.ConsolidationConfig{Model: "gpt-4", SystemPrompt: "test"},
-		WorkerQueueSize:       100,
 	}
 	_, err := NewService(cfg, &QdrantClient{}, &svcEmbedder{}, nil, nil)
 	if err == nil {
@@ -117,7 +112,6 @@ func TestNewService_InvalidTopK(t *testing.T) {
 		TopK:                  -1,
 		MinScore:              0.5,
 		Consolidation:         &config.ConsolidationConfig{Model: "gpt-4", SystemPrompt: "test"},
-		WorkerQueueSize:       100,
 	}
 	_, err := NewService(cfg, &QdrantClient{}, &svcEmbedder{}, nil, nil)
 	if err == nil {
@@ -132,7 +126,6 @@ func TestNewService_InvalidMinScore(t *testing.T) {
 		TopK:                  5,
 		MinScore:              2.0,
 		Consolidation:         &config.ConsolidationConfig{Model: "gpt-4", SystemPrompt: "test"},
-		WorkerQueueSize:       100,
 	}
 	_, err := NewService(cfg, &QdrantClient{}, &svcEmbedder{}, nil, nil)
 	if err == nil {
@@ -147,7 +140,6 @@ func TestNewService_NilConsolidationConfig(t *testing.T) {
 		TopK:                  5,
 		MinScore:              0.5,
 		Consolidation:         nil,
-		WorkerQueueSize:       100,
 	}
 	_, err := NewService(cfg, &QdrantClient{}, &svcEmbedder{}, nil, nil)
 	if err == nil {

@@ -351,6 +351,32 @@ func TestPluginsHandler_MethodNotAllowed(t *testing.T) {
 	}
 }
 
+func TestTogglePlugin_NoRefresher_NoPanic(t *testing.T) {
+	mgr := &mockPluginMgr{
+		plugins: []plugin.InfoExt{
+			{Info: plugin.Info{Name: "greeter", Version: "1.0.0", Author: "test", Description: "A greeting plugin"}, Enabled: false},
+		},
+	}
+	tmpl := testPluginsTemplate()
+	handler := PluginsHandler(mgr, nil, tmpl)
+
+	form := url.Values{"name": {"greeter"}, "action": {"enable"}}
+	req := httptest.NewRequest(http.MethodPost, "/plugins/toggle", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = requestWithCSRF(req)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Errorf("expected status 303, got %d. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	if !mgr.plugins[0].Enabled {
+		t.Error("expected plugin to be enabled after toggle (nil refresher)")
+	}
+}
+
 func TestTogglePlugin_Enable_FlashMessage(t *testing.T) {
 	mgr := &mockPluginMgr{
 		plugins: []plugin.InfoExt{

@@ -50,14 +50,20 @@ func TestGetStringArg_EmptyKey(t *testing.T) {
 }
 
 func TestMarshalJSON_Numeric(t *testing.T) {
-	result := marshalJSON(map[string]interface{}{"count": 42})
+	result, err := marshalJSON(map[string]interface{}{"count": 42})
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
 	if !strings.Contains(result, "42") {
 		t.Fatalf("expected 42 in JSON: %s", result)
 	}
 }
 
 func TestMarshalJSON_Array(t *testing.T) {
-	result := marshalJSON([]string{"a", "b", "c"})
+	result, err := marshalJSON([]string{"a", "b", "c"})
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
 	if !strings.Contains(result, "a") || !strings.Contains(result, "b") {
 		t.Fatalf("expected array: %s", result)
 	}

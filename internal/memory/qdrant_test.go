@@ -12,6 +12,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+var retrySleep func(time.Duration) // test-only override for retry sleep; unused in production
+
 // retryableCounter is a callable function that returns a retryable error
 // for the first `failCount` calls, then succeeds.
 type retryableCounter struct {

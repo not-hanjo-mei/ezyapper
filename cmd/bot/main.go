@@ -211,7 +211,6 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 		Consolidation:         &cfg.Memory.Consolidation,
 		OwnBotID:              cfg.Discord.OwnBotID,
 		MemorySearchLimit:     cfg.Memory.Consolidation.MemorySearchLimit,
-		WorkerQueueSize:       cfg.Memory.Consolidation.WorkerQueueSize,
 		MaxPaginatedLimit:     cfg.Memory.MaxPaginatedLimit,
 		RetryMaxRetries:       cfg.Memory.MaxRetries,
 		RetryBaseDelayMs:      cfg.Memory.RetryBaseDelayMs,

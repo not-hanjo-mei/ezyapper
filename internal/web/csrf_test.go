@@ -503,3 +503,68 @@ func TestCSRFMiddleware_TamperedCookieRejected(t *testing.T) {
 		t.Errorf("Expected 403 for tampered cookie, got %d", resp.StatusCode)
 	}
 }
+
+func TestCSRFMiddleware_RejectsLogoutWithoutToken(t *testing.T) {
+	secret := []byte("test-secret-32-byte-key-for-hmac!")
+	handler := &csrfTestHandler{}
+	mw := CSRFMiddleware(secret)
+
+	ts := httptest.NewServer(mw(handler))
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/logout", "application/x-www-form-urlencoded", nil)
+	if err != nil {
+		t.Fatalf("POST /logout failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("Expected 403 for POST /logout without CSRF token, got %d", resp.StatusCode)
+	}
+	if handler.called {
+		t.Error("Handler should not have been called without CSRF token")
+	}
+}
+
+func TestCSRFMiddleware_AcceptsLogoutWithValidToken(t *testing.T) {
+	secret := []byte("test-secret-32-byte-key-for-hmac!")
+	handler := &csrfTestHandler{}
+	mw := CSRFMiddleware(secret)
+
+	ts := httptest.NewServer(mw(handler))
+	defer ts.Close()
+
+	getResp, err := http.Get(ts.URL + "/test")
+	if err != nil {
+		t.Fatalf("GET failed: %v", err)
+	}
+	getResp.Body.Close()
+
+	cookie := extractCookie(getResp, "csrf_token")
+	if cookie == nil {
+		t.Fatal("No csrf_token cookie in GET response")
+	}
+
+	handler.called = false
+	body := url.Values{"csrf_token": {cookie.Value}}.Encode()
+	req, err := http.NewRequest("POST", ts.URL+"/logout", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /logout request creation failed: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(cookie)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /logout failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected 200 for POST /logout with valid CSRF token, got %d", resp.StatusCode)
+	}
+	if !handler.called {
+		t.Error("Handler should have been called for POST /logout with valid token")
+	}
+}

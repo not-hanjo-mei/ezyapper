@@ -213,9 +213,9 @@ func (pm *Manager) ListTools() []PluginTool {
 // ExecuteTool executes a named tool on a specific plugin.
 func (pm *Manager) ExecuteTool(pluginName string, toolName string, args map[string]interface{}) (string, error) {
 	pm.mu.RLock()
-	plugin, exists := pm.plugins[pluginName]
-	pm.mu.RUnlock()
+	defer pm.mu.RUnlock()
 
+	plugin, exists := pm.plugins[pluginName]
 	if !exists {
 		return "", fmt.Errorf("plugin %s not found", pluginName)
 	}
@@ -251,7 +251,7 @@ func (pm *Manager) executeJSONRPCTool(plugin *Client, toolName string, args map[
 		source = "config"
 	}
 	if timeout == 0 {
-		return "", fmt.Errorf("tool %q has no timeout configured 鈥?set tool_timeouts in plugin config or operations.plugins.default_tool_timeout_ms in main config", toolName)
+		return "", fmt.Errorf("tool %q has no timeout configured — set tool_timeouts in plugin config or operations.plugins.default_tool_timeout_ms in main config", toolName)
 	}
 
 	logger.Debugf("[plugin] execute_tool %q timeout=%dms (source: %s)", toolName, timeout/time.Millisecond, source)
@@ -297,21 +297,18 @@ func (pm *Manager) executeCommandTool(plugin *Client, toolName string, args map[
 		commandArgs = append(commandArgs, argText)
 	}
 
-	var timeoutSec int
+	var timeout time.Duration
 	for _, t := range plugin.tools {
 		if t.Name == toolName && t.TimeoutMs > 0 {
-			timeoutSec = t.TimeoutMs / 1000
-			if t.TimeoutMs%1000 > 0 {
-				timeoutSec++ // round up to nearest second
-			}
+			timeout = time.Duration(t.TimeoutMs) * time.Millisecond
 			break
 		}
 	}
-	if timeoutSec == 0 {
-		timeoutSec = pm.commandTimeoutSec
+	if timeout == 0 {
+		timeout = time.Duration(pm.commandTimeoutSec) * time.Second
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, tool.CommandPath, commandArgs...)

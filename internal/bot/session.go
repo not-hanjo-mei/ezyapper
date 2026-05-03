@@ -786,17 +786,34 @@ func (b *Bot) getProcessingMessage(messageID string) *ProcessingMessage {
 	return b.processingMessages[messageID]
 }
 
-// removeProcessingMessage removes a message from processing tracking
+// removeProcessingMessage removes a message from processing tracking by messageID.
+// Prefer removeProcessingMessageIfMatch to avoid accidentally deleting a newly
+// registered ProcessingMessage when an old goroutine's cleanup runs after
+// a new one is registered (edit race condition).
 func (b *Bot) removeProcessingMessage(messageID string) {
 	b.processingMu.Lock()
 	defer b.processingMu.Unlock()
 	delete(b.processingMessages, messageID)
 }
 
-func (b *Bot) clearProcessingMessage(pm *ProcessingMessage, messageID string) {
-	if pm != nil {
-		b.removeProcessingMessage(messageID)
+// removeProcessingMessageIfMatch removes a processing message only if the
+// pointer currently stored in the map matches the provided pm pointer.
+// This prevents an old goroutine's cleanup from accidentally deleting
+// a newly registered ProcessingMessage that has the same messageID
+// (e.g., after a message edit triggers re-processing).
+func (b *Bot) removeProcessingMessageIfMatch(messageID string, pm *ProcessingMessage) {
+	if pm == nil {
+		return
 	}
+	b.processingMu.Lock()
+	defer b.processingMu.Unlock()
+	if existing, ok := b.processingMessages[messageID]; ok && existing == pm {
+		delete(b.processingMessages, messageID)
+	}
+}
+
+func (b *Bot) clearProcessingMessage(pm *ProcessingMessage, messageID string) {
+	b.removeProcessingMessageIfMatch(messageID, pm)
 }
 
 // handleEditedMessage handles a message edit event based on current processing phase
@@ -867,7 +884,10 @@ func (b *Bot) addMessageToChannelBuffer(channelID string, msg *types.DiscordMess
 	b.channelMessageBuffer[channelID] = append(b.channelMessageBuffer[channelID], msg)
 	logger.Debugf("[channel_buffer] added message for channel=%s, buffer_size=%d", channelID, len(b.channelMessageBuffer[channelID]))
 
-	maxBuffer := b.cfg().Memory.ConsolidationInterval * 2
+	maxBuffer := b.cfg().Memory.MaxBufferSize
+	if maxBuffer <= 0 {
+		maxBuffer = b.cfg().Memory.ConsolidationInterval * 2
+	}
 	if len(b.channelMessageBuffer[channelID]) > maxBuffer {
 		b.channelMessageBuffer[channelID] = b.channelMessageBuffer[channelID][len(b.channelMessageBuffer[channelID])-maxBuffer:]
 		logger.Warnf("[channel_buffer] truncated buffer for channel=%s to %d messages", channelID, maxBuffer)

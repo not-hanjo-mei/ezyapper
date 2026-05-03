@@ -106,21 +106,6 @@ type UserMemoryExtract struct {
 	Memories []Extract `json:"memories"`
 }
 
-// ConsolidationResult represents the result of a consolidation operation
-type ConsolidationResult struct {
-	Summary      string       `json:"summary"`
-	ProfileDelta ProfileDelta `json:"profile_delta"`
-	Memories     []Extract    `json:"memories"`
-}
-
-// ProfileDelta represents changes to a user profile
-type ProfileDelta struct {
-	NewTraits      []string          `json:"new_traits"`
-	NewFacts       map[string]string `json:"new_facts"`
-	NewPreferences map[string]string `json:"new_preferences"`
-	NewInterests   []string          `json:"new_interests"`
-}
-
 // DiscordMessage is an alias for the canonical type defined in internal/types.
 type DiscordMessage = types.DiscordMessage
 

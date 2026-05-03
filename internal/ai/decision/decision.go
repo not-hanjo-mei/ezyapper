@@ -80,10 +80,33 @@ func (d *DecisionService) closeIdleConnections() {
 	}
 }
 
+// retryableError checks if an error should trigger a retry.
+// Only 429 (rate limit), 5xx (server errors), and connection/timeout errors are retryable.
+// 400, 401, 403, 404 and other client errors are not retried.
+func retryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	// Rate limit errors
+	if strings.Contains(errStr, "429") || strings.Contains(errStr, "too many requests") {
+		return true
+	}
+	// Server errors
+	if strings.Contains(errStr, "500") || strings.Contains(errStr, "502") || strings.Contains(errStr, "503") || strings.Contains(errStr, "504") {
+		return true
+	}
+	// Connection errors
+	if strings.Contains(errStr, "connection refused") || strings.Contains(errStr, "timeout") || strings.Contains(errStr, "context deadline exceeded") || strings.Contains(errStr, "eof") {
+		return true
+	}
+	return false
+}
+
 // ShouldRespondWithInfo uses an LLM to decide whether the bot should respond to a message.
 func (d *DecisionService) ShouldRespondWithInfo(ctx context.Context, botName string, msgInfo MessageInfo, imageCount int, recentMessages []ContextMessage) (*DecisionResult, error) {
 	if !d.config.Enabled {
-		return &DecisionResult{ShouldRespond: false, Reason: "decision service disabled"}, nil
+		return &DecisionResult{ShouldRespond: true, Reason: "decision service disabled, falling back to random"}, nil
 	}
 
 	logger.Debugf("[decision] analyzing message:")
@@ -130,7 +153,7 @@ func (d *DecisionService) ShouldRespondWithInfo(ctx context.Context, botName str
 		return resp, err
 	},
 		retry.WithBaseDelay(100*time.Millisecond),
-		retry.WithIgnoreDeadlineExceeded(),
+		retry.WithErrorClassifier(retryableError),
 	)
 
 	if err != nil {

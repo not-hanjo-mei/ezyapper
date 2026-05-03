@@ -188,6 +188,7 @@ type EmbeddingConfig struct {
 
 type MemoryConfig struct {
 	ConsolidationInterval int                 `mapstructure:"consolidation_interval" yaml:"consolidation_interval"`
+	MaxBufferSize         int                 `mapstructure:"max_buffer_size" yaml:"max_buffer_size"`
 	ShortTermLimit        int                 `mapstructure:"short_term_limit" yaml:"short_term_limit"`
 	MaxPaginatedLimit     int                 `mapstructure:"max_paginated_limit" yaml:"max_paginated_limit"`
 	RetryBaseDelayMs      int                 `mapstructure:"retry_base_delay_ms" yaml:"retry_base_delay_ms"`
@@ -466,6 +467,9 @@ func validateQdrant(cfg *Config, errs *[]string) {
 
 func validateMemory(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Memory.ConsolidationInterval, "memory.consolidation_interval", errs)
+	if cfg.Memory.MaxBufferSize < 0 {
+		*errs = append(*errs, "memory.max_buffer_size must be greater than or equal to 0")
+	}
 	requirePositive(cfg.Memory.ShortTermLimit, "memory.short_term_limit", errs)
 	requirePositive(cfg.Memory.MaxPaginatedLimit, "memory.max_paginated_limit", errs)
 	if cfg.Memory.Retrieval.TopK < 0 {
@@ -509,7 +513,7 @@ func validateWeb(cfg *Config, errs *[]string) {
 
 func validatePlugins(cfg *Config, errs *[]string) {
 	if cfg.Plugins.DefaultToolTimeoutMs < 0 {
-		cfg.Plugins.DefaultToolTimeoutMs = 0
+		*errs = append(*errs, "plugins.default_tool_timeout_ms must be non-negative")
 	}
 	if !cfg.Plugins.Enabled {
 		return

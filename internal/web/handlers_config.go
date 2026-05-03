@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync/atomic"
 
 	"ezyapper/internal/config"
@@ -56,21 +57,32 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 			}
 			newCfg := *oldCfg
 
+			var parseErrs []string
+
 			if v := r.FormValue("bot_name"); v != "" {
 				newCfg.Discord.BotName = v
 			}
 			if v := r.FormValue("reply_percentage"); v != "" {
-				if pct, err := strconv.ParseFloat(v, 64); err == nil {
+				pct, err := strconv.ParseFloat(v, 64)
+				if err != nil {
+					parseErrs = append(parseErrs, "reply_percentage must be a number")
+				} else {
 					newCfg.Discord.ReplyPercentage = pct / 100.0
 				}
 			}
 			if v := r.FormValue("cooldown_seconds"); v != "" {
-				if sec, err := strconv.Atoi(v); err == nil {
+				sec, err := strconv.Atoi(v)
+				if err != nil {
+					parseErrs = append(parseErrs, "cooldown_seconds must be a whole number")
+				} else {
 					newCfg.Discord.CooldownSeconds = sec
 				}
 			}
 			if v := r.FormValue("max_responses_per_minute"); v != "" {
-				if max, err := strconv.Atoi(v); err == nil {
+				max, err := strconv.Atoi(v)
+				if err != nil {
+					parseErrs = append(parseErrs, "max_responses_per_minute must be a whole number")
+				} else {
 					newCfg.Discord.MaxResponsesPerMin = max
 				}
 			}
@@ -82,12 +94,18 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 				newCfg.AI.VisionModel = v
 			}
 			if v := r.FormValue("max_tokens"); v != "" {
-				if tok, err := strconv.Atoi(v); err == nil {
+				tok, err := strconv.Atoi(v)
+				if err != nil {
+					parseErrs = append(parseErrs, "max_tokens must be a whole number")
+				} else {
 					newCfg.AI.MaxTokens = tok
 				}
 			}
 			if v := r.FormValue("temperature"); v != "" {
-				if temp, err := strconv.ParseFloat(v, 32); err == nil {
+				temp, err := strconv.ParseFloat(v, 32)
+				if err != nil {
+					parseErrs = append(parseErrs, "temperature must be a number")
+				} else {
 					newCfg.AI.Temperature = float32(temp)
 				}
 			}
@@ -102,30 +120,50 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 				newCfg.AI.Vision.DescriptionPrompt = v
 			}
 			if v := r.FormValue("vision_max_images"); v != "" {
-				if max, err := strconv.Atoi(v); err == nil {
+				max, err := strconv.Atoi(v)
+				if err != nil {
+					parseErrs = append(parseErrs, "vision_max_images must be a whole number")
+				} else {
 					newCfg.AI.Vision.MaxImages = max
 				}
 			}
 
 			if v := r.FormValue("consolidation_interval"); v != "" {
-				if val, err := strconv.Atoi(v); err == nil {
+				val, err := strconv.Atoi(v)
+				if err != nil {
+					parseErrs = append(parseErrs, "consolidation_interval must be a whole number")
+				} else {
 					newCfg.Memory.ConsolidationInterval = val
 				}
 			}
 			if v := r.FormValue("short_term_limit"); v != "" {
-				if val, err := strconv.Atoi(v); err == nil {
+				val, err := strconv.Atoi(v)
+				if err != nil {
+					parseErrs = append(parseErrs, "short_term_limit must be a whole number")
+				} else {
 					newCfg.Memory.ShortTermLimit = val
 				}
 			}
 			if v := r.FormValue("retrieval_top_k"); v != "" {
-				if val, err := strconv.Atoi(v); err == nil {
+				val, err := strconv.Atoi(v)
+				if err != nil {
+					parseErrs = append(parseErrs, "retrieval_top_k must be a whole number")
+				} else {
 					newCfg.Memory.Retrieval.TopK = val
 				}
 			}
 			if v := r.FormValue("retrieval_min_score"); v != "" {
-				if val, err := strconv.ParseFloat(v, 64); err == nil {
+				val, err := strconv.ParseFloat(v, 64)
+				if err != nil {
+					parseErrs = append(parseErrs, "retrieval_min_score must be a number")
+				} else {
 					newCfg.Memory.Retrieval.MinScore = val
 				}
+			}
+
+			if len(parseErrs) > 0 {
+				renderConfigError(w, r, ts, cfgStore, "Failed to parse form values: "+strings.Join(parseErrs, "; "))
+				return
 			}
 
 			// Validate FIRST — before any persistence
@@ -134,25 +172,21 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 				return
 			}
 
-			// Save to YAML AFTER validation passes
+			if runtimeApplier != nil {
+				if err := runtimeApplier.ApplyRuntimeConfig(); err != nil {
+					renderConfigError(w, r, ts, cfgStore, "Failed to apply runtime config: "+err.Error())
+					return
+				}
+			}
+
+			cfgStore.Store(&newCfg)
+
 			if err := newCfg.Save(); err != nil {
 				http.Error(w, "Failed to save config: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 
-			cfgStore.Store(&newCfg)
-
-			flashMsg := "Settings saved successfully"
-			flashType := "success"
-			if runtimeApplier != nil {
-				if err := runtimeApplier.ApplyRuntimeConfig(); err != nil {
-					cfgStore.Store(oldCfg) // rollback: restore previous config in memory
-					flashMsg = "Settings saved but runtime apply failed"
-					flashType = "warning"
-				}
-			}
-
-			setFlashCookie(w, flashType, flashMsg)
+			setFlashCookie(w, "success", "Settings saved successfully")
 			http.Redirect(w, r, "/config", http.StatusSeeOther)
 
 		default:

@@ -7,8 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"ezyapper/internal/logger"
-
 	"golang.org/x/sync/singleflight"
 )
 
@@ -113,8 +111,11 @@ func (e *CachedEmbedder) Embed(ctx context.Context, text string) ([]float32, err
 
 		e.mu.Lock()
 		if len(e.cache) >= e.maxSize {
-			logger.Warnf("evicting embedding cache entry (cache size=%d, max=%d)", len(e.cache), e.maxSize)
-			e.evictOne()
+			for len(e.cache) >= e.maxSize && len(e.order) > 0 {
+				if !e.evictOne() {
+					break
+				}
+			}
 		}
 		e.cache[key] = cacheEntry{vector: vec, insertedAt: e.now()}
 		e.order = append(e.order, key)
@@ -165,14 +166,16 @@ func (e *CachedEmbedder) evictExpired() {
 	e.order = remaining
 }
 
-func (e *CachedEmbedder) evictOne() {
+func (e *CachedEmbedder) evictOne() bool {
 	for i, key := range e.order {
 		if _, ok := e.cache[key]; ok {
 			delete(e.cache, key)
 			e.order = append(e.order[:i], e.order[i+1:]...)
-			return
+			return true
 		}
 	}
+	e.order = e.order[:0]
+	return false
 }
 
 // Stop shuts down the eviction loop and releases resources.

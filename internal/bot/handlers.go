@@ -93,17 +93,10 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 	logger.Infof("[message] received: content=%q author=%s channel=%s guild=%s",
 		m.Content, m.Author.Username, m.ChannelID, m.GuildID)
 
-	// Create DiscordMessage early so bot's own messages also enter channel buffer
-	msg := &types.DiscordMessage{
-		ID:        m.ID,
-		ChannelID: m.ChannelID,
-		GuildID:   m.GuildID,
-		AuthorID:  m.Author.ID,
-		Username:  m.Author.Username,
-		Content:   m.Content,
-		Timestamp: m.Timestamp,
-		IsBot:     m.Author.Bot,
-	}
+	// Create DiscordMessage early so bot's own messages also enter channel buffer.
+	// Use FromDiscordgo for canonical field population (DisplayName, ImageURLs, etc.).
+	// ReplyTo fields from FromDiscordgo are overridden below with config-based truncation.
+	msg := types.FromDiscordgo(m)
 
 	if m.MessageReference != nil {
 		msg.ReplyToID = m.MessageReference.MessageID
@@ -122,7 +115,7 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 
 	// Always add to channel buffer for complete conversation context in consolidation
 	// This ensures bot's own messages are included in batch consolidation
-	b.addMessageToChannelBuffer(m.ChannelID, msg)
+	b.addMessageToChannelBuffer(m.ChannelID, &msg)
 
 	// Run plugin OnMessage hooks
 	if b.pluginManager != nil {
@@ -165,16 +158,18 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 	logger.Infof("Message from %s: shouldRespond=%v, reason=%s", m.Author.Username, shouldRespond, reason)
 
 	if !shouldRespond {
-		b.removeProcessingMessage(m.ID)
+		b.removeProcessingMessageIfMatch(m.ID, pm)
 		cancel()
 		return
 	}
 
 	if b.cfg().AI.Vision.Mode == config.VisionModeTextOnly {
+		b.wg.Add(1)
 		go b.processMessageWithoutImages(messageCtx, s, m, pm, recentMessages)
 		return
 	}
 
 	// Process message in goroutine to not block
+	b.wg.Add(1)
 	go b.processMessage(messageCtx, s, m, pm, recentMessages)
 }

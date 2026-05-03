@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"html/template"
 	"net/http"
 	"net/http/httptest"
@@ -99,7 +100,7 @@ operations:
         type: "stdio"
         command: "echo"
         args: ["hello"]
-  operations:
+  runtime:
     shutdown_timeout_sec: 300
     cleanup_interval_min: 5
 `
@@ -483,5 +484,135 @@ func TestConfigHandler_ValidMemorySettingsPersisted(t *testing.T) {
 	}
 	if storedCfg.Memory.Retrieval.MinScore != 0.3 {
 		t.Errorf("store: expected MinScore 0.3, got %f", storedCfg.Memory.Retrieval.MinScore)
+	}
+}
+
+type failingRuntimeApplier struct{}
+
+func (f failingRuntimeApplier) ApplyRuntimeConfig() error {
+	return fmt.Errorf("simulated runtime apply failure")
+}
+
+func TestConfigHandler_POST_ParseErrorsReported(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte(testConfigYAML), 0644); err != nil {
+		t.Fatalf("write test config: %v", err)
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load test config: %v", err)
+	}
+
+	var store atomic.Value
+	store.Store(cfg)
+	originalContent, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read original config: %v", err)
+	}
+
+	tmpl := testConfigTemplate()
+	handler := ConfigHandler(&store, tmpl, nil)
+
+	form := url.Values{
+		"reply_percentage": {"notanumber"},
+		"cooldown_seconds": {"alsobad"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = requestWithCSRF(req)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200 (page render with error), got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "md3-toast--error") {
+		t.Error("expected error toast in response")
+	}
+	if !strings.Contains(body, "reply_percentage must be a number") {
+		t.Error("expected error message mentioning reply_percentage")
+	}
+	if !strings.Contains(body, "cooldown_seconds must be a whole number") {
+		t.Error("expected error message mentioning cooldown_seconds")
+	}
+
+	currentContent, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read config after POST: %v", err)
+	}
+	if string(currentContent) != string(originalContent) {
+		t.Error("parse errors must not write to YAML")
+	}
+
+	storedCfg := store.Load().(*config.Config)
+	if storedCfg.Discord.ReplyPercentage != 0.5 {
+		t.Errorf("store must not be updated on parse error, got ReplyPercentage %f", storedCfg.Discord.ReplyPercentage)
+	}
+	if storedCfg.Discord.CooldownSeconds != 5 {
+		t.Errorf("store must not be updated on parse error, got CooldownSeconds %d", storedCfg.Discord.CooldownSeconds)
+	}
+}
+
+func TestConfigHandler_POST_RuntimeApplyFailurePreventsSave(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte(testConfigYAML), 0644); err != nil {
+		t.Fatalf("write test config: %v", err)
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load test config: %v", err)
+	}
+
+	var store atomic.Value
+	store.Store(cfg)
+	originalContent, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read original config: %v", err)
+	}
+
+	tmpl := testConfigTemplate()
+	handler := ConfigHandler(&store, tmpl, failingRuntimeApplier{})
+
+	form := url.Values{
+		"bot_name": {"UpdatedBot"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = requestWithCSRF(req)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200 (page render with error), got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "md3-toast--error") {
+		t.Error("expected error toast in response")
+	}
+	if !strings.Contains(body, "simulated runtime apply failure") {
+		t.Error("expected error message mentioning runtime apply failure")
+	}
+	if strings.Contains(body, "Settings saved successfully") {
+		t.Error("must not show success message on runtime apply failure")
+	}
+
+	currentContent, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read config after POST: %v", err)
+	}
+	if string(currentContent) != string(originalContent) {
+		t.Error("runtime apply failure must not write to YAML")
+	}
+
+	storedCfg := store.Load().(*config.Config)
+	if storedCfg.Discord.BotName != "TestBot" {
+		t.Errorf("store must not be updated on runtime apply failure, got BotName %q", storedCfg.Discord.BotName)
 	}
 }

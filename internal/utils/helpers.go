@@ -23,6 +23,9 @@ func Contains(slice []string, item string) bool {
 // SplitMessage splits a long message into chunks at word boundaries
 // This is used for Discord's 2000 character limit
 func SplitMessage(content string, maxLen int) []string {
+	if maxLen <= 0 {
+		return []string{content}
+	}
 	if len(content) <= maxLen {
 		return []string{content}
 	}

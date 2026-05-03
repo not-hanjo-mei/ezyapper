@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"sync"
@@ -88,9 +89,12 @@ func (m *MCPManager) connectServer(ctx context.Context, server config.MCPServer)
 // GetAllTools lists all tools from all connected MCP servers.
 func (m *MCPManager) GetAllTools(ctx context.Context) ([]MCPTool, error) {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
+	sessions := make(map[string]*mcp.ClientSession, len(m.sessions))
+	maps.Copy(sessions, m.sessions)
+	m.mu.RUnlock()
+
 	var allTools []MCPTool
-	for name, session := range m.sessions {
+	for name, session := range sessions {
 		tools, err := m.getServerTools(ctx, name, session)
 		if err != nil {
 			logger.Warnf("Failed to get tools from MCP server '%s': %v", name, err)

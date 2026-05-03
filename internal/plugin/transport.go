@@ -55,6 +55,7 @@ func callJSONRPCWithTimeout(
 	case err := <-done:
 		return err
 	case <-timer.C:
+		client.dead.Store(true)
 		return fmt.Errorf("jsonrpc call timeout (%dms): %s", timeout/time.Millisecond, method)
 	}
 }

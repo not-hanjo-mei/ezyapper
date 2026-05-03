@@ -238,7 +238,7 @@ func (d *DiscordTools) getServerInfo(ctx context.Context, args map[string]any) (
 		"region":       guild.Region,
 	}
 
-	return marshalJSON(result), nil
+	return marshalJSON(result)
 }
 
 func (d *DiscordTools) getChannelInfo(ctx context.Context, args map[string]any) (string, error) {
@@ -260,7 +260,7 @@ func (d *DiscordTools) getChannelInfo(ctx context.Context, args map[string]any) 
 		"guild_id": channel.GuildID,
 	}
 
-	return marshalJSON(result), nil
+	return marshalJSON(result)
 }
 
 func (d *DiscordTools) getUserInfo(ctx context.Context, args map[string]any) (string, error) {
@@ -288,7 +288,7 @@ func (d *DiscordTools) getUserInfo(ctx context.Context, args map[string]any) (st
 		"roles":        member.Roles,
 	}
 
-	return marshalJSON(result), nil
+	return marshalJSON(result)
 }
 
 func (d *DiscordTools) listChannels(ctx context.Context, args map[string]any) (string, error) {
@@ -311,7 +311,7 @@ func (d *DiscordTools) listChannels(ctx context.Context, args map[string]any) (s
 		})
 	}
 
-	return marshalJSON(result), nil
+	return marshalJSON(result)
 }
 
 func (d *DiscordTools) getRecentMessages(ctx context.Context, args map[string]any) (string, error) {
@@ -337,7 +337,7 @@ func (d *DiscordTools) getRecentMessages(ctx context.Context, args map[string]an
 		})
 	}
 
-	return marshalJSON(result), nil
+	return marshalJSON(result)
 }
 
 func (d *DiscordTools) createThread(ctx context.Context, args map[string]any) (string, error) {
@@ -376,7 +376,7 @@ func (d *DiscordTools) createThread(ctx context.Context, args map[string]any) (s
 		"name": thread.Name,
 	}
 
-	return marshalJSON(result), nil
+	return marshalJSON(result)
 }
 
 func (d *DiscordTools) addReaction(ctx context.Context, args map[string]any) (string, error) {
@@ -430,7 +430,7 @@ func (d *DiscordTools) getChannelMembers(ctx context.Context, args map[string]an
 		})
 	}
 
-	return marshalJSON(result), nil
+	return marshalJSON(result)
 }
 
 func (d *DiscordTools) searchGuildMembers(ctx context.Context, args map[string]any) (string, error) {
@@ -548,8 +548,7 @@ func (d *DiscordTools) searchGuildMembers(ctx context.Context, args map[string]a
 		}
 	}
 
-	data := marshalJSON(result)
-	return data, nil
+	return marshalJSON(result)
 }
 
 // getStringArg extracts a required string argument from the args map.
@@ -581,11 +580,12 @@ func extractLimit(args map[string]any, key string, defaultVal, maxVal int) int {
 	return limit
 }
 
-// marshalJSON marshals a value to indented JSON, returning an error string on failure.
-func marshalJSON(result any) string {
+// marshalJSON marshals a value to indented JSON.
+// Returns the JSON string or an error if marshaling fails.
+func marshalJSON(result any) (string, error) {
 	data, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
-		return fmt.Sprintf(`{"error": "failed to marshal result: %s"}`, err.Error())
+		return "", fmt.Errorf("failed to marshal result: %w", err)
 	}
-	return string(data)
+	return string(data), nil
 }

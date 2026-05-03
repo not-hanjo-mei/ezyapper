@@ -54,7 +54,7 @@ func TestLoginHandler_GET_RendersLoginForm(t *testing.T) {
 	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
-	handler := LoginHandler(store, "admin", "secret", testAuthTemplate())
+	handler := LoginHandler(store, "admin", "secret", testAuthTemplate(), 30)
 
 	r := httptest.NewRequest(http.MethodGet, "/login", nil)
 	rr := httptest.NewRecorder()
@@ -103,7 +103,7 @@ func TestLoginHandler_GET_RedirectsIfLoggedIn(t *testing.T) {
 		t.Fatalf("CreateSession failed: %v", err)
 	}
 
-	handler := LoginHandler(store, "admin", "secret", testAuthTemplate())
+	handler := LoginHandler(store, "admin", "secret", testAuthTemplate(), 30)
 
 	r := httptest.NewRequest(http.MethodGet, "/login", nil)
 	ctx := context.WithValue(r.Context(), sessionCtxKey, session)
@@ -125,7 +125,7 @@ func TestLoginHandler_POST_InvalidCredentials(t *testing.T) {
 	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
-	handler := LoginHandler(store, "admin", "secret", testAuthTemplate())
+	handler := LoginHandler(store, "admin", "secret", testAuthTemplate(), 30)
 
 	tests := []struct {
 		name     string
@@ -166,7 +166,7 @@ func TestLoginHandler_POST_ValidCredentials(t *testing.T) {
 	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
-	handler := LoginHandler(store, "admin", "secret", testAuthTemplate())
+	handler := LoginHandler(store, "admin", "secret", testAuthTemplate(), 30)
 
 	body := url.Values{"username": {"admin"}, "password": {"secret"}}.Encode()
 	r := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
@@ -216,7 +216,7 @@ func TestLoginHandler_POST_MissingUsername(t *testing.T) {
 	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
-	handler := LoginHandler(store, "admin", "secret", testAuthTemplate())
+	handler := LoginHandler(store, "admin", "secret", testAuthTemplate(), 30)
 
 	tests := []struct {
 		name     string
@@ -330,7 +330,7 @@ func TestLoginPageTemplate_RendersWithoutSidebar(t *testing.T) {
 	store := NewSessionStore(30, 5)
 	defer store.Stop()
 
-	handler := LoginHandler(store, "admin", "secret", testAuthTemplate())
+	handler := LoginHandler(store, "admin", "secret", testAuthTemplate(), 30)
 
 	r := httptest.NewRequest(http.MethodGet, "/login", nil)
 	csrfToken, _ := GenerateCSRFToken()
@@ -349,5 +349,105 @@ func TestLoginPageTemplate_RendersWithoutSidebar(t *testing.T) {
 	}
 	if strings.Contains(body, "md3-main") {
 		t.Error("login page should NOT contain md3-main")
+	}
+}
+
+func TestLoginHandler_POST_RateLimited(t *testing.T) {
+	store := NewSessionStore(30, 5)
+	defer store.Stop()
+
+	handler := LoginHandler(store, "admin", "secret", testAuthTemplate(), 30)
+
+	for i := 0; i < 5; i++ {
+		body := url.Values{"username": {"admin"}, "password": {"wrong"}}.Encode()
+		r := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.RemoteAddr = "192.0.2.1:12345"
+
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, r)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("attempt %d: expected 200 (invalid credentials page), got %d", i+1, rr.Code)
+		}
+	}
+
+	body := url.Values{"username": {"admin"}, "password": {"wrong"}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.RemoteAddr = "192.0.2.1:12345"
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, r)
+
+	if rr.Code != http.StatusTooManyRequests {
+		t.Errorf("expected 429 Too Many Requests, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "Too many login attempts") {
+		t.Error("response should contain rate limit message")
+	}
+}
+
+func TestLoginHandler_POST_RateLimitPerIP(t *testing.T) {
+	store := NewSessionStore(30, 5)
+	defer store.Stop()
+
+	handler := LoginHandler(store, "admin", "secret", testAuthTemplate(), 30)
+
+	postLogin := func(ip string) *httptest.ResponseRecorder {
+		body := url.Values{"username": {"admin"}, "password": {"wrong"}}.Encode()
+		r := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.RemoteAddr = ip
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, r)
+		return rr
+	}
+
+	for i := 0; i < 5; i++ {
+		rr := postLogin("192.0.2.1:12345")
+		if rr.Code != http.StatusOK {
+			t.Errorf("IP1 attempt %d: expected 200, got %d", i+1, rr.Code)
+		}
+	}
+
+	rr := postLogin("192.0.2.2:12345")
+	if rr.Code != http.StatusOK {
+		t.Errorf("IP2: expected 200 (different IP should not be rate limited), got %d", rr.Code)
+	}
+}
+
+func TestLoginHandler_POST_ValidLoginNotRateLimited(t *testing.T) {
+	store := NewSessionStore(30, 5)
+	defer store.Stop()
+
+	handler := LoginHandler(store, "admin", "secret", testAuthTemplate(), 30)
+
+	for i := 0; i < 4; i++ {
+		body := url.Values{"username": {"admin"}, "password": {"wrong"}}.Encode()
+		r := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.RemoteAddr = "192.0.2.1:12345"
+
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, r)
+		if rr.Code != http.StatusOK {
+			t.Errorf("attempt %d: expected 200, got %d", i+1, rr.Code)
+		}
+	}
+
+	body := url.Values{"username": {"admin"}, "password": {"secret"}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.RemoteAddr = "192.0.2.1:12345"
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, r)
+
+	if rr.Code != http.StatusSeeOther {
+		t.Errorf("5th attempt with correct password: expected 302 redirect, got %d", rr.Code)
+	}
+	if rr.Header().Get("Location") != "/" {
+		t.Errorf("expected redirect to /, got %q", rr.Header().Get("Location"))
 	}
 }

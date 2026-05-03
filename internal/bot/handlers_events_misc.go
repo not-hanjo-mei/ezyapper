@@ -46,7 +46,7 @@ func (b *Bot) onMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) 
 	if !b.handleEditedMessage(oldPm, m.Content) {
 		return
 	}
-	b.removeProcessingMessage(m.ID)
+	b.removeProcessingMessageIfMatch(m.ID, oldPm)
 
 	// Create new processing message for reprocessing.
 	// This ensures clean state and avoids race conditions with old goroutine.
@@ -79,8 +79,10 @@ func (b *Bot) onMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) 
 
 	// Re-process with updated content.
 	if b.cfg().AI.Vision.Mode == config.VisionModeTextOnly {
+		b.wg.Add(1)
 		go b.processMessageWithoutImages(messageCtx, s, tempMsg, newPm, nil)
 	} else {
+		b.wg.Add(1)
 		go b.processMessage(messageCtx, s, tempMsg, newPm, nil)
 	}
 }
@@ -120,7 +122,7 @@ func (b *Bot) onMessageDelete(s *discordgo.Session, m *discordgo.MessageDelete) 
 		pm.CancelFunc()
 		logger.Infof("[delete] cancelled processing for message=%s", m.ID)
 	}
-	b.removeProcessingMessage(m.ID)
+	b.removeProcessingMessageIfMatch(m.ID, pm)
 }
 
 // onGuildJoin handles joining a new guild.

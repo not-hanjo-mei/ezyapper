@@ -35,6 +35,7 @@ func (m *mockEmbedder) count(text string) int {
 func TestCachedEmbedder_Hit(t *testing.T) {
 	mock := newMockEmbedder()
 	e := newCachedEmbedder(mock, "test-model", 2000, 1*time.Hour, 1*time.Minute)
+	defer e.Stop()
 	ctx := context.Background()
 
 	// First call hits API.
@@ -63,6 +64,7 @@ func TestCachedEmbedder_Hit(t *testing.T) {
 func TestCachedEmbedder_Miss(t *testing.T) {
 	mock := newMockEmbedder()
 	e := newCachedEmbedder(mock, "test-model", 2000, 1*time.Hour, 1*time.Minute)
+	defer e.Stop()
 	ctx := context.Background()
 
 	e.Embed(ctx, "hello")
@@ -80,6 +82,7 @@ func TestCachedEmbedder_Miss(t *testing.T) {
 func TestCachedEmbedder_TTL(t *testing.T) {
 	mock := newMockEmbedder()
 	e := newCachedEmbedder(mock, "test-model", 2000, 100*time.Millisecond, 1*time.Minute)
+	defer e.Stop()
 	ctx := context.Background()
 
 	e.Embed(ctx, "hello")
@@ -99,6 +102,7 @@ func TestCachedEmbedder_TTL(t *testing.T) {
 func TestCachedEmbedder_MaxSize(t *testing.T) {
 	mock := newMockEmbedder()
 	e := newCachedEmbedder(mock, "test-model", 3, 1*time.Hour, 1*time.Minute)
+	defer e.Stop()
 	ctx := context.Background()
 
 	e.Embed(ctx, "a")
@@ -130,7 +134,9 @@ func TestCachedEmbedder_MaxSize(t *testing.T) {
 func TestCachedEmbedder_ModelChange(t *testing.T) {
 	mock := newMockEmbedder()
 	eA := newCachedEmbedder(mock, "model-A", 2000, 1*time.Hour, 1*time.Minute)
+	defer eA.Stop()
 	eB := newCachedEmbedder(mock, "model-B", 2000, 1*time.Hour, 1*time.Minute)
+	defer eB.Stop()
 	ctx := context.Background()
 
 	eA.Embed(ctx, "hello")
@@ -146,6 +152,7 @@ func TestCachedEmbedder_ModelChange(t *testing.T) {
 func TestCachedEmbedder_Concurrency(t *testing.T) {
 	mock := newMockEmbedder()
 	e := newCachedEmbedder(mock, "test-model", 2000, 1*time.Hour, 1*time.Minute)
+	defer e.Stop()
 	ctx := context.Background()
 
 	n := 50

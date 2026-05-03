@@ -4,6 +4,7 @@ package bot
 import (
 	"context"
 	"fmt"
+	"html"
 	"strings"
 	"time"
 
@@ -29,7 +30,7 @@ type UserInfo struct {
 //
 // Reply marker is placed OUTSIDE the content quotes.
 func formatMessageXML(displayName, username, userID, content string, timestamp time.Time, replyToUsername, replyToContent string) string {
-	base := fmt.Sprintf(`[%s] %s (%s, ID:%s): "%s"`, timestamp.UTC().Format(time.RFC3339), displayName, username, userID, content)
+	base := fmt.Sprintf(`[%s] %s (%s, ID:%s): "%s"`, timestamp.UTC().Format(time.RFC3339), displayName, username, userID, html.EscapeString(content))
 
 	if replyToUsername == "" {
 		return base
@@ -40,7 +41,7 @@ func formatMessageXML(displayName, username, userID, content string, timestamp t
 	}
 
 	if replyToContent != "" {
-		return base + fmt.Sprintf(` (replying to @%s: "%s")`, replyToUsername, replyToContent)
+		return base + fmt.Sprintf(` (replying to @%s: "%s")`, replyToUsername, html.EscapeString(replyToContent))
 	}
 
 	return base + fmt.Sprintf(" (replying to @%s)", replyToUsername)

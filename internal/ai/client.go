@@ -92,7 +92,10 @@ func (c *Client) processMessages(ctx context.Context, messages []openai.ChatComp
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert image to base64: %w", err)
 			}
-			newParts[j].ImageURL.URL = base64Data
+			// Create a copy to avoid mutating the original message's ImageURL
+			imgCopy := *part.ImageURL
+			imgCopy.URL = base64Data
+			newParts[j].ImageURL = &imgCopy
 		}
 		processed[i].MultiContent = newParts
 	}

@@ -208,6 +208,7 @@ func TestProcessMessageCore_DisplayNameAlwaysSet(t *testing.T) {
 	pm := &ProcessingMessage{MessageID: "msg-7"}
 	b.processingMessages["msg-7"] = pm
 
+	b.wg.Add(1)
 	assertNoPanic(t, func() {
 		b.processMessageWithoutImages(ctx, nil, m, pm, nil)
 	})
@@ -216,6 +217,7 @@ func TestProcessMessageCore_DisplayNameAlwaysSet(t *testing.T) {
 	pm2 := &ProcessingMessage{MessageID: "msg-7b"}
 	b.processingMessages["msg-7b"] = pm2
 
+	b.wg.Add(1)
 	assertNoPanic(t, func() {
 		b.processMessage(ctx, nil, m2, pm2, nil)
 	})
@@ -235,6 +237,7 @@ func TestProcessMessageWithoutImages_DelegatesToCore(t *testing.T) {
 	pm := &ProcessingMessage{MessageID: "msg-8"}
 	b.processingMessages["msg-8"] = pm
 
+	b.wg.Add(1)
 	assertNoPanic(t, func() {
 		b.processMessageWithoutImages(ctx, nil, m, pm, nil)
 	})
@@ -261,6 +264,7 @@ func TestProcessMessage_DelegatesToCore(t *testing.T) {
 	pm := &ProcessingMessage{MessageID: "msg-9"}
 	b.processingMessages["msg-9"] = pm
 
+	b.wg.Add(1)
 	assertNoPanic(t, func() {
 		b.processMessage(ctx, nil, m, pm, nil)
 	})
@@ -288,6 +292,7 @@ func TestProcessMessageCore_BothPathsConverge(t *testing.T) {
 	pm1 := &ProcessingMessage{MessageID: "msg-10"}
 	b.processingMessages["msg-10"] = pm1
 
+	b.wg.Add(1)
 	b.processMessageWithoutImages(ctx, nil, m1, pm1, nil)
 
 	b.processingMu.RLock()
@@ -298,6 +303,7 @@ func TestProcessMessageCore_BothPathsConverge(t *testing.T) {
 	pm2 := &ProcessingMessage{MessageID: "msg-11"}
 	b.processingMessages["msg-11"] = pm2
 
+	b.wg.Add(1)
 	b.processMessage(ctx, nil, m2, pm2, nil)
 
 	b.processingMu.RLock()

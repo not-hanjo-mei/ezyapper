@@ -2,8 +2,10 @@ package bot
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"ezyapper/internal/types"
 
@@ -363,5 +365,63 @@ func TestBuildConversationHistory_WithRename(t *testing.T) {
 	// Deleted message reply marker should still appear
 	if !strings.Contains(result, "(replying to deleted message)") {
 		t.Error("expected '(replying to deleted message)' on msg5")
+	}
+}
+
+func TestFormatMessageXML_EscapesSpecialChars(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name         string
+		content      string
+		replyContent string
+		wantContent  string
+		wantReply    string
+	}{
+		{
+			name:        "script tag escaped",
+			content:     `<script>alert("xss")</script>`,
+			wantContent: `&lt;script&gt;alert(&#34;xss&#34;)&lt;/script&gt;`,
+		},
+		{
+			name:        "double quotes escaped",
+			content:     `say "hello" world`,
+			wantContent: `say &#34;hello&#34; world`,
+		},
+		{
+			name:        "ampersand escaped",
+			content:     `A & B && C`,
+			wantContent: `A &amp; B &amp;&amp; C`,
+		},
+		{
+			name:        "angle brackets escaped",
+			content:     `<b>bold</b>`,
+			wantContent: `&lt;b&gt;bold&lt;/b&gt;`,
+		},
+		{
+			name:         "reply content escaped",
+			content:      `hello`,
+			replyContent: `<script>alert(1)</script>`,
+			wantContent:  `hello`,
+			wantReply:    `&lt;script&gt;alert(1)&lt;/script&gt;`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatMessageXML("User", "user1", "id1", tt.content, now, "", "")
+			want := fmt.Sprintf(`[%s] User (user1, ID:id1): "%s"`, now.UTC().Format(time.RFC3339), tt.wantContent)
+			if result != want {
+				t.Errorf("formatMessageXML content mismatch\n  want: %s\n  got:  %s", want, result)
+			}
+
+			if tt.replyContent != "" {
+				result := formatMessageXML("User", "user1", "id1", tt.content, now, "other", tt.replyContent)
+				want := fmt.Sprintf(`[%s] User (user1, ID:id1): "%s" (replying to @other: "%s")`, now.UTC().Format(time.RFC3339), tt.wantContent, tt.wantReply)
+				if result != want {
+					t.Errorf("formatMessageXML reply content mismatch\n  want: %s\n  got:  %s", want, result)
+				}
+			}
+		})
 	}
 }

@@ -1,11 +1,14 @@
 package bot
 
 import (
+	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"ezyapper/internal/config"
 	"ezyapper/internal/ratelimit"
+	"ezyapper/internal/types"
 	"ezyapper/internal/utils"
 
 	"github.com/bwmarrin/discordgo"
@@ -234,4 +237,171 @@ func TestIsMentioned(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestShutdown_WaitsForTrackedGoroutines(t *testing.T) {
+	t.Run("shutdown_returns_when_goroutine_completes", func(t *testing.T) {
+		b := &Bot{
+			ctx:                context.Background(),
+			cancel:             func() {},
+			processingMessages: map[string]*ProcessingMessage{},
+		}
+
+		b.wg.Add(1)
+		go func() {
+			defer b.wg.Done()
+			time.Sleep(50 * time.Millisecond)
+		}()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		err := b.Shutdown(ctx)
+		if err != nil {
+			t.Errorf("Shutdown should return nil when goroutine completes, got: %v", err)
+		}
+	})
+
+	t.Run("shutdown_times_out_on_stuck_goroutine", func(t *testing.T) {
+		b := &Bot{
+			ctx:                context.Background(),
+			cancel:             func() {},
+			processingMessages: map[string]*ProcessingMessage{},
+		}
+
+		b.wg.Add(1)
+		go func() {
+			select {}
+		}()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+
+		err := b.Shutdown(ctx)
+		if err == nil {
+			t.Error("Expected timeout error from Shutdown when goroutine is stuck")
+		}
+	})
+}
+
+func TestAddMessageToChannelBuffer_MaxBufferSize(t *testing.T) {
+	newMsg := func(id string) *types.DiscordMessage {
+		return &types.DiscordMessage{
+			ID:        id,
+			ChannelID: "ch-test",
+			Timestamp: time.Now(),
+		}
+	}
+
+	t.Run("max_buffer_size_0_falls_back_to_consolidation_interval_times_2", func(t *testing.T) {
+		var cfgStore atomic.Value
+		cfgStore.Store(&config.Config{
+			Memory: config.MemoryConfig{
+				ConsolidationInterval: 5,
+				MaxBufferSize:         0,
+			},
+		})
+
+		b := &Bot{
+			configStore:          &cfgStore,
+			channelMessageBuffer: make(map[string][]*types.DiscordMessage),
+		}
+
+		// Add 11 messages — buffer should truncate to 10 (5 * 2)
+		for i := 0; i < 11; i++ {
+			b.addMessageToChannelBuffer("ch-test", newMsg("msg-"+string(rune('a'+i))))
+		}
+
+		b.channelBufferMu.RLock()
+		size := len(b.channelMessageBuffer["ch-test"])
+		b.channelBufferMu.RUnlock()
+
+		if size != 10 {
+			t.Errorf("expected buffer size 10 (ConsolidationInterval*2 fallback), got %d", size)
+		}
+	})
+
+	t.Run("max_buffer_size_overrides_fallback", func(t *testing.T) {
+		var cfgStore atomic.Value
+		cfgStore.Store(&config.Config{
+			Memory: config.MemoryConfig{
+				ConsolidationInterval: 5,
+				MaxBufferSize:         3,
+			},
+		})
+
+		b := &Bot{
+			configStore:          &cfgStore,
+			channelMessageBuffer: make(map[string][]*types.DiscordMessage),
+		}
+
+		// Add 5 messages — buffer should truncate to 3 (MaxBufferSize)
+		for i := 0; i < 5; i++ {
+			b.addMessageToChannelBuffer("ch-test", newMsg("msg-"+string(rune('a'+i))))
+		}
+
+		b.channelBufferMu.RLock()
+		size := len(b.channelMessageBuffer["ch-test"])
+		b.channelBufferMu.RUnlock()
+
+		if size != 3 {
+			t.Errorf("expected buffer size 3 (MaxBufferSize override), got %d", size)
+		}
+	})
+
+	t.Run("buffer_below_max_not_truncated", func(t *testing.T) {
+		var cfgStore atomic.Value
+		cfgStore.Store(&config.Config{
+			Memory: config.MemoryConfig{
+				ConsolidationInterval: 5,
+				MaxBufferSize:         10,
+			},
+		})
+
+		b := &Bot{
+			configStore:          &cfgStore,
+			channelMessageBuffer: make(map[string][]*types.DiscordMessage),
+		}
+
+		// Add 3 messages — buffer should NOT truncate (below MaxBufferSize)
+		for i := 0; i < 3; i++ {
+			b.addMessageToChannelBuffer("ch-test", newMsg("msg-"+string(rune('a'+i))))
+		}
+
+		b.channelBufferMu.RLock()
+		size := len(b.channelMessageBuffer["ch-test"])
+		b.channelBufferMu.RUnlock()
+
+		if size != 3 {
+			t.Errorf("expected buffer size 3 (no truncation), got %d", size)
+		}
+	})
+
+	t.Run("duplicate_message_not_added_or_truncated", func(t *testing.T) {
+		var cfgStore atomic.Value
+		cfgStore.Store(&config.Config{
+			Memory: config.MemoryConfig{
+				ConsolidationInterval: 5,
+				MaxBufferSize:         3,
+			},
+		})
+
+		b := &Bot{
+			configStore:          &cfgStore,
+			channelMessageBuffer: make(map[string][]*types.DiscordMessage),
+		}
+
+		dup := newMsg("dup-msg")
+		b.addMessageToChannelBuffer("ch-test", dup)
+		b.addMessageToChannelBuffer("ch-test", dup) // duplicate, should be skipped
+		b.addMessageToChannelBuffer("ch-test", newMsg("other"))
+
+		b.channelBufferMu.RLock()
+		size := len(b.channelMessageBuffer["ch-test"])
+		b.channelBufferMu.RUnlock()
+
+		if size != 2 {
+			t.Errorf("expected buffer size 2 (duplicate skipped), got %d", size)
+		}
+	})
 }

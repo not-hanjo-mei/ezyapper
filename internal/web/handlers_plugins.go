@@ -96,7 +96,9 @@ func handlePluginsToggle(w http.ResponseWriter, r *http.Request, mgr pluginManag
 		return
 	}
 
-	refresher.RefreshPluginTools()
+	if refresher != nil {
+		refresher.RefreshPluginTools()
+	}
 
 	setFlashCookie(w, "success", "Plugin "+action+"d: "+name)
 	http.Redirect(w, r, "/plugins", http.StatusSeeOther)

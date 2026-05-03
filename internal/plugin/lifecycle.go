@@ -608,7 +608,7 @@ func (pm *Manager) shutdownPlugin(plugin *Client) error {
 
 func isBenignPluginShutdownError(err error) bool {
 	if err == nil {
-		return false
+		return true
 	}
 
 	if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) {
@@ -675,6 +675,11 @@ func (pm *Manager) stopPluginProcess(plugin *Client, timeout time.Duration) {
 func (pm *Manager) WaitForPending() error {
 	done := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Errorf("[plugin] panic recovered: %v\n%s", r, debug.Stack())
+			}
+		}()
 		pm.wg.Wait()
 		close(done)
 	}()
@@ -741,25 +746,36 @@ func (pm *Manager) EnablePlugin(name string) error {
 // DisablePlugin stops and removes a plugin
 func (pm *Manager) DisablePlugin(name string) error {
 	pm.mu.Lock()
-	defer pm.mu.Unlock()
-
 	plugin, exists := pm.plugins[name]
 	if !exists {
+		pm.mu.Unlock()
 		return fmt.Errorf("plugin %s not found", name)
 	}
 
+	// Save metadata before removing so we can add to disabled registry later.
+	info := plugin.Info
+	pluginPath := plugin.path
+	pluginConfigDir := plugin.configDir
+
+	delete(pm.plugins, name)
+	pm.mu.Unlock()
+
+	// Perform RPC calls and process cleanup without holding the lock,
+	// allowing concurrent plugin operations to proceed during shutdown.
 	if err := pm.shutdownPlugin(plugin); err != nil {
 		logger.Warnf("Error shutting down plugin %s: %v", name, err)
 	}
 
 	pm.stopPluginProcess(plugin, time.Duration(pm.disableTimeoutSec)*time.Second)
 
-	delete(pm.plugins, name)
+	pm.mu.Lock()
 	pm.disabled[name] = disabledPlugin{
-		Info:      plugin.Info,
-		Path:      plugin.path,
-		ConfigDir: plugin.configDir,
+		Info:      info,
+		Path:      pluginPath,
+		ConfigDir: pluginConfigDir,
 	}
+	pm.mu.Unlock()
+
 	logger.Infof("Plugin disabled: %s", name)
 	return nil
 }
