@@ -63,7 +63,7 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 			}
 			newCfg := *oldCfg
 
-			var parseErrs []string
+			parseErrs := []string{}
 
 			if v := r.FormValue("bot_name"); v != "" {
 				newCfg.Discord.BotName = v

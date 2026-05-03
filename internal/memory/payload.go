@@ -25,7 +25,7 @@ func (qc *QdrantClient) memoryToPayload(memory *Record) (map[string]*qdrant.Valu
 	payload["updated_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(memory.UpdatedAt.UnixMilli()) / 1000.0}}
 	payload["access_count"] = &qdrant.Value{Kind: &qdrant.Value_IntegerValue{IntegerValue: int64(memory.AccessCount)}}
 
-	var keywordValues []*qdrant.Value
+	keywordValues := []*qdrant.Value{}
 	for _, kw := range memory.Keywords {
 		keywordValues = append(keywordValues, &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: kw}})
 	}
@@ -142,13 +142,13 @@ func (qc *QdrantClient) profileToPayload(profile *Profile) (map[string]*qdrant.V
 	payload["last_active_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(profile.LastActiveAt.UnixMilli()) / 1000.0}}
 	payload["last_consolidated_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(profile.LastConsolidatedAt.UnixMilli()) / 1000.0}}
 
-	var traitValues []*qdrant.Value
+	traitValues := []*qdrant.Value{}
 	for _, t := range profile.Traits {
 		traitValues = append(traitValues, &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: t}})
 	}
 	payload["traits"] = &qdrant.Value{Kind: &qdrant.Value_ListValue{ListValue: &qdrant.ListValue{Values: traitValues}}}
 
-	var interestValues []*qdrant.Value
+	interestValues := []*qdrant.Value{}
 	for _, i := range profile.Interests {
 		interestValues = append(interestValues, &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: i}})
 	}

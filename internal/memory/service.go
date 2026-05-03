@@ -179,8 +179,7 @@ func (s *MemoryService) Store(ctx context.Context, m *Record) error {
 
 	logger.Debugf("[MemoryService.Store] storing memory for userID=%s type=%s", m.UserID, m.MemoryType)
 	if err := s.qdrant.UpsertMemory(ctx, m); err != nil {
-		logger.Errorf("[MemoryService.Store] failed to store memory for userID=%s: %v", m.UserID, err)
-		return err
+		return fmt.Errorf("store memory for userID=%s: %w", m.UserID, err)
 	}
 	logger.Debugf("[MemoryService.Store] successfully stored memoryID=%s for userID=%s", m.ID, m.UserID)
 	return nil
@@ -204,8 +203,7 @@ func (s *MemoryService) Search(ctx context.Context, userID string, query string,
 
 	memories, err := s.qdrant.SearchMemories(ctx, userID, embedding, opts)
 	if err != nil {
-		logger.Errorf("[MemoryService.Search] search failed for userID=%s: %v", userID, err)
-		return nil, err
+		return nil, fmt.Errorf("search for userID=%s: %w", userID, err)
 	}
 
 	logger.Debugf("[MemoryService.Search] found %d memories for userID=%s", len(memories), userID)
@@ -240,7 +238,7 @@ func (s *MemoryService) HybridSearch(ctx context.Context, userID string, query s
 }
 
 func (s *MemoryService) filterByKeywords(memories []*Record, keywords []string) []*Record {
-	var filtered []*Record
+	filtered := []*Record{}
 	for _, m := range memories {
 		for _, keyword := range keywords {
 			if utils.Contains(m.Keywords, keyword) || strings.Contains(m.Content, keyword) {
@@ -256,8 +254,7 @@ func (s *MemoryService) GetMemories(ctx context.Context, userID string, limit in
 	logger.Debugf("[MemoryService.GetMemories] retrieving memories for userID=%s limit=%d", userID, limit)
 	memories, err := s.qdrant.GetMemoriesByUser(ctx, userID, limit)
 	if err != nil {
-		logger.Errorf("[MemoryService.GetMemories] failed to retrieve memories for userID=%s: %v", userID, err)
-		return nil, err
+		return nil, fmt.Errorf("get memories for userID=%s: %w", userID, err)
 	}
 	logger.Debugf("[MemoryService.GetMemories] retrieved %d memories for userID=%s", len(memories), userID)
 	return memories, nil
@@ -267,8 +264,7 @@ func (s *MemoryService) GetMemory(ctx context.Context, memoryID string) (*Record
 	logger.Debugf("[MemoryService.GetMemory] retrieving memoryID=%s", memoryID)
 	memory, err := s.qdrant.GetMemory(ctx, memoryID)
 	if err != nil {
-		logger.Errorf("[MemoryService.GetMemory] failed to retrieve memoryID=%s: %v", memoryID, err)
-		return nil, err
+		return nil, fmt.Errorf("get memory %s: %w", memoryID, err)
 	}
 	logger.Debugf("[MemoryService.GetMemory] successfully retrieved memoryID=%s", memoryID)
 	return memory, nil
@@ -292,8 +288,7 @@ func (s *MemoryService) GetProfile(ctx context.Context, userID string) (*Profile
 			}, nil
 		}
 
-		logger.Errorf("[MemoryService.GetProfile] failed to retrieve profile for userID=%s: %v", userID, err)
-		return nil, err
+		return nil, fmt.Errorf("get profile for userID=%s: %w", userID, err)
 	}
 	logger.Debugf("[MemoryService.GetProfile] retrieved profile for userID=%s messageCount=%d", userID, profile.MessageCount)
 	return profile, nil
@@ -302,8 +297,7 @@ func (s *MemoryService) GetProfile(ctx context.Context, userID string) (*Profile
 func (s *MemoryService) UpdateProfile(ctx context.Context, p *Profile) error {
 	logger.Debugf("[MemoryService.UpdateProfile] updating profile for userID=%s", p.UserID)
 	if err := s.qdrant.UpsertProfile(ctx, p); err != nil {
-		logger.Errorf("[MemoryService.UpdateProfile] failed to update profile for userID=%s: %v", p.UserID, err)
-		return err
+		return fmt.Errorf("update profile for userID=%s: %w", p.UserID, err)
 	}
 	logger.Debugf("[MemoryService.UpdateProfile] successfully updated profile for userID=%s", p.UserID)
 	return nil
@@ -312,8 +306,7 @@ func (s *MemoryService) UpdateProfile(ctx context.Context, p *Profile) error {
 func (s *MemoryService) DeleteMemory(ctx context.Context, memoryID string) error {
 	logger.Warnf("[MemoryService.DeleteMemory] deleting memoryID=%s", memoryID)
 	if err := s.qdrant.DeleteMemory(ctx, memoryID); err != nil {
-		logger.Errorf("[MemoryService.DeleteMemory] failed to delete memoryID=%s: %v", memoryID, err)
-		return err
+		return fmt.Errorf("delete memory %s: %w", memoryID, err)
 	}
 	logger.Infof("[MemoryService.DeleteMemory] successfully deleted memoryID=%s", memoryID)
 	return nil
@@ -432,8 +425,7 @@ func (s *MemoryService) ConsolidateChannel(ctx context.Context, channelID string
 	logger.Infof("[MemoryService.ConsolidateChannel] starting batch consolidation for channel=%s with %d messages", channelID, len(messages))
 
 	if err := s.consolidator.ProcessChannelMessages(ctx, channelID, messages); err != nil {
-		logger.Errorf("[MemoryService.ConsolidateChannel] batch consolidation failed for channel=%s: %v", channelID, err)
-		return err
+		return fmt.Errorf("consolidate channel %s: %w", channelID, err)
 	}
 
 	logger.Infof("[MemoryService.ConsolidateChannel] completed batch consolidation for channel=%s", channelID)
@@ -441,7 +433,7 @@ func (s *MemoryService) ConsolidateChannel(ctx context.Context, channelID string
 }
 
 func (s *MemoryService) GetStats(ctx context.Context) (*GlobalStats, error) {
-	var errs []error
+	errs := []error{}
 
 	memories, err := s.CountMemories(ctx)
 	if err != nil {
@@ -478,8 +470,7 @@ func (s *MemoryService) GetUserStats(ctx context.Context, userID string) (*UserS
 
 	profile, err := s.GetProfile(ctx, userID)
 	if err != nil {
-		logger.Errorf("[MemoryService.GetUserStats] failed to get profile for userID=%s: %v", userID, err)
-		return nil, err
+		return nil, fmt.Errorf("get user stats profile for userID=%s: %w", userID, err)
 	}
 
 	memoryLimit := s.config.TopK
@@ -489,8 +480,7 @@ func (s *MemoryService) GetUserStats(ctx context.Context, userID string) (*UserS
 
 	memories, err := s.GetMemories(ctx, userID, memoryLimit)
 	if err != nil {
-		logger.Errorf("[MemoryService.GetUserStats] failed to get memories for userID=%s: %v", userID, err)
-		return nil, err
+		return nil, fmt.Errorf("get user stats memories for userID=%s: %w", userID, err)
 	}
 
 	stats := &UserStats{

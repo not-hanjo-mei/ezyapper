@@ -52,7 +52,7 @@ func (b *Bot) buildDynamicContext(authorName string, profile *memory.Profile, me
 		first = false
 	}
 	if len(profile.Facts) > 0 {
-		var facts []string
+		facts := []string{}
 		for k, v := range profile.Facts {
 			facts = append(facts, fmt.Sprintf("%s: %s", k, v))
 		}
@@ -63,7 +63,7 @@ func (b *Bot) buildDynamicContext(authorName string, profile *memory.Profile, me
 		first = false
 	}
 	if len(profile.Preferences) > 0 {
-		var prefs []string
+		prefs := []string{}
 		for k, v := range profile.Preferences {
 			prefs = append(prefs, fmt.Sprintf("%s: %s", k, v))
 		}

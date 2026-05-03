@@ -29,7 +29,7 @@ func SplitMessage(content string, maxLen int) []string {
 		return []string{content}
 	}
 
-	var parts []string
+	parts := []string{}
 	for len(content) > 0 {
 		if len(content) <= maxLen {
 			parts = append(parts, content)

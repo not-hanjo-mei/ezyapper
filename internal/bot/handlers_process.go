@@ -34,8 +34,8 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		pm.SetPhase(PhaseGenerating)
 	}
 
-	var imageURLs []string
-	var imageDescriptions []string
+	imageURLs := []string{}
+	imageDescriptions := []string{}
 	var msg *types.DiscordMessage
 
 	if withImages {
@@ -125,7 +125,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		return
 	}
 
-	var memories []*memory.Record
+	memories := []*memory.Record{}
 	if b.cfg().Memory.Retrieval.TopK > 0 {
 		memories, err = b.memoryStore.Search(ctx, m.Author.ID, m.Content, nil)
 		if err != nil {

@@ -544,7 +544,7 @@ func sanitizeToolNameToken(name string) string {
 		return "plugin"
 	}
 
-	var out []byte
+	out := []byte{}
 	for i := 0; i < len(name); i++ {
 		c := name[i]
 		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' {
@@ -697,7 +697,7 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 }
 
 func (b *Bot) getRecentMessagesForDecision(currentMessageID string, messages []*types.DiscordMessage) []decision.ContextMessage {
-	var result []decision.ContextMessage
+	result := []decision.ContextMessage{}
 	for _, msg := range messages {
 		if msg.ID == currentMessageID {
 			continue

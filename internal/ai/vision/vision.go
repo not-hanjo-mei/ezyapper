@@ -56,7 +56,7 @@ func (v *VisionDescriber) DescribeImages(ctx context.Context, imageURLs []string
 		return nil, fmt.Errorf("no images provided")
 	}
 
-	var descriptions []string
+	descriptions := []string{}
 
 	for _, url := range imageURLs {
 		description, err := v.DescribeSingleImage(ctx, url)

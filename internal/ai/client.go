@@ -328,7 +328,12 @@ func applyExtraParamsToStruct(req interface{}, extraParams map[string]interface{
 		return
 	}
 
-	reqValue := reflect.ValueOf(req).Elem()
+	v := reflect.ValueOf(req)
+	if v.Kind() != reflect.Ptr || v.IsNil() {
+		logger.Warnf("[ai] extra params: invalid request type %T", logPrefix, req)
+		return
+	}
+	reqValue := v.Elem()
 	reqType := reqValue.Type()
 
 	for key, value := range extraParams {

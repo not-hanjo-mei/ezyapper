@@ -73,7 +73,7 @@ func FromDiscordgo(m *discordgo.MessageCreate) DiscordMessage {
 }
 
 func extractImageURLsFromMessage(msg *discordgo.Message) []string {
-	var urls []string
+	urls := []string{}
 
 	for _, attachment := range msg.Attachments {
 		if strings.HasPrefix(attachment.ContentType, "image/") {

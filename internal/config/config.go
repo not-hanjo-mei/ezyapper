@@ -629,7 +629,7 @@ func validateSystem(cfg *Config, errs *[]string) {
 }
 
 func validate(cfg *Config) error {
-	var errs []string
+	errs := []string{}
 	validateCore(cfg, &errs)
 	validateAI(cfg, &errs)
 	validateVision(cfg, &errs)

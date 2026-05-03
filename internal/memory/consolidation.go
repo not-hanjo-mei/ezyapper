@@ -98,10 +98,10 @@ func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient aiChatCom
 // userID is used for logging context; if empty, logs omit per-user details.
 func (c *Consolidator) buildConversationText(ctx context.Context, messages []*DiscordMessage, userID string) (string, int) {
 	var conversation strings.Builder
-	imageCount := 0
+	var imageCount int
 	for i, msg := range messages {
 		timeStr := msg.Timestamp.UTC().Format(time.RFC3339)
-		botMarker := ""
+		var botMarker string
 		if msg.AuthorID == c.ownBotID {
 			botMarker = ",BOT=2" // Own bot - completely ignore
 		} else if msg.IsBot {
@@ -116,7 +116,7 @@ func (c *Consolidator) buildConversationText(ctx context.Context, messages []*Di
 		}
 
 		if len(msg.ImageURLs) > 0 && c.visionDescriber != nil {
-			var descriptions []string
+			descriptions := []string{}
 
 			// Use cached descriptions if available (to avoid redundant API calls)
 			if len(msg.ImageDescriptions) > 0 {
@@ -225,8 +225,8 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 // storeMemories creates Records from extracts, generates embeddings with retry,
 // upserts them into Qdrant, and returns the number successfully stored.
 func (c *Consolidator) storeMemories(ctx context.Context, userID string, extracts []Extract) (int, error) {
-	stored := 0
-	var errs []error
+	var stored int
+	errs := []error{}
 	for i, extract := range extracts {
 		memory := &Record{
 			UserID:     userID,
@@ -270,7 +270,7 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 		userIDSet[msg.AuthorID] = true
 	}
 
-	var targetUserIDs []string
+	targetUserIDs := []string{}
 	for userID := range userIDSet {
 		targetUserIDs = append(targetUserIDs, userID)
 	}
@@ -299,8 +299,8 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 
 	logger.Infof("[consolidation] extracted memories for %d users from channel=%s", len(batchExtracts), channelID)
 
-	totalStored := 0
-	var allErrs []error
+	var totalStored int
+	allErrs := []error{}
 	for _, userExtract := range batchExtracts {
 		userID := userExtract.UserID
 		extracts := userExtract.Memories
@@ -504,7 +504,7 @@ func (c *Consolidator) analyzeConversation(ctx context.Context, conversation str
 	// Sanitize JSON for Go 1.25 compatibility (invalid UTF-8, duplicate keys)
 	content = sanitizeJSON(content)
 
-	var extracts []Extract
+	extracts := []Extract{}
 	if err := json.Unmarshal([]byte(content), &extracts); err != nil {
 		logger.Errorf("[consolidation] failed to parse LLM response as JSON: %v", err)
 		logger.Debugf("[consolidation] raw LLM response: %s", resp.Content)
@@ -564,7 +564,7 @@ func (c *Consolidator) analyzeConversationBatch(ctx context.Context, conversatio
 	content := extractJSONFromLLMResponse(resp.Content)
 	content = sanitizeJSON(content)
 
-	var batchExtracts []UserMemoryExtract
+	batchExtracts := []UserMemoryExtract{}
 	if err := json.Unmarshal([]byte(content), &batchExtracts); err != nil {
 		logger.Errorf("[consolidation] failed to parse LLM batch response as JSON: %v", err)
 		logger.Debugf("[consolidation] raw LLM response: %s", resp.Content)
@@ -581,8 +581,8 @@ func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []
 	// should be replaced with structured LLM output parsing that supports any
 	// language the LLM produces. The function currently only works for English
 	// conversation extracts.
-	interestsAdded := 0
-	factsAdded := 0
+	var interestsAdded int
+	var factsAdded int
 
 	// Initialize maps if nil
 	if profile.Facts == nil {

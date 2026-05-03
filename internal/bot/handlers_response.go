@@ -72,13 +72,13 @@ func (b *Bot) generateResponse(ctx context.Context, mc ModeContext, gc GenerateC
 	logger.Debugf("[prompt] dynamic context length: %d chars", len(dynamicContext))
 
 	// Get current bot ID
-	botID := ""
+	var botID string
 	if b.session != nil && b.session.State != nil && b.session.State.User != nil {
 		botID = b.session.State.User.ID
 	}
 
 	// Build channel mappings from state cache for resolving <#ID> mentions
-	var channelMappings []ChannelMapping
+	channelMappings := []ChannelMapping{}
 	if b.session != nil && b.session.State != nil {
 		for _, guild := range b.session.State.Guilds {
 			for _, ch := range guild.Channels {
@@ -201,7 +201,7 @@ func (b *Bot) handleHybridMode(ctx context.Context, mc ModeContext, req ai.ChatC
 		return b.completeTextWithTools(ctx, mc.AIClient, req, fullContent.String())
 	}
 
-	var descriptions []string
+	descriptions := []string{}
 	if len(cachedDescriptions) > 0 {
 		// Use cached descriptions to avoid redundant API calls
 		descriptions = cachedDescriptions

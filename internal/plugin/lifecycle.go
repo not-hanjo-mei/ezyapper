@@ -693,7 +693,7 @@ func (pm *Manager) WaitForPending() error {
 func (pm *Manager) Shutdown(ctx context.Context) error {
 	pm.mu.Lock()
 
-	var errs []error
+	errs := []error{}
 	for name, plugin := range pm.plugins {
 		logger.Infof("Shutting down plugin: %s", name)
 

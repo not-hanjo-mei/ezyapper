@@ -37,7 +37,7 @@ func NewMCPManager(servers []config.MCPServer) *MCPManager {
 
 // Connect establishes connections to all configured MCP servers.
 func (m *MCPManager) Connect(ctx context.Context) error {
-	var errs []error
+	errs := []error{}
 	for _, server := range m.servers {
 		if err := m.connectServer(ctx, server); err != nil {
 			logger.Warnf("Failed to connect to MCP server '%s': %v", server.Name, err)
@@ -93,7 +93,7 @@ func (m *MCPManager) GetAllTools(ctx context.Context) ([]MCPTool, error) {
 	maps.Copy(sessions, m.sessions)
 	m.mu.RUnlock()
 
-	var allTools []MCPTool
+	allTools := []MCPTool{}
 	for name, session := range sessions {
 		tools, err := m.getServerTools(ctx, name, session)
 		if err != nil {

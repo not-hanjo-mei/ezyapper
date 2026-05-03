@@ -72,7 +72,7 @@ func (c *ShortTermClient) FetchUserMessages(ctx context.Context, channelID strin
 		return nil, err
 	}
 
-	var userMessages []*DiscordMessage
+	userMessages := []*DiscordMessage{}
 	for i := range messages {
 		if messages[i].AuthorID == userID {
 			userMessages = append(userMessages, &messages[i])

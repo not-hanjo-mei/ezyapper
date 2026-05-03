@@ -34,7 +34,7 @@ func (f *DiscordMessageFetcher) FetchMessages(ctx context.Context, channelID str
 }
 
 func (f *DiscordMessageFetcher) fetchPaginated(ctx context.Context, channelID string, totalLimit int) ([]*discordgo.Message, error) {
-	var all []*discordgo.Message
+	all := []*discordgo.Message{}
 	var beforeID string
 	remaining := totalLimit
 
@@ -114,7 +114,7 @@ func (f *DiscordMessageFetcher) convertMessage(msg *discordgo.Message) types.Dis
 }
 
 func extractImageURLs(msg *discordgo.Message) []string {
-	var urls []string
+	urls := []string{}
 
 	for _, attachment := range msg.Attachments {
 		if strings.HasPrefix(attachment.ContentType, "image/") {

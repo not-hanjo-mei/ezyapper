@@ -77,7 +77,7 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		}
 	}
 	if len(m.Mentions) > 0 {
-		var mentionList []string
+		mentionList := []string{}
 		for _, user := range m.Mentions {
 			mentionList = append(mentionList, user.Username)
 		}

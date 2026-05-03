@@ -84,7 +84,7 @@ func shouldEnrichRecentHistoricalImages(userContent string, hasReference bool) b
 
 // buildConversationHistory builds message history from Discord messages
 func (b *Bot) buildConversationHistory(ctx context.Context, messages []*types.DiscordMessage) []openai.ChatCompletionMessage {
-	var result []openai.ChatCompletionMessage
+	result := []openai.ChatCompletionMessage{}
 	visionDescriber := b.getVisionDescriber()
 
 	// Discord returns messages in reverse chronological order (newest first)
@@ -108,7 +108,7 @@ func (b *Bot) buildConversationHistory(ctx context.Context, messages []*types.Di
 		case config.VisionModeHybrid:
 			content := msg.Content
 			if visionDescriber != nil {
-				var descriptions []string
+				descriptions := []string{}
 
 				if len(msg.ImageDescriptions) > 0 {
 					descriptions = msg.ImageDescriptions
@@ -135,7 +135,7 @@ func (b *Bot) buildConversationHistory(ctx context.Context, messages []*types.Di
 			})
 
 		case config.VisionModeMultimodal:
-			var parts []openai.ChatMessagePart
+			parts := []openai.ChatMessagePart{}
 			if msg.Content != "" {
 				parts = append(parts, openai.ChatMessagePart{
 					Type: openai.ChatMessagePartTypeText,
@@ -238,8 +238,8 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 		if len(msg.ImageURLs) > 0 && b.cfg().AI.Vision.Mode != config.VisionModeTextOnly {
 			isMostRecentImage := (i == mostRecentImageIndex && allowOnDemandRecentImageEnrichment)
 
-			var descriptions []string
-			haveCachedDescriptions := false
+			descriptions := []string{}
+			var haveCachedDescriptions bool
 
 			if len(msg.ImageDescriptions) > 0 {
 				descriptions = msg.ImageDescriptions
@@ -273,7 +273,7 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 			}
 		}
 
-		replyMarker := ""
+		var replyMarker string
 		if msg.ReplyToID != "" {
 			if msg.ReplyToUsername == "(deleted message)" {
 				replyMarker = " (replying to deleted message)"
@@ -284,7 +284,7 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 			}
 		}
 
-		renameMarker := ""
+		var renameMarker string
 		if msg.AuthorID != botID && msg.Username != "(deleted message)" {
 			if oldName, seen := seenNames[msg.AuthorID]; seen && oldName != msg.Username {
 				renameMarker = " (was @" + oldName + ")"
@@ -309,7 +309,7 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 // collectRecentUsers collects unique users from recent messages
 func (b *Bot) collectRecentUsers(messages []*types.DiscordMessage) []UserInfo {
 	seen := make(map[string]bool)
-	var users []UserInfo
+	users := []UserInfo{}
 
 	for _, msg := range messages {
 		if !seen[msg.AuthorID] {

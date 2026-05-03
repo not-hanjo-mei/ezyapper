@@ -62,8 +62,8 @@ func handleMemoriesGET(w http.ResponseWriter, r *http.Request, cfgStore *atomic.
 	csrfToken := CSRFTokenFromContext(ctx)
 	flash := flashFromCookieMemories(r)
 
-	var entries []memoryDisplayEntry
-	searched := false
+	entries := []memoryDisplayEntry{}
+	var searched bool
 	var errorMsg string
 
 	if userID != "" {

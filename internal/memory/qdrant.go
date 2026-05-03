@@ -257,7 +257,7 @@ func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embed
 
 	// Add memory type filter if specified
 	if len(opts.MemoryTypes) > 0 {
-		var conditions []*qdrant.Condition
+		conditions := []*qdrant.Condition{}
 		for _, mt := range opts.MemoryTypes {
 			conditions = append(conditions, qdrant.NewMatch("memory_type", mt))
 		}
@@ -275,8 +275,8 @@ func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embed
 		return nil, fmt.Errorf("failed to search memories: %w", err)
 	}
 
-	var memories []*Record
-	var errs []error
+	memories := []*Record{}
+	errs := []error{}
 	logger.Debugf("[SearchMemories] got %d results, min_score=%.4f", len(results), opts.MinScore)
 	for i, result := range results {
 		logger.Debugf("[SearchMemories] result %d: score=%.4f", i+1, result.Score)
@@ -328,7 +328,7 @@ func (qc *QdrantClient) GetMemoriesByUser(ctx context.Context, userID string, li
 		return nil, fmt.Errorf("failed to query memories: %w", err)
 	}
 
-	var memories []*Record
+	memories := []*Record{}
 	for _, point := range results {
 		memory, err := qc.payloadToMemory(point.Payload, point.Id.GetUuid())
 		if err != nil {
@@ -365,8 +365,7 @@ func (qc *QdrantClient) GetMemory(ctx context.Context, memoryID string) (*Record
 
 	memory, err := qc.payloadToMemory(points[0].Payload, memoryID)
 	if err != nil {
-		logger.Errorf("[GetMemory] failed to convert payload for memoryID=%s: %v", memoryID, err)
-		return nil, err
+		return nil, fmt.Errorf("convert payload for memoryID=%s: %w", memoryID, err)
 	}
 
 	logger.Debugf("[GetMemory] successfully retrieved memoryID=%s type=%s", memoryID, memory.MemoryType)
