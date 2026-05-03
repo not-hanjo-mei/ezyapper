@@ -44,7 +44,27 @@ func (l *loginRateLimiter) allow(ip string) bool {
 	}
 
 	l.attempts[ip] = append(l.attempts[ip], now)
+
+	l.pruneStaleLocked(now, cutoff)
 	return true
+}
+
+func (l *loginRateLimiter) pruneStaleLocked(now time.Time, cutoff time.Time) {
+	if len(l.attempts) <= 1000 {
+		return
+	}
+	for ip, times := range l.attempts {
+		allOld := true
+		for _, t := range times {
+			if t.After(cutoff) {
+				allOld = false
+				break
+			}
+		}
+		if allOld {
+			delete(l.attempts, ip)
+		}
+	}
 }
 
 // LoginHandler returns an http.HandlerFunc for GET and POST /login.
@@ -112,6 +132,7 @@ func LoginHandler(store *SessionStore, username, password string, loginTmpl *tem
 				Value:    session.ID,
 				Path:     "/",
 				HttpOnly: true,
+				Secure:   true,
 				SameSite: http.SameSiteStrictMode,
 				MaxAge:   sessionTTLMin * 60,
 			})

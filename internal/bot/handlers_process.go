@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"time"
+	"unicode/utf8"
 
 	"ezyapper/internal/ai"
 	"ezyapper/internal/config"
@@ -71,9 +72,10 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 			if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
 				msg.ReplyToUsername = m.ReferencedMessage.Author.Username
 				content := m.ReferencedMessage.Content
-				if len(content) > b.cfg().Discord.ReplyTruncationLength {
-					logger.Warnf("[processing] reply content truncated from %d to %d chars", len(content), b.cfg().Discord.ReplyTruncationLength)
-					content = content[:b.cfg().Discord.ReplyTruncationLength]
+				if utf8.RuneCountInString(content) > b.cfg().Discord.ReplyTruncationLength {
+					logger.Warnf("[processing] reply content truncated from %d to %d chars", utf8.RuneCountInString(content), b.cfg().Discord.ReplyTruncationLength)
+					runes := []rune(content)
+					content = string(runes[:b.cfg().Discord.ReplyTruncationLength])
 				}
 				msg.ReplyToContent = content
 			} else {
@@ -159,9 +161,10 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 	defer cancelTyping()
 
 	replyToUsername, replyToContent := extractReplyInfo(m)
-	if len(replyToContent) > b.cfg().Discord.ReplyTruncationLength {
-		logger.Warnf("[processing] reply content truncated from %d to %d chars", len(replyToContent), b.cfg().Discord.ReplyTruncationLength)
-		replyToContent = replyToContent[:b.cfg().Discord.ReplyTruncationLength]
+	if utf8.RuneCountInString(replyToContent) > b.cfg().Discord.ReplyTruncationLength {
+		logger.Warnf("[processing] reply content truncated from %d to %d chars", utf8.RuneCountInString(replyToContent), b.cfg().Discord.ReplyTruncationLength)
+		runes := []rune(replyToContent)
+		replyToContent = string(runes[:b.cfg().Discord.ReplyTruncationLength])
 	}
 
 	mc := ModeContext{

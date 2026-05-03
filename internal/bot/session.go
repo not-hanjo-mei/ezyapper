@@ -6,6 +6,7 @@ import (
 	crand "crypto/rand"
 	"fmt"
 	"math/big"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -868,6 +869,7 @@ func (b *Bot) addMessageToChannelBuffer(channelID string, msg *types.DiscordMess
 	maxBuffer := b.cfg().Memory.MaxBufferSize
 	if maxBuffer <= 0 {
 		maxBuffer = b.cfg().Memory.ConsolidationInterval * 2
+		logger.Warnf("[channel_buffer] memory.max_buffer_size is 0, falling back to consolidation_interval*2=%d — set max_buffer_size explicitly", maxBuffer)
 	}
 	if len(b.channelMessageBuffer[channelID]) > maxBuffer {
 		b.channelMessageBuffer[channelID] = b.channelMessageBuffer[channelID][len(b.channelMessageBuffer[channelID])-maxBuffer:]
@@ -967,24 +969,22 @@ func (b *Bot) pruneHistoricalImageDescCacheLocked() {
 		return
 	}
 
-	for len(b.historicalImageDescCache) > maxEntries {
-		var oldestMessageID string
-		var oldestTime time.Time
-		first := true
-
-		for messageID, entry := range b.historicalImageDescCache {
-			if first || entry.cachedAt.Before(oldestTime) {
-				first = false
-				oldestTime = entry.cachedAt
-				oldestMessageID = messageID
-			}
+	if len(b.historicalImageDescCache) > maxEntries {
+		type entry struct {
+			id  string
+			age time.Time
 		}
-
-		if oldestMessageID == "" {
-			break
+		entries := make([]entry, 0, len(b.historicalImageDescCache))
+		for id, e := range b.historicalImageDescCache {
+			entries = append(entries, entry{id, e.cachedAt})
 		}
-
-		logger.Warnf("evicting image description cache entry for message %s", oldestMessageID)
-		delete(b.historicalImageDescCache, oldestMessageID)
+		sort.Slice(entries, func(i, j int) bool {
+			return entries[i].age.Before(entries[j].age)
+		})
+		excess := len(entries) - maxEntries
+		for i := 0; i < excess; i++ {
+			logger.Warnf("evicting image description cache entry for message %s", entries[i].id)
+			delete(b.historicalImageDescCache, entries[i].id)
+		}
 	}
 }

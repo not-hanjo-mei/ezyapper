@@ -131,6 +131,7 @@ func (c *Client) requestTimeout() time.Duration {
 	if c.httpClient != nil && c.httpClient.Timeout > 0 {
 		return c.httpClient.Timeout
 	}
+	logger.Warnf("[ai] requestTimeout: no timeout configured, this should not happen (check config validation)")
 	return 30 * time.Second
 }
 
@@ -461,6 +462,7 @@ func (c *Client) fetchImageAsDataURL(ctx context.Context, url string, opts image
 		if c.config != nil && c.config.HTTPTimeoutSec > 0 {
 			timeout = time.Duration(c.config.HTTPTimeoutSec) * time.Second
 		}
+		logger.Warnf("[ai] fetchImageAsDataURL: httpClient is nil, this should not happen (check NewClient initialization)")
 		httpClient = &http.Client{Timeout: timeout}
 	}
 
