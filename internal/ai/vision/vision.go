@@ -8,6 +8,7 @@ import (
 
 	"ezyapper/internal/ai"
 	"ezyapper/internal/config"
+	"ezyapper/internal/logger"
 
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -26,14 +27,16 @@ type VisionDescriber struct {
 
 // NewVisionDescriber creates a new vision describer with the given client and vision configuration.
 func NewVisionDescriber(client *ai.Client, visionConfig *config.VisionConfig, aiConfig *config.AIConfig) *VisionDescriber {
-	maxTokens := aiConfig.MaxTokens
-	if visionConfig.MaxTokens > 0 {
-		maxTokens = visionConfig.MaxTokens
+	maxTokens := visionConfig.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = aiConfig.MaxTokens
+		logger.Warnf("[vision] vision.max_tokens not set, falling back to ai.max_tokens=%d", maxTokens)
 	}
 
-	temperature := aiConfig.Temperature
-	if visionConfig.Temperature > 0 {
-		temperature = visionConfig.Temperature
+	temperature := visionConfig.Temperature
+	if temperature <= 0 {
+		temperature = aiConfig.Temperature
+		logger.Warnf("[vision] vision.temperature not set, falling back to ai.temperature=%.2f", temperature)
 	}
 
 	return &VisionDescriber{

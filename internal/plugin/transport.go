@@ -56,6 +56,7 @@ func callJSONRPCWithTimeout(
 		return err
 	case <-timer.C:
 		client.dead.Store(true)
+		client.Close() // Close pipes to unblock blocked Decode() calls
 		return fmt.Errorf("jsonrpc call timeout (%dms): %s", timeout/time.Millisecond, method)
 	}
 }

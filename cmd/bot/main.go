@@ -114,7 +114,10 @@ func main() {
 		logger.Warnf("Failed to start web server: %v", err)
 	}
 
-	go runCleanupRoutine(cfg, discordBot)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go runCleanupRoutine(ctx, cfg, discordBot)
 
 	logger.Info("Bot is now running. Press CTRL+C to exit.")
 
@@ -123,6 +126,7 @@ func main() {
 	<-quit
 
 	logger.Info("Shutting down...")
+	cancel() // Cancel the context to stop the cleanup routine
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.Operations.ShutdownTimeoutSec)*time.Second)
 	defer cancel()
@@ -228,13 +232,18 @@ func buildEmbeddingAIConfig(cfg *config.Config) *config.AIConfig {
 }
 
 // runCleanupRoutine runs periodic cleanup tasks
-func runCleanupRoutine(cfg *config.Config, discordBot *bot.Bot) {
+func runCleanupRoutine(ctx context.Context, cfg *config.Config, discordBot *bot.Bot) {
 	ticker := time.NewTicker(time.Duration(cfg.Operations.CleanupIntervalMin) * time.Minute)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		discordBot.CleanupCache()
-		logger.Debug("Cleanup routine completed")
+	for {
+		select {
+		case <-ticker.C:
+			discordBot.CleanupCache()
+			logger.Debug("Cleanup routine completed")
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 

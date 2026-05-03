@@ -214,11 +214,14 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error 
 	logger.Debugf("[UpsertMemory] userID=%s type=%s content=%.50s", memory.UserID, memory.MemoryType, memory.Content)
 
 	// Prepare payload before retry loop (idempotent data only)
-	payload := qc.memoryToPayload(memory)
+	payload, err := qc.memoryToPayload(memory)
+	if err != nil {
+		return fmt.Errorf("failed to prepare memory payload: %w", err)
+	}
 	memID := memory.ID
 	embedding := memory.Embedding
 
-	_, err := retry.Retry(ctx, qc.maxRetries, func(ctx context.Context) (*qdrant.UpdateResult, error) {
+	_, err = retry.Retry(ctx, qc.maxRetries, func(ctx context.Context) (*qdrant.UpdateResult, error) {
 		return qc.client.Upsert(ctx, &qdrant.UpsertPoints{
 			CollectionName: CollectionMemories,
 			Points: []*qdrant.PointStruct{
@@ -273,6 +276,7 @@ func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embed
 	}
 
 	var memories []*Record
+	var errs []error
 	logger.Debugf("[SearchMemories] got %d results, min_score=%.4f", len(results), opts.MinScore)
 	for i, result := range results {
 		logger.Debugf("[SearchMemories] result %d: score=%.4f", i+1, result.Score)
@@ -281,11 +285,16 @@ func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embed
 		}
 		memory, err := qc.payloadToMemory(result.Payload, result.Id.GetUuid())
 		if err != nil {
-			logger.Warnf("Failed to convert payload to memory: %v", err)
+			logger.Warnf("Failed to convert payload to memory (id=%s): %v", result.Id.GetUuid(), err)
+			errs = append(errs, fmt.Errorf("convert payload %s: %w", result.Id.GetUuid(), err))
 			continue
 		}
 		logger.Debugf("[SearchMemories] result %d: score=%.4f type=%s content=%q", i+1, result.Score, memory.MemoryType, memory.Content)
 		memories = append(memories, memory)
+	}
+
+	if len(errs) > 0 {
+		logger.Warnf("[SearchMemories] %d payloads failed to convert", len(errs))
 	}
 
 	return memories, nil
@@ -410,7 +419,10 @@ func (qc *QdrantClient) UpsertProfile(ctx context.Context, profile *Profile) err
 		profile.UserID, profile.MessageCount, profile.MemoryCount)
 
 	// Prepare all data before retry loop
-	payload := qc.profileToPayload(profile)
+	payload, err := qc.profileToPayload(profile)
+	if err != nil {
+		return fmt.Errorf("failed to prepare profile payload: %w", err)
+	}
 
 	embedding := profile.Embedding
 	var vectors *qdrant.Vectors

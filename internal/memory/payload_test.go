@@ -32,7 +32,10 @@ func TestMemoryPayloadRoundTrip_PreservesExtendedFields(t *testing.T) {
 		AccessCount:  3,
 	}
 
-	payload := qc.memoryToPayload(input)
+	payload, err := qc.memoryToPayload(input)
+	if err != nil {
+		t.Fatalf("memoryToPayload failed: %v", err)
+	}
 	got, err := qc.payloadToMemory(payload, input.ID)
 	if err != nil {
 		t.Fatalf("payloadToMemory failed: %v", err)
@@ -74,7 +77,10 @@ func TestProfilePayloadRoundTrip_PreservesFactsPreferencesInterests(t *testing.T
 		LastConsolidatedAt: now,
 	}
 
-	payload := qc.profileToPayload(input)
+	payload, err := qc.profileToPayload(input)
+	if err != nil {
+		t.Fatalf("profileToPayload failed: %v", err)
+	}
 	got, err := qc.payloadToProfile(payload, input.UserID)
 	if err != nil {
 		t.Fatalf("payloadToProfile failed: %v", err)

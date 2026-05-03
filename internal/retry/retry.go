@@ -119,13 +119,20 @@ func Retry[T any](ctx context.Context, maxRetries int, fn func(context.Context) 
 		}
 	}
 
+	// This line is unreachable because the loop always returns
+	// either on success, non-retryable error, or retry exhaustion.
 	return zero, fmt.Errorf("retry exhausted after %d attempts: %w", maxRetries+1, lastErr)
 }
 
 // computeDelay calculates exponential backoff with ±25% uniform jitter.
 // delay = min(2^attempt * baseDelay, maxDelay)
 func computeDelay(attempt int, baseDelay, maxDelay time.Duration) time.Duration {
-	delay := min(time.Duration(1<<uint(attempt))*baseDelay, maxDelay)
+	// Cap attempt to prevent integer overflow in bit shift
+	exp := uint(attempt)
+	if exp > 62 {
+		exp = 62
+	}
+	delay := min(time.Duration(1<<exp)*baseDelay, maxDelay)
 	jitter := time.Duration(float64(delay) * 0.25 * (2.0*rand.Float64() - 1.0))
 	return delay + jitter
 }

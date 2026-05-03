@@ -80,12 +80,15 @@ func (f *DiscordMessageFetcher) convertMessage(msg *discordgo.Message) types.Dis
 		ID:        msg.ID,
 		ChannelID: msg.ChannelID,
 		GuildID:   msg.GuildID,
-		AuthorID:  msg.Author.ID,
-		Username:  msg.Author.Username,
 		Content:   msg.Content,
 		ImageURLs: extractImageURLs(msg),
 		Timestamp: msg.Timestamp,
-		IsBot:     msg.Author.Bot,
+	}
+
+	if msg.Author != nil {
+		d.AuthorID = msg.Author.ID
+		d.Username = msg.Author.Username
+		d.IsBot = msg.Author.Bot
 	}
 
 	if msg.MessageReference != nil {
@@ -95,7 +98,11 @@ func (f *DiscordMessageFetcher) convertMessage(msg *discordgo.Message) types.Dis
 			content := msg.ReferencedMessage.Content
 			if len(content) > f.replyTruncationLength {
 				logger.Warnf("reply content truncated from %d to %d chars", len(content), f.replyTruncationLength)
-				content = content[:f.replyTruncationLength]
+				// Use rune-based truncation to avoid splitting multi-byte UTF-8 characters
+				runes := []rune(content)
+				if len(runes) > f.replyTruncationLength {
+					content = string(runes[:f.replyTruncationLength])
+				}
 			}
 			d.ReplyToContent = content
 		} else {

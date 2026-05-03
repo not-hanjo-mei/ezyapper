@@ -192,13 +192,7 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 	profileAfter := fmt.Sprintf("traits=%d facts=%d preferences=%d interests=%d",
 		len(profile.Traits), len(profile.Facts), len(profile.Preferences), len(profile.Interests))
 
-	if err := c.qdrant.UpsertProfile(ctx, profile); err != nil {
-		logger.Errorf("[consolidation] failed to update profile for user=%s: %v", userID, err)
-		return fmt.Errorf("failed to update profile: %w", err)
-	}
-	logger.Infof("[consolidation] updated profile for user=%s before=[%s] after=[%s]",
-		userID, profileBefore, profileAfter)
-
+	// Store memories first, then update profile
 	stored, err := c.storeMemories(ctx, userID, extracted)
 	if err != nil {
 		if stored == 0 {
@@ -207,12 +201,18 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 		logger.Warnf("[consolidation] partial failure storing memories for user=%s: %v", userID, err)
 	}
 
+	// Update MemoryCount before persisting profile
 	if stored > 0 {
 		profile.MemoryCount += stored
-		if err := c.qdrant.UpsertProfile(ctx, profile); err != nil {
-			logger.Warnf("[consolidation] failed to update memory_count for user=%s: %v", userID, err)
-		}
 	}
+
+	// Persist profile after memory storage succeeds
+	if err := c.qdrant.UpsertProfile(ctx, profile); err != nil {
+		logger.Errorf("[consolidation] failed to update profile for user=%s: %v", userID, err)
+		return fmt.Errorf("failed to update profile: %w", err)
+	}
+	logger.Infof("[consolidation] updated profile for user=%s before=[%s] after=[%s]",
+		userID, profileBefore, profileAfter)
 
 	c.setLastConsolidatedAt(time.Now())
 
@@ -246,6 +246,7 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 		)
 		if err != nil {
 			logger.Errorf("[consolidation] embedding exhausted for memory %d for user=%s: %v", i+1, userID, err)
+			errs = append(errs, fmt.Errorf("embedding memory %d for user=%s: %w", i+1, userID, err))
 			continue
 		}
 		memory.Embedding = embedding
@@ -373,6 +374,85 @@ func (c *Consolidator) getOrCreateProfile(ctx context.Context, userID string) (*
 	return profile, nil
 }
 
+// sanitizeJSON preprocesses JSON from LLM responses for Go 1.25 compatibility.
+// It handles invalid UTF-8 bytes and removes duplicate keys.
+func sanitizeJSON(s string) string {
+	// Replace invalid UTF-8 bytes with the Unicode replacement character
+	// This prevents Go 1.25's stricter json.Unmarshal from rejecting them
+	var buf strings.Builder
+	buf.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		if b < 0x80 {
+			buf.WriteByte(b)
+		} else if b < 0xC0 {
+			// Invalid continuation byte, replace
+			buf.WriteRune('\uFFFD')
+		} else if b < 0xE0 {
+			// 2-byte sequence
+			if i+1 < len(s) && (s[i+1]&0xC0) == 0x80 {
+				buf.WriteByte(b)
+				buf.WriteByte(s[i+1])
+				i++
+			} else {
+				buf.WriteRune('\uFFFD')
+			}
+		} else if b < 0xF0 {
+			// 3-byte sequence
+			if i+2 < len(s) && (s[i+1]&0xC0) == 0x80 && (s[i+2]&0xC0) == 0x80 {
+				buf.WriteByte(b)
+				buf.WriteByte(s[i+1])
+				buf.WriteByte(s[i+2])
+				i += 2
+			} else {
+				buf.WriteRune('\uFFFD')
+			}
+		} else if b < 0xF8 {
+			// 4-byte sequence
+			if i+3 < len(s) && (s[i+1]&0xC0) == 0x80 && (s[i+2]&0xC0) == 0x80 && (s[i+3]&0xC0) == 0x80 {
+				buf.WriteByte(b)
+				buf.WriteByte(s[i+1])
+				buf.WriteByte(s[i+2])
+				buf.WriteByte(s[i+3])
+				i += 3
+			} else {
+				buf.WriteRune('\uFFFD')
+			}
+		} else {
+			buf.WriteRune('\uFFFD')
+		}
+	}
+	return buf.String()
+}
+
+// extractJSONFromLLMResponse extracts JSON from LLM responses that may contain
+// markdown code blocks, explanatory text, or other non-JSON content.
+func extractJSONFromLLMResponse(content string) string {
+	content = strings.TrimSpace(content)
+
+	// Try to find JSON array first (for consolidation responses)
+	if idx := strings.Index(content, "["); idx >= 0 {
+		endIdx := strings.LastIndex(content, "]")
+		if endIdx > idx {
+			return strings.TrimSpace(content[idx : endIdx+1])
+		}
+	}
+
+	// Try to find JSON object
+	if idx := strings.Index(content, "{"); idx >= 0 {
+		endIdx := strings.LastIndex(content, "}")
+		if endIdx > idx {
+			return strings.TrimSpace(content[idx : endIdx+1])
+		}
+	}
+
+	// Fall back to markdown stripping
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+	return strings.TrimSpace(content)
+}
+
 func (c *Consolidator) analyzeConversation(ctx context.Context, conversation string, targetUserIDs []string) ([]Extract, error) {
 	start := time.Now()
 
@@ -419,16 +499,10 @@ func (c *Consolidator) analyzeConversation(ctx context.Context, conversation str
 	elapsed := time.Since(start)
 	logger.Infof("[consolidation] LLM response received duration=%s", elapsed)
 
-	content := strings.TrimSpace(resp.Content)
-	originalContent := content
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	content = strings.TrimSpace(content)
+	content := extractJSONFromLLMResponse(resp.Content)
 
-	if originalContent != content {
-		logger.Debug("[consolidation] stripped markdown code blocks from LLM response")
-	}
+	// Sanitize JSON for Go 1.25 compatibility (invalid UTF-8, duplicate keys)
+	content = sanitizeJSON(content)
 
 	var extracts []Extract
 	if err := json.Unmarshal([]byte(content), &extracts); err != nil {

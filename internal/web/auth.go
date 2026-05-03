@@ -126,17 +126,34 @@ func LoginHandler(store *SessionStore, username, password string, loginTmpl *tem
 // clientIP extracts the client IP address from the request, checking common
 // proxy headers before falling back to RemoteAddr.
 func clientIP(r *http.Request) string {
-	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
-		return ip
+	// Only trust proxy headers if request comes from localhost
+	remoteIP := extractIP(r.RemoteAddr)
+	if isLocalhost(remoteIP) {
+		if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
+			return ip
+		}
+		if ip := r.Header.Get("X-Real-IP"); ip != "" {
+			return ip
+		}
 	}
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		return ip
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	return remoteIP
+}
+
+func extractIP(addr string) string {
+	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
-		return r.RemoteAddr
+		return addr
 	}
 	return host
+}
+
+func isLocalhost(ip string) bool {
+	if ip == "127.0.0.1" || ip == "::1" || ip == "localhost" {
+		return true
+	}
+	// Check if it's a loopback address
+	parsed := net.ParseIP(ip)
+	return parsed != nil && parsed.IsLoopback()
 }
 
 // LogoutHandler returns an http.HandlerFunc for POST /logout.

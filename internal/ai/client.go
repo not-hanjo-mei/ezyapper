@@ -554,7 +554,8 @@ func (c *Client) CreateChatCompletionWithTools(ctx context.Context, req ChatComp
 	}
 
 	// Process tool calls iteratively
-	messages := req.Messages
+	messages := make([]openai.ChatCompletionMessage, len(req.Messages))
+	copy(messages, req.Messages)
 	maxIterations := c.config.MaxToolIterations // Prevent infinite loops
 
 	for i := 0; i < maxIterations && len(resp.ToolCalls) > 0; i++ {
@@ -590,6 +591,12 @@ func (c *Client) CreateChatCompletionWithTools(ctx context.Context, req ChatComp
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// If we exited the loop with unprocessed tool calls, strip them
+	if len(resp.ToolCalls) > 0 {
+		logger.Warnf("[ai] tool loop exhausted with %d unprocessed tool calls", len(resp.ToolCalls))
+		resp.ToolCalls = nil
 	}
 
 	return resp, nil

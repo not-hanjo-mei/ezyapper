@@ -98,6 +98,10 @@ func (c *stdioJSONRPCClient) Call(method string, params interface{}, reply inter
 	}
 
 	for {
+		if c.dead.Load() {
+			return fmt.Errorf("jsonrpc client is dead: transport timed out and connection is stale")
+		}
+
 		var resp jsonRPCResponse
 		if err := c.dec.Decode(&resp); err != nil {
 			return fmt.Errorf("failed to read jsonrpc response: %w", err)

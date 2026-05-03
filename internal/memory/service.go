@@ -444,14 +444,21 @@ func (s *MemoryService) ConsolidateChannel(ctx context.Context, channelID string
 }
 
 func (s *MemoryService) GetStats(ctx context.Context) (*GlobalStats, error) {
+	var errs []error
+
 	memories, err := s.CountMemories(ctx)
 	if err != nil {
-		logger.Warnf("[MemoryService.GetStats] failed to count memories: %v", err)
+		errs = append(errs, fmt.Errorf("count memories: %w", err))
 	}
 	users, err := s.CountProfiles(ctx)
 	if err != nil {
-		logger.Warnf("[MemoryService.GetStats] failed to count profiles: %v", err)
+		errs = append(errs, fmt.Errorf("count profiles: %w", err))
 	}
+
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
+
 	return &GlobalStats{
 		TotalMemories:    memories,
 		TotalUsers:       users,

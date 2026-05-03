@@ -109,7 +109,10 @@ func (s *SessionStore) SetWG(wg *sync.WaitGroup) {
 		return
 	}
 	s.wg = wg
-	wg.Add(1)
+	// Only add to WaitGroup if cleanup loop is still running
+	if !s.stopped {
+		wg.Add(1)
+	}
 }
 
 // Stop stops the cleanup goroutine. Safe to call multiple times.

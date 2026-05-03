@@ -10,7 +10,7 @@ import (
 
 const payloadSchemaVersion = 2
 
-func (qc *QdrantClient) memoryToPayload(memory *Record) map[string]*qdrant.Value {
+func (qc *QdrantClient) memoryToPayload(memory *Record) (map[string]*qdrant.Value, error) {
 	payload := make(map[string]*qdrant.Value)
 	payload["schema_version"] = &qdrant.Value{Kind: &qdrant.Value_IntegerValue{IntegerValue: payloadSchemaVersion}}
 
@@ -41,11 +41,13 @@ func (qc *QdrantClient) memoryToPayload(memory *Record) map[string]*qdrant.Value
 	if metadata == nil {
 		metadata = make(map[string]interface{})
 	}
-	if metadataJSON, err := json.Marshal(metadata); err == nil {
-		payload["metadata_json"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: string(metadataJSON)}}
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return nil, fmt.Errorf("marshal metadata: %w", err)
 	}
+	payload["metadata_json"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: string(metadataJSON)}}
 
-	return payload
+	return payload, nil
 }
 
 func (qc *QdrantClient) payloadToMemory(payload map[string]*qdrant.Value, id string) (*Record, error) {
@@ -127,7 +129,7 @@ func (qc *QdrantClient) payloadToMemory(payload map[string]*qdrant.Value, id str
 	return memory, nil
 }
 
-func (qc *QdrantClient) profileToPayload(profile *Profile) map[string]*qdrant.Value {
+func (qc *QdrantClient) profileToPayload(profile *Profile) (map[string]*qdrant.Value, error) {
 	payload := make(map[string]*qdrant.Value)
 	payload["schema_version"] = &qdrant.Value{Kind: &qdrant.Value_IntegerValue{IntegerValue: payloadSchemaVersion}}
 
@@ -156,19 +158,23 @@ func (qc *QdrantClient) profileToPayload(profile *Profile) map[string]*qdrant.Va
 	if facts == nil {
 		facts = make(map[string]string)
 	}
-	if factsJSON, err := json.Marshal(facts); err == nil {
-		payload["facts_json"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: string(factsJSON)}}
+	factsJSON, err := json.Marshal(facts)
+	if err != nil {
+		return nil, fmt.Errorf("marshal facts: %w", err)
 	}
+	payload["facts_json"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: string(factsJSON)}}
 
 	prefs := profile.Preferences
 	if prefs == nil {
 		prefs = make(map[string]string)
 	}
-	if prefsJSON, err := json.Marshal(prefs); err == nil {
-		payload["preferences_json"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: string(prefsJSON)}}
+	prefsJSON, err := json.Marshal(prefs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal preferences: %w", err)
 	}
+	payload["preferences_json"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: string(prefsJSON)}}
 
-	return payload
+	return payload, nil
 }
 
 func (qc *QdrantClient) payloadToProfile(payload map[string]*qdrant.Value, userID string) (*Profile, error) {

@@ -54,6 +54,7 @@ type CachedEmbedder struct {
 	now      func() time.Time
 	stopCh   <-chan struct{}
 	stop     chan struct{} // internal bidirectional channel for closing
+	stopOnce sync.Once
 	eviction time.Duration
 }
 
@@ -105,7 +106,7 @@ func (e *CachedEmbedder) Embed(ctx context.Context, text string) ([]float32, err
 			return nil, err
 		}
 		if len(vec) == 0 {
-			return vec, nil
+			return nil, fmt.Errorf("embedder returned empty vector")
 		}
 
 		e.mu.Lock()
@@ -179,5 +180,7 @@ func (e *CachedEmbedder) evictOne() bool {
 
 // Stop shuts down the eviction loop and releases resources.
 func (e *CachedEmbedder) Stop() {
-	close(e.stop)
+	e.stopOnce.Do(func() {
+		close(e.stop)
+	})
 }

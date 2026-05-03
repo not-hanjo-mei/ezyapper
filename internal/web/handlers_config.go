@@ -5,12 +5,15 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"ezyapper/internal/config"
 )
 
 func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier RuntimeConfigApplier) http.HandlerFunc {
+	var configMu sync.Mutex
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
@@ -49,6 +52,9 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 				renderConfigError(w, r, ts, cfgStore, "Failed to parse form data")
 				return
 			}
+
+			configMu.Lock()
+			defer configMu.Unlock()
 
 			oldCfg, ok := cfgStore.Load().(*config.Config)
 			if !ok {
@@ -172,14 +178,17 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 				return
 			}
 
+			// Store new config first so ApplyRuntimeConfig reads the updated values
+			cfgStore.Store(&newCfg)
+
 			if runtimeApplier != nil {
 				if err := runtimeApplier.ApplyRuntimeConfig(); err != nil {
+					// Revert to old config on runtime apply failure
+					cfgStore.Store(oldCfg)
 					renderConfigError(w, r, ts, cfgStore, "Failed to apply runtime config: "+err.Error())
 					return
 				}
 			}
-
-			cfgStore.Store(&newCfg)
 
 			if err := newCfg.Save(); err != nil {
 				http.Error(w, "Failed to save config: "+err.Error(), http.StatusInternalServerError)

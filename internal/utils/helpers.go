@@ -34,11 +34,28 @@ func SplitMessage(content string, maxLen int) []string {
 			break
 		}
 
+		// Find a safe cut point that doesn't split multi-byte UTF-8 characters
 		cutAt := maxLen
-		for i := maxLen; i > 0; i-- {
-			if content[i] == ' ' {
-				cutAt = i
-				break
+		// Ensure we don't cut in the middle of a UTF-8 sequence
+		for cutAt > 0 && (content[cutAt]&0xC0) == 0x80 {
+			cutAt--
+		}
+		// If we're at a multi-byte start, check if we need to go back further
+		if cutAt > 0 && content[cutAt]&0x80 != 0 {
+			// We're at a multi-byte character start, try to find a space before
+			for i := cutAt; i > 0; i-- {
+				if content[i] == ' ' {
+					cutAt = i
+					break
+				}
+			}
+		} else {
+			// We're at a single-byte character, try to find a space
+			for i := cutAt; i > 0; i-- {
+				if content[i] == ' ' {
+					cutAt = i
+					break
+				}
 			}
 		}
 
@@ -61,5 +78,8 @@ func RemoveFromSlice(slice []string, item string) []string {
 			return append(result, slice[i+1:]...)
 		}
 	}
-	return slice
+	// Return a copy to prevent aliasing issues
+	result := make([]string, len(slice))
+	copy(result, slice)
+	return result
 }
