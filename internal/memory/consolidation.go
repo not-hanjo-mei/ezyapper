@@ -561,16 +561,8 @@ func (c *Consolidator) analyzeConversationBatch(ctx context.Context, conversatio
 	elapsed := time.Since(start)
 	logger.Infof("[consolidation] LLM batch response received duration=%s", elapsed)
 
-	content := strings.TrimSpace(resp.Content)
-	originalContent := content
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	content = strings.TrimSpace(content)
-
-	if originalContent != content {
-		logger.Debug("[consolidation] stripped markdown code blocks from LLM response")
-	}
+	content := extractJSONFromLLMResponse(resp.Content)
+	content = sanitizeJSON(content)
 
 	var batchExtracts []UserMemoryExtract
 	if err := json.Unmarshal([]byte(content), &batchExtracts); err != nil {

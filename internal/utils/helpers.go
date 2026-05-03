@@ -2,6 +2,8 @@
 package utils
 
 import (
+	"unicode/utf8"
+
 	"ezyapper/internal/types"
 )
 
@@ -34,29 +36,31 @@ func SplitMessage(content string, maxLen int) []string {
 			break
 		}
 
-		// Find a safe cut point that doesn't split multi-byte UTF-8 characters
 		cutAt := maxLen
-		// Ensure we don't cut in the middle of a UTF-8 sequence
-		for cutAt > 0 && (content[cutAt]&0xC0) == 0x80 {
+		// Ensure we don't cut in the middle of a multi-byte UTF-8 sequence
+		for cutAt > 0 && !utf8.RuneStart(content[cutAt]) {
 			cutAt--
 		}
-		// If we're at a multi-byte start, check if we need to go back further
-		if cutAt > 0 && content[cutAt]&0x80 != 0 {
-			// We're at a multi-byte character start, try to find a space before
-			for i := cutAt; i > 0; i-- {
-				if content[i] == ' ' {
-					cutAt = i
-					break
-				}
+		// If we backed up to position 0, find the end of the first complete character
+		if cutAt == 0 {
+			_, size := utf8.DecodeRuneInString(content)
+			if size > 0 {
+				cutAt = size
+			} else {
+				cutAt = maxLen
 			}
-		} else {
-			// We're at a single-byte character, try to find a space
-			for i := cutAt; i > 0; i-- {
-				if content[i] == ' ' {
-					cutAt = i
-					break
-				}
+		}
+
+		// Try to find a word boundary (space) near the cut point
+		spaceAt := -1
+		for i := cutAt; i > 0; i-- {
+			if content[i] == ' ' {
+				spaceAt = i
+				break
 			}
+		}
+		if spaceAt > 0 {
+			cutAt = spaceAt
 		}
 
 		parts = append(parts, content[:cutAt])

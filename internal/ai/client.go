@@ -699,6 +699,12 @@ func (c *Client) CreateVisionCompletionWithTools(ctx context.Context, systemProm
 		}
 	}
 
+	// Strip unprocessed tool calls if loop exhausted
+	if len(resp.Choices[0].Message.ToolCalls) > 0 {
+		logger.Warnf("[ai] vision tool loop exhausted with %d unprocessed tool calls", len(resp.Choices[0].Message.ToolCalls))
+		resp.Choices[0].Message.ToolCalls = nil
+	}
+
 	return &ChatCompletionResponse{
 		Content:          resp.Choices[0].Message.Content,
 		ToolCalls:        resp.Choices[0].Message.ToolCalls,

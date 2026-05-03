@@ -191,7 +191,8 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 			}
 
 			if err := newCfg.Save(); err != nil {
-				http.Error(w, "Failed to save config: "+err.Error(), http.StatusInternalServerError)
+				cfgStore.Store(oldCfg)
+				renderConfigError(w, r, ts, cfgStore, "Failed to save config: "+err.Error())
 				return
 			}
 

@@ -34,7 +34,7 @@ func NewVisionDescriber(client *ai.Client, visionConfig *config.VisionConfig, ai
 	}
 
 	temperature := visionConfig.Temperature
-	if temperature <= 0 {
+	if temperature < 0 {
 		temperature = aiConfig.Temperature
 		logger.Warnf("[vision] vision.temperature not set, falling back to ai.temperature=%.2f", temperature)
 	}
