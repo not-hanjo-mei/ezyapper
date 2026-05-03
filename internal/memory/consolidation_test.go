@@ -42,6 +42,7 @@ func (m *retryableEmbedder) Embed(ctx context.Context, text string) ([]float32, 
 	}
 	return []float32{float32(len(text)), float32(len(text) * 2)}, nil
 }
+func (m *retryableEmbedder) Stop() {}
 
 // forcedErrorEmbedder always returns the given error.
 type forcedErrorEmbedder struct {
@@ -51,6 +52,7 @@ type forcedErrorEmbedder struct {
 func (m *forcedErrorEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
 	return nil, m.err
 }
+func (m *forcedErrorEmbedder) Stop() {}
 
 // mockQdrantStore implements qdrantStore for consolidation tests.
 type mockQdrantStore struct {
@@ -228,6 +230,7 @@ func (e *selectiveEmbedder) Embed(ctx context.Context, text string) ([]float32, 
 	}
 	return []float32{float32(len(text)), float32(len(text) * 2)}, nil
 }
+func (e *selectiveEmbedder) Stop() {}
 
 // TestProfileMemoryCount_OnlyOnSuccess verifies that when all Qdrant upserts
 // fail, MemoryCount remains unchanged.

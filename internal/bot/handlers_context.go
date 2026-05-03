@@ -38,39 +38,41 @@ func (b *Bot) buildDynamicContext(authorName string, profile *memory.Profile, me
 	// User identification is included in <currentMessage> XML format.
 	// No need to repeat here.
 
-	// Add display name header.
-	if profile.DisplayName != "" {
-		context.WriteString(fmt.Sprintf("User profile for @%s:\n", profile.DisplayName))
+	if profile == nil {
+		context.WriteString("User profile: not available\n")
 	} else {
-		context.WriteString("User profile:\n")
-	}
+		if profile.DisplayName != "" {
+			context.WriteString(fmt.Sprintf("User profile for @%s:\n", profile.DisplayName))
+		} else {
+			context.WriteString("User profile:\n")
+		}
 
-	// Add profile information.
-	first := true
-	if len(profile.Traits) > 0 {
-		context.WriteString(fmt.Sprintf("User traits: %s", strings.Join(profile.Traits, ", ")))
-		first = false
-	}
-	if len(profile.Facts) > 0 {
-		facts := []string{}
-		for k, v := range profile.Facts {
-			facts = append(facts, fmt.Sprintf("%s: %s", k, v))
+		first := true
+		if len(profile.Traits) > 0 {
+			context.WriteString(fmt.Sprintf("User traits: %s", strings.Join(profile.Traits, ", ")))
+			first = false
 		}
-		if !first {
-			context.WriteString("\n")
+		if len(profile.Facts) > 0 {
+			facts := []string{}
+			for k, v := range profile.Facts {
+				facts = append(facts, fmt.Sprintf("%s: %s", k, v))
+			}
+			if !first {
+				context.WriteString("\n")
+			}
+			context.WriteString(fmt.Sprintf("User facts: %s", strings.Join(facts, ", ")))
+			first = false
 		}
-		context.WriteString(fmt.Sprintf("User facts: %s", strings.Join(facts, ", ")))
-		first = false
-	}
-	if len(profile.Preferences) > 0 {
-		prefs := []string{}
-		for k, v := range profile.Preferences {
-			prefs = append(prefs, fmt.Sprintf("%s: %s", k, v))
+		if len(profile.Preferences) > 0 {
+			prefs := []string{}
+			for k, v := range profile.Preferences {
+				prefs = append(prefs, fmt.Sprintf("%s: %s", k, v))
+			}
+			if !first {
+				context.WriteString("\n")
+			}
+			context.WriteString(fmt.Sprintf("User preferences: %s", strings.Join(prefs, ", ")))
 		}
-		if !first {
-			context.WriteString("\n")
-		}
-		context.WriteString(fmt.Sprintf("User preferences: %s", strings.Join(prefs, ", ")))
 	}
 
 	// Add relevant memories.

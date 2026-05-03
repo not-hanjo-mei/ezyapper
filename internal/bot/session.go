@@ -299,6 +299,12 @@ func (b *Bot) Shutdown(ctx context.Context) error {
 
 	done := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Errorf("[shutdown] panic while waiting for goroutines: %v", r)
+				close(done)
+			}
+		}()
 		b.wg.Wait()
 		close(done)
 	}()

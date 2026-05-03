@@ -11,6 +11,16 @@ import (
 
 // triggerChannelConsolidation triggers memory consolidation for a channel if needed
 func (b *Bot) triggerChannelConsolidation(ctx context.Context, channelID string, count int) {
+	b.triggerChannelConsolidationDepth(ctx, channelID, count, 0)
+}
+
+const maxConsolidationChainDepth = 5
+
+func (b *Bot) triggerChannelConsolidationDepth(ctx context.Context, channelID string, count int, depth int) {
+	if depth >= maxConsolidationChainDepth {
+		logger.Warnf("[consolidation] chain depth limit reached for channel=%s at depth=%d, deferring", channelID, depth)
+		return
+	}
 	if !b.cfg().Memory.Consolidation.Enabled {
 		logger.Debugf("[consolidation] skipped for channel=%s: consolidation is disabled", channelID)
 		return
@@ -66,7 +76,7 @@ func (b *Bot) triggerChannelConsolidation(ctx context.Context, channelID string,
 			remaining := b.consolidation.ConsumeChannelMessageCount(channelID, consumed)
 			b.finishChannelConsolidation(channelID)
 			if remaining >= b.cfg().Memory.ConsolidationInterval {
-				b.triggerChannelConsolidation(b.ctx, channelID, remaining)
+				b.triggerChannelConsolidationDepth(b.ctx, channelID, remaining, depth+1)
 			}
 		}()
 

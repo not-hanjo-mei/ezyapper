@@ -24,6 +24,7 @@ func (m *mockEmbedder) Embed(ctx context.Context, text string) ([]float32, error
 	// Deterministic: vector depends on text length
 	return []float32{float32(len(text)), float32(len(text) * 2)}, nil
 }
+func (m *mockEmbedder) Stop() {}
 
 func (m *mockEmbedder) count(text string) int {
 	m.mu.Lock()

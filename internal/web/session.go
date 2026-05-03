@@ -136,6 +136,11 @@ func (s *SessionStore) cleanupLoop() {
 		}
 		s.mu.RUnlock()
 	}()
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Errorf("[web] panic in session cleanup: %v", r)
+		}
+	}()
 
 	for {
 		select {

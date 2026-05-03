@@ -246,6 +246,11 @@ func (s *Server) Start() error {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Errorf("[web] panic in HTTP listener: %v", r)
+			}
+		}()
 		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Errorf("Web server error: %v", err)
 		}
@@ -270,6 +275,12 @@ func (s *Server) Stop(ctx context.Context) error {
 	// Wait for tracked goroutines with remaining deadline
 	done := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Errorf("[web] panic in shutdown waiter: %v", r)
+				close(done)
+			}
+		}()
 		s.wg.Wait()
 		close(done)
 	}()

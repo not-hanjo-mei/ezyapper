@@ -126,6 +126,8 @@ type ServiceConfig struct {
 type Embedder interface {
 	// Embed generates an embedding for the given text
 	Embed(ctx context.Context, text string) ([]float32, error)
+	// Stop releases any resources held by the embedder (e.g. goroutines, timers).
+	Stop()
 }
 
 func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedder, aiClient aiChatCompleter, vd visionDescriber) (*MemoryService, error) {
@@ -356,7 +358,9 @@ func (s *MemoryService) IncrementMessageCount(ctx context.Context, userID string
 		logger.Warnf("[MemoryService.IncrementMessageCount] failed to get profile for userID=%s: %v", userID, err)
 	} else {
 		profile.LastActiveAt = time.Now()
-		profile.MessageCount = count
+		if count > profile.MessageCount {
+			profile.MessageCount = count
+		}
 		if err := s.UpdateProfile(ctx, profile); err != nil {
 			logger.Warnf("[MemoryService.IncrementMessageCount] failed to update profile for userID=%s: %v", userID, err)
 		}
@@ -496,5 +500,6 @@ func (s *MemoryService) GetUserStats(ctx context.Context, userID string) (*UserS
 }
 
 func (s *MemoryService) Close() error {
+	s.embedder.Stop()
 	return s.qdrant.Close()
 }

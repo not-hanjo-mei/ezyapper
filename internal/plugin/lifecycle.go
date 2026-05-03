@@ -682,19 +682,28 @@ func (pm *Manager) WaitForPending() error {
 		close(done)
 	}()
 
+	timer := time.NewTimer(time.Duration(pm.shutdownTimeoutSec) * time.Second)
+	defer timer.Stop()
+
 	select {
 	case <-done:
 		return nil
-	case <-time.After(time.Duration(pm.shutdownTimeoutSec) * time.Second):
+	case <-timer.C:
 		return fmt.Errorf("timeout waiting for pending plugin operations")
 	}
 }
 
 func (pm *Manager) Shutdown(ctx context.Context) error {
 	pm.mu.Lock()
+	plugins := make(map[string]*Client, len(pm.plugins))
+	for name, plugin := range pm.plugins {
+		plugins[name] = plugin
+	}
+	pm.plugins = make(map[string]*Client)
+	pm.mu.Unlock()
 
 	errs := []error{}
-	for name, plugin := range pm.plugins {
+	for name, plugin := range plugins {
 		logger.Infof("Shutting down plugin: %s", name)
 
 		if err := pm.shutdownPlugin(plugin); err != nil {
@@ -703,9 +712,6 @@ func (pm *Manager) Shutdown(ctx context.Context) error {
 
 		pm.stopPluginProcess(plugin, time.Duration(pm.shutdownTimeoutSec)*time.Second)
 	}
-
-	pm.plugins = make(map[string]*Client)
-	pm.mu.Unlock()
 
 	if err := pm.WaitForPending(); err != nil {
 		logger.Warnf("WaitForPending: %v", err)

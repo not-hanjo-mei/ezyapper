@@ -123,10 +123,17 @@ func (b *Bot) buildConversationHistory(ctx context.Context, messages []*types.Di
 					logger.Debugf("[vision] skipping uncached historical image descriptions for message %s", msg.ID)
 				}
 
+				maxImages := b.cfg().AI.Vision.MaxImages
+				truncated := false
 				for j, desc := range descriptions {
-					if j < b.cfg().AI.Vision.MaxImages || b.cfg().AI.Vision.MaxImages == 0 {
+					if j < maxImages || maxImages == 0 {
 						content = fmt.Sprintf("%s\n[Image %d: %s]", content, j+1, desc)
+					} else {
+						truncated = true
 					}
+				}
+				if truncated {
+					logger.Warnf("[history] historical image descriptions truncated for message %s: %d descriptions but max_images=%d", msg.ID, len(descriptions), maxImages)
 				}
 			}
 			result = append(result, openai.ChatCompletionMessage{
@@ -265,10 +272,17 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 			}
 
 			if haveCachedDescriptions {
+				maxImages := b.cfg().AI.Vision.MaxImages
+				truncated := false
 				for j, desc := range descriptions {
-					if j < b.cfg().AI.Vision.MaxImages || b.cfg().AI.Vision.MaxImages == 0 {
+					if j < maxImages || maxImages == 0 {
 						content = fmt.Sprintf("%s\n[Image %d: %s]", content, j+1, desc)
+					} else {
+						truncated = true
 					}
+				}
+				if truncated {
+					logger.Warnf("[history] historical image descriptions truncated for message %s: %d descriptions but max_images=%d", msg.ID, len(descriptions), maxImages)
 				}
 			}
 		}

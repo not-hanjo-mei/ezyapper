@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"ezyapper/internal/logger"
+
 	"golang.org/x/sync/singleflight"
 )
 
@@ -36,6 +38,8 @@ func NewAIEmbedder(client embeddingClient, model string) (*AIEmbedder, error) {
 func (e *AIEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
 	return e.client.CreateEmbedding(ctx, text, e.model)
 }
+
+func (e *AIEmbedder) Stop() {}
 
 type cacheEntry struct {
 	vector     []float32
@@ -135,6 +139,11 @@ func (e *CachedEmbedder) Embed(ctx context.Context, text string) ([]float32, err
 }
 
 func (e *CachedEmbedder) evictLoop() {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Errorf("[embedder] panic in eviction loop: %v", r)
+		}
+	}()
 	ticker := time.NewTicker(e.eviction)
 	defer ticker.Stop()
 	for {

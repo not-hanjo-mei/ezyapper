@@ -147,11 +147,10 @@ func Init(cfg Config) error {
 }
 
 // L returns the global logger. If the logger has not been initialized,
-// the program exits with a fatal error — there is no silent fallback.
+// the function panics rather than returning nil — there is no silent fallback.
 func L() *Logger {
 	if globalLogger == nil {
-		fmt.Fprintf(os.Stderr, "FATAL: logger.L() called before Init() — logger was not initialized\n")
-		os.Exit(1)
+		panic("logger.L() called before Init() — logger was not initialized")
 	}
 	return globalLogger
 }

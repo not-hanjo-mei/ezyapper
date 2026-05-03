@@ -23,6 +23,7 @@ func (m *svcEmbedder) Embed(ctx context.Context, text string) ([]float32, error)
 	}
 	return []float32{1.0, 2.0, 3.0}, nil
 }
+func (m *svcEmbedder) Stop() {}
 
 func TestNewService_Valid(t *testing.T) {
 	emb := &svcEmbedder{}

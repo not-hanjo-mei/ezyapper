@@ -229,10 +229,14 @@ func (b *Bot) handleHybridMode(ctx context.Context, mc ModeContext, req ai.ChatC
 	}
 
 	// Add image descriptions to current message content
+	maxImages := b.cfg().AI.Vision.MaxImages
 	for i, desc := range descriptions {
-		if i < b.cfg().AI.Vision.MaxImages {
+		if i < maxImages {
 			currentMsgContent.WriteString(fmt.Sprintf(" [Image %d: %s]", i+1, desc))
 		}
+	}
+	if len(descriptions) > maxImages {
+		logger.Warnf("[hybrid] image descriptions truncated: %d descriptions but max_images=%d (config AI.Vision.MaxImages)", len(descriptions), maxImages)
 	}
 
 	fullContent.WriteString(formatMessageXML(mc.DisplayName, mc.Username, mc.UserID, currentMsgContent.String(), time.Now(), mc.ReplyToUsername, mc.ReplyToContent))

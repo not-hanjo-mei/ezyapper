@@ -117,7 +117,14 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go runCleanupRoutine(ctx, cfg, discordBot)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Errorf("[cleanup] panic in cleanup routine: %v", r)
+			}
+		}()
+		runCleanupRoutine(ctx, cfg, discordBot)
+	}()
 
 	logger.Info("Bot is now running. Press CTRL+C to exit.")
 
@@ -189,7 +196,7 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 		return nil, fmt.Errorf("failed to create embedder: %w", err)
 	}
 
-	qdrantClient, err := memory.NewQdrantClient(&cfg.Qdrant, cfg.Memory.MaxRetries, cfg.Memory.RetryBaseDelayMs, cfg.Memory.RetryMaxDelayMs)
+	qdrantClient, err := memory.NewQdrantClient(context.Background(), &cfg.Qdrant, cfg.Memory.MaxRetries, cfg.Memory.RetryBaseDelayMs, cfg.Memory.RetryMaxDelayMs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create qdrant client: %w", err)
 	}
@@ -250,12 +257,6 @@ func runCleanupRoutine(ctx context.Context, cfg *config.Config, discordBot *bot.
 func buildConsolidationVisionConfig(cfg *config.Config, baseConfig *config.AIConfig) (*config.VisionConfig, *config.AIConfig) {
 	visionConfig := cfg.AI.Vision
 	visionAIConfig := *baseConfig
-	if visionAIConfig.VisionModel == "" {
-		visionAIConfig.VisionModel = cfg.AI.VisionModel
-	}
-	if visionAIConfig.VisionModel == "" {
-		visionAIConfig.VisionModel = visionAIConfig.Model
-	}
 
 	if cfg.Memory.Consolidation.VisionModel != "" {
 		visionAIConfig.VisionModel = cfg.Memory.Consolidation.VisionModel

@@ -143,13 +143,15 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 	profile, err := b.profileStore.GetProfile(ctx, m.Author.ID)
 	if err != nil {
 		logger.Warnf("Failed to get profile: %v", err)
-		profile = &memory.Profile{UserID: m.Author.ID}
+		profile = nil
 	}
 	displayName := m.Author.GlobalName
 	if displayName == "" {
 		displayName = m.Author.Username
 	}
-	profile.DisplayName = displayName
+	if profile != nil {
+		profile.DisplayName = displayName
+	}
 
 	s.ChannelTyping(m.ChannelID)
 	typingCtx, cancelTyping := context.WithCancel(ctx)

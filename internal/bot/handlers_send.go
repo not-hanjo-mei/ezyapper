@@ -30,6 +30,11 @@ type localUploadFile struct {
 
 // maintainTyping keeps the typing indicator alive by sending it periodically
 func maintainTyping(ctx context.Context, s *discordgo.Session, channelID string, intervalSec int) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Errorf("[typing] panic in typing indicator: %v", r)
+		}
+	}()
 	ticker := time.NewTicker(time.Duration(intervalSec) * time.Second)
 	defer ticker.Stop()
 
