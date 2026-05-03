@@ -420,6 +420,9 @@ func validateVision(cfg *Config, errs *[]string) {
 	if cfg.AI.Vision.MaxTokens != 0 {
 		requirePositive(cfg.AI.Vision.MaxTokens, "ai.vision.max_tokens", errs)
 	}
+	if cfg.AI.Vision.Mode != VisionModeTextOnly && cfg.AI.Vision.MaxTokens == 0 {
+		*errs = append(*errs, "ai.vision.max_tokens is required when vision.mode is not text_only")
+	}
 }
 
 func validateDiscord(cfg *Config, errs *[]string) {

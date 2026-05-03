@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"reflect"
 	"strings"
 	"time"
@@ -503,7 +504,53 @@ func (c *Client) fetchImageAsDataURL(ctx context.Context, url string, opts image
 }
 
 func (c *Client) downloadImageToBase64(ctx context.Context, url string) (string, error) {
+	if err := validateImageURL(url); err != nil {
+		return "", fmt.Errorf("invalid image URL: %w", err)
+	}
 	return c.fetchImageAsDataURL(ctx, url, imageDownloadOptions{})
+}
+
+func validateImageURL(rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("parse URL: %w", err)
+	}
+
+	if parsed.Scheme != "https" {
+		if parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1" || parsed.Hostname() == "::1" {
+			return nil
+		}
+		return fmt.Errorf("only https URLs are allowed for images, got %q", parsed.Scheme)
+	}
+
+	host := parsed.Hostname()
+	if ip := net.ParseIP(host); ip != nil {
+		if isPrivateIP(ip) {
+			return fmt.Errorf("image URL resolves to private/internal IP address")
+		}
+		return nil
+	}
+
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return fmt.Errorf("resolve host %q: %w", host, err)
+	}
+	for _, ip := range ips {
+		if isPrivateIP(ip) {
+			return fmt.Errorf("image URL resolves to private/internal IP (%s)", ip.String())
+		}
+	}
+	return nil
+}
+
+func isPrivateIP(ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+	if ip.IsPrivate() {
+		return true
+	}
+	return false
 }
 
 // CreateVisionCompletion creates a vision completion for image analysis
