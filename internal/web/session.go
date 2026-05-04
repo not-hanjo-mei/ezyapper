@@ -204,7 +204,7 @@ func SessionMiddleware(store *SessionStore) Middleware {
 				var sessErr error
 				session, sessErr = store.GetSession(cookie.Value)
 				if sessErr != nil {
-					logger.Debugf("[Web] invalid session cookie: %v", sessErr)
+					logger.Debugf("[web] invalid session cookie: %v", sessErr)
 				}
 			}
 

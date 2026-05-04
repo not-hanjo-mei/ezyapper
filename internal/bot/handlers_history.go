@@ -127,7 +127,7 @@ func (b *Bot) buildConversationHistory(ctx context.Context, messages []*types.Di
 				truncated := false
 				for j, desc := range descriptions {
 					if j < maxImages || maxImages == 0 {
-						content = fmt.Sprintf("%s\n[Image %d: %s]", content, j+1, desc)
+						fmt.Fprintf(&result, "\n[Image %d: %s]", j+1, desc)
 					} else {
 						truncated = true
 					}
@@ -276,7 +276,7 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 				truncated := false
 				for j, desc := range descriptions {
 					if j < maxImages || maxImages == 0 {
-						content = fmt.Sprintf("%s\n[Image %d: %s]", content, j+1, desc)
+						fmt.Fprintf(&result, "\n[Image %d: %s]", j+1, desc)
 					} else {
 						truncated = true
 					}
@@ -312,7 +312,7 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 		if displayName == "" {
 			displayName = msg.Username
 		}
-		result.WriteString(fmt.Sprintf("[%s] [%s] %s (%s, ID:%s): \"%s\"%s%s\n", timeStr, role, displayName, msg.Username, msg.AuthorID, displayContent, renameMarker, replyMarker))
+		fmt.Fprintf(&result, "[%s] [%s] %s (%s, ID:%s): \"%s\"%s%s\n", timeStr, role, displayName, msg.Username, msg.AuthorID, displayContent, renameMarker, replyMarker)
 	}
 
 	result.WriteString("</context>")

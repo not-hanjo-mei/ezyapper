@@ -88,8 +88,8 @@ func TestLogger_SetLevel(t *testing.T) {
 		t.Errorf("SetLevel failed: %v", err)
 	}
 
-	if logger.GetLevel() != "debug" {
-		t.Errorf("Expected level='debug', got '%s'", logger.GetLevel())
+	if logger.Level() != "debug" {
+		t.Errorf("Expected level='debug', got '%s'", logger.Level())
 	}
 }
 

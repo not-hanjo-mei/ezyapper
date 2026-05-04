@@ -42,14 +42,14 @@ func (b *Bot) buildDynamicContext(authorName string, profile *memory.Profile, me
 		context.WriteString("User profile: not available\n")
 	} else {
 		if profile.DisplayName != "" {
-			context.WriteString(fmt.Sprintf("User profile for @%s:\n", profile.DisplayName))
+			fmt.Fprintf(&context, "User profile for @%s:\n", profile.DisplayName)
 		} else {
 			context.WriteString("User profile:\n")
 		}
 
 		first := true
 		if len(profile.Traits) > 0 {
-			context.WriteString(fmt.Sprintf("User traits: %s", strings.Join(profile.Traits, ", ")))
+			fmt.Fprintf(&context, "User traits: %s", strings.Join(profile.Traits, ", "))
 			first = false
 		}
 		if len(profile.Facts) > 0 {
@@ -60,7 +60,7 @@ func (b *Bot) buildDynamicContext(authorName string, profile *memory.Profile, me
 			if !first {
 				context.WriteString("\n")
 			}
-			context.WriteString(fmt.Sprintf("User facts: %s", strings.Join(facts, ", ")))
+			fmt.Fprintf(&context, "User facts: %s", strings.Join(facts, ", "))
 			first = false
 		}
 		if len(profile.Preferences) > 0 {
@@ -71,7 +71,7 @@ func (b *Bot) buildDynamicContext(authorName string, profile *memory.Profile, me
 			if !first {
 				context.WriteString("\n")
 			}
-			context.WriteString(fmt.Sprintf("User preferences: %s", strings.Join(prefs, ", ")))
+			fmt.Fprintf(&context, "User preferences: %s", strings.Join(prefs, ", "))
 		}
 	}
 
@@ -79,7 +79,7 @@ func (b *Bot) buildDynamicContext(authorName string, profile *memory.Profile, me
 	if len(memories) > 0 {
 		context.WriteString("\n\n<memory>\n")
 		for _, mem := range memories {
-			context.WriteString(fmt.Sprintf("[%s] %s\n", mem.MemoryType, mem.Summary))
+			fmt.Fprintf(&context, "[%s] %s\n", mem.MemoryType, mem.Summary)
 		}
 		context.WriteString("</memory>")
 		logger.Debugf("[memory] added %d memories to dynamic context", len(memories))

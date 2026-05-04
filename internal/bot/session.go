@@ -6,7 +6,7 @@ import (
 	crand "crypto/rand"
 	"fmt"
 	"math/big"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -329,7 +329,7 @@ func (b *Bot) registerMCPTools(ctx context.Context) {
 			Name:        fmt.Sprintf("%s_%s", mcpTool.ServerName, mcpTool.Tool.Name),
 			Description: fmt.Sprintf("[%s] %s", mcpTool.ServerName, mcpTool.Tool.Description),
 			Parameters:  mcpTool.Tool.InputSchema,
-			Handler: func(ctx context.Context, args map[string]interface{}) (string, error) {
+			Handler: func(ctx context.Context, args map[string]any) (string, error) {
 				return b.mcpManager.CallTool(ctx, mcpTool.ServerName, mcpTool.Tool.Name, args)
 			},
 		})
@@ -585,9 +585,9 @@ func (b *Bot) registerPluginTools() {
 		toolName := tool.Spec.Name
 		parameters := tool.Spec.Parameters
 		if parameters == nil {
-			parameters = map[string]interface{}{
+			parameters = map[string]any{
 				"type":       "object",
-				"properties": map[string]interface{}{},
+				"properties": map[string]any{},
 			}
 		}
 
@@ -600,7 +600,7 @@ func (b *Bot) registerPluginTools() {
 			Name:        fullName,
 			Description: fmt.Sprintf("[plugin:%s] %s", pluginName, description),
 			Parameters:  parameters,
-			Handler: func(ctx context.Context, args map[string]interface{}) (string, error) {
+			Handler: func(ctx context.Context, args map[string]any) (string, error) {
 				return b.pluginManager.ExecuteTool(ctx, pluginName, toolName, args)
 			},
 		})
@@ -962,8 +962,8 @@ func (b *Bot) pruneHistoricalImageDescCacheLocked() {
 		for id, e := range b.historicalImageDescCache {
 			entries = append(entries, entry{id, e.cachedAt})
 		}
-		sort.Slice(entries, func(i, j int) bool {
-			return entries[i].age.Before(entries[j].age)
+		slices.SortFunc(entries, func(a, b entry) int {
+			return a.age.Compare(b.age)
 		})
 		excess := len(entries) - maxEntries
 		for i := 0; i < excess; i++ {

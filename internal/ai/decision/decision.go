@@ -181,16 +181,16 @@ func (d *DecisionService) buildPromptsWithInfo(botName string, msgInfo MessageIn
 		userPrompt.WriteString("<context>\n")
 		for _, msg := range recentMessages {
 			timeStr := msg.Timestamp.UTC().Format(time.RFC3339)
-			userPrompt.WriteString(fmt.Sprintf("\"%s\"{UserID=%s,Time=%s}: \"%s\"\n", msg.AuthorName, msg.AuthorID, timeStr, msg.Content))
+			fmt.Fprintf(&userPrompt, "\"%s\"{UserID=%s,Time=%s}: \"%s\"\n", msg.AuthorName, msg.AuthorID, timeStr, msg.Content)
 		}
 		userPrompt.WriteString("</context>\n\n")
 	}
 
 	// Build current message section
 	userPrompt.WriteString("<currentMessage>\n")
-	userPrompt.WriteString(fmt.Sprintf("\"%s\"{UserID=%s}: \"%s\"\n", msgInfo.AuthorName, msgInfo.AuthorID, content))
+	fmt.Fprintf(&userPrompt, "\"%s\"{UserID=%s}: \"%s\"\n", msgInfo.AuthorName, msgInfo.AuthorID, content)
 	if msgInfo.ReplyTo != "" {
-		userPrompt.WriteString(fmt.Sprintf("Reply to: \"%s\"{UserID=%s}\n", msgInfo.ReplyTo, msgInfo.ReplyToID))
+		fmt.Fprintf(&userPrompt, "Reply to: \"%s\"{UserID=%s}\n", msgInfo.ReplyTo, msgInfo.ReplyToID)
 	}
 	userPrompt.WriteString("</currentMessage>")
 

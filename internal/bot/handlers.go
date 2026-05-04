@@ -23,7 +23,7 @@ func (b *Bot) registerHandlers() {
 }
 
 func (b *Bot) onReady(s *discordgo.Session, r *discordgo.Ready) {
-	logger.Infof("Bot is ready! Serving %d guilds", len(r.Guilds))
+	logger.Infof("[bot] Bot is ready! Serving %d guilds", len(r.Guilds))
 
 	s.UpdateStatusComplex(discordgo.UpdateStatusData{
 		Status: "online",
@@ -147,7 +147,7 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 
 	pm.SetPhase(PhaseDeciding)
 	shouldRespond, reason := b.ShouldRespond(messageCtx, m, recentMessages)
-	logger.Infof("Message from %s: shouldRespond=%v, reason=%s", m.Author.Username, shouldRespond, reason)
+	logger.Infof("[bot] Message from %s: shouldRespond=%v, reason=%s", m.Author.Username, shouldRespond, reason)
 
 	if !shouldRespond {
 		b.removeProcessingMessageIfMatch(m.ID, pm)

@@ -118,7 +118,7 @@ func (m *MCPManager) getServerTools(ctx context.Context, serverName string, sess
 }
 
 // CallTool invokes a tool on a specific MCP server with the given arguments.
-func (m *MCPManager) CallTool(ctx context.Context, serverName, toolName string, arguments map[string]interface{}) (string, error) {
+func (m *MCPManager) CallTool(ctx context.Context, serverName, toolName string, arguments map[string]any) (string, error) {
 	m.mu.RLock()
 	session, exists := m.sessions[serverName]
 	m.mu.RUnlock()

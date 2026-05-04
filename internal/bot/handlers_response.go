@@ -232,7 +232,7 @@ func (b *Bot) handleHybridMode(ctx context.Context, mc ModeContext, req ai.ChatC
 	maxImages := b.cfg().AI.Vision.MaxImages
 	for i, desc := range descriptions {
 		if i < maxImages {
-			currentMsgContent.WriteString(fmt.Sprintf(" [Image %d: %s]", i+1, desc))
+			fmt.Fprintf(&currentMsgContent, " [Image %d: %s]", i+1, desc)
 		}
 	}
 	if len(descriptions) > maxImages {

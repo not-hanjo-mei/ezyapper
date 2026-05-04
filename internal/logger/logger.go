@@ -110,8 +110,8 @@ func (l *Logger) SetLevel(level string) error {
 	return nil
 }
 
-// GetLevel returns the current log level
-func (l *Logger) GetLevel() string {
+// Level returns the current log level
+func (l *Logger) Level() string {
 	return l.atomicLevel.Level().String()
 }
 

@@ -122,10 +122,10 @@ func (b *Bot) onMessageDelete(s *discordgo.Session, m *discordgo.MessageDelete) 
 
 // onGuildJoin handles joining a new guild.
 func (b *Bot) onGuildJoin(s *discordgo.Session, g *discordgo.GuildCreate) {
-	logger.Infof("Joined guild: %s (%d members)", g.Name, g.MemberCount)
+	logger.Infof("[guild] Joined guild: %s (%d members)", g.Name, g.MemberCount)
 }
 
 // onGuildLeave handles leaving a guild.
 func (b *Bot) onGuildLeave(s *discordgo.Session, g *discordgo.GuildDelete) {
-	logger.Infof("Left guild: %s", g.ID)
+	logger.Infof("[guild] Left guild: %s", g.ID)
 }

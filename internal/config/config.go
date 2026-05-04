@@ -119,17 +119,17 @@ func toFileConfig(cfg *Config) fileConfig {
 
 // DecisionConfig holds LLM-based reply decision settings
 type DecisionConfig struct {
-	Enabled        bool                   `mapstructure:"enabled" yaml:"enabled"`
-	Model          string                 `mapstructure:"model" yaml:"model"`
-	APIBaseURL     string                 `mapstructure:"api_base_url" yaml:"api_base_url"`
-	APIKey         string                 `mapstructure:"api_key" yaml:"api_key"`
-	MaxTokens      int                    `mapstructure:"max_tokens" yaml:"max_tokens"`
-	Temperature    float32                `mapstructure:"temperature" yaml:"temperature"`
-	RetryCount     int                    `mapstructure:"retry_count" yaml:"retry_count"`
-	Timeout        int                    `mapstructure:"timeout" yaml:"timeout"`
-	SystemPrompt   string                 `mapstructure:"system_prompt" yaml:"system_prompt"`
-	ExtraParams    map[string]interface{} `mapstructure:"extra_params" yaml:"extra_params"`
-	HTTPTimeoutSec int                    `mapstructure:"http_timeout_sec" yaml:"http_timeout_sec"`
+	Enabled        bool           `mapstructure:"enabled" yaml:"enabled"`
+	Model          string         `mapstructure:"model" yaml:"model"`
+	APIBaseURL     string         `mapstructure:"api_base_url" yaml:"api_base_url"`
+	APIKey         string         `mapstructure:"api_key" yaml:"api_key"`
+	MaxTokens      int            `mapstructure:"max_tokens" yaml:"max_tokens"`
+	Temperature    float32        `mapstructure:"temperature" yaml:"temperature"`
+	RetryCount     int            `mapstructure:"retry_count" yaml:"retry_count"`
+	Timeout        int            `mapstructure:"timeout" yaml:"timeout"`
+	SystemPrompt   string         `mapstructure:"system_prompt" yaml:"system_prompt"`
+	ExtraParams    map[string]any `mapstructure:"extra_params" yaml:"extra_params"`
+	HTTPTimeoutSec int            `mapstructure:"http_timeout_sec" yaml:"http_timeout_sec"`
 }
 
 // RateLimitConfig holds per-user rate limiting window settings.
@@ -157,33 +157,33 @@ type DiscordConfig struct {
 
 // AIConfig holds AI/LLM settings for chat
 type AIConfig struct {
-	APIBaseURL              string                 `mapstructure:"api_base_url" yaml:"api_base_url"`
-	APIKey                  string                 `mapstructure:"api_key" yaml:"api_key"`
-	Model                   string                 `mapstructure:"model" yaml:"model"`
-	VisionModel             string                 `mapstructure:"vision_model" yaml:"vision_model"`
-	VisionBase64            bool                   `mapstructure:"vision_base64" yaml:"vision_base64"`
-	Vision                  VisionConfig           `mapstructure:"vision" yaml:"vision"`
-	MaxTokens               int                    `mapstructure:"max_tokens" yaml:"max_tokens"`
-	Temperature             float32                `mapstructure:"temperature" yaml:"temperature"`
-	RetryCount              int                    `mapstructure:"retry_count" yaml:"retry_count"`
-	Timeout                 int                    `mapstructure:"timeout" yaml:"timeout"`
-	SystemPrompt            string                 `mapstructure:"system_prompt" yaml:"system_prompt"`
-	ExtraParams             map[string]interface{} `mapstructure:"extra_params" yaml:"extra_params"`
-	HTTPTimeoutSec          int                    `mapstructure:"http_timeout_sec" yaml:"http_timeout_sec"`
-	MaxToolIterations       int                    `mapstructure:"max_tool_iterations" yaml:"max_tool_iterations"`
-	MaxImageBytes           int                    `mapstructure:"max_image_bytes" yaml:"max_image_bytes"`
-	UserAgent               string                 `mapstructure:"user_agent" yaml:"user_agent"`
-	RequireImageContentType bool                   `mapstructure:"require_image_content_type" yaml:"require_image_content_type"`
+	APIBaseURL              string         `mapstructure:"api_base_url" yaml:"api_base_url"`
+	APIKey                  string         `mapstructure:"api_key" yaml:"api_key"`
+	Model                   string         `mapstructure:"model" yaml:"model"`
+	VisionModel             string         `mapstructure:"vision_model" yaml:"vision_model"`
+	VisionBase64            bool           `mapstructure:"vision_base64" yaml:"vision_base64"`
+	Vision                  VisionConfig   `mapstructure:"vision" yaml:"vision"`
+	MaxTokens               int            `mapstructure:"max_tokens" yaml:"max_tokens"`
+	Temperature             float32        `mapstructure:"temperature" yaml:"temperature"`
+	RetryCount              int            `mapstructure:"retry_count" yaml:"retry_count"`
+	Timeout                 int            `mapstructure:"timeout" yaml:"timeout"`
+	SystemPrompt            string         `mapstructure:"system_prompt" yaml:"system_prompt"`
+	ExtraParams             map[string]any `mapstructure:"extra_params" yaml:"extra_params"`
+	HTTPTimeoutSec          int            `mapstructure:"http_timeout_sec" yaml:"http_timeout_sec"`
+	MaxToolIterations       int            `mapstructure:"max_tool_iterations" yaml:"max_tool_iterations"`
+	MaxImageBytes           int            `mapstructure:"max_image_bytes" yaml:"max_image_bytes"`
+	UserAgent               string         `mapstructure:"user_agent" yaml:"user_agent"`
+	RequireImageContentType bool           `mapstructure:"require_image_content_type" yaml:"require_image_content_type"`
 }
 
 // EmbeddingConfig holds settings for embedding generation
 type EmbeddingConfig struct {
-	APIBaseURL  string                 `mapstructure:"api_base_url" yaml:"api_base_url"`
-	APIKey      string                 `mapstructure:"api_key" yaml:"api_key"`
-	Model       string                 `mapstructure:"model" yaml:"model"`
-	RetryCount  int                    `mapstructure:"retry_count" yaml:"retry_count"`
-	Timeout     int                    `mapstructure:"timeout" yaml:"timeout"`
-	ExtraParams map[string]interface{} `mapstructure:"extra_params" yaml:"extra_params"`
+	APIBaseURL  string         `mapstructure:"api_base_url" yaml:"api_base_url"`
+	APIKey      string         `mapstructure:"api_key" yaml:"api_key"`
+	Model       string         `mapstructure:"model" yaml:"model"`
+	RetryCount  int            `mapstructure:"retry_count" yaml:"retry_count"`
+	Timeout     int            `mapstructure:"timeout" yaml:"timeout"`
+	ExtraParams map[string]any `mapstructure:"extra_params" yaml:"extra_params"`
 }
 
 type MemoryConfig struct {
@@ -199,26 +199,26 @@ type MemoryConfig struct {
 }
 
 type ConsolidationConfig struct {
-	Enabled           bool                   `mapstructure:"enabled" yaml:"enabled"`
-	Model             string                 `mapstructure:"model" yaml:"model"`
-	APIBaseURL        string                 `mapstructure:"api_base_url" yaml:"api_base_url"`
-	APIKey            string                 `mapstructure:"api_key" yaml:"api_key"`
-	MaxTokens         int                    `mapstructure:"max_tokens" yaml:"max_tokens"`
-	Temperature       float32                `mapstructure:"temperature" yaml:"temperature"`
-	RetryCount        int                    `mapstructure:"retry_count" yaml:"retry_count"`
-	Timeout           int                    `mapstructure:"timeout" yaml:"timeout"`
-	VisionModel       string                 `mapstructure:"vision_model" yaml:"vision_model"`
-	VisionBase64      bool                   `mapstructure:"vision_base64" yaml:"vision_base64"`
-	VisionAPIBaseURL  string                 `mapstructure:"vision_api_base_url" yaml:"vision_api_base_url"`
-	VisionAPIKey      string                 `mapstructure:"vision_api_key" yaml:"vision_api_key"`
-	VisionMaxTokens   int                    `mapstructure:"vision_max_tokens" yaml:"vision_max_tokens"`
-	VisionTemperature float32                `mapstructure:"vision_temperature" yaml:"vision_temperature"`
-	VisionRetryCount  int                    `mapstructure:"vision_retry_count" yaml:"vision_retry_count"`
-	VisionTimeout     int                    `mapstructure:"vision_timeout" yaml:"vision_timeout"`
-	SystemPrompt      string                 `mapstructure:"system_prompt" yaml:"system_prompt"`
-	ExtraParams       map[string]interface{} `mapstructure:"extra_params" yaml:"extra_params"`
-	MemorySearchLimit int                    `mapstructure:"memory_search_limit" yaml:"memory_search_limit"`
-	WorkerQueueSize   int                    `mapstructure:"worker_queue_size" yaml:"worker_queue_size"`
+	Enabled           bool           `mapstructure:"enabled" yaml:"enabled"`
+	Model             string         `mapstructure:"model" yaml:"model"`
+	APIBaseURL        string         `mapstructure:"api_base_url" yaml:"api_base_url"`
+	APIKey            string         `mapstructure:"api_key" yaml:"api_key"`
+	MaxTokens         int            `mapstructure:"max_tokens" yaml:"max_tokens"`
+	Temperature       float32        `mapstructure:"temperature" yaml:"temperature"`
+	RetryCount        int            `mapstructure:"retry_count" yaml:"retry_count"`
+	Timeout           int            `mapstructure:"timeout" yaml:"timeout"`
+	VisionModel       string         `mapstructure:"vision_model" yaml:"vision_model"`
+	VisionBase64      bool           `mapstructure:"vision_base64" yaml:"vision_base64"`
+	VisionAPIBaseURL  string         `mapstructure:"vision_api_base_url" yaml:"vision_api_base_url"`
+	VisionAPIKey      string         `mapstructure:"vision_api_key" yaml:"vision_api_key"`
+	VisionMaxTokens   int            `mapstructure:"vision_max_tokens" yaml:"vision_max_tokens"`
+	VisionTemperature float32        `mapstructure:"vision_temperature" yaml:"vision_temperature"`
+	VisionRetryCount  int            `mapstructure:"vision_retry_count" yaml:"vision_retry_count"`
+	VisionTimeout     int            `mapstructure:"vision_timeout" yaml:"vision_timeout"`
+	SystemPrompt      string         `mapstructure:"system_prompt" yaml:"system_prompt"`
+	ExtraParams       map[string]any `mapstructure:"extra_params" yaml:"extra_params"`
+	MemorySearchLimit int            `mapstructure:"memory_search_limit" yaml:"memory_search_limit"`
+	WorkerQueueSize   int            `mapstructure:"worker_queue_size" yaml:"worker_queue_size"`
 }
 
 type RetrievalConfig struct {
@@ -305,16 +305,16 @@ const (
 
 // VisionConfig holds vision processing settings
 type VisionConfig struct {
-	Mode              VisionMode             `mapstructure:"mode" yaml:"mode"`
-	DescriptionPrompt string                 `mapstructure:"description_prompt" yaml:"description_prompt"`
-	MaxImages         int                    `mapstructure:"max_images" yaml:"max_images"`
-	APIBaseURL        string                 `mapstructure:"api_base_url" yaml:"api_base_url"`
-	APIKey            string                 `mapstructure:"api_key" yaml:"api_key"`
-	MaxTokens         int                    `mapstructure:"max_tokens" yaml:"max_tokens"`
-	Temperature       float32                `mapstructure:"temperature" yaml:"temperature"`
-	RetryCount        int                    `mapstructure:"retry_count" yaml:"retry_count"`
-	Timeout           int                    `mapstructure:"timeout" yaml:"timeout"`
-	ExtraParams       map[string]interface{} `mapstructure:"extra_params" yaml:"extra_params"`
+	Mode              VisionMode     `mapstructure:"mode" yaml:"mode"`
+	DescriptionPrompt string         `mapstructure:"description_prompt" yaml:"description_prompt"`
+	MaxImages         int            `mapstructure:"max_images" yaml:"max_images"`
+	APIBaseURL        string         `mapstructure:"api_base_url" yaml:"api_base_url"`
+	APIKey            string         `mapstructure:"api_key" yaml:"api_key"`
+	MaxTokens         int            `mapstructure:"max_tokens" yaml:"max_tokens"`
+	Temperature       float32        `mapstructure:"temperature" yaml:"temperature"`
+	RetryCount        int            `mapstructure:"retry_count" yaml:"retry_count"`
+	Timeout           int            `mapstructure:"timeout" yaml:"timeout"`
+	ExtraParams       map[string]any `mapstructure:"extra_params" yaml:"extra_params"`
 }
 
 func Load(configPath string) (*Config, error) {

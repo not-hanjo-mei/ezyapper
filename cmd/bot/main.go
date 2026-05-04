@@ -46,14 +46,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger.Info("Starting EZyapper")
+	logger.Info("[main] Starting EZyapper")
 
 	memoryService, err := initMemoryService(cfg)
 	if err != nil {
-		logger.Fatalf("Failed to initialize memory service: %v", err)
+		logger.Fatalf("[main] Failed to initialize memory service: %v", err)
 	}
 	defer memoryService.Close()
-	logger.Info("Memory service initialized")
+	logger.Info("[main] Memory service initialized")
 
 	pluginManager := plugin.NewManager(cfg.Plugins.DefaultToolTimeoutMs,
 		cfg.Plugins.StartupTimeoutSec,
@@ -70,12 +70,12 @@ func main() {
 
 	discordBot, err := bot.New(cfgStore, memoryService, memoryService, memoryService, pluginManager)
 	if err != nil {
-		logger.Fatalf("Failed to create Discord bot: %v", err)
+		logger.Fatalf("[main] Failed to create Discord bot: %v", err)
 	}
 
 	ctx := context.Background()
 	if err := discordBot.Start(ctx); err != nil {
-		logger.Fatalf("Failed to start Discord bot: %v", err)
+		logger.Fatalf("[main] Failed to start Discord bot: %v", err)
 	}
 
 	s := discordBot.GetSession()
@@ -108,7 +108,7 @@ func main() {
 	)
 	webServer := web.NewServer(cfgStore, memoryService, memoryService, memoryService, pluginManager, discordBot, discordAdapter)
 	if err := webServer.Start(); err != nil {
-		logger.Warnf("Failed to start web server: %v", err)
+		logger.Warnf("[main] Failed to start web server: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -123,42 +123,42 @@ func main() {
 		runCleanupRoutine(ctx, cfg, discordBot)
 	}()
 
-	logger.Info("Bot is now running. Press CTRL+C to exit.")
+	logger.Info("[main] Bot is now running. Press CTRL+C to exit.")
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	logger.Info("Shutting down...")
+	logger.Info("[main] Shutting down...")
 	cancel() // Cancel the context to stop the cleanup routine
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.Operations.ShutdownTimeoutSec)*time.Second)
 	defer cancel()
 
 	if err := webServer.Stop(shutdownCtx); err != nil {
-		logger.Warnf("Error stopping web server: %v", err)
+		logger.Warnf("[main] Error stopping web server: %v", err)
 	}
 
 	if err := discordBot.Shutdown(shutdownCtx); err != nil {
-		logger.Warnf("Error during bot shutdown: %v", err)
+		logger.Warnf("[main] Error during bot shutdown: %v", err)
 	}
 
 	if err := discordBot.Stop(); err != nil {
-		logger.Warnf("Error stopping Discord bot: %v", err)
+		logger.Warnf("[main] Error stopping Discord bot: %v", err)
 	}
 
 	if err := pluginManager.Shutdown(shutdownCtx); err != nil {
-		logger.Warnf("Error shutting down plugins: %v", err)
+		logger.Warnf("[main] Error shutting down plugins: %v", err)
 	}
 
-	logger.Info("Bot stopped. Goodbye!")
+	logger.Info("[main] Bot stopped. Goodbye!")
 }
 
 // initMemoryService initializes the memory service with Qdrant
 func initMemoryService(cfg *config.Config) (memory.Service, error) {
 	memoryEnabled := cfg.Memory.Retrieval.TopK > 0 || cfg.Memory.Consolidation.Enabled
 	if !memoryEnabled {
-		logger.Info("Memory subsystem is disabled by config (retrieval.top_k=0 and consolidation.enabled=false)")
+		logger.Info("[main] Memory subsystem is disabled by config (retrieval.top_k=0 and consolidation.enabled=false)")
 		return memory.NewNoopService(), nil
 	}
 
@@ -244,7 +244,7 @@ func runCleanupRoutine(ctx context.Context, cfg *config.Config, discordBot *bot.
 		select {
 		case <-ticker.C:
 			discordBot.CleanupCache()
-			logger.Debug("Cleanup routine completed")
+			logger.Debug("[main] Cleanup routine completed")
 		case <-ctx.Done():
 			return
 		}
