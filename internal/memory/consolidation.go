@@ -455,6 +455,9 @@ func (c *Consolidator) analyzeConversation(ctx context.Context, conversation str
 	if err != nil {
 		return nil, err
 	}
+	if content == "" {
+		return nil, nil
+	}
 	extracts := []Extract{}
 	if err := json.Unmarshal([]byte(content), &extracts); err != nil {
 		return nil, fmt.Errorf("consolidation: failed to parse LLM response: %w", err)
@@ -468,6 +471,9 @@ func (c *Consolidator) analyzeConversationBatch(ctx context.Context, conversatio
 	content, err := c.callExtractionLLM(ctx, conversation, targetUserIDs, "batch memory extraction", "LLM batch request failed")
 	if err != nil {
 		return nil, err
+	}
+	if content == "" {
+		return nil, nil
 	}
 	batchExtracts := []UserMemoryExtract{}
 	if err := json.Unmarshal([]byte(content), &batchExtracts); err != nil {
@@ -523,6 +529,8 @@ func (c *Consolidator) callExtractionLLM(ctx context.Context, conversation strin
 
 	content := extractJSONFromLLMResponse(resp.Content)
 	content = sanitizeJSON(content)
+
+	logger.Debugf("[consolidation] raw LLM response: %s", resp.Content)
 
 	return content, nil
 }
