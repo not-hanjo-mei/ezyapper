@@ -59,9 +59,6 @@ func handleProfilesGET(w http.ResponseWriter, r *http.Request, profileStore memo
 	ctx := r.Context()
 	userID := strings.TrimSpace(r.URL.Query().Get("userID"))
 	editMode := r.URL.Query().Get("edit") == "true"
-	csrfToken := CSRFTokenFromContext(ctx)
-	flash := flashFromCookie(r, "profiles")
-
 	pd := &profilesPageData{
 		UserID:   userID,
 		EditMode: editMode,
@@ -79,16 +76,7 @@ func handleProfilesGET(w http.ResponseWriter, r *http.Request, profileStore memo
 		}
 	}
 
-	navItems := activeNavItems("profiles")
-
-	RenderPage(w, ts, "profiles", &PageData{
-		Title:     "User Profiles",
-		ActiveNav: "profiles",
-		CSRFToken: csrfToken,
-		Flash:     flash,
-		Data:      pd,
-		NavItems:  navItems,
-	})
+	renderStandardPage(w, r, ts, "profiles", pd)
 }
 
 func handleProfilesUpdate(w http.ResponseWriter, r *http.Request, profileStore memory.ProfileStore) {

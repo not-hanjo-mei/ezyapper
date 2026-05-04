@@ -29,23 +29,11 @@ func DashboardHandler(stats *StatsProvider, startTime time.Time, ts *TemplateSet
 		if err != nil {
 			logger.Errorf("[Web] failed to fetch dashboard stats: %v", err)
 		}
-		csrfToken := CSRFTokenFromContext(ctx)
-
 		data := dashboardData{
 			GlobalStats: gs,
 			Uptime:      int64(time.Since(startTime).Seconds()),
 		}
 
-		navItems := activeNavItems("dashboard")
-
-		pageData := &PageData{
-			Title:     "Dashboard",
-			ActiveNav: "dashboard",
-			CSRFToken: csrfToken,
-			Data:      data,
-			NavItems:  navItems,
-		}
-
-		RenderPage(w, ts, "dashboard", pageData)
+		renderStandardPage(w, r, ts, "dashboard", data)
 	}
 }

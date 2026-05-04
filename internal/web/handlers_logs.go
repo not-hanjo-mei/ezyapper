@@ -27,8 +27,6 @@ func LogsHandler(logFilePath string, cfgStore *atomic.Value, ts *TemplateSet) ht
 			http.Error(w, "Internal configuration error", http.StatusInternalServerError)
 			return
 		}
-		csrfToken := CSRFTokenFromContext(ctx)
-
 		lines := cfg.Web.LogDefaultLines
 		if linesStr := r.URL.Query().Get("lines"); linesStr != "" {
 			if parsed, err := strconv.Atoi(linesStr); err == nil && parsed > 0 {
@@ -50,21 +48,13 @@ func LogsHandler(logFilePath string, cfgStore *atomic.Value, ts *TemplateSet) ht
 			stats = "Showing last " + strconv.Itoa(lines) + " lines (of " + strconv.Itoa(totalLines) + ")"
 		}
 
-		navItems := activeNavItems("logs")
-
 		data := map[string]any{
 			"Lines":   lines,
 			"Content": displayContent,
 			"Stats":   stats,
 		}
 
-		RenderPage(w, ts, "logs", &PageData{
-			Title:     "Logs",
-			ActiveNav: "logs",
-			CSRFToken: csrfToken,
-			Data:      data,
-			NavItems:  navItems,
-		})
+		renderStandardPage(w, r, ts, "logs", data)
 	}
 }
 

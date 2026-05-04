@@ -58,9 +58,6 @@ func handleMemoriesGET(w http.ResponseWriter, r *http.Request, cfgStore *atomic.
 		return
 	}
 	userID := strings.TrimSpace(r.URL.Query().Get("userID"))
-	csrfToken := CSRFTokenFromContext(ctx)
-	flash := flashFromCookie(r, "memories")
-
 	entries := []memoryDisplayEntry{}
 	var searched bool
 	var errorMsg string
@@ -87,16 +84,7 @@ func handleMemoriesGET(w http.ResponseWriter, r *http.Request, cfgStore *atomic.
 		Error:    errorMsg,
 	}
 
-	navItems := activeNavItems("memories")
-
-	RenderPage(w, ts, "memories", &PageData{
-		Title:     "Memories",
-		ActiveNav: "memories",
-		CSRFToken: csrfToken,
-		Flash:     flash,
-		Data:      pd,
-		NavItems:  navItems,
-	})
+	renderStandardPage(w, r, ts, "memories", pd)
 }
 
 func handleMemoriesDelete(w http.ResponseWriter, r *http.Request, memStore memory.MemoryStore) {

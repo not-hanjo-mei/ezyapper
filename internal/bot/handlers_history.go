@@ -125,13 +125,16 @@ func (b *Bot) buildConversationHistory(ctx context.Context, messages []*types.Di
 
 				maxImages := b.cfg().AI.Vision.MaxImages
 				truncated := false
+				var sb strings.Builder
+				sb.WriteString(content)
 				for j, desc := range descriptions {
 					if j < maxImages || maxImages == 0 {
-						fmt.Fprintf(&result, "\n[Image %d: %s]", j+1, desc)
+						fmt.Fprintf(&sb, "\n[Image %d: %s]", j+1, desc)
 					} else {
 						truncated = true
 					}
 				}
+				content = sb.String()
 				if truncated {
 					logger.Warnf("[history] historical image descriptions truncated for message %s: %d descriptions but max_images=%d", msg.ID, len(descriptions), maxImages)
 				}
@@ -274,13 +277,16 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 			if haveCachedDescriptions {
 				maxImages := b.cfg().AI.Vision.MaxImages
 				truncated := false
+				var sb strings.Builder
+				sb.WriteString(content)
 				for j, desc := range descriptions {
 					if j < maxImages || maxImages == 0 {
-						fmt.Fprintf(&result, "\n[Image %d: %s]", j+1, desc)
+						fmt.Fprintf(&sb, "\n[Image %d: %s]", j+1, desc)
 					} else {
 						truncated = true
 					}
 				}
+				content = sb.String()
 				if truncated {
 					logger.Warnf("[history] historical image descriptions truncated for message %s: %d descriptions but max_images=%d", msg.ID, len(descriptions), maxImages)
 				}

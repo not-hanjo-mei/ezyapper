@@ -352,15 +352,22 @@ func (d *DiscordTools) getChannelMembers(ctx context.Context, args map[string]an
 		if displayName == "" {
 			displayName = member.User.Username
 		}
-		result = append(result, map[string]any{
-			"id":           member.User.ID,
-			"username":     member.User.Username,
-			"display_name": displayName,
-			"mention":      "<@" + member.User.ID + ">",
-		})
+		result = append(result, formatMemberResult(member, displayName))
 	}
 
 	return marshalJSON(result)
+}
+
+// formatMemberResult builds a JSON-serializable map from a discordgo.Member
+// using the provided displayName. Used by searchGuildMembers to avoid
+// duplicated map literal construction.
+func formatMemberResult(member *discordgo.Member, displayName string) map[string]any {
+	return map[string]any{
+		"id":           member.User.ID,
+		"username":     member.User.Username,
+		"display_name": displayName,
+		"mention":      "<@" + member.User.ID + ">",
+	}
 }
 
 func (d *DiscordTools) searchGuildMembers(ctx context.Context, args map[string]any) (string, error) {
@@ -384,12 +391,7 @@ func (d *DiscordTools) searchGuildMembers(ctx context.Context, args map[string]a
 	if err == nil && len(guild.Members) > 0 {
 		for _, member := range guild.Members {
 			if matched, displayName := matchMember(member, queryLower); matched {
-				result = append(result, map[string]any{
-					"id":           member.User.ID,
-					"username":     member.User.Username,
-					"display_name": displayName,
-					"mention":      "<@" + member.User.ID + ">",
-				})
+				result = append(result, formatMemberResult(member, displayName))
 				if len(result) >= limit {
 					break
 				}
@@ -406,12 +408,7 @@ func (d *DiscordTools) searchGuildMembers(ctx context.Context, args map[string]a
 		} else {
 			for _, member := range allMembers {
 				if matched, displayName := matchMember(member, queryLower); matched {
-					result = append(result, map[string]any{
-						"id":           member.User.ID,
-						"username":     member.User.Username,
-						"display_name": displayName,
-						"mention":      "<@" + member.User.ID + ">",
-					})
+					result = append(result, formatMemberResult(member, displayName))
 					if len(result) >= limit {
 						break
 					}
@@ -431,12 +428,7 @@ func (d *DiscordTools) searchGuildMembers(ctx context.Context, args map[string]a
 			if displayName == "" {
 				displayName = member.User.Username
 			}
-			result = append(result, map[string]any{
-				"id":           member.User.ID,
-				"username":     member.User.Username,
-				"display_name": displayName,
-				"mention":      "<@" + member.User.ID + ">",
-			})
+			result = append(result, formatMemberResult(member, displayName))
 		}
 	}
 

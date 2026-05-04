@@ -24,19 +24,8 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 				return
 			}
 			data := cfg
-			csrfToken := CSRFTokenFromContext(ctx)
-			flash := flashFromCookie(r, "")
 
-			navItems := activeNavItems("config")
-
-			RenderPage(w, ts, "config", &PageData{
-				Title:     "Configuration",
-				ActiveNav: "config",
-				CSRFToken: csrfToken,
-				Flash:     flash,
-				Data:      data,
-				NavItems:  navItems,
-			})
+			renderStandardPage(w, r, ts, "config", data)
 
 		case http.MethodPost:
 			if err := r.ParseForm(); err != nil {
@@ -187,7 +176,7 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 				return
 			}
 
-			setFlashCookie(w, "", "success", "Settings saved successfully")
+			setFlashCookie(w, "config", "success", "Settings saved successfully")
 			http.Redirect(w, r, "/config", http.StatusSeeOther)
 
 		default:
