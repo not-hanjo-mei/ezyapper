@@ -231,7 +231,7 @@ func LogoutHandler(store *SessionStore) http.HandlerFunc {
 func renderLoginError(w http.ResponseWriter, loginTmpl *template.Template, message string) {
 	token, err := GenerateCSRFToken()
 	if err != nil {
-		logger.Errorf("[Web] failed to generate CSRF token for login error: %v", err)
+		logger.Errorf("[web] failed to generate CSRF token for login error: %v", err)
 		// Non-fatal: render page without CSRF token
 		token = ""
 	}

@@ -27,7 +27,7 @@ func DashboardHandler(stats *StatsProvider, startTime time.Time, ts *TemplateSet
 		ctx := r.Context()
 		gs, err := stats.GetDashboardStats(ctx)
 		if err != nil {
-			logger.Errorf("[Web] failed to fetch dashboard stats: %v", err)
+			logger.Errorf("[web] failed to fetch dashboard stats: %v", err)
 		}
 		data := dashboardData{
 			GlobalStats: gs,

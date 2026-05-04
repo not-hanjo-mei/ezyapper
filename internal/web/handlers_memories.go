@@ -66,7 +66,7 @@ func handleMemoriesGET(w http.ResponseWriter, r *http.Request, cfgStore *atomic.
 		searched = true
 		memories, err := memStore.GetMemories(ctx, userID, cfg.Web.MemoriesPageLimit)
 		if err != nil {
-			logger.Errorf("[Web] GetMemories error for user %s: %v", userID, err)
+			logger.Errorf("[web] GetMemories error for user %s: %v", userID, err)
 			errorMsg = "Failed to fetch memories: " + err.Error()
 		} else {
 			entries = make([]memoryDisplayEntry, 0, len(memories))

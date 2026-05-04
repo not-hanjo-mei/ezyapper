@@ -239,13 +239,13 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 
 // Start starts the Discord bot
 func (b *Bot) Start(ctx context.Context) error {
-	logger.Info("Starting Discord bot...")
+	logger.Info("[bot] Starting Discord bot...")
 
 	if err := b.session.Open(); err != nil {
 		return fmt.Errorf("failed to open Discord connection: %w", err)
 	}
 
-	logger.Infof("Bot connected as: %s#%s",
+	logger.Infof("[bot] Bot connected as: %s#%s",
 		b.session.State.User.Username,
 		b.session.State.User.Discriminator)
 
@@ -270,7 +270,7 @@ func (b *Bot) Start(ctx context.Context) error {
 
 // Stop stops the Discord bot
 func (b *Bot) Stop() error {
-	logger.Info("Stopping Discord bot...")
+	logger.Info("[bot] Stopping Discord bot...")
 
 	b.cancel()
 
@@ -290,7 +290,7 @@ func (b *Bot) Stop() error {
 // Shutdown cancels the root context and waits for tracked goroutines (e.g. consolidation)
 // to drain, respecting the timeout from ctx. Returns an error if the timeout expires.
 func (b *Bot) Shutdown(ctx context.Context) error {
-	logger.Info("Shutting down bot goroutines...")
+	logger.Info("[bot] Shutting down bot goroutines...")
 
 	b.cancel()
 
@@ -308,7 +308,7 @@ func (b *Bot) Shutdown(ctx context.Context) error {
 
 	select {
 	case <-done:
-		logger.Info("All goroutines completed")
+		logger.Info("[bot] All goroutines completed")
 		return nil
 	case <-ctx.Done():
 		return fmt.Errorf("shutdown timed out waiting for goroutines")
@@ -335,7 +335,7 @@ func (b *Bot) registerMCPTools(ctx context.Context) {
 		})
 	}
 
-	logger.Infof("Registered %d MCP tools from external servers", len(mcpTools))
+	logger.Infof("[bot] Registered %d MCP tools from external servers", len(mcpTools))
 }
 
 // GetSession returns the Discord session

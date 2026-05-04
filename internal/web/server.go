@@ -46,8 +46,7 @@ func (s *Server) cfg() *config.Config {
 	return c
 }
 
-type DiscordMessageFetcher interface {
-}
+type DiscordMessageFetcher any
 
 // DiscordInfoProvider provides read-only access to Discord metadata (channel names, user names, guild names).
 // All methods are non-blocking — they read from Discord's in-memory state cache only.

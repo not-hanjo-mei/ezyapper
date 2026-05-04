@@ -68,7 +68,7 @@ func handleProfilesGET(w http.ResponseWriter, r *http.Request, profileStore memo
 		pd.Searched = true
 		profile, err := profileStore.GetProfile(ctx, userID)
 		if err != nil {
-			logger.Errorf("[Web] GetProfile error for user %s: %v", userID, err)
+			logger.Errorf("[web] GetProfile error for user %s: %v", userID, err)
 			pd.Error = "Failed to fetch profile: " + err.Error()
 		} else {
 			pd.Found = true
