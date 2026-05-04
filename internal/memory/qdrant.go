@@ -52,7 +52,7 @@ func (qc *QdrantClient) retryWithBackoff(ctx context.Context, operation string, 
 		retry.WithBaseDelay(qc.baseBackoff),
 		retry.WithMaxDelay(qc.maxBackoff))
 	if err != nil {
-		return fmt.Errorf("%s %w", operation, err)
+		return fmt.Errorf("%s: %w", operation, err)
 	}
 	return nil
 }

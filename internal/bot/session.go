@@ -127,6 +127,7 @@ type Bot struct {
 	pluginToolNames map[string]struct{}
 
 	mu               sync.RWMutex
+	pluginRegisterMu sync.Mutex
 	lastResponseTime map[string]time.Time
 	wg               sync.WaitGroup
 
@@ -577,6 +578,9 @@ func pluginToolScopedName(pluginName, toolName string) string {
 }
 
 func (b *Bot) registerPluginTools() {
+	b.pluginRegisterMu.Lock()
+	defer b.pluginRegisterMu.Unlock()
+
 	if b.pluginManager == nil || b.toolRegistry == nil {
 		return
 	}

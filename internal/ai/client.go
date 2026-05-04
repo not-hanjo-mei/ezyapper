@@ -628,6 +628,7 @@ func (c *Client) CreateChatCompletionWithTools(ctx context.Context, req ChatComp
 			// Execute tool
 			result, err := toolHandler(ctx, toolCall)
 			if err != nil {
+				logger.Errorf("[ai] tool call failed for %s: %v", toolCall.Function.Name, err)
 				result = fmt.Sprintf("Error: %v", err)
 			}
 
@@ -730,6 +731,7 @@ func (c *Client) CreateVisionCompletionWithTools(ctx context.Context, systemProm
 			// Execute tool
 			result, err := toolHandler(ctx, toolCall)
 			if err != nil {
+				logger.Errorf("[ai] tool call failed for %s: %v", toolCall.Function.Name, err)
 				result = fmt.Sprintf("Error: %v", err)
 			}
 

@@ -116,7 +116,7 @@ func LoginHandler(store *SessionStore, username, password string, loginTmpl *tem
 			formUser := r.FormValue("username")
 			formPass := r.FormValue("password")
 
-			if formUser == "" || formPass == "" || formUser != username || subtle.ConstantTimeCompare([]byte(formPass), []byte(password)) != 1 {
+			if formUser == "" || formPass == "" || subtle.ConstantTimeCompare([]byte(formUser), []byte(username)) != 1 || subtle.ConstantTimeCompare([]byte(formPass), []byte(password)) != 1 {
 				renderLoginError(w, loginTmpl, "Invalid credentials")
 				return
 			}
@@ -128,11 +128,11 @@ func LoginHandler(store *SessionStore, username, password string, loginTmpl *tem
 			}
 
 			http.SetCookie(w, &http.Cookie{
-				Name:     "session_id",
+				Name:     "__Host-session_id",
 				Value:    session.ID,
 				Path:     "/",
 				HttpOnly: true,
-				Secure:   true,
+				Secure:   r.TLS != nil,
 				SameSite: http.SameSiteStrictMode,
 				MaxAge:   sessionTTLMin * 60,
 			})
@@ -189,13 +189,22 @@ func LogoutHandler(store *SessionStore) http.HandlerFunc {
 			return
 		}
 
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		if r.FormValue("csrf_token") == "" {
+			http.Error(w, "CSRF validation failed", http.StatusForbidden)
+			return
+		}
+
 		session := SessionFromContext(r.Context())
 		if session != nil {
 			store.DeleteSession(session.ID)
 		}
 
 		http.SetCookie(w, &http.Cookie{
-			Name:     "session_id",
+			Name:     "__Host-session_id",
 			Value:    "",
 			Path:     "/",
 			HttpOnly: true,

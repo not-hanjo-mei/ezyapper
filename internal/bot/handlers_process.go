@@ -92,6 +92,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 
 	guild, err := b.GetGuild(m.GuildID)
 	if err != nil {
+		logger.Warnf("[processing] failed to get guild %s: %v", m.GuildID, err)
 		b.clearProcessingMessage(pm, m.ID)
 		return
 	}
@@ -157,7 +158,11 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 
 	s.ChannelTyping(m.ChannelID)
 	typingCtx, cancelTyping := context.WithCancel(ctx)
-	go maintainTyping(typingCtx, s, m.ChannelID, b.cfg().Discord.TypingIndicatorIntervalSec)
+	b.wg.Add(1)
+	go func() {
+		defer b.wg.Done()
+		maintainTyping(typingCtx, s, m.ChannelID, b.cfg().Discord.TypingIndicatorIntervalSec)
+	}()
 	defer cancelTyping()
 
 	replyToUsername, replyToContent := extractReplyInfo(m)

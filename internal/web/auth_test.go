@@ -185,7 +185,7 @@ func TestLoginHandler_POST_ValidCredentials(t *testing.T) {
 
 	var sessionCookie *http.Cookie
 	for _, c := range rr.Result().Cookies() {
-		if c.Name == "session_id" {
+		if c.Name == "__Host-session_id" {
 			sessionCookie = c
 			break
 		}
@@ -261,7 +261,7 @@ func TestLogoutHandler_POST_ClearsSession(t *testing.T) {
 
 	handler := LogoutHandler(store)
 
-	body := url.Values{}.Encode()
+	body := url.Values{"csrf_token": {"test-token"}}.Encode()
 	r := httptest.NewRequest(http.MethodPost, "/logout", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	ctx := context.WithValue(r.Context(), sessionCtxKey, session)
@@ -285,7 +285,7 @@ func TestLogoutHandler_POST_ClearsSession(t *testing.T) {
 
 	var sessionCookie *http.Cookie
 	for _, c := range rr.Result().Cookies() {
-		if c.Name == "session_id" {
+		if c.Name == "__Host-session_id" {
 			sessionCookie = c
 			break
 		}
@@ -307,7 +307,7 @@ func TestLogoutHandler_NoSession_StillRedirects(t *testing.T) {
 
 	handler := LogoutHandler(store)
 
-	body := url.Values{}.Encode()
+	body := url.Values{"csrf_token": {"test-token"}}.Encode()
 	r := httptest.NewRequest(http.MethodPost, "/logout", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 

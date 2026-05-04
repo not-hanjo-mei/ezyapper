@@ -245,7 +245,7 @@ func TestSessionMiddleware_AllowsAuthenticated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request creation failed: %v", err)
 	}
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: session.ID})
+	req.AddCookie(&http.Cookie{Name: "__Host-session_id", Value: session.ID})
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -420,7 +420,7 @@ func TestLogoutHandler_ClearsSession(t *testing.T) {
 	handler := LogoutHandler(store)
 
 	// Create POST /logout with session in context
-	body := url.Values{}.Encode()
+	body := url.Values{"csrf_token": {"test-token"}}.Encode()
 	r := httptest.NewRequest("POST", "/logout", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	ctx := context.WithValue(r.Context(), sessionCtxKey, session)
@@ -446,7 +446,7 @@ func TestLogoutHandler_ClearsSession(t *testing.T) {
 	// Verify cookie cleared
 	var sessionCookie *http.Cookie
 	for _, c := range rr.Result().Cookies() {
-		if c.Name == "session_id" {
+		if c.Name == "__Host-session_id" {
 			sessionCookie = c
 			break
 		}
@@ -468,7 +468,7 @@ func TestLogoutHandler_NoSession(t *testing.T) {
 
 	handler := LogoutHandler(store)
 
-	body := url.Values{}.Encode()
+	body := url.Values{"csrf_token": {"test-token"}}.Encode()
 	r := httptest.NewRequest("POST", "/logout", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -535,7 +535,7 @@ func TestLoginLogoutFlow(t *testing.T) {
 
 	var sessionCookie *http.Cookie
 	for _, c := range resp.Cookies() {
-		if c.Name == "session_id" {
+		if c.Name == "__Host-session_id" {
 			sessionCookie = c
 			break
 		}
@@ -560,7 +560,7 @@ func TestLoginLogoutFlow(t *testing.T) {
 	}
 
 	// Step 4: POST to logout
-	logoutBody := url.Values{}.Encode()
+	logoutBody := url.Values{"csrf_token": {"test-token"}}.Encode()
 	req, _ = http.NewRequest("POST", ts.URL+"/logout", strings.NewReader(logoutBody))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(sessionCookie)
@@ -641,7 +641,7 @@ func TestSessionMiddleware_ExpiredCookieRedirects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: session.ID})
+	req.AddCookie(&http.Cookie{Name: "__Host-session_id", Value: session.ID})
 
 	client := &http.Client{
 		CheckRedirect: func(r *http.Request, via []*http.Request) error {

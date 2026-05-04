@@ -126,6 +126,7 @@ func Retry[T any](ctx context.Context, maxRetries int, fn func(context.Context) 
 
 // computeDelay calculates exponential backoff with ±25% uniform jitter.
 // delay = min(2^attempt * baseDelay, maxDelay)
+// Uses overflow-safe computation to prevent negative delays at high attempt counts.
 func computeDelay(attempt int, baseDelay, maxDelay time.Duration) time.Duration {
 	// Cap attempt to prevent integer overflow in bit shift
 	// Use int64(1) to avoid undefined behavior on 32-bit platforms where int is 32 bits
@@ -133,7 +134,18 @@ func computeDelay(attempt int, baseDelay, maxDelay time.Duration) time.Duration 
 	if exp > 62 {
 		exp = 62
 	}
-	delay := min(time.Duration(int64(1)<<exp)*baseDelay, maxDelay)
+	// Overflow-safe: compute shift value, then compare with maxDelay/baseDelay
+	// before multiplying to prevent int64 overflow.
+	shift := time.Duration(int64(1) << exp)
+	var delay time.Duration
+	if shift > maxDelay || baseDelay > 0 && shift > maxDelay/baseDelay {
+		delay = maxDelay
+	} else {
+		delay = shift * baseDelay
+		if delay > maxDelay {
+			delay = maxDelay
+		}
+	}
 	jitter := time.Duration(float64(delay) * 0.25 * (2.0*rand.Float64() - 1.0))
 	return delay + jitter
 }

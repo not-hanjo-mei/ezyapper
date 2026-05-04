@@ -198,7 +198,7 @@ func SessionMiddleware(store *SessionStore) Middleware {
 			excluded := isExcludedPath(r.URL.Path)
 
 			// Try to find existing session from cookie
-			cookie, err := r.Cookie("session_id")
+			cookie, err := r.Cookie("__Host-session_id")
 			var session *Session
 			if err == nil {
 				var sessErr error
