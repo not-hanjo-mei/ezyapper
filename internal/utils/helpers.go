@@ -3,13 +3,7 @@ package utils
 
 import (
 	"unicode/utf8"
-
-	"ezyapper/internal/types"
 )
-
-func ExtractImageURLs(msg *types.DiscordMessage) []string {
-	return msg.ImageURLs
-}
 
 func Contains(slice []string, item string) bool {
 	for _, s := range slice {
@@ -71,19 +65,4 @@ func SplitMessage(content string, maxLen int) []string {
 	}
 
 	return parts
-}
-
-// RemoveFromSlice removes an item from a string slice without mutating the input.
-func RemoveFromSlice(slice []string, item string) []string {
-	for i, v := range slice {
-		if v == item {
-			result := make([]string, 0, len(slice)-1)
-			result = append(result, slice[:i]...)
-			return append(result, slice[i+1:]...)
-		}
-	}
-	// Return a copy to prevent aliasing issues
-	result := make([]string, len(slice))
-	copy(result, slice)
-	return result
 }

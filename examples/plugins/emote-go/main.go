@@ -39,7 +39,9 @@ func (p *EmotePlugin) Info() (plugin.Info, error) {
 
 // OnMessage is called for every Discord message. Records attachment URLs as emote entries.
 func (p *EmotePlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
+	p.mu.Lock()
 	p.lastChannelID = msg.ChannelID
+	p.mu.Unlock()
 
 	if !p.config.AutoStealEnabled || p.storage == nil || len(msg.ImageURLs) == 0 || msg.IsBot {
 		return true, nil

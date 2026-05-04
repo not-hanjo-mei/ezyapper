@@ -210,6 +210,7 @@ func LogoutHandler(store *SessionStore) http.HandlerFunc {
 			Value:    "",
 			Path:     "/",
 			HttpOnly: true,
+			Secure:   true,
 			SameSite: http.SameSiteStrictMode,
 			MaxAge:   -1,
 		})
