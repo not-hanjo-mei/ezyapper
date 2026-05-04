@@ -347,23 +347,6 @@ func getStringArg(args map[string]interface{}, key string) (string, bool, error)
 	return s, true, nil
 }
 
-func detectFormat(url string) string {
-	ext := filepath.Ext(url)
-	if ext == "" {
-		return "png"
-	}
-	return strings.ToLower(strings.TrimPrefix(ext, "."))
-}
-
-func isAllowedFormat(format string, allowed []string) bool {
-	for _, a := range allowed {
-		if a == format {
-			return true
-		}
-	}
-	return false
-}
-
 func newEmotePlugin(cfg Config) (*EmotePlugin, error) {
 	dataDir := cfg.DataDir
 	if !filepath.IsAbs(dataDir) {

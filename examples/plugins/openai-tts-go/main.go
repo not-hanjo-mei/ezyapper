@@ -1210,7 +1210,10 @@ func sanitizeBaseName(input string) string {
 
 	cleaned := strings.Trim(b.String(), "_-")
 	if len(cleaned) > 64 {
-		cleaned = cleaned[:64]
+		runes := []rune(cleaned)
+		if len(runes) > 64 {
+			cleaned = string(runes[:64])
+		}
 	}
 
 	return cleaned
