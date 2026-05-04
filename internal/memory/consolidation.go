@@ -451,84 +451,50 @@ func extractJSONFromLLMResponse(content string) string {
 }
 
 func (c *Consolidator) analyzeConversation(ctx context.Context, conversation string, targetUserIDs []string) ([]Extract, error) {
-	start := time.Now()
-
-	logger.Debugf("[consolidation] analyzeConversation called with conversation length=%d target_users=%d", len(conversation), len(targetUserIDs))
-
-	if c.aiClient == nil {
-		logger.Error("[consolidation] AI client not configured, cannot perform LLM extraction")
-		return nil, fmt.Errorf("consolidation: AI client not configured")
-	}
-
-	if strings.TrimSpace(conversation) == "" {
-		logger.Warn("[consolidation] empty conversation, skipping LLM analysis")
-		return nil, nil
-	}
-
-	if c.prompt == "" {
-		logger.Error("[consolidation] consolidation prompt is empty, cannot perform LLM extraction")
-		return nil, fmt.Errorf("consolidation: system prompt is empty")
-	}
-
-	logger.Debugf("[consolidation] preparing LLM prompt with conversation length=%d", len(conversation))
-
-	// Build messages: system prompt contains extraction rules and target user list
-	targetUsersStr := strings.Join(targetUserIDs, ", ")
-	systemPrompt := fmt.Sprintf("%s\n\nTarget UserIDs: %s (extract memories for these users only)", c.prompt, targetUsersStr)
-
-	req := ai.ChatCompletionRequest{
-		SystemPrompt: systemPrompt,
-		Messages: []openai.ChatCompletionMessage{
-			{
-				Role:    openai.ChatMessageRoleUser,
-				Content: conversation,
-			},
-		},
-	}
-
-	logger.Debug("[consolidation] sending request to LLM for memory extraction")
-	resp, err := c.aiClient.CreateChatCompletion(ctx, req)
+	content, err := c.callExtractionLLM(ctx, conversation, targetUserIDs, "memory extraction", "LLM request failed")
 	if err != nil {
-		return nil, fmt.Errorf("consolidation: LLM request failed: %w", err)
+		return nil, err
 	}
-
-	elapsed := time.Since(start)
-	logger.Infof("[consolidation] LLM response received duration=%s", elapsed)
-
-	content := extractJSONFromLLMResponse(resp.Content)
-
-	// Sanitize JSON for Go 1.25 compatibility (invalid UTF-8, duplicate keys)
-	content = sanitizeJSON(content)
-
 	extracts := []Extract{}
 	if err := json.Unmarshal([]byte(content), &extracts); err != nil {
-		logger.Debugf("[consolidation] raw LLM response: %s", resp.Content)
 		return nil, fmt.Errorf("consolidation: failed to parse LLM response: %w", err)
 	}
-
 	logger.Infof("[consolidation] successfully extracted %d memories from LLM response", len(extracts))
 	return extracts, nil
 }
 
 // analyzeConversationBatch performs batch memory extraction for multiple users
 func (c *Consolidator) analyzeConversationBatch(ctx context.Context, conversation string, targetUserIDs []string) ([]UserMemoryExtract, error) {
-	start := time.Now()
+	content, err := c.callExtractionLLM(ctx, conversation, targetUserIDs, "batch memory extraction", "LLM batch request failed")
+	if err != nil {
+		return nil, err
+	}
+	batchExtracts := []UserMemoryExtract{}
+	if err := json.Unmarshal([]byte(content), &batchExtracts); err != nil {
+		return nil, fmt.Errorf("consolidation: failed to parse LLM batch response: %w", err)
+	}
+	logger.Infof("[consolidation] successfully extracted memories for %d users from LLM response", len(batchExtracts))
+	return batchExtracts, nil
+}
 
-	logger.Debugf("[consolidation] analyzeConversationBatch called with conversation length=%d target_users=%d", len(conversation), len(targetUserIDs))
+// callExtractionLLM performs the shared LLM interaction for memory extraction.
+// Returns the sanitized JSON content from the LLM response.
+func (c *Consolidator) callExtractionLLM(ctx context.Context, conversation string, targetUserIDs []string, logLabel, errLabel string) (string, error) {
+	start := time.Now()
 
 	if c.aiClient == nil {
 		logger.Error("[consolidation] AI client not configured, cannot perform LLM extraction")
-		return nil, fmt.Errorf("consolidation: AI client not configured")
+		return "", fmt.Errorf("consolidation: AI client not configured")
 	}
 
 	if strings.TrimSpace(conversation) == "" {
 		logger.Warn("[consolidation] empty conversation, skipping LLM analysis")
-		return nil, nil
+		return "", nil
 	}
 
 	if c.prompt == "" {
 		logger.Error("[consolidation] consolidation prompt is empty, cannot perform LLM extraction")
-		return nil, fmt.Errorf("consolidation: system prompt is empty")
+		return "", fmt.Errorf("consolidation: system prompt is empty")
 	}
 
 	logger.Debugf("[consolidation] preparing LLM prompt with conversation length=%d", len(conversation))
@@ -546,26 +512,19 @@ func (c *Consolidator) analyzeConversationBatch(ctx context.Context, conversatio
 		},
 	}
 
-	logger.Debug("[consolidation] sending batch request to LLM for memory extraction")
+	logger.Debugf("[consolidation] sending request to LLM for %s", logLabel)
 	resp, err := c.aiClient.CreateChatCompletion(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("consolidation: LLM batch request failed: %w", err)
+		return "", fmt.Errorf("consolidation: %s: %w", errLabel, err)
 	}
 
 	elapsed := time.Since(start)
-	logger.Infof("[consolidation] LLM batch response received duration=%s", elapsed)
+	logger.Infof("[consolidation] LLM %s received duration=%s", logLabel, elapsed)
 
 	content := extractJSONFromLLMResponse(resp.Content)
 	content = sanitizeJSON(content)
 
-	batchExtracts := []UserMemoryExtract{}
-	if err := json.Unmarshal([]byte(content), &batchExtracts); err != nil {
-		logger.Debugf("[consolidation] raw LLM response: %s", resp.Content)
-		return nil, fmt.Errorf("consolidation: failed to parse LLM batch response: %w", err)
-	}
-
-	logger.Infof("[consolidation] successfully extracted memories for %d users from LLM response", len(batchExtracts))
-	return batchExtracts, nil
+	return content, nil
 }
 
 func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []Extract) {

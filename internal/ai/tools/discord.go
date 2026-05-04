@@ -28,188 +28,124 @@ func NewDiscordTools(session *discordgo.Session) *DiscordTools {
 	return &DiscordTools{session: session}
 }
 
+type toolDef struct {
+	name        string
+	description string
+	params      []paramDef
+	handler     ToolExecutor
+}
+
+type paramDef struct {
+	name        string
+	typ         string
+	description string
+	required    bool
+	defaultVal  any
+}
+
+func (td toolDef) toTool() *Tool {
+	props := make(map[string]any, len(td.params))
+	req := make([]string, 0, len(td.params))
+
+	for _, p := range td.params {
+		prop := map[string]any{
+			"type":        p.typ,
+			"description": p.description,
+		}
+		if p.defaultVal != nil {
+			prop["default"] = p.defaultVal
+		}
+		props[p.name] = prop
+		if p.required {
+			req = append(req, p.name)
+		}
+	}
+
+	return &Tool{
+		Name:        td.name,
+		Description: td.description,
+		Parameters: map[string]any{
+			"type":       "object",
+			"properties": props,
+			"required":   req,
+		},
+		Handler: td.handler,
+	}
+}
+
 func (d *DiscordTools) RegisterTools(registry *ToolRegistry) {
-	registry.Register(&Tool{
-		Name:        "get_server_info",
-		Description: "Get information about a Discord server (guild)",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"guild_id": map[string]any{
-					"type":        "string",
-					"description": "The ID of the guild to get info for",
-				},
-			},
-			"required": []string{"guild_id"},
+	tools := []toolDef{
+		{
+			name: "get_server_info", description: "Get information about a Discord server (guild)",
+			params:  []paramDef{{name: "guild_id", typ: "string", description: "The ID of the guild to get info for", required: true}},
+			handler: d.getServerInfo,
 		},
-		Handler: d.getServerInfo,
-	})
-
-	registry.Register(&Tool{
-		Name:        "get_channel_info",
-		Description: "Get information about a Discord channel",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"channel_id": map[string]any{
-					"type":        "string",
-					"description": "The ID of the channel to get info for",
-				},
-			},
-			"required": []string{"channel_id"},
+		{
+			name: "get_channel_info", description: "Get information about a Discord channel",
+			params:  []paramDef{{name: "channel_id", typ: "string", description: "The ID of the channel to get info for", required: true}},
+			handler: d.getChannelInfo,
 		},
-		Handler: d.getChannelInfo,
-	})
-
-	registry.Register(&Tool{
-		Name:        "get_user_info",
-		Description: "Get information about a Discord user in a server",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"guild_id": map[string]any{
-					"type":        "string",
-					"description": "The ID of the guild",
-				},
-				"user_id": map[string]any{
-					"type":        "string",
-					"description": "The ID of the user",
-				},
+		{
+			name: "get_user_info", description: "Get information about a Discord user in a server",
+			params: []paramDef{
+				{name: "guild_id", typ: "string", description: "The ID of the guild", required: true},
+				{name: "user_id", typ: "string", description: "The ID of the user", required: true},
 			},
-			"required": []string{"guild_id", "user_id"},
+			handler: d.getUserInfo,
 		},
-		Handler: d.getUserInfo,
-	})
-
-	registry.Register(&Tool{
-		Name:        "list_channels",
-		Description: "List all channels in a Discord server",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"guild_id": map[string]any{
-					"type":        "string",
-					"description": "The ID of the guild to list channels for",
-				},
+		{
+			name: "list_channels", description: "List all channels in a Discord server",
+			params:  []paramDef{{name: "guild_id", typ: "string", description: "The ID of the guild to list channels for", required: true}},
+			handler: d.listChannels,
+		},
+		{
+			name: "get_recent_messages", description: "Get recent messages from a channel (limited to last 10)",
+			params: []paramDef{
+				{name: "channel_id", typ: "string", description: "The ID of the channel to get messages from", required: true},
+				{name: "limit", typ: "integer", description: "Number of messages to retrieve (max 10)", defaultVal: 5},
 			},
-			"required": []string{"guild_id"},
+			handler: d.getRecentMessages,
 		},
-		Handler: d.listChannels,
-	})
-
-	registry.Register(&Tool{
-		Name:        "get_recent_messages",
-		Description: "Get recent messages from a channel (limited to last 10)",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"channel_id": map[string]any{
-					"type":        "string",
-					"description": "The ID of the channel to get messages from",
-				},
-				"limit": map[string]any{
-					"type":        "integer",
-					"description": "Number of messages to retrieve (max 10)",
-					"default":     5,
-				},
+		{
+			name: "create_thread", description: "Create a new thread in a channel",
+			params: []paramDef{
+				{name: "channel_id", typ: "string", description: "The ID of the channel to create thread in", required: true},
+				{name: "message_id", typ: "string", description: "The ID of the message to create thread from"},
+				{name: "name", typ: "string", description: "The name of the thread", required: true},
 			},
-			"required": []string{"channel_id"},
+			handler: d.createThread,
 		},
-		Handler: d.getRecentMessages,
-	})
-
-	registry.Register(&Tool{
-		Name:        "create_thread",
-		Description: "Create a new thread in a channel",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"channel_id": map[string]any{
-					"type":        "string",
-					"description": "The ID of the channel to create thread in",
-				},
-				"message_id": map[string]any{
-					"type":        "string",
-					"description": "The ID of the message to create thread from",
-				},
-				"name": map[string]any{
-					"type":        "string",
-					"description": "The name of the thread",
-				},
+		{
+			name: "add_reaction", description: "Add a reaction emoji to a message",
+			params: []paramDef{
+				{name: "channel_id", typ: "string", description: "The ID of the channel", required: true},
+				{name: "message_id", typ: "string", description: "The ID of the message to react to", required: true},
+				{name: "emoji", typ: "string", description: "The emoji to react with (unicode or custom emoji ID)", required: true},
 			},
-			"required": []string{"channel_id", "name"},
+			handler: d.addReaction,
 		},
-		Handler: d.createThread,
-	})
-
-	registry.Register(&Tool{
-		Name:        "add_reaction",
-		Description: "Add a reaction emoji to a message",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"channel_id": map[string]any{
-					"type":        "string",
-					"description": "The ID of the channel",
-				},
-				"message_id": map[string]any{
-					"type":        "string",
-					"description": "The ID of the message to react to",
-				},
-				"emoji": map[string]any{
-					"type":        "string",
-					"description": "The emoji to react with (unicode or custom emoji ID)",
-				},
+		{
+			name: "get_channel_members", description: "Get a list of members in a channel/server for mentioning users. Returns user IDs and usernames that can be used with <@USER_ID> mentions.",
+			params: []paramDef{
+				{name: "guild_id", typ: "string", description: "The ID of the server/guild to get members from", required: true},
+				{name: "limit", typ: "number", description: "Maximum number of members to return (default 20, max 100)"},
 			},
-			"required": []string{"channel_id", "message_id", "emoji"},
+			handler: d.getChannelMembers,
 		},
-		Handler: d.addReaction,
-	})
-
-	registry.Register(&Tool{
-		Name:        "get_channel_members",
-		Description: "Get a list of members in a channel/server for mentioning users. Returns user IDs and usernames that can be used with <@USER_ID> mentions.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"guild_id": map[string]any{
-					"type":        "string",
-					"description": "The ID of the server/guild to get members from",
-				},
-				"limit": map[string]any{
-					"type":        "number",
-					"description": "Maximum number of members to return (default 20, max 100)",
-				},
+		{
+			name: "search_guild_members", description: "Search for guild members by username or display name. Use this tool when the user wants to ping/mention someone by name but you don't know their exact ID. Returns matching members with their IDs, usernames, and display names. ALWAYS use this tool first when asked to ping someone by name like 'ping john' or 'let ping alex'.",
+			params: []paramDef{
+				{name: "guild_id", typ: "string", description: "The ID of the server/guild to search members in", required: true},
+				{name: "query", typ: "string", description: "The name to search for (e.g., 'alex', 'chris', 'john'). Use the name the user mentioned.", required: true},
+				{name: "limit", typ: "number", description: "Maximum number of members to return (default 10, max 50)"},
 			},
-			"required": []string{"guild_id"},
+			handler: d.searchGuildMembers,
 		},
-		Handler: d.getChannelMembers,
-	})
+	}
 
-	registry.Register(&Tool{
-		Name:        "search_guild_members",
-		Description: "Search for guild members by username or display name. Use this tool when the user wants to ping/mention someone by name but you don't know their exact ID. Returns matching members with their IDs, usernames, and display names. ALWAYS use this tool first when asked to ping someone by name like 'ping john' or 'let ping alex'.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"guild_id": map[string]any{
-					"type":        "string",
-					"description": "The ID of the server/guild to search members in",
-				},
-				"query": map[string]any{
-					"type":        "string",
-					"description": "The name to search for (e.g., 'alex', 'chris', 'john'). Use the name the user mentioned.",
-				},
-				"limit": map[string]any{
-					"type":        "number",
-					"description": "Maximum number of members to return (default 10, max 50)",
-				},
-			},
-			"required": []string{"guild_id", "query"},
-		},
-		Handler: d.searchGuildMembers,
-	})
-
+	for _, t := range tools {
+		registry.Register(t.toTool())
+	}
 }
 
 func (d *DiscordTools) getServerInfo(ctx context.Context, args map[string]any) (string, error) {
