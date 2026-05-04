@@ -62,11 +62,9 @@ func (m *MCPManager) connectServer(ctx context.Context, server config.MCPServer)
 	switch server.Type {
 	case "stdio":
 		cmd := exec.Command(server.Command, server.Args...)
-		if len(server.Env) > 0 {
-			cmd.Env = filterPluginEnv()
-			for k, v := range server.Env {
-				cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-			}
+		cmd.Env = filterPluginEnv()
+		for k, v := range server.Env {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
 		transport = &mcp.CommandTransport{Command: cmd}
 	case "sse":

@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -154,6 +155,11 @@ func clientIP(r *http.Request) string {
 	remoteIP := extractIP(r.RemoteAddr)
 	if isLocalhost(remoteIP) {
 		if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
+			// X-Forwarded-For can contain a comma-separated proxy chain.
+			// Extract the leftmost (original client) IP.
+			if idx := strings.IndexByte(ip, ','); idx > 0 {
+				ip = strings.TrimSpace(ip[:idx])
+			}
 			return ip
 		}
 		if ip := r.Header.Get("X-Real-IP"); ip != "" {
