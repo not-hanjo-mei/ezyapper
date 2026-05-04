@@ -28,7 +28,7 @@ func PluginsHandler(mgr pluginManager, refresher PluginToolRefresher, ts *Templa
 		case r.Method == http.MethodGet && path == "/plugins":
 			handlePluginsGET(w, r, mgr, ts)
 		case r.Method == http.MethodPost && path == "/plugins/toggle":
-			handlePluginsToggle(w, r, mgr, refresher, ts)
+			handlePluginsToggle(w, r, mgr, refresher)
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
@@ -45,7 +45,7 @@ func handlePluginsGET(w http.ResponseWriter, r *http.Request, mgr pluginManager,
 	renderStandardPage(w, r, ts, "plugins", pd)
 }
 
-func handlePluginsToggle(w http.ResponseWriter, r *http.Request, mgr pluginManager, refresher PluginToolRefresher, ts *TemplateSet) {
+func handlePluginsToggle(w http.ResponseWriter, r *http.Request, mgr pluginManager, refresher PluginToolRefresher) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
 		return

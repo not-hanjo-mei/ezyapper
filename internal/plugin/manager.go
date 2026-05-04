@@ -54,7 +54,7 @@ func (pm *Manager) OnMessage(ctx context.Context, msg types.DiscordMessage) (boo
 			continue
 		}
 		if !shouldContinue {
-			logger.Debugf("Plugin %s blocked message", plugin.Name)
+			logger.Debugf("[plugin] %s blocked message", plugin.Name)
 			return false, nil
 		}
 	}

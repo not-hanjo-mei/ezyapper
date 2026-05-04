@@ -46,11 +46,11 @@ func (l *loginRateLimiter) allow(ip string) bool {
 
 	l.attempts[ip] = append(l.attempts[ip], now)
 
-	l.pruneStaleLocked(now, cutoff)
+	l.pruneStaleLocked(cutoff)
 	return true
 }
 
-func (l *loginRateLimiter) pruneStaleLocked(now time.Time, cutoff time.Time) {
+func (l *loginRateLimiter) pruneStaleLocked(cutoff time.Time) {
 	if len(l.attempts) <= 1000 {
 		return
 	}

@@ -200,7 +200,7 @@ func (s *Server) setupRoutes() {
 // Start begins listening on the configured port. No-op if web is disabled.
 func (s *Server) Start() error {
 	if !s.cfg().Web.Enabled {
-		logger.Info("WebUI is disabled")
+		logger.Info("[web] WebUI is disabled")
 		return nil
 	}
 
@@ -209,7 +209,7 @@ func (s *Server) Start() error {
 		Handler: s.router,
 	}
 
-	logger.Infof("Starting WebUI on port %d", s.cfg().Web.Port)
+	logger.Infof("[web] Starting WebUI on port %d", s.cfg().Web.Port)
 
 	s.sessionStore.SetWG(&s.wg)
 
@@ -237,7 +237,7 @@ func (s *Server) Stop(ctx context.Context) error {
 		return nil
 	}
 
-	logger.Info("Stopping web server...")
+	logger.Info("[web] Stopping web server...")
 
 	err := s.server.Shutdown(ctx)
 
