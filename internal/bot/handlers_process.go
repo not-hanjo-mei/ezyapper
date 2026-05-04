@@ -16,11 +16,13 @@ import (
 
 func (b *Bot) processMessageWithoutImages(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, recentMessages []*types.DiscordMessage) {
 	defer b.wg.Done()
+	defer recoverHandler()
 	b.processMessageCore(ctx, s, m, pm, false, recentMessages)
 }
 
 func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, recentMessages []*types.DiscordMessage) {
 	defer b.wg.Done()
+	defer recoverHandler()
 	b.processMessageCore(ctx, s, m, pm, true, recentMessages)
 }
 
@@ -221,6 +223,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 	}
 
 	if err := b.sendResponse(ctx, s, m, response); err != nil {
+		logger.Errorf("[processing] failed to send response for message %s: %v", m.ID, err)
 		b.clearProcessingMessage(pm, m.ID)
 		return
 	}
@@ -241,5 +244,11 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		logger.Warnf("Failed to increment channel message count: %v", err)
 	} else {
 		b.triggerChannelConsolidation(ctx, m.ChannelID, count)
+	}
+}
+
+func recoverHandler() {
+	if r := recover(); r != nil {
+		logger.Errorf("[processing] panic recovered: %v", r)
 	}
 }

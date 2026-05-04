@@ -737,7 +737,7 @@ func (c *Client) CreateVisionCompletionWithTools(ctx context.Context, systemProm
 			result, err := toolHandler(ctx, toolCall)
 			if err != nil {
 				logger.Errorf("[ai] tool call failed for %s: %v", toolCall.Function.Name, err)
-				result = fmt.Sprintf("Error: %v", err)
+				result = "Error: tool execution failed"
 			}
 
 			// Add tool result message

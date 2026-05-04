@@ -10,6 +10,7 @@ import (
 	"maps"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 
 	"ezyapper/internal/config"
@@ -62,7 +63,7 @@ func (m *MCPManager) connectServer(ctx context.Context, server config.MCPServer)
 	case "stdio":
 		cmd := exec.Command(server.Command, server.Args...)
 		if len(server.Env) > 0 {
-			cmd.Env = append(cmd.Env, os.Environ()...)
+			cmd.Env = filterPluginEnv()
 			for k, v := range server.Env {
 				cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 			}
@@ -199,4 +200,29 @@ func (m *MCPManager) Close() error {
 		}
 	}
 	return nil
+}
+
+// filterPluginEnv returns a filtered copy of os.Environ() suitable for
+// passing to MCP subprocesses, excluding variables that may contain secrets.
+func filterPluginEnv() []string {
+	env := os.Environ()
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		key, _, found := strings.Cut(e, "=")
+		if !found {
+			continue
+		}
+		upper := strings.ToUpper(key)
+		if strings.Contains(upper, "TOKEN") ||
+			strings.Contains(upper, "SECRET") ||
+			strings.Contains(upper, "KEY") ||
+			strings.Contains(upper, "PASSWORD") ||
+			strings.Contains(upper, "PASSWD") ||
+			strings.Contains(upper, "CREDENTIAL") ||
+			strings.Contains(upper, "AUTH") {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }

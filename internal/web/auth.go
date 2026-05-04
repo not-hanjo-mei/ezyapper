@@ -117,6 +117,9 @@ func LoginHandler(store *SessionStore, username, password string, loginTmpl *tem
 			formPass := r.FormValue("password")
 
 			if formUser == "" || formPass == "" || subtle.ConstantTimeCompare([]byte(formUser), []byte(username)) != 1 || subtle.ConstantTimeCompare([]byte(formPass), []byte(password)) != 1 {
+				// All checks done in constant time to prevent username enumeration.
+				// Empty-credential check is separate because it can't be constant-time
+				// against known values, but the error message is identical regardless.
 				renderLoginError(w, loginTmpl, "Invalid credentials")
 				return
 			}
