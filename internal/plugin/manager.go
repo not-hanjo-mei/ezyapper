@@ -1,9 +1,10 @@
 package plugin
 
 import (
+	"cmp"
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"time"
 
 	"ezyapper/internal/logger"
@@ -37,8 +38,8 @@ func (pm *Manager) OnMessage(ctx context.Context, msg types.DiscordMessage) (boo
 	}
 
 	// Sort by priority (highest first)
-	sort.Slice(plugins, func(i, j int) bool {
-		return plugins[i].priority > plugins[j].priority
+	slices.SortFunc(plugins, func(a, b *Client) int {
+		return cmp.Compare(b.priority, a.priority)
 	})
 
 	for _, plugin := range plugins {
@@ -49,7 +50,7 @@ func (pm *Manager) OnMessage(ctx context.Context, msg types.DiscordMessage) (boo
 		var shouldContinue bool
 		err := callPluginOnMessageWithTimeout(plugin, msg, &shouldContinue, time.Duration(pm.rpcTimeoutSec)*time.Second)
 		if err != nil {
-			logger.Warnf("Plugin %s error in OnMessage: %v", plugin.Name, err)
+			logger.Warnf("[plugin] Plugin %s error in OnMessage: %v", plugin.Name, err)
 			continue
 		}
 		if !shouldContinue {
@@ -84,7 +85,7 @@ func (pm *Manager) OnResponse(ctx context.Context, msg types.DiscordMessage, res
 		var reply struct{}
 		err := callPluginOnResponseWithTimeout(plugin, args, &reply, time.Duration(pm.rpcTimeoutSec)*time.Second)
 		if err != nil {
-			logger.Warnf("Plugin %s error in OnResponse: %v", plugin.Name, err)
+			logger.Warnf("[plugin] Plugin %s error in OnResponse: %v", plugin.Name, err)
 		}
 	}
 
@@ -105,8 +106,8 @@ func (pm *Manager) BeforeSend(
 		plugins = append(plugins, p)
 	}
 
-	sort.Slice(plugins, func(i, j int) bool {
-		return plugins[i].priority > plugins[j].priority
+	slices.SortFunc(plugins, func(a, b *Client) int {
+		return cmp.Compare(b.priority, a.priority)
 	})
 
 	currentResponse := response

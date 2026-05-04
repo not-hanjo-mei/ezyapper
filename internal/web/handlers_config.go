@@ -1,7 +1,6 @@
 package web
 
 import (
-	"encoding/base64"
 	"net/http"
 	"strconv"
 	"strings"
@@ -26,17 +25,9 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 			}
 			data := cfg
 			csrfToken := CSRFTokenFromContext(ctx)
-			flash := flashFromCookie(r)
+			flash := flashFromCookie(r, "")
 
-			navItems := []NavItem{
-				{Label: "Dashboard", Href: "/", Icon: "dashboard"},
-				{Label: "Configuration", Href: "/config", Icon: "settings", Active: true},
-				{Label: "Memories", Href: "/memories", Icon: "memory"},
-				{Label: "Profiles", Href: "/profiles", Icon: "person"},
-				{Label: "Channels", Href: "/channels", Icon: "forum"},
-				{Label: "Plugins", Href: "/plugins", Icon: "extension"},
-				{Label: "Logs", Href: "/logs", Icon: "description"},
-			}
+			navItems := activeNavItems("config")
 
 			RenderPage(w, ts, "config", &PageData{
 				Title:     "Configuration",
@@ -196,7 +187,7 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 				return
 			}
 
-			setFlashCookie(w, "success", "Settings saved successfully")
+			setFlashCookie(w, "", "success", "Settings saved successfully")
 			http.Redirect(w, r, "/config", http.StatusSeeOther)
 
 		default:
@@ -214,15 +205,7 @@ func renderConfigError(w http.ResponseWriter, r *http.Request, ts *TemplateSet, 
 	ctx := r.Context()
 	csrfToken := CSRFTokenFromContext(ctx)
 
-	navItems := []NavItem{
-		{Label: "Dashboard", Href: "/", Icon: "dashboard"},
-		{Label: "Configuration", Href: "/config", Icon: "settings", Active: true},
-		{Label: "Memories", Href: "/memories", Icon: "memory"},
-		{Label: "Profiles", Href: "/profiles", Icon: "person"},
-		{Label: "Channels", Href: "/channels", Icon: "forum"},
-		{Label: "Plugins", Href: "/plugins", Icon: "extension"},
-		{Label: "Logs", Href: "/logs", Icon: "description"},
-	}
+	navItems := activeNavItems("config")
 
 	RenderPage(w, ts, "config", &PageData{
 		Title:     "Configuration",
@@ -235,44 +218,4 @@ func renderConfigError(w http.ResponseWriter, r *http.Request, ts *TemplateSet, 
 		Data:     cfg,
 		NavItems: navItems,
 	})
-}
-
-func setFlashCookie(w http.ResponseWriter, flashType, message string) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     "flash_type",
-		Value:    flashType,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   60,
-	})
-	http.SetCookie(w, &http.Cookie{
-		Name:     "flash_msg",
-		Value:    base64.URLEncoding.EncodeToString([]byte(message)),
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   60,
-	})
-}
-
-func flashFromCookie(r *http.Request) *FlashMessage {
-	typeCookie, err := r.Cookie("flash_type")
-	if err != nil {
-		return nil
-	}
-	msgCookie, err := r.Cookie("flash_msg")
-	if err != nil {
-		return nil
-	}
-	msgBytes, err := base64.URLEncoding.DecodeString(msgCookie.Value)
-	if err != nil {
-		return nil
-	}
-	return &FlashMessage{
-		Type:    typeCookie.Value,
-		Message: string(msgBytes),
-	}
 }

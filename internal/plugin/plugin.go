@@ -37,10 +37,10 @@ type Interface interface {
 
 // ToolSpec describes a callable tool exposed by a plugin.
 type ToolSpec struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Parameters  map[string]interface{} `json:"parameters"`
-	TimeoutMs   int                    `json:"timeout_ms,omitempty"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Parameters  map[string]any `json:"parameters"`
+	TimeoutMs   int            `json:"timeout_ms,omitempty"`
 }
 
 // validateToolSpec validates and normalizes a ToolSpec's TimeoutMs field.
@@ -51,8 +51,7 @@ func validateToolSpec(ts *ToolSpec) error {
 		return fmt.Errorf("tool %q: timeout_ms cannot be negative", ts.Name)
 	}
 	if ts.TimeoutMs > 300000 {
-		logger.Warnf("tool %q: timeout_ms %d exceeds maximum 300000, clamping to 300000", ts.Name, ts.TimeoutMs)
-		ts.TimeoutMs = 300000
+		logger.Warnf("[plugin] tool %q: timeout_ms %d exceeds recommended maximum 300000, honoring user value", ts.Name, ts.TimeoutMs)
 	}
 	return nil
 }
@@ -68,13 +67,13 @@ type pluginManifest struct {
 }
 
 type manifestToolSpec struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Parameters  map[string]interface{} `json:"parameters"`
-	Command     string                 `json:"command"`
-	Args        []string               `json:"args"`
-	ArgKeys     []string               `json:"arg_keys"`
-	TimeoutMs   int                    `json:"timeout_ms,omitempty"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Parameters  map[string]any `json:"parameters"`
+	Command     string         `json:"command"`
+	Args        []string       `json:"args"`
+	ArgKeys     []string       `json:"arg_keys"`
+	TimeoutMs   int            `json:"timeout_ms,omitempty"`
 }
 
 type commandTool struct {
@@ -86,7 +85,7 @@ type commandTool struct {
 // ToolProvider is an optional interface for plugins that expose AI tools.
 type ToolProvider interface {
 	ListTools() ([]ToolSpec, error)
-	ExecuteTool(name string, args map[string]interface{}) (string, error)
+	ExecuteTool(name string, args map[string]any) (string, error)
 }
 
 // LocalFile describes a local file upload requested by a plugin.
@@ -139,7 +138,7 @@ type BeforeSendArgs struct {
 // ExecuteToolArgs holds arguments for ExecuteTool RPC.
 type ExecuteToolArgs struct {
 	Name      string
-	Arguments map[string]interface{}
+	Arguments map[string]any
 }
 
 // Client represents a connection to a plugin
@@ -263,7 +262,7 @@ func (pm *Manager) ListTools() []PluginTool {
 }
 
 // ExecuteTool executes a named tool on a specific plugin.
-func (pm *Manager) ExecuteTool(ctx context.Context, pluginName string, toolName string, args map[string]interface{}) (string, error) {
+func (pm *Manager) ExecuteTool(ctx context.Context, pluginName string, toolName string, args map[string]any) (string, error) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
@@ -283,7 +282,7 @@ func (pm *Manager) ExecuteTool(ctx context.Context, pluginName string, toolName 
 	return "", fmt.Errorf("jsonrpc plugin is not initialized")
 }
 
-func (pm *Manager) executeJSONRPCTool(plugin *Client, toolName string, args map[string]interface{}) (string, error) {
+func (pm *Manager) executeJSONRPCTool(plugin *Client, toolName string, args map[string]any) (string, error) {
 	if plugin == nil || plugin.jsonrpc == nil {
 		return "", fmt.Errorf("jsonrpc plugin is not initialized")
 	}
@@ -324,7 +323,7 @@ func (pm *Manager) executeJSONRPCTool(plugin *Client, toolName string, args map[
 	return reply, nil
 }
 
-func (pm *Manager) executeCommandTool(ctx context.Context, plugin *Client, toolName string, args map[string]interface{}) (string, error) {
+func (pm *Manager) executeCommandTool(ctx context.Context, plugin *Client, toolName string, args map[string]any) (string, error) {
 	if plugin == nil {
 		return "", fmt.Errorf("plugin is nil")
 	}
@@ -395,7 +394,7 @@ func (pm *Manager) executeCommandTool(ctx context.Context, plugin *Client, toolN
 	return result, nil
 }
 
-func commandArgumentValue(value interface{}) (string, error) {
+func commandArgumentValue(value any) (string, error) {
 	if value == nil {
 		return "", fmt.Errorf("value is null")
 	}

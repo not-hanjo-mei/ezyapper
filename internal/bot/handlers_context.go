@@ -53,7 +53,7 @@ func (b *Bot) buildDynamicContext(authorName string, profile *memory.Profile, me
 			first = false
 		}
 		if len(profile.Facts) > 0 {
-			facts := []string{}
+			facts := make([]string, 0, len(profile.Facts))
 			for k, v := range profile.Facts {
 				facts = append(facts, fmt.Sprintf("%s: %s", k, v))
 			}
@@ -64,7 +64,7 @@ func (b *Bot) buildDynamicContext(authorName string, profile *memory.Profile, me
 			first = false
 		}
 		if len(profile.Preferences) > 0 {
-			prefs := []string{}
+			prefs := make([]string, 0, len(profile.Preferences))
 			for k, v := range profile.Preferences {
 				prefs = append(prefs, fmt.Sprintf("%s: %s", k, v))
 			}
@@ -103,6 +103,6 @@ func (b *Bot) addGenerationFailureReaction(s *discordgo.Session, m *discordgo.Me
 
 	const timeoutReaction = "馃拃"
 	if err := s.MessageReactionAdd(m.ChannelID, m.ID, timeoutReaction); err != nil {
-		logger.Warnf("Failed to add generation timeout reaction: %v", err)
+		logger.Warnf("[context] Failed to add generation timeout reaction: %v", err)
 	}
 }

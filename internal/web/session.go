@@ -225,11 +225,6 @@ func SessionMiddleware(store *SessionStore) Middleware {
 	}
 }
 
-// RequireAuth is an alias for SessionMiddleware for semantic clarity.
-func RequireAuth(store *SessionStore) Middleware {
-	return SessionMiddleware(store)
-}
-
 // Middleware wraps an http.Handler with pre/post-processing logic.
 type Middleware func(http.Handler) http.Handler
 

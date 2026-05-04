@@ -36,15 +36,7 @@ func DashboardHandler(stats *StatsProvider, startTime time.Time, ts *TemplateSet
 			Uptime:      int64(time.Since(startTime).Seconds()),
 		}
 
-		navItems := []NavItem{
-			{Label: "Dashboard", Href: "/", Icon: "dashboard", Active: true},
-			{Label: "Configuration", Href: "/config", Icon: "settings", Active: false},
-			{Label: "Memories", Href: "/memories", Icon: "memory", Active: false},
-			{Label: "Profiles", Href: "/profiles", Icon: "person", Active: false},
-			{Label: "Channels", Href: "/channels", Icon: "forum", Active: false},
-			{Label: "Plugins", Href: "/plugins", Icon: "extension", Active: false},
-			{Label: "Logs", Href: "/logs", Icon: "description", Active: false},
-		}
+		navItems := activeNavItems("dashboard")
 
 		pageData := &PageData{
 			Title:     "Dashboard",

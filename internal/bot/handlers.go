@@ -78,7 +78,7 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		}
 	}
 	if len(m.Mentions) > 0 {
-		mentionList := []string{}
+		mentionList := make([]string, 0, len(m.Mentions))
 		for _, user := range m.Mentions {
 			mentionList = append(mentionList, user.Username)
 		}
@@ -99,7 +99,7 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 			msg.ReplyToUsername = m.ReferencedMessage.Author.Username
 			content := m.ReferencedMessage.Content
 			if utf8.RuneCountInString(content) > b.cfg().Discord.ReplyTruncationLength {
-				logger.Warnf("reply content truncated from %d to %d chars", utf8.RuneCountInString(content), b.cfg().Discord.ReplyTruncationLength)
+				logger.Warnf("[bot] reply content truncated from %d to %d chars", utf8.RuneCountInString(content), b.cfg().Discord.ReplyTruncationLength)
 				runes := []rune(content)
 				content = string(runes[:b.cfg().Discord.ReplyTruncationLength])
 			}
@@ -117,7 +117,7 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 	if b.pluginManager != nil {
 		continueProcessing, err := b.pluginManager.OnMessage(ctx, types.FromDiscordgo(m))
 		if err != nil {
-			logger.Warnf("Plugin error in OnMessage: %v", err)
+			logger.Warnf("[bot] Plugin error in OnMessage: %v", err)
 		}
 		if !continueProcessing {
 			logger.Debugf("Message processing blocked by plugin")
@@ -133,7 +133,7 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 	// Fetch recent messages once for both decision and response paths
 	recentMessages, fetchErr := b.discordClient.FetchRecentMessages(ctx, m.ChannelID, b.cfg().Memory.ShortTermLimit)
 	if fetchErr != nil {
-		logger.Warnf("Failed to fetch recent messages for decision: %v", fetchErr)
+		logger.Warnf("[bot] Failed to fetch recent messages for decision: %v", fetchErr)
 	}
 
 	// Warm channel buffer on cold start.

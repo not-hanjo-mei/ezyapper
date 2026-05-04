@@ -326,7 +326,7 @@ func TestFindFieldIndexByJSONTag_NotFound(t *testing.T) {
 }
 
 // reflectType is a helper to get a reflect.Type from a struct pointer
-func reflectType(v interface{}) reflect.Type {
+func reflectType(v any) reflect.Type {
 	return reflect.ValueOf(v).Elem().Type()
 }
 
@@ -453,7 +453,7 @@ func TestSetFieldValue_Unconvertible(t *testing.T) {
 
 func TestApplyExtraParamsToStruct_EmptyParams(t *testing.T) {
 	req := openai.ChatCompletionRequest{Model: "gpt-4"}
-	applyExtraParamsToStruct(&req, map[string]interface{}{}, "")
+	applyExtraParamsToStruct(&req, map[string]any{}, "")
 	if req.Model != "gpt-4" {
 		t.Error("model should not change with empty params")
 	}
@@ -461,7 +461,7 @@ func TestApplyExtraParamsToStruct_EmptyParams(t *testing.T) {
 
 func TestApplyExtraParamsToStruct_ValidFields(t *testing.T) {
 	req := openai.ChatCompletionRequest{Model: "gpt-4"}
-	params := map[string]interface{}{
+	params := map[string]any{
 		"top_p":            0.9,
 		"presence_penalty": 0.5,
 	}
@@ -476,7 +476,7 @@ func TestApplyExtraParamsToStruct_ValidFields(t *testing.T) {
 
 func TestApplyExtraParamsToStruct_FieldNotFound(t *testing.T) {
 	req := openai.ChatCompletionRequest{Model: "gpt-4"}
-	params := map[string]interface{}{
+	params := map[string]any{
 		"nonexistent_field": "value",
 	}
 	// Should not panic, just debug log
@@ -495,7 +495,7 @@ func TestApplyExtraParamsToStruct_NilParamMap(t *testing.T) {
 
 func TestApplyExtraParams_Delegates(t *testing.T) {
 	req := openai.ChatCompletionRequest{Model: "gpt-4"}
-	params := map[string]interface{}{"top_p": 0.8}
+	params := map[string]any{"top_p": 0.8}
 	ApplyExtraParams(&req, params, "[test]")
 	if req.TopP != 0.8 {
 		t.Errorf("expected TopP 0.8, got %v", req.TopP)
@@ -506,7 +506,7 @@ func TestApplyExtraParams_Delegates(t *testing.T) {
 
 func TestApplyExtraParams_Method(t *testing.T) {
 	cfg := defaultAIConfig()
-	cfg.ExtraParams = map[string]interface{}{"top_p": 0.7}
+	cfg.ExtraParams = map[string]any{"top_p": 0.7}
 	c := testClient(cfg)
 	req := openai.ChatCompletionRequest{}
 	c.applyExtraParams(&req)
@@ -1717,7 +1717,7 @@ func TestSetFieldValue_ChatCompletionRequest_Seed(t *testing.T) {
 
 func TestApplyExtraParamsToStruct_StopSlice(t *testing.T) {
 	req := openai.ChatCompletionRequest{}
-	params := map[string]interface{}{
+	params := map[string]any{
 		"stop": []string{"\n", "END"},
 	}
 	applyExtraParamsToStruct(&req, params, "[test]")
@@ -1728,7 +1728,7 @@ func TestApplyExtraParamsToStruct_StopSlice(t *testing.T) {
 
 func TestApplyExtraParamsToStruct_LogitBiasMap(t *testing.T) {
 	req := openai.ChatCompletionRequest{}
-	params := map[string]interface{}{
+	params := map[string]any{
 		"logit_bias": map[string]int{"1234": 10},
 	}
 	applyExtraParamsToStruct(&req, params, "[test]")

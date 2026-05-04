@@ -34,6 +34,16 @@ type DiscordMessage struct {
 	ReplyToContent string `json:"reply_to_content"`
 }
 
+// TruncateReplyContent truncates the ReplyToContent field if it exceeds maxRunes,
+// logging a warning when truncation occurs. Safe to call when ReplyToContent is empty.
+func (m *DiscordMessage) TruncateReplyContent(maxRunes int) {
+	if utf8.RuneCountInString(m.ReplyToContent) > maxRunes {
+		logger.Warnf("[types] reply content truncated from %d to %d runes",
+			utf8.RuneCountInString(m.ReplyToContent), maxRunes)
+		m.ReplyToContent = string([]rune(m.ReplyToContent)[:maxRunes])
+	}
+}
+
 // FromDiscordgo converts a discordgo.MessageCreate to a DiscordMessage,
 // filling all canonical fields including reply metadata and image URLs.
 func FromDiscordgo(m *discordgo.MessageCreate) DiscordMessage {

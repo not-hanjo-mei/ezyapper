@@ -21,7 +21,7 @@ func TestMemoryPayloadRoundTrip_PreservesExtendedFields(t *testing.T) {
 		Content:    "user likes golang",
 		Summary:    "likes golang",
 		Keywords:   []string{"golang", "backend"},
-		Metadata: map[string]interface{}{
+		Metadata: map[string]any{
 			"source": "consolidation",
 			"vision": true,
 		},

@@ -97,7 +97,7 @@ func (f *DiscordMessageFetcher) convertMessage(msg *discordgo.Message) types.Dis
 			d.ReplyToUsername = msg.ReferencedMessage.Author.Username
 			content := msg.ReferencedMessage.Content
 			if len(content) > f.replyTruncationLength {
-				logger.Warnf("reply content truncated from %d to %d chars", len(content), f.replyTruncationLength)
+				logger.Warnf("[fetcher] reply content truncated from %d to %d chars", len(content), f.replyTruncationLength)
 				// Use rune-based truncation to avoid splitting multi-byte UTF-8 characters
 				runes := []rune(content)
 				if len(runes) > f.replyTruncationLength {

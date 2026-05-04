@@ -133,7 +133,7 @@ func (c *Client) requestTimeout() time.Duration {
 		return c.httpClient.Timeout
 	}
 	logger.Warnf("[ai] requestTimeout: no timeout configured, this should not happen (check config validation)")
-	return 30 * time.Second
+	panic("no timeout configured — validation should have caught this")
 }
 
 func (c *Client) closeIdleConnections() {
@@ -318,13 +318,13 @@ func (c *Client) applyExtraParams(req *openai.ChatCompletionRequest) {
 // ApplyExtraParams applies extra parameters to a ChatCompletionRequest using reflection.
 // This is a package-level function that can be used by other components.
 // prefix is used for logging (e.g., "[decision]", "[vision]")
-func ApplyExtraParams(req *openai.ChatCompletionRequest, extraParams map[string]interface{}, logPrefix string) {
+func ApplyExtraParams(req *openai.ChatCompletionRequest, extraParams map[string]any, logPrefix string) {
 	applyExtraParamsToStruct(req, extraParams, logPrefix)
 }
 
 // applyExtraParamsToStruct applies extra parameters to any struct using reflection.
 // This generic version works with any struct (ChatCompletionRequest, EmbeddingRequest, etc.)
-func applyExtraParamsToStruct(req interface{}, extraParams map[string]interface{}, logPrefix string) {
+func applyExtraParamsToStruct(req any, extraParams map[string]any, logPrefix string) {
 	if len(extraParams) == 0 {
 		return
 	}
@@ -380,7 +380,7 @@ func findFieldIndexByJSONTag(t reflect.Type, name string) int {
 }
 
 // setFieldValue sets a field value with type conversion
-func setFieldValue(field reflect.Value, value interface{}) error {
+func setFieldValue(field reflect.Value, value any) error {
 	if value == nil {
 		return nil
 	}

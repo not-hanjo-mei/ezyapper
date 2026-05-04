@@ -1,7 +1,6 @@
 package web
 
 import (
-	"encoding/base64"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -60,7 +59,7 @@ func handleMemoriesGET(w http.ResponseWriter, r *http.Request, cfgStore *atomic.
 	}
 	userID := strings.TrimSpace(r.URL.Query().Get("userID"))
 	csrfToken := CSRFTokenFromContext(ctx)
-	flash := flashFromCookieMemories(r)
+	flash := flashFromCookie(r, "memories")
 
 	entries := []memoryDisplayEntry{}
 	var searched bool
@@ -88,15 +87,7 @@ func handleMemoriesGET(w http.ResponseWriter, r *http.Request, cfgStore *atomic.
 		Error:    errorMsg,
 	}
 
-	navItems := []NavItem{
-		{Label: "Dashboard", Href: "/", Icon: "dashboard"},
-		{Label: "Configuration", Href: "/config", Icon: "settings"},
-		{Label: "Memories", Href: "/memories", Icon: "memory", Active: true},
-		{Label: "Profiles", Href: "/profiles", Icon: "person"},
-		{Label: "Channels", Href: "/channels", Icon: "forum"},
-		{Label: "Plugins", Href: "/plugins", Icon: "extension"},
-		{Label: "Logs", Href: "/logs", Icon: "description"},
-	}
+	navItems := activeNavItems("memories")
 
 	RenderPage(w, ts, "memories", &PageData{
 		Title:     "Memories",
@@ -140,7 +131,7 @@ func handleMemoriesDelete(w http.ResponseWriter, r *http.Request, memStore memor
 		return
 	}
 
-	setFlashCookieMemories(w, "success", "Memory deleted successfully")
+	setFlashCookie(w, "memories", "success", "Memory deleted successfully")
 	http.Redirect(w, r, "/memories?userID="+userID, http.StatusSeeOther)
 }
 
@@ -173,44 +164,4 @@ func truncateToWord(s string, maxLen int) string {
 		cut = cut[:idx]
 	}
 	return cut + "…"
-}
-
-func setFlashCookieMemories(w http.ResponseWriter, flashType, message string) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     "memories_flash_type",
-		Value:    flashType,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   60,
-	})
-	http.SetCookie(w, &http.Cookie{
-		Name:     "memories_flash_msg",
-		Value:    base64.URLEncoding.EncodeToString([]byte(message)),
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   60,
-	})
-}
-
-func flashFromCookieMemories(r *http.Request) *FlashMessage {
-	typeCookie, err := r.Cookie("memories_flash_type")
-	if err != nil {
-		return nil
-	}
-	msgCookie, err := r.Cookie("memories_flash_msg")
-	if err != nil {
-		return nil
-	}
-	msgBytes, err := base64.URLEncoding.DecodeString(msgCookie.Value)
-	if err != nil {
-		return nil
-	}
-	return &FlashMessage{
-		Type:    typeCookie.Value,
-		Message: string(msgBytes),
-	}
 }

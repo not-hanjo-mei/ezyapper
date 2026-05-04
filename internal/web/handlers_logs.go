@@ -50,15 +50,7 @@ func LogsHandler(logFilePath string, cfgStore *atomic.Value, ts *TemplateSet) ht
 			stats = "Showing last " + strconv.Itoa(lines) + " lines (of " + strconv.Itoa(totalLines) + ")"
 		}
 
-		navItems := []NavItem{
-			{Label: "Dashboard", Href: "/", Icon: "dashboard"},
-			{Label: "Configuration", Href: "/config", Icon: "settings"},
-			{Label: "Memories", Href: "/memories", Icon: "memory"},
-			{Label: "Profiles", Href: "/profiles", Icon: "person"},
-			{Label: "Channels", Href: "/channels", Icon: "forum"},
-			{Label: "Plugins", Href: "/plugins", Icon: "extension"},
-			{Label: "Logs", Href: "/logs", Icon: "description", Active: true},
-		}
+		navItems := activeNavItems("logs")
 
 		data := map[string]any{
 			"Lines":   lines,

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -13,7 +14,6 @@ import (
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/retry"
-	"ezyapper/internal/utils"
 
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -116,7 +116,7 @@ func (c *Consolidator) buildConversationText(ctx context.Context, messages []*Di
 		}
 
 		if len(msg.ImageURLs) > 0 && c.visionDescriber != nil {
-			descriptions := []string{}
+			descriptions := make([]string, 0, len(msg.ImageDescriptions))
 
 			// Use cached descriptions if available (to avoid redundant API calls)
 			if len(msg.ImageDescriptions) > 0 {
@@ -224,7 +224,7 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 // upserts them into Qdrant, and returns the number successfully stored.
 func (c *Consolidator) storeMemories(ctx context.Context, userID string, extracts []Extract) (int, error) {
 	var stored int
-	errs := []error{}
+	errs := make([]error, 0, len(extracts))
 	for i, extract := range extracts {
 		memory := &Record{
 			UserID:     userID,
@@ -263,12 +263,12 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID string, messages []*DiscordMessage) error {
 	start := time.Now()
 
-	userIDSet := make(map[string]bool)
+	userIDSet := make(map[string]struct{})
 	for _, msg := range messages {
-		userIDSet[msg.AuthorID] = true
+		userIDSet[msg.AuthorID] = struct{}{}
 	}
 
-	targetUserIDs := []string{}
+	targetUserIDs := make([]string, 0, len(userIDSet))
 	for userID := range userIDSet {
 		targetUserIDs = append(targetUserIDs, userID)
 	}
@@ -297,7 +297,7 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 	logger.Infof("[consolidation] extracted memories for %d users from channel=%s", len(batchExtracts), channelID)
 
 	var totalStored int
-	allErrs := []error{}
+	allErrs := make([]error, 0, len(batchExtracts))
 	for _, userExtract := range batchExtracts {
 		userID := userExtract.UserID
 		extracts := userExtract.Memories
@@ -458,7 +458,7 @@ func (c *Consolidator) analyzeConversation(ctx context.Context, conversation str
 	if content == "" {
 		return nil, nil
 	}
-	extracts := []Extract{}
+	extracts := make([]Extract, 0, 4)
 	if err := json.Unmarshal([]byte(content), &extracts); err != nil {
 		return nil, fmt.Errorf("consolidation: failed to parse LLM response: %w", err)
 	}
@@ -475,7 +475,7 @@ func (c *Consolidator) analyzeConversationBatch(ctx context.Context, conversatio
 	if content == "" {
 		return nil, nil
 	}
-	batchExtracts := []UserMemoryExtract{}
+	batchExtracts := make([]UserMemoryExtract, 0, len(targetUserIDs))
 	if err := json.Unmarshal([]byte(content), &batchExtracts); err != nil {
 		return nil, fmt.Errorf("consolidation: failed to parse LLM batch response: %w", err)
 	}
@@ -494,7 +494,7 @@ func (c *Consolidator) callExtractionLLM(ctx context.Context, conversation strin
 	}
 
 	if strings.TrimSpace(conversation) == "" {
-		logger.Warn("[consolidation] empty conversation, skipping LLM analysis")
+		logger.Warnf("[consolidation] empty conversation, skipping LLM analysis")
 		return "", nil
 	}
 
@@ -614,14 +614,14 @@ func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []
 			// Extract interests
 			if strings.Contains(content, "enjoys") || strings.Contains(content, "enjoy") {
 				if strings.Contains(content, "hiking") {
-					if !utils.Contains(profile.Interests, "hiking") {
+					if !slices.Contains(profile.Interests, "hiking") {
 						profile.Interests = append(profile.Interests, "hiking")
 						interestsAdded++
 						logger.Debugf("[consolidation] added interest=hiking to profile for user=%s", profile.UserID)
 					}
 				}
 				if strings.Contains(content, "rpg") || strings.Contains(content, "video games") {
-					if !utils.Contains(profile.Interests, "RPG games") {
+					if !slices.Contains(profile.Interests, "RPG games") {
 						profile.Interests = append(profile.Interests, "RPG games")
 						interestsAdded++
 						logger.Debugf("[consolidation] added interest=RPG games to profile for user=%s", profile.UserID)

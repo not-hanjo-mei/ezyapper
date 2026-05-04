@@ -37,8 +37,8 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		pm.SetPhase(PhaseGenerating)
 	}
 
-	imageURLs := []string{}
-	imageDescriptions := []string{}
+	imageURLs := make([]string, 0)
+	imageDescriptions := make([]string, 0)
 	var msg *types.DiscordMessage
 
 	if withImages {
@@ -110,7 +110,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		var fetchErr error
 		recentMessages, fetchErr = b.discordClient.FetchRecentMessages(ctx, m.ChannelID, b.cfg().Memory.ShortTermLimit)
 		if fetchErr != nil {
-			logger.Warnf("Failed to fetch recent messages: %v", fetchErr)
+			logger.Warnf("[processing] Failed to fetch recent messages: %v", fetchErr)
 		}
 	}
 
@@ -133,7 +133,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 	if b.cfg().Memory.Retrieval.TopK > 0 {
 		memories, err = b.memoryStore.Search(ctx, m.Author.ID, m.Content, nil)
 		if err != nil {
-			logger.Warnf("Failed to search memories: %v", err)
+			logger.Warnf("[processing] Failed to search memories: %v", err)
 		} else if len(memories) > 0 {
 			logger.Debugf("[memory] search found %d memories for user=%s query=%q", len(memories), m.Author.ID, m.Content)
 		}
@@ -147,7 +147,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 
 	profile, err := b.profileStore.GetProfile(ctx, m.Author.ID)
 	if err != nil {
-		logger.Warnf("Failed to get profile: %v", err)
+		logger.Warnf("[processing] Failed to get profile: %v", err)
 		profile = nil
 	}
 	displayName := m.Author.GlobalName
@@ -198,7 +198,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		if ctx.Err() == context.Canceled {
 			logger.Infof("[processing] Message %s generation cancelled", m.ID)
 		} else {
-			logger.Errorf("Failed to generate response: %v", err)
+			logger.Errorf("[processing] Failed to generate response: %v", err)
 			if shouldSendGenerationFallback(err) {
 				b.addGenerationFailureReaction(s, m)
 			}
@@ -233,7 +233,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 	if b.pluginManager != nil {
 		dm := types.FromDiscordgo(m)
 		if err := b.pluginManager.OnResponse(ctx, dm, response); err != nil {
-			logger.Warnf("Plugin error in OnResponse: %v", err)
+			logger.Warnf("[processing] Plugin error in OnResponse: %v", err)
 		}
 	}
 
@@ -241,7 +241,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 
 	count, err := b.consolidation.IncrementChannelMessageCount(ctx, m.ChannelID)
 	if err != nil {
-		logger.Warnf("Failed to increment channel message count: %v", err)
+		logger.Warnf("[processing] Failed to increment channel message count: %v", err)
 	} else {
 		b.triggerChannelConsolidation(ctx, m.ChannelID, count)
 	}

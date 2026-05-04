@@ -4,7 +4,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -17,7 +16,6 @@ import (
 	"ezyapper/internal/logger"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	openai "github.com/sashabaranov/go-openai"
 )
 
 // MCPManager manages connections to MCP (Model Context Protocol) servers.
@@ -41,7 +39,7 @@ func (m *MCPManager) Connect(ctx context.Context) error {
 	errs := []error{}
 	for _, server := range m.servers {
 		if err := m.connectServer(ctx, server); err != nil {
-			logger.Warnf("Failed to connect to MCP server '%s': %v", server.Name, err)
+			logger.Warnf("[mcp] Failed to connect to MCP server '%s': %v", server.Name, err)
 			errs = append(errs, fmt.Errorf("%s: %w", server.Name, err))
 			continue
 		}
@@ -81,7 +79,7 @@ func (m *MCPManager) connectServer(ctx context.Context, server config.MCPServer)
 	m.mu.Lock()
 	m.sessions[server.Name] = session
 	m.mu.Unlock()
-	logger.Infof("Connected to MCP server '%s'", server.Name)
+	logger.Infof("[mcp] Connected to MCP server '%s'", server.Name)
 	return nil
 }
 
@@ -96,7 +94,7 @@ func (m *MCPManager) GetAllTools(ctx context.Context) ([]MCPTool, error) {
 	for name, session := range sessions {
 		tools, err := m.getServerTools(ctx, name, session)
 		if err != nil {
-			logger.Warnf("Failed to get tools from MCP server '%s': %v", name, err)
+			logger.Warnf("[mcp] Failed to get tools from MCP server '%s': %v", name, err)
 			continue
 		}
 		allTools = append(allTools, tools...)
@@ -162,39 +160,13 @@ type MCPTool struct {
 	Tool       *mcp.Tool
 }
 
-// ToOpenAITools converts MCP tools to OpenAI-compatible format for use in LLM tool calling.
-func ToOpenAITools(tools []MCPTool) []openai.Tool {
-	openaiTools := make([]openai.Tool, 0, len(tools))
-	for _, tool := range tools {
-		schemaJSON, err := json.Marshal(tool.Tool.InputSchema)
-		if err != nil {
-			logger.Warnf("[mcp] failed to marshal tool schema for '%s': %v", tool.Tool.Name, err)
-			continue
-		}
-		var schema map[string]interface{}
-		if err := json.Unmarshal(schemaJSON, &schema); err != nil {
-			logger.Warnf("[mcp] failed to unmarshal tool schema for '%s': %v", tool.Tool.Name, err)
-			continue
-		}
-		openaiTools = append(openaiTools, openai.Tool{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
-				Name:        fmt.Sprintf("%s_%s", tool.ServerName, tool.Tool.Name),
-				Description: fmt.Sprintf("[%s] %s", tool.ServerName, tool.Tool.Description),
-				Parameters:  schema,
-			},
-		})
-	}
-	return openaiTools
-}
-
 // Close shuts down all MCP server connections.
 func (m *MCPManager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for name, session := range m.sessions {
 		if err := session.Close(); err != nil {
-			logger.Warnf("Error closing MCP session '%s': %v", name, err)
+			logger.Warnf("[mcp] Error closing MCP session '%s': %v", name, err)
 		}
 	}
 	return nil

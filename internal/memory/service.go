@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
-	"ezyapper/internal/utils"
 )
 
 // MemoryStore groups memory CRUD, search, and statistics operations.
@@ -170,7 +170,7 @@ func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedde
 
 	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, vd, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit, cfg.RetryMaxRetries, cfg.RetryBaseDelayMs, cfg.RetryMaxDelayMs)
 
-	logger.Info("Memory service initialized")
+	logger.Info("[memory] Memory service initialized")
 	return service, nil
 }
 
@@ -242,7 +242,7 @@ func (s *MemoryService) filterByKeywords(memories []*Record, keywords []string) 
 	filtered := []*Record{}
 	for _, m := range memories {
 		for _, keyword := range keywords {
-			if utils.Contains(m.Keywords, keyword) || strings.Contains(m.Content, keyword) {
+			if slices.Contains(m.Keywords, keyword) || strings.Contains(m.Content, keyword) {
 				filtered = append(filtered, m)
 				break
 			}
@@ -440,7 +440,7 @@ func (s *MemoryService) ConsolidateChannel(ctx context.Context, channelID string
 }
 
 func (s *MemoryService) GetStats(ctx context.Context) (*GlobalStats, error) {
-	errs := []error{}
+	errs := make([]error, 0, 2)
 
 	memories, err := s.CountMemories(ctx)
 	if err != nil {

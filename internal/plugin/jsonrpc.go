@@ -15,10 +15,10 @@ import (
 )
 
 type jsonRPCRequest struct {
-	JSONRPC string      `json:"jsonrpc"`
-	ID      int64       `json:"id"`
-	Method  string      `json:"method"`
-	Params  interface{} `json:"params,omitempty"`
+	JSONRPC string `json:"jsonrpc"`
+	ID      int64  `json:"id"`
+	Method  string `json:"method"`
+	Params  any    `json:"params,omitempty"`
 }
 
 type jsonRPCResponse struct {
@@ -67,7 +67,7 @@ func (c *stdioJSONRPCClient) Close() {
 	}
 }
 
-func (c *stdioJSONRPCClient) Call(method string, params interface{}, reply interface{}) error {
+func (c *stdioJSONRPCClient) Call(method string, params any, reply any) error {
 	if c == nil {
 		return fmt.Errorf("jsonrpc client is nil")
 	}
@@ -80,7 +80,7 @@ func (c *stdioJSONRPCClient) Call(method string, params interface{}, reply inter
 	defer c.mu.Unlock()
 
 	if params == nil {
-		params = map[string]interface{}{}
+		params = map[string]any{}
 	}
 
 	id := c.nextID
@@ -129,7 +129,7 @@ func (c *stdioJSONRPCClient) Call(method string, params interface{}, reply inter
 
 func listPluginToolsJSONRPC(client *stdioJSONRPCClient, wg *sync.WaitGroup, timeout time.Duration) ([]ToolSpec, error) {
 	tools := []ToolSpec{}
-	err := callJSONRPCWithTimeout(client, wg, "list_tools", map[string]interface{}{}, &tools, timeout)
+	err := callJSONRPCWithTimeout(client, wg, "list_tools", map[string]any{}, &tools, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +137,7 @@ func listPluginToolsJSONRPC(client *stdioJSONRPCClient, wg *sync.WaitGroup, time
 	return tools, nil
 }
 
-func decodeJSONRPCParams(raw interface{}, target interface{}) error {
+func decodeJSONRPCParams(raw any, target any) error {
 	if raw == nil {
 		return nil
 	}
@@ -154,7 +154,7 @@ func decodeJSONRPCParams(raw interface{}, target interface{}) error {
 	return json.Unmarshal(encoded, target)
 }
 
-func writeJSONRPCResponse(enc *json.Encoder, id int64, result interface{}, err error) error {
+func writeJSONRPCResponse(enc *json.Encoder, id int64, result any, err error) error {
 	resp := jsonRPCResponse{
 		JSONRPC: "2.0",
 		ID:      id,
@@ -164,7 +164,7 @@ func writeJSONRPCResponse(enc *json.Encoder, id int64, result interface{}, err e
 		resp.Error = &jsonRPCError{Code: -32000, Message: err.Error()}
 	} else {
 		if result == nil {
-			result = map[string]interface{}{}
+			result = map[string]any{}
 		}
 
 		resultBytes, marshalErr := json.Marshal(result)
@@ -208,7 +208,7 @@ func Serve(impl Interface) error {
 			continue
 		}
 
-		var result interface{}
+		var result any
 		var callErr error
 
 		switch req.Method {
@@ -232,7 +232,7 @@ func Serve(impl Interface) error {
 			}
 
 			callErr = impl.OnResponse(args.Message, args.Response)
-			result = map[string]interface{}{}
+			result = map[string]any{}
 		case "before_send":
 			provider, ok := impl.(BeforeSendProvider)
 			if !ok {
@@ -268,13 +268,13 @@ func Serve(impl Interface) error {
 				break
 			}
 			if args.Arguments == nil {
-				args.Arguments = map[string]interface{}{}
+				args.Arguments = map[string]any{}
 			}
 
 			result, callErr = provider.ExecuteTool(args.Name, args.Arguments)
 		case "shutdown":
 			callErr = impl.Shutdown()
-			result = map[string]interface{}{}
+			result = map[string]any{}
 		default:
 			callErr = fmt.Errorf("jsonrpc -32601: method not found")
 		}

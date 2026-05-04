@@ -58,21 +58,19 @@ type ProcessingMessage struct {
 	mu              sync.RWMutex
 }
 
-// SetPhase updates the processing phase thread-safely
 func (pm *ProcessingMessage) SetPhase(phase MessageProcessingPhase) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 	pm.Phase = phase
 }
 
-// GetPhase returns the current processing phase thread-safely
 func (pm *ProcessingMessage) GetPhase() MessageProcessingPhase {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 	return pm.Phase
 }
 
-// UpdateContent updates the message content when edited
+// UpdateContent updates the message content when edited.
 func (pm *ProcessingMessage) UpdateContent(content string) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
@@ -80,21 +78,18 @@ func (pm *ProcessingMessage) UpdateContent(content string) {
 	pm.EditCount++
 }
 
-// GetOriginalContent returns the original content before any edits
 func (pm *ProcessingMessage) GetOriginalContent() string {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 	return pm.OriginalContent
 }
 
-// GetEditCount returns the number of edits
 func (pm *ProcessingMessage) GetEditCount() int {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 	return pm.EditCount
 }
 
-// GetContent returns the current content thread-safely
 func (pm *ProcessingMessage) GetContent() string {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
@@ -257,7 +252,7 @@ func (b *Bot) Start(ctx context.Context) error {
 	// Connect to MCP servers and register tools
 	if b.cfg().MCP.Enabled {
 		if err := b.mcpManager.Connect(ctx); err != nil {
-			logger.Warnf("Failed to connect to MCP servers: %v", err)
+			logger.Warnf("[bot] Failed to connect to MCP servers: %v", err)
 		} else {
 			b.registerMCPTools(ctx)
 		}
@@ -265,7 +260,7 @@ func (b *Bot) Start(ctx context.Context) error {
 
 	if b.cfg().Plugins.Enabled {
 		if err := b.pluginManager.LoadPluginsFromDir(b.cfg().Plugins.PluginsDir); err != nil {
-			logger.Warnf("Failed to load plugins: %v", err)
+			logger.Warnf("[bot] Failed to load plugins: %v", err)
 		}
 		b.registerPluginTools()
 	}
@@ -281,7 +276,7 @@ func (b *Bot) Stop() error {
 
 	if b.mcpManager != nil {
 		if err := b.mcpManager.Close(); err != nil {
-			logger.Warnf("Error closing MCP connections: %v", err)
+			logger.Warnf("[bot] Error closing MCP connections: %v", err)
 		}
 	}
 
@@ -324,7 +319,7 @@ func (b *Bot) Shutdown(ctx context.Context) error {
 func (b *Bot) registerMCPTools(ctx context.Context) {
 	mcpTools, err := b.mcpManager.GetAllTools(ctx)
 	if err != nil {
-		logger.Warnf("Failed to get MCP tools: %v", err)
+		logger.Warnf("[bot] Failed to get MCP tools: %v", err)
 		return
 	}
 
@@ -346,16 +341,6 @@ func (b *Bot) registerMCPTools(ctx context.Context) {
 // GetSession returns the Discord session
 func (b *Bot) GetSession() *discordgo.Session {
 	return b.session
-}
-
-// GetMemory returns the memory store
-func (b *Bot) GetMemory() memory.MemoryStore {
-	return b.memoryStore
-}
-
-// GetDiscordClient returns the Discord short-term client
-func (b *Bot) GetDiscordClient() *memory.ShortTermClient {
-	return b.discordClient
 }
 
 // GetChannelName returns the name of a Discord channel, or the channelID if not found.
@@ -500,11 +485,6 @@ func (b *Bot) CheckRateLimit(channelID, userID string) bool {
 
 func (b *Bot) SetCooldown(userID string, duration time.Duration) {
 	b.rateLimiter.SetCooldown(userID, duration)
-}
-
-// FetchUserMessages proxies Discord message retrieval for the Web server.
-func (b *Bot) FetchUserMessages(ctx context.Context, channelID string, userID string, limit int) ([]*types.DiscordMessage, error) {
-	return b.discordClient.FetchUserMessages(ctx, channelID, userID, limit)
 }
 
 // ApplyRuntimeConfig reapplies hot-updateable runtime dependencies after config changes.
@@ -690,7 +670,7 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 
 		result, err := b.decisionService.ShouldRespondWithInfo(decisionCtx, b.cfg().Discord.BotName, msgInfo, imageCount, decisionMessages)
 		if err != nil {
-			logger.Warnf("decision service failed: %v, using fallback", err)
+			logger.Warnf("[bot] decision service failed: %v, using fallback", err)
 			return b.ShouldRandomReply(), "llm decision failed, fallback"
 		}
 
@@ -733,7 +713,7 @@ func (b *Bot) ShouldRandomReply() bool {
 	// Use crypto/rand for proper randomness
 	n, err := crand.Int(crand.Reader, big.NewInt(100))
 	if err != nil {
-		logger.Warnf("failed to generate random number: %v", err)
+		logger.Warnf("[bot] failed to generate random number: %v", err)
 		return false
 	}
 
@@ -987,7 +967,7 @@ func (b *Bot) pruneHistoricalImageDescCacheLocked() {
 		})
 		excess := len(entries) - maxEntries
 		for i := 0; i < excess; i++ {
-			logger.Warnf("evicting image description cache entry for message %s", entries[i].id)
+			logger.Warnf("[bot] evicting image description cache entry for message %s", entries[i].id)
 			delete(b.historicalImageDescCache, entries[i].id)
 		}
 	}

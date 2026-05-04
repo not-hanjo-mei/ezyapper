@@ -5,6 +5,7 @@ import (
 	"unicode/utf8"
 )
 
+// Deprecated: Use slices.Contains from the standard library instead.
 func Contains(slice []string, item string) bool {
 	for _, s := range slice {
 		if s == item {
@@ -23,7 +24,7 @@ func SplitMessage(content string, maxLen int) []string {
 		return []string{content}
 	}
 
-	parts := []string{}
+	parts := make([]string, 0, 4)
 	for len(content) > 0 {
 		if len(content) <= maxLen {
 			parts = append(parts, content)

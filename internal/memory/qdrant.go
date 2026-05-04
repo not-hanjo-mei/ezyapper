@@ -141,7 +141,7 @@ func (qc *QdrantClient) createCollectionIfNotExists(ctx context.Context, name st
 	}
 
 	if exists {
-		logger.Infof("Collection %s already exists", name)
+		logger.Infof("[qdrant] Collection %s already exists", name)
 		return nil
 	}
 
@@ -157,11 +157,11 @@ func (qc *QdrantClient) createCollectionIfNotExists(ctx context.Context, name st
 		return fmt.Errorf("failed to create collection: %w", err)
 	}
 
-	logger.Infof("Created collection: %s", name)
+	logger.Infof("[qdrant] Created collection: %s", name)
 
 	// Create payload indexes for filtering
 	if err := qc.createPayloadIndexes(ctx, name); err != nil {
-		logger.Warnf("Failed to create payload indexes for %s: %v", name, err)
+		logger.Warnf("[qdrant] Failed to create payload indexes for %s: %v", name, err)
 	}
 
 	return nil
@@ -194,7 +194,7 @@ func (qc *QdrantClient) createPayloadIndexes(ctx context.Context, collectionName
 		return fmt.Errorf("failed to create memory_type index: %w", err)
 	}
 
-	logger.Infof("Created payload indexes for collection: %s", collectionName)
+	logger.Infof("[qdrant] Created payload indexes for collection: %s", collectionName)
 	return nil
 }
 
@@ -283,7 +283,7 @@ func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embed
 		}
 		memory, err := qc.payloadToMemory(result.Payload, result.Id.GetUuid())
 		if err != nil {
-			logger.Warnf("Failed to convert payload to memory (id=%s): %v", result.Id.GetUuid(), err)
+			logger.Warnf("[qdrant] Failed to convert payload to memory (id=%s): %v", result.Id.GetUuid(), err)
 			errs = append(errs, fmt.Errorf("convert payload %s: %w", result.Id.GetUuid(), err))
 			continue
 		}

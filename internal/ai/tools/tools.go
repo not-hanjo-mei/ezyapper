@@ -8,7 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"sort"
+	"slices"
 	"sync"
 
 	"ezyapper/internal/logger"
@@ -97,7 +97,7 @@ func (r *ToolRegistry) rebuildSchemaLocked() {
 	for name := range r.tools {
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 
 	tools := make([]openai.Tool, 0, len(names))
 	for _, name := range names {
@@ -116,7 +116,7 @@ func (r *ToolRegistry) rebuildSchemaLocked() {
 	hash, err := computeToolSchemaHash(tools)
 	if err != nil {
 		// Schema hash is non-critical; log warning and continue
-		logger.Warnf("failed to compute tool schema hash: %v", err)
+		logger.Warnf("[tools] failed to compute tool schema hash: %v", err)
 	}
 	r.schemaHash = hash
 }

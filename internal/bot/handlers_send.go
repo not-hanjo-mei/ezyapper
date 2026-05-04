@@ -276,7 +276,7 @@ func (b *Bot) sendResponse(ctx context.Context, s *discordgo.Session, m *discord
 
 // sendLongResponse sends a response that exceeds Discord's character limit
 func (b *Bot) sendLongResponse(s *discordgo.Session, m *discordgo.MessageCreate, response string, firstChunkFiles []localUploadFile) error {
-	chunks := []string{}
+	chunks := make([]string, 0, 4)
 	remaining := response
 
 	for len(remaining) > 0 {

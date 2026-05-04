@@ -423,6 +423,16 @@ func validateVision(cfg *Config, errs *[]string) {
 	if cfg.AI.Vision.Mode != VisionModeTextOnly && cfg.AI.Vision.MaxTokens == 0 {
 		*errs = append(*errs, "ai.vision.max_tokens is required when vision.mode is not text_only")
 	}
+	if cfg.AI.Vision.Mode != VisionModeTextOnly {
+		if cfg.AI.Vision.APIBaseURL == "" && cfg.AI.APIBaseURL == "" {
+			*errs = append(*errs, "ai.vision.api_base_url is required when vision.mode is not text_only (or set ai.api_base_url)")
+		}
+		if cfg.AI.Vision.APIKey == "" && cfg.AI.APIKey == "" {
+			*errs = append(*errs, "ai.vision.api_key is required when vision.mode is not text_only (or set ai.api_key)")
+		}
+		requirePositive(cfg.AI.Vision.RetryCount, "ai.vision.retry_count", errs)
+		requirePositive(cfg.AI.Vision.Timeout, "ai.vision.timeout", errs)
+	}
 }
 
 func validateDiscord(cfg *Config, errs *[]string) {
@@ -482,7 +492,6 @@ func validateMemory(cfg *Config, errs *[]string) {
 		*errs = append(*errs, "memory.retrieval.min_score must be between 0 and 1")
 	}
 	requirePositive(cfg.Memory.Consolidation.MemorySearchLimit, "memory.consolidation.memory_search_limit", errs)
-	requirePositive(cfg.Memory.Consolidation.WorkerQueueSize, "memory.consolidation.worker_queue_size", errs)
 }
 
 func validateRateLimit(cfg *Config, errs *[]string) {
@@ -573,6 +582,15 @@ func validateConsolidation(cfg *Config, errs *[]string) {
 	if cfg.Discord.OwnBotID == "" {
 		*errs = append(*errs, "discord.own_bot_id is required when consolidation is enabled")
 	}
+	requireNonEmpty(cfg.Memory.Consolidation.Model, "memory.consolidation.model", errs)
+	requireNonEmpty(cfg.Memory.Consolidation.APIBaseURL, "memory.consolidation.api_base_url", errs)
+	requireNonEmpty(cfg.Memory.Consolidation.APIKey, "memory.consolidation.api_key", errs)
+	requirePositive(cfg.Memory.Consolidation.MaxTokens, "memory.consolidation.max_tokens", errs)
+	if cfg.Memory.Consolidation.Temperature < 0 || cfg.Memory.Consolidation.Temperature > 2 {
+		*errs = append(*errs, "memory.consolidation.temperature must be between 0 and 2")
+	}
+	requirePositive(cfg.Memory.Consolidation.RetryCount, "memory.consolidation.retry_count", errs)
+	requirePositive(cfg.Memory.Consolidation.Timeout, "memory.consolidation.timeout", errs)
 	if cfg.Memory.Consolidation.SystemPrompt == "" {
 		*errs = append(*errs, "memory.consolidation.system_prompt is required when consolidation is enabled")
 	}
@@ -680,10 +698,6 @@ func (c *Config) FormatSystemPrompt(authorName, serverName, guildID, channelID s
 	}
 
 	return prompt
-}
-
-func (c *Config) SetConfigPath(path string) {
-	c.configPath = path
 }
 
 func (c *Config) Save() error {

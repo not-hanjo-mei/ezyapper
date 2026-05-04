@@ -1,7 +1,6 @@
 package web
 
 import (
-	"encoding/base64"
 	"net/http"
 	"strings"
 	"time"
@@ -61,7 +60,7 @@ func handleProfilesGET(w http.ResponseWriter, r *http.Request, profileStore memo
 	userID := strings.TrimSpace(r.URL.Query().Get("userID"))
 	editMode := r.URL.Query().Get("edit") == "true"
 	csrfToken := CSRFTokenFromContext(ctx)
-	flash := flashFromCookieProfiles(r)
+	flash := flashFromCookie(r, "profiles")
 
 	pd := &profilesPageData{
 		UserID:   userID,
@@ -80,15 +79,7 @@ func handleProfilesGET(w http.ResponseWriter, r *http.Request, profileStore memo
 		}
 	}
 
-	navItems := []NavItem{
-		{Label: "Dashboard", Href: "/", Icon: "dashboard"},
-		{Label: "Configuration", Href: "/config", Icon: "settings"},
-		{Label: "Memories", Href: "/memories", Icon: "memory"},
-		{Label: "Profiles", Href: "/profiles", Icon: "person", Active: true},
-		{Label: "Channels", Href: "/channels", Icon: "forum"},
-		{Label: "Plugins", Href: "/plugins", Icon: "extension"},
-		{Label: "Logs", Href: "/logs", Icon: "description"},
-	}
+	navItems := activeNavItems("profiles")
 
 	RenderPage(w, ts, "profiles", &PageData{
 		Title:     "User Profiles",
@@ -117,7 +108,7 @@ func handleProfilesUpdate(w http.ResponseWriter, r *http.Request, profileStore m
 	ctx := r.Context()
 	profile, err := profileStore.GetProfile(ctx, userID)
 	if err != nil {
-		setFlashCookieProfiles(w, "error", "Profile not found for user: "+userID)
+		setFlashCookie(w, "profiles", "error", "Profile not found for user: "+userID)
 		http.Redirect(w, r, "/profiles?userID="+userID, http.StatusSeeOther)
 		return
 	}
@@ -125,12 +116,12 @@ func handleProfilesUpdate(w http.ResponseWriter, r *http.Request, profileStore m
 	profile.DisplayName = displayName
 
 	if err := profileStore.UpdateProfile(ctx, profile); err != nil {
-		setFlashCookieProfiles(w, "error", "Failed to update profile: "+err.Error())
+		setFlashCookie(w, "profiles", "error", "Failed to update profile: "+err.Error())
 		http.Redirect(w, r, "/profiles?userID="+userID+"&edit=true", http.StatusSeeOther)
 		return
 	}
 
-	setFlashCookieProfiles(w, "success", "Profile updated successfully")
+	setFlashCookie(w, "profiles", "success", "Profile updated successfully")
 	http.Redirect(w, r, "/profiles?userID="+userID, http.StatusSeeOther)
 }
 
@@ -172,44 +163,4 @@ func toProfileDisplayEntry(p *memory.Profile) *profileDisplayEntry {
 	}
 
 	return entry
-}
-
-func setFlashCookieProfiles(w http.ResponseWriter, flashType, message string) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     "profiles_flash_type",
-		Value:    flashType,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   60,
-	})
-	http.SetCookie(w, &http.Cookie{
-		Name:     "profiles_flash_msg",
-		Value:    base64.URLEncoding.EncodeToString([]byte(message)),
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   60,
-	})
-}
-
-func flashFromCookieProfiles(r *http.Request) *FlashMessage {
-	typeCookie, err := r.Cookie("profiles_flash_type")
-	if err != nil {
-		return nil
-	}
-	msgCookie, err := r.Cookie("profiles_flash_msg")
-	if err != nil {
-		return nil
-	}
-	msgBytes, err := base64.URLEncoding.DecodeString(msgCookie.Value)
-	if err != nil {
-		return nil
-	}
-	return &FlashMessage{
-		Type:    typeCookie.Value,
-		Message: string(msgBytes),
-	}
 }

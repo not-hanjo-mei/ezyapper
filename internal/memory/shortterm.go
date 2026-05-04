@@ -35,8 +35,8 @@ func validateLimit(limit int, maxPaginatedLimit int, funcName string) (int, erro
 		return 0, fmt.Errorf("limit must be greater than 0, got: %d", limit)
 	}
 	if limit > maxPaginatedLimit {
-		logger.Warnf("[%s] limit=%d exceeds max of %d, capping", funcName, limit, maxPaginatedLimit)
-		return maxPaginatedLimit, nil
+		logger.Warnf("[%s] limit=%d exceeds recommended max of %d, honoring user value", funcName, limit, maxPaginatedLimit)
+		return limit, nil
 	}
 	return limit, nil
 }
@@ -72,7 +72,7 @@ func (c *ShortTermClient) FetchUserMessages(ctx context.Context, channelID strin
 		return nil, err
 	}
 
-	userMessages := []*DiscordMessage{}
+	userMessages := make([]*DiscordMessage, 0, len(messages))
 	for i := range messages {
 		if messages[i].AuthorID == userID {
 			userMessages = append(userMessages, &messages[i])

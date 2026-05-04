@@ -35,7 +35,7 @@ type ModeContext struct {
 
 // GenerateContext bundles request and image parameters for response generation.
 type GenerateContext struct {
-	Request           interface{}
+	Request           any
 	ImageURLs         []string
 	ImageDescriptions []string
 }
@@ -78,7 +78,7 @@ func (b *Bot) generateResponse(ctx context.Context, mc ModeContext, gc GenerateC
 	}
 
 	// Build channel mappings from state cache for resolving <#ID> mentions
-	channelMappings := []ChannelMapping{}
+	channelMappings := make([]ChannelMapping, 0)
 	if b.session != nil && b.session.State != nil {
 		for _, guild := range b.session.State.Guilds {
 			for _, ch := range guild.Channels {
@@ -201,7 +201,7 @@ func (b *Bot) handleHybridMode(ctx context.Context, mc ModeContext, req ai.ChatC
 		return b.completeTextWithTools(ctx, mc.AIClient, req, fullContent.String())
 	}
 
-	descriptions := []string{}
+	descriptions := make([]string, 0, max(len(cachedDescriptions), len(imageURLs)))
 	if len(cachedDescriptions) > 0 {
 		// Use cached descriptions to avoid redundant API calls
 		descriptions = cachedDescriptions
@@ -219,7 +219,7 @@ func (b *Bot) handleHybridMode(ctx context.Context, mc ModeContext, req ai.ChatC
 		var err error
 		descriptions, err = visionDescriber.DescribeImages(ctx, imageURLs)
 		if err != nil {
-			logger.Warnf("Failed to describe images: %v", err)
+			logger.Warnf("[response] Failed to describe images: %v", err)
 			// Description failed - format without image descriptions
 			fullContent.WriteString(formatMessageXML(mc.DisplayName, mc.Username, mc.UserID, currentMsgContent.String(), time.Now(), mc.ReplyToUsername, mc.ReplyToContent))
 			fullContent.WriteString("\n</currentMessage>")
@@ -255,7 +255,7 @@ func (b *Bot) handleMultimodalMode(ctx context.Context, mc ModeContext, req ai.C
 	imagesToProcess := imageURLs
 	if len(imageURLs) > maxImages {
 		imagesToProcess = imageURLs[:maxImages]
-		logger.Warnf("Limiting images to %d (received %d)", maxImages, len(imageURLs))
+		logger.Warnf("[response] Limiting images to %d (received %d)", maxImages, len(imageURLs))
 	}
 
 	// Wrap user content in XML format for multimodal mode

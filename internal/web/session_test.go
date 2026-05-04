@@ -661,30 +661,3 @@ func TestSessionMiddleware_ExpiredCookieRedirects(t *testing.T) {
 		t.Error("handler should not have been called for expired session")
 	}
 }
-
-func TestRequireAuthIsSessionMiddleware(t *testing.T) {
-	store := NewSessionStore(30, 5)
-	defer store.Stop()
-
-	handler := &sessionTestHandler{}
-	mw := RequireAuth(store)
-
-	ts := httptest.NewServer(mw(handler))
-	defer ts.Close()
-
-	client := &http.Client{
-		CheckRedirect: func(r *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-	req, _ := http.NewRequest("GET", ts.URL+"/protected", nil)
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("GET failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusSeeOther {
-		t.Errorf("expected 302 via RequireAuth, got %d", resp.StatusCode)
-	}
-}

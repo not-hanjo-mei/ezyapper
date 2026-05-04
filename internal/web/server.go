@@ -16,7 +16,6 @@ import (
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
 	"ezyapper/internal/plugin"
-	"ezyapper/internal/types"
 )
 
 // Server provides the WebUI HTTP server and API endpoints for bot management.
@@ -37,7 +36,6 @@ type Server struct {
 	startTime        time.Time
 	discordFetcher   DiscordMessageFetcher
 	discordInfo      DiscordInfoProvider
-	webDir           string
 }
 
 func (s *Server) cfg() *config.Config {
@@ -49,11 +47,10 @@ func (s *Server) cfg() *config.Config {
 }
 
 type DiscordMessageFetcher interface {
-	FetchUserMessages(ctx context.Context, channelID string, userID string, limit int) ([]*types.DiscordMessage, error)
 }
 
 // DiscordInfoProvider provides read-only access to Discord metadata (channel names, user names, guild names).
-// All methods are non-blocking 鈥?they read from Discord's in-memory state cache only.
+// All methods are non-blocking — they read from Discord's in-memory state cache only.
 type DiscordInfoProvider interface {
 	GetChannelName(channelID string) string
 	GetUserName(guildID, userID string) string
@@ -66,31 +63,6 @@ type RuntimeConfigApplier interface {
 
 type PluginToolRefresher interface {
 	RefreshPluginTools()
-}
-
-func findWebDir() string {
-	candidates := []string{
-		"./web",
-		"../web",
-		"../../web",
-	}
-
-	if exe, err := os.Executable(); err == nil {
-		exeDir := filepath.Dir(exe)
-		candidates = append(candidates,
-			filepath.Join(exeDir, "web"),
-			filepath.Join(exeDir, "../web"),
-		)
-	}
-
-	for _, dir := range candidates {
-		staticDir := filepath.Join(dir, "static")
-		if info, err := os.Stat(staticDir); err == nil && info.IsDir() {
-			return dir
-		}
-	}
-
-	return "./web"
 }
 
 func findStaticDir() string {
@@ -148,7 +120,6 @@ func NewServer(cfgStore *atomic.Value, memStore memory.MemoryStore, profileStore
 		startTime:        time.Now(),
 		discordFetcher:   discordFetcher,
 		discordInfo:      discordInfo,
-		webDir:           findWebDir(),
 		sessionStore:     NewSessionStore(webCfg.SessionTTLMin, webCfg.SessionCleanupIntervalMin),
 		csrfSecret:       csrfSecret,
 		runtimeApplier:   runtimeApplier,
@@ -219,7 +190,7 @@ func (s *Server) setupRoutes() {
 	// Logs
 	mux.HandleFunc("/logs", LogsHandler(s.cfg().Logging.File, s.configStore, tmpl))
 
-	// Chain middleware: Security 鈫?CSRF 鈫?Session 鈫?mux
+	// Chain middleware: Security -> CSRF -> Session -> mux
 	s.router = Chain(mux,
 		securityHeaders,
 		CSRFMiddleware(s.csrfSecret),
@@ -252,7 +223,7 @@ func (s *Server) Start() error {
 			}
 		}()
 		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Errorf("Web server error: %v", err)
+			logger.Errorf("[web] Web server error: %v", err)
 		}
 	}()
 

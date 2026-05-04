@@ -73,7 +73,7 @@ func TestDiscordMessage_ReplyFields_Empty(t *testing.T) {
 		t.Fatalf("json.Marshal failed: %v", err)
 	}
 
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatalf("json.Unmarshal into map failed: %v", err)
 	}

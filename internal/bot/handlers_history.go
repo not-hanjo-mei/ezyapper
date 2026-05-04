@@ -84,7 +84,7 @@ func shouldEnrichRecentHistoricalImages(userContent string, hasReference bool) b
 
 // buildConversationHistory builds message history from Discord messages
 func (b *Bot) buildConversationHistory(ctx context.Context, messages []*types.DiscordMessage) []openai.ChatCompletionMessage {
-	result := []openai.ChatCompletionMessage{}
+	result := make([]openai.ChatCompletionMessage, 0, len(messages))
 	visionDescriber := b.getVisionDescriber()
 
 	// Discord returns messages in reverse chronological order (newest first)
@@ -108,7 +108,7 @@ func (b *Bot) buildConversationHistory(ctx context.Context, messages []*types.Di
 		case config.VisionModeHybrid:
 			content := msg.Content
 			if visionDescriber != nil {
-				descriptions := []string{}
+				descriptions := make([]string, 0, len(msg.ImageDescriptions))
 
 				if len(msg.ImageDescriptions) > 0 {
 					descriptions = msg.ImageDescriptions
@@ -142,7 +142,7 @@ func (b *Bot) buildConversationHistory(ctx context.Context, messages []*types.Di
 			})
 
 		case config.VisionModeMultimodal:
-			parts := []openai.ChatMessagePart{}
+			parts := make([]openai.ChatMessagePart, 0, len(msg.ImageURLs)+1)
 			if msg.Content != "" {
 				parts = append(parts, openai.ChatMessagePart{
 					Type: openai.ChatMessagePartTypeText,
@@ -322,12 +322,12 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 
 // collectRecentUsers collects unique users from recent messages
 func (b *Bot) collectRecentUsers(messages []*types.DiscordMessage) []UserInfo {
-	seen := make(map[string]bool)
-	users := []UserInfo{}
+	seen := make(map[string]struct{})
+	users := make([]UserInfo, 0, len(messages))
 
 	for _, msg := range messages {
-		if !seen[msg.AuthorID] {
-			seen[msg.AuthorID] = true
+		if _, ok := seen[msg.AuthorID]; !ok {
+			seen[msg.AuthorID] = struct{}{}
 			users = append(users, UserInfo{
 				ID:       msg.AuthorID,
 				Username: msg.Username,

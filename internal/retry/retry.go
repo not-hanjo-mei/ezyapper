@@ -131,10 +131,7 @@ func Retry[T any](ctx context.Context, maxRetries int, fn func(context.Context) 
 func computeDelay(attempt int, baseDelay, maxDelay time.Duration) time.Duration {
 	// Cap attempt to prevent integer overflow in bit shift
 	// Use int64(1) to avoid undefined behavior on 32-bit platforms where int is 32 bits
-	exp := uint(attempt)
-	if exp > 62 {
-		exp = 62
-	}
+	exp := min(uint(attempt), 62)
 	// Overflow-safe: compute shift value, then compare with maxDelay/baseDelay
 	// before multiplying to prevent int64 overflow.
 	shift := time.Duration(int64(1) << exp)
@@ -142,10 +139,7 @@ func computeDelay(attempt int, baseDelay, maxDelay time.Duration) time.Duration 
 	if shift > maxDelay || baseDelay > 0 && shift > maxDelay/baseDelay {
 		delay = maxDelay
 	} else {
-		delay = shift * baseDelay
-		if delay > maxDelay {
-			delay = maxDelay
-		}
+		delay = min(shift*baseDelay, maxDelay)
 	}
 	jitter := time.Duration(float64(delay) * 0.25 * (2.0*rand.Float64() - 1.0))
 	return delay + jitter

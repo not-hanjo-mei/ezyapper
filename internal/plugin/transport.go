@@ -25,8 +25,8 @@ func callJSONRPCWithTimeout(
 	client *stdioJSONRPCClient,
 	wg *sync.WaitGroup,
 	method string,
-	params interface{},
-	reply interface{},
+	params any,
+	reply any,
 	timeout time.Duration,
 ) error {
 	if client == nil {

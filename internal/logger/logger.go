@@ -116,7 +116,7 @@ func (l *Logger) GetLevel() string {
 }
 
 // With creates a child logger with additional context
-func (l *Logger) With(fields ...interface{}) *Logger {
+func (l *Logger) With(fields ...any) *Logger {
 	return &Logger{
 		SugaredLogger: l.SugaredLogger.With(fields...),
 		atomicLevel:   l.atomicLevel,
@@ -158,57 +158,57 @@ func L() *Logger {
 // Convenience functions using the global logger
 
 // Debug logs a debug message
-func Debug(args ...interface{}) {
+func Debug(args ...any) {
 	L().Debug(args...)
 }
 
 // Debugf logs a formatted debug message
-func Debugf(template string, args ...interface{}) {
+func Debugf(template string, args ...any) {
 	L().Debugf(template, args...)
 }
 
 // Info logs an info message
-func Info(args ...interface{}) {
+func Info(args ...any) {
 	L().Info(args...)
 }
 
 // Infof logs a formatted info message
-func Infof(template string, args ...interface{}) {
+func Infof(template string, args ...any) {
 	L().Infof(template, args...)
 }
 
 // Warn logs a warning message
-func Warn(args ...interface{}) {
+func Warn(args ...any) {
 	L().Warn(args...)
 }
 
 // Warnf logs a formatted warning message
-func Warnf(template string, args ...interface{}) {
+func Warnf(template string, args ...any) {
 	L().Warnf(template, args...)
 }
 
 // Error logs an error message
-func Error(args ...interface{}) {
+func Error(args ...any) {
 	L().Error(args...)
 }
 
 // Errorf logs a formatted error message
-func Errorf(template string, args ...interface{}) {
+func Errorf(template string, args ...any) {
 	L().Errorf(template, args...)
 }
 
 // Fatal logs a fatal message and exits
-func Fatal(args ...interface{}) {
+func Fatal(args ...any) {
 	L().Fatal(args...)
 }
 
 // Fatalf logs a formatted fatal message and exits
-func Fatalf(template string, args ...interface{}) {
+func Fatalf(template string, args ...any) {
 	L().Fatalf(template, args...)
 }
 
 // With creates a child logger with additional context
-func With(fields ...interface{}) *Logger {
+func With(fields ...any) *Logger {
 	return L().With(fields...)
 }
 

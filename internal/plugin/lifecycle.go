@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,7 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -83,7 +84,7 @@ func (pm *Manager) loadPluginWithConfig(pluginPath string, pluginConfigDir strin
 	if targetLabel == "" {
 		targetLabel = pluginConfigDir
 	}
-	logger.Infof("Loading plugin: %s", targetLabel)
+	logger.Infof("[plugin] Loading plugin: %s", targetLabel)
 
 	if runtimeMode == pluginRuntimeCommand {
 		if pluginPath == "" {
@@ -139,7 +140,7 @@ func (pm *Manager) loadRPCPlugin(pluginPath string, pluginConfigDir string) erro
 	jsonClient := newStdioJSONRPCClient(stdin, stdout)
 
 	var info Info
-	if err := callJSONRPCWithTimeout(jsonClient, &pm.wg, "info", map[string]interface{}{}, &info, time.Duration(pm.startupTimeoutSec)*time.Second); err != nil {
+	if err := callJSONRPCWithTimeout(jsonClient, &pm.wg, "info", map[string]any{}, &info, time.Duration(pm.startupTimeoutSec)*time.Second); err != nil {
 		jsonClient.Close()
 		cmd.Process.Kill()
 		return fmt.Errorf("plugin failed to initialize jsonrpc: %w", err)
@@ -147,7 +148,7 @@ func (pm *Manager) loadRPCPlugin(pluginPath string, pluginConfigDir string) erro
 
 	pluginTools, err := listPluginToolsJSONRPC(jsonClient, &pm.wg, time.Duration(pm.rpcTimeoutSec)*time.Second)
 	if err != nil {
-		logger.Warnf("Failed to list tools for plugin %s: %v", info.Name, err)
+		logger.Warnf("[plugin] Failed to list tools for plugin %s: %v", info.Name, err)
 		pluginTools = []ToolSpec{}
 	}
 
@@ -159,7 +160,7 @@ func (pm *Manager) loadRPCPlugin(pluginPath string, pluginConfigDir string) erro
 		}
 	}
 
-	logger.Infof("Plugin loaded: %s v%s by %s (runtime: %s)", info.Name, info.Version, info.Author, pluginRuntimeJSONRPC)
+	logger.Infof("[plugin] Plugin loaded: %s v%s by %s (runtime: %s)", info.Name, info.Version, info.Author, pluginRuntimeJSONRPC)
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
@@ -234,9 +235,9 @@ func (pm *Manager) loadCommandPlugin(
 		toolArgs := append([]string{}, rawTool.Args...)
 		toolParameters := rawTool.Parameters
 		if toolParameters == nil {
-			toolParameters = map[string]interface{}{
+			toolParameters = map[string]any{
 				"type":       "object",
-				"properties": map[string]interface{}{},
+				"properties": map[string]any{},
 			}
 		}
 
@@ -273,7 +274,7 @@ func (pm *Manager) loadCommandPlugin(
 		Priority:    manifest.Priority,
 	}
 
-	logger.Infof("Plugin loaded: %s v%s by %s (runtime: command)", info.Name, info.Version, info.Author)
+	logger.Infof("[plugin] Plugin loaded: %s v%s by %s (runtime: command)", info.Name, info.Version, info.Author)
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
@@ -480,7 +481,7 @@ func (pm *Manager) LoadPluginsFromDir(dir string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			logger.Infof("Plugins directory does not exist: %s", dir)
+			logger.Infof("[plugin] Plugins directory does not exist: %s", dir)
 			return nil
 		}
 		return fmt.Errorf("failed to read plugins directory: %w", err)
@@ -498,14 +499,14 @@ func (pm *Manager) LoadPluginsFromDir(dir string) error {
 
 			manifest, manifestErr := loadPluginManifest(pluginDir)
 			if manifestErr != nil {
-				logger.Warnf("Failed to parse plugin manifest in %s: %v", pluginDir, manifestErr)
+				logger.Warnf("[plugin] Failed to parse plugin manifest in %s: %v", pluginDir, manifestErr)
 				continue
 			}
 
 			if manifest != nil {
 				runtimeMode, runtimeErr := resolvePluginRuntime(manifest)
 				if runtimeErr != nil {
-					logger.Warnf("Invalid plugin runtime in %s: %v", pluginDir, runtimeErr)
+					logger.Warnf("[plugin] Invalid plugin runtime in %s: %v", pluginDir, runtimeErr)
 					continue
 				}
 
@@ -520,7 +521,7 @@ func (pm *Manager) LoadPluginsFromDir(dir string) error {
 
 			subEntries, err := os.ReadDir(pluginDir)
 			if err != nil {
-				logger.Warnf("Failed to read plugin directory %s: %v", pluginDir, err)
+				logger.Warnf("[plugin] Failed to read plugin directory %s: %v", pluginDir, err)
 				continue
 			}
 
@@ -538,14 +539,14 @@ func (pm *Manager) LoadPluginsFromDir(dir string) error {
 				continue
 			}
 
-			sort.Slice(executables, func(i, j int) bool {
-				return executables[i].Name() < executables[j].Name()
+			slices.SortFunc(executables, func(a, b os.DirEntry) int {
+				return cmp.Compare(a.Name(), b.Name())
 			})
 
 			selected := executables[0]
 			if len(executables) > 1 {
 				logger.Warnf(
-					"Multiple plugin binaries found in %s, using %s",
+					"[plugin] Multiple plugin binaries found in %s, using %s",
 					pluginDir,
 					selected.Name(),
 				)
@@ -573,19 +574,17 @@ func (pm *Manager) LoadPluginsFromDir(dir string) error {
 		return nil
 	}
 
-	sort.Slice(targets, func(i, j int) bool {
-		return targets[i].binaryPath < targets[j].binaryPath
+	slices.SortFunc(targets, func(a, b pluginLoadTarget) int {
+		return cmp.Compare(a.binaryPath, b.binaryPath)
 	})
 
 	maxConcurrentLoads := runtime.NumCPU()
 	if maxConcurrentLoads < 1 {
 		maxConcurrentLoads = 1
 	}
-	if maxConcurrentLoads > len(targets) {
-		maxConcurrentLoads = len(targets)
-	}
+	maxConcurrentLoads = min(maxConcurrentLoads, len(targets))
 
-	logger.Infof("Loading %d plugins with max parallelism %d", len(targets), maxConcurrentLoads)
+	logger.Infof("[plugin] Loading %d plugins with max parallelism %d", len(targets), maxConcurrentLoads)
 
 	semaphore := make(chan struct{}, maxConcurrentLoads)
 	var wg sync.WaitGroup
@@ -609,7 +608,7 @@ func (pm *Manager) LoadPluginsFromDir(dir string) error {
 			}()
 
 			if err := pm.loadPluginWithConfig(t.binaryPath, t.configDir); err != nil {
-				logger.Warnf("Failed to load plugin %s: %v", filepath.Base(t.binaryPath), err)
+				logger.Warnf("[plugin] Failed to load plugin %s: %v", filepath.Base(t.binaryPath), err)
 			}
 		}(target)
 	}
@@ -659,7 +658,7 @@ func callPluginShutdownWithTimeout(plugin *Client, timeout time.Duration) error 
 
 	var reply struct{}
 	if plugin.jsonrpc != nil {
-		return callJSONRPCWithTimeout(plugin.jsonrpc, plugin.wg, "shutdown", map[string]interface{}{}, &reply, timeout)
+		return callJSONRPCWithTimeout(plugin.jsonrpc, plugin.wg, "shutdown", map[string]any{}, &reply, timeout)
 	}
 
 	return fmt.Errorf("plugin %s has no jsonrpc transport", plugin.Name)
@@ -736,7 +735,7 @@ func (pm *Manager) Shutdown(ctx context.Context) error {
 
 	errs := []error{}
 	for name, plugin := range plugins {
-		logger.Infof("Shutting down plugin: %s", name)
+		logger.Infof("[plugin] Shutting down plugin: %s", name)
 
 		if err := pm.shutdownPlugin(plugin); err != nil {
 			errs = append(errs, fmt.Errorf("plugin %s shutdown error: %w", name, err))
@@ -746,7 +745,7 @@ func (pm *Manager) Shutdown(ctx context.Context) error {
 	}
 
 	if err := pm.WaitForPending(); err != nil {
-		logger.Warnf("WaitForPending: %v", err)
+		logger.Warnf("[plugin] WaitForPending: %v", err)
 	}
 
 	if len(errs) > 0 {
@@ -773,7 +772,7 @@ func (pm *Manager) EnablePlugin(name string) error {
 		return fmt.Errorf("failed to enable plugin %s: %w", name, err)
 	}
 
-	logger.Infof("Plugin enabled: %s", name)
+	logger.Infof("[plugin] Plugin enabled: %s", name)
 	return nil
 }
 
@@ -796,7 +795,7 @@ func (pm *Manager) DisablePlugin(name string) error {
 	// Perform RPC calls and process cleanup without holding the lock,
 	// allowing concurrent plugin operations to proceed during shutdown.
 	if err := pm.shutdownPlugin(plugin); err != nil {
-		logger.Warnf("Error shutting down plugin %s: %v", name, err)
+		logger.Warnf("[plugin] Error shutting down plugin %s: %v", name, err)
 	}
 
 	pm.stopPluginProcess(plugin, time.Duration(pm.disableTimeoutSec)*time.Second)
@@ -809,6 +808,6 @@ func (pm *Manager) DisablePlugin(name string) error {
 	}
 	pm.mu.Unlock()
 
-	logger.Infof("Plugin disabled: %s", name)
+	logger.Infof("[plugin] Plugin disabled: %s", name)
 	return nil
 }

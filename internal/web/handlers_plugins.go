@@ -38,7 +38,7 @@ func PluginsHandler(mgr pluginManager, refresher PluginToolRefresher, ts *Templa
 func handlePluginsGET(w http.ResponseWriter, r *http.Request, mgr pluginManager, ts *TemplateSet) {
 	ctx := r.Context()
 	csrfToken := CSRFTokenFromContext(ctx)
-	flash := flashFromCookie(r)
+	flash := flashFromCookie(r, "")
 
 	plugins := mgr.ListPluginsExt()
 
@@ -46,15 +46,7 @@ func handlePluginsGET(w http.ResponseWriter, r *http.Request, mgr pluginManager,
 		Plugins: plugins,
 	}
 
-	navItems := []NavItem{
-		{Label: "Dashboard", Href: "/", Icon: "dashboard"},
-		{Label: "Configuration", Href: "/config", Icon: "settings"},
-		{Label: "Memories", Href: "/memories", Icon: "memory"},
-		{Label: "Profiles", Href: "/profiles", Icon: "person"},
-		{Label: "Channels", Href: "/channels", Icon: "forum"},
-		{Label: "Plugins", Href: "/plugins", Icon: "extension", Active: true},
-		{Label: "Logs", Href: "/logs", Icon: "description"},
-	}
+	navItems := activeNavItems("plugins")
 
 	RenderPage(w, ts, "plugins", &PageData{
 		Title:     "Plugins",
@@ -100,6 +92,6 @@ func handlePluginsToggle(w http.ResponseWriter, r *http.Request, mgr pluginManag
 		refresher.RefreshPluginTools()
 	}
 
-	setFlashCookie(w, "success", "Plugin "+action+"d: "+name)
+	setFlashCookie(w, "", "success", "Plugin "+action+"d: "+name)
 	http.Redirect(w, r, "/plugins", http.StatusSeeOther)
 }

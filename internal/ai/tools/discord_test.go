@@ -99,7 +99,7 @@ func TestExtractLimit_Negative(t *testing.T) {
 // --- marshalJSON tests ---
 
 func TestMarshalJSON_Basic(t *testing.T) {
-	result, err := marshalJSON(map[string]interface{}{"hello": "world"})
+	result, err := marshalJSON(map[string]any{"hello": "world"})
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}

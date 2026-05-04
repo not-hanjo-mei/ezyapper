@@ -39,7 +39,7 @@ func (qc *QdrantClient) memoryToPayload(memory *Record) (map[string]*qdrant.Valu
 
 	metadata := memory.Metadata
 	if metadata == nil {
-		metadata = make(map[string]interface{})
+		metadata = make(map[string]any)
 	}
 	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {
@@ -120,7 +120,7 @@ func (qc *QdrantClient) payloadToMemory(payload map[string]*qdrant.Value, id str
 	if err != nil {
 		return nil, err
 	}
-	var metadata map[string]interface{}
+	var metadata map[string]any
 	if err := json.Unmarshal([]byte(metadataJSON), &metadata); err != nil {
 		return nil, fmt.Errorf("failed to parse metadata_json: %w", err)
 	}

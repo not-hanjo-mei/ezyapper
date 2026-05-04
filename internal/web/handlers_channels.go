@@ -1,7 +1,6 @@
 package web
 
 import (
-	"encoding/base64"
 	"net/http"
 	"slices"
 	"sync/atomic"
@@ -64,7 +63,7 @@ func handleChannelsGET(w http.ResponseWriter, r *http.Request, cfgStore *atomic.
 	}
 	ctx := r.Context()
 	csrfToken := CSRFTokenFromContext(ctx)
-	flash := flashFromCookieChannels(r)
+	flash := flashFromCookie(r, "channels")
 
 	pageData := buildChannelsPageData(cfg, info, csrfToken)
 	pageData.Flash = flash
@@ -82,15 +81,7 @@ func buildChannelsPageData(cfg *config.Config, info DiscordInfoProvider, csrfTok
 	pd.Whitelist.Channels = buildEntries(cfg.Whitelist.Channels, "channel", info)
 	pd.Whitelist.Guilds = buildEntries(cfg.Whitelist.Guilds, "guild", info)
 
-	navItems := []NavItem{
-		{Label: "Dashboard", Href: "/", Icon: "dashboard"},
-		{Label: "Configuration", Href: "/config", Icon: "settings"},
-		{Label: "Memories", Href: "/memories", Icon: "memory"},
-		{Label: "Profiles", Href: "/profiles", Icon: "person"},
-		{Label: "Channels", Href: "/channels", Icon: "forum", Active: true},
-		{Label: "Plugins", Href: "/plugins", Icon: "extension"},
-		{Label: "Logs", Href: "/logs", Icon: "description"},
-	}
+	navItems := activeNavItems("channels")
 
 	return &PageData{
 		Title:     "Channels",
@@ -202,7 +193,7 @@ func handleChannelsPOST(w http.ResponseWriter, r *http.Request, cfgStore *atomic
 	if !add {
 		action = "removed from"
 	}
-	setFlashCookieChannels(w, "success", "Entry "+action+" "+list)
+	setFlashCookie(w, "channels", "success", "Entry "+action+" "+list)
 	http.Redirect(w, r, "/channels", http.StatusSeeOther)
 }
 
@@ -221,44 +212,4 @@ func renderChannelsError(w http.ResponseWriter, r *http.Request, cfgStore *atomi
 		Message: message,
 	}
 	RenderPage(w, ts, "channels", pageData)
-}
-
-func setFlashCookieChannels(w http.ResponseWriter, flashType, message string) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     "channels_flash_type",
-		Value:    flashType,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   60,
-	})
-	http.SetCookie(w, &http.Cookie{
-		Name:     "channels_flash_msg",
-		Value:    base64.URLEncoding.EncodeToString([]byte(message)),
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   60,
-	})
-}
-
-func flashFromCookieChannels(r *http.Request) *FlashMessage {
-	typeCookie, err := r.Cookie("channels_flash_type")
-	if err != nil {
-		return nil
-	}
-	msgCookie, err := r.Cookie("channels_flash_msg")
-	if err != nil {
-		return nil
-	}
-	msgBytes, err := base64.URLEncoding.DecodeString(msgCookie.Value)
-	if err != nil {
-		return nil
-	}
-	return &FlashMessage{
-		Type:    typeCookie.Value,
-		Message: string(msgBytes),
-	}
 }

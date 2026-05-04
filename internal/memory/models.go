@@ -19,68 +19,50 @@ const (
 	TypeEpisode Type = "episode"
 )
 
-// Record represents a stored memory in the vector database
+// Record represents a stored memory in the vector database.
 type Record struct {
-	// Unique identifier (UUID)
-	ID string `json:"id"`
-
-	// Discord identifiers
-	UserID    string `json:"user_id"`
-	GuildID   string `json:"guild_id,omitempty"`
-	ChannelID string `json:"channel_id,omitempty"`
-
-	// Record content
+	ID         string `json:"id"`
+	UserID     string `json:"user_id"`
+	GuildID    string `json:"guild_id,omitempty"`
+	ChannelID  string `json:"channel_id,omitempty"`
 	MemoryType Type   `json:"memory_type"`
 	Content    string `json:"content"`
 	Summary    string `json:"summary"`
 
 	// Vector embedding (1536 dimensions for text-embedding-3-small)
-	Embedding []float32 `json:"embedding"`
-
-	// Metadata
-	Keywords []string               `json:"keywords"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
-
-	// Quality metrics
-	Confidence   float64 `json:"confidence"`
-	MessageRange [2]int  `json:"message_range,omitempty"` // [start, end] message IDs
-
-	// Tracking
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	AccessCount int       `json:"access_count"`
+	Embedding    []float32      `json:"embedding"`
+	Keywords     []string       `json:"keywords"`
+	Metadata     map[string]any `json:"metadata,omitempty"`
+	Confidence   float64        `json:"confidence"`
+	MessageRange [2]int         `json:"message_range,omitempty"` // [start, end] message IDs
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	AccessCount  int            `json:"access_count"`
 }
 
-// Profile represents a user's profile stored in Qdrant
+// Profile represents a user's profile stored in Qdrant.
 type Profile struct {
-	// Primary key - Discord User ID
-	UserID string `json:"user_id"`
-
-	// Profile data
-	DisplayName string            `json:"display_name"`
-	Traits      []string          `json:"traits"`
-	Facts       map[string]string `json:"facts"`
-	Preferences map[string]string `json:"preferences"`
-	Interests   []string          `json:"interests"`
-
-	// Dynamic summary
-	LastSummary        string `json:"last_summary"`
-	PersonalitySummary string `json:"personality_summary"`
-
-	// Statistics
-	MessageCount       int       `json:"message_count"`
-	MemoryCount        int       `json:"memory_count"`
-	FirstSeenAt        time.Time `json:"first_seen_at"`
-	LastActiveAt       time.Time `json:"last_active_at"`
-	LastConsolidatedAt time.Time `json:"last_consolidated_at"`
+	UserID             string            `json:"user_id"`
+	DisplayName        string            `json:"display_name"`
+	Traits             []string          `json:"traits"`
+	Facts              map[string]string `json:"facts"`
+	Preferences        map[string]string `json:"preferences"`
+	Interests          []string          `json:"interests"`
+	LastSummary        string            `json:"last_summary"`
+	PersonalitySummary string            `json:"personality_summary"`
+	MessageCount       int               `json:"message_count"`
+	MemoryCount        int               `json:"memory_count"`
+	FirstSeenAt        time.Time         `json:"first_seen_at"`
+	LastActiveAt       time.Time         `json:"last_active_at"`
+	LastConsolidatedAt time.Time         `json:"last_consolidated_at"`
 
 	// Vector representation for similar user discovery (optional)
 	Embedding []float32 `json:"embedding,omitempty"`
 }
 
-// SearchOptions defines options for memory search
+// SearchOptions defines options for memory search.
 type SearchOptions struct {
-	TopK        int        // Number of results to return
+	TopK        int
 	MinScore    float64    // Minimum similarity score (0.0-1.0)
 	MemoryTypes []string   // Filter by memory types
 	TimeRange   *TimeRange // Filter by time range

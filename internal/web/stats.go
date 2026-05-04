@@ -53,7 +53,7 @@ func (s *StatsProvider) GetDashboardStats(ctx context.Context) (memory.GlobalSta
 	}
 	stats.TotalUsers = totalUsers
 
-	s.countMessages(&stats)
+	stats.TotalMessages = 0 // not directly countable from Qdrant
 
 	return stats, nil
 }
@@ -102,10 +102,4 @@ func (s *StatsProvider) countProfiles(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("count profiles: %w", err)
 	}
 	return gs.TotalUsers, nil
-}
-
-func (s *StatsProvider) countMessages(stats *memory.GlobalStats) {
-	// TotalMessages is not directly countable from Qdrant
-	// Set to 0 with note: "N/A"
-	stats.TotalMessages = 0
 }

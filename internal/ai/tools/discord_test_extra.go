@@ -50,7 +50,7 @@ func TestGetStringArg_EmptyKey(t *testing.T) {
 }
 
 func TestMarshalJSON_Numeric(t *testing.T) {
-	result, err := marshalJSON(map[string]interface{}{"count": 42})
+	result, err := marshalJSON(map[string]any{"count": 42})
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
