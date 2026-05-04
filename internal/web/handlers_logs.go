@@ -21,7 +21,6 @@ func LogsHandler(logFilePath string, cfgStore *atomic.Value, ts *TemplateSet) ht
 			return
 		}
 
-		ctx := r.Context()
 		cfg, ok := cfgStore.Load().(*config.Config)
 		if !ok {
 			http.Error(w, "Internal configuration error", http.StatusInternalServerError)

@@ -398,7 +398,7 @@ func TestTogglePlugin_Enable_FlashMessage(t *testing.T) {
 	cookies := rec.Result().Cookies()
 	var foundFlash bool
 	for _, c := range cookies {
-		if c.Name == "flash_type" && c.Value == "success" {
+		if c.Name == "plugins_flash_type" && c.Value == "success" {
 			foundFlash = true
 			break
 		}

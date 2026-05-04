@@ -2,7 +2,6 @@ package web
 
 import (
 	"net/http"
-	"sync/atomic"
 )
 
 // renderStandardPage renders a page using the standard boilerplate:

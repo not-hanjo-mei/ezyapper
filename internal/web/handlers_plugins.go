@@ -36,7 +36,6 @@ func PluginsHandler(mgr pluginManager, refresher PluginToolRefresher, ts *Templa
 }
 
 func handlePluginsGET(w http.ResponseWriter, r *http.Request, mgr pluginManager, ts *TemplateSet) {
-	ctx := r.Context()
 	plugins := mgr.ListPluginsExt()
 
 	pd := &pluginsPageData{

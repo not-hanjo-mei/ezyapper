@@ -14,8 +14,6 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 	var configMu sync.Mutex
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-
 		switch r.Method {
 		case http.MethodGet:
 			cfg, ok := cfgStore.Load().(*config.Config)

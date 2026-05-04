@@ -451,16 +451,13 @@ func extractJSONFromLLMResponse(content string) string {
 }
 
 func (c *Consolidator) analyzeConversation(ctx context.Context, conversation string, targetUserIDs []string) ([]Extract, error) {
-	content, err := c.callExtractionLLM(ctx, conversation, targetUserIDs, "memory extraction", "LLM request failed")
+	batch, err := c.analyzeConversationBatch(ctx, conversation, targetUserIDs)
 	if err != nil {
 		return nil, err
 	}
-	if content == "" {
-		return nil, nil
-	}
-	extracts := make([]Extract, 0, 4)
-	if err := json.Unmarshal([]byte(content), &extracts); err != nil {
-		return nil, fmt.Errorf("consolidation: failed to parse LLM response: %w", err)
+	extracts := make([]Extract, 0, len(batch))
+	for _, userMem := range batch {
+		extracts = append(extracts, userMem.Memories...)
 	}
 	logger.Infof("[consolidation] successfully extracted %d memories from LLM response", len(extracts))
 	return extracts, nil
