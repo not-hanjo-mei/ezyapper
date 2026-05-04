@@ -1,3 +1,4 @@
+// Package retry provides generic retry logic with exponential backoff and jitter.
 package retry
 
 import (
