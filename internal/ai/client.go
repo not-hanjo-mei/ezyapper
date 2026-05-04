@@ -330,7 +330,7 @@ func applyExtraParamsToStruct(req interface{}, extraParams map[string]interface{
 	}
 
 	v := reflect.ValueOf(req)
-	if v.Kind() != reflect.Ptr || v.IsNil() {
+	if v.Kind() != reflect.Pointer || v.IsNil() {
 		logger.Warnf("%s extra params: invalid request type %T", logPrefix, req)
 		return
 	}
@@ -392,7 +392,7 @@ func setFieldValue(field reflect.Value, value interface{}) error {
 		return nil
 	}
 
-	if field.Kind() == reflect.Ptr {
+	if field.Kind() == reflect.Pointer {
 		elemType := field.Type().Elem()
 		newVal := reflect.New(elemType)
 		if valReflect.Type().ConvertibleTo(elemType) {

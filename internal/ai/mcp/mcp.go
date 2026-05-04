@@ -147,13 +147,13 @@ func (m *MCPManager) CallTool(ctx context.Context, serverName, toolName string, 
 		}
 		return "", fmt.Errorf("tool returned error: %s", errMsg)
 	}
-	var output string
+	var output strings.Builder
 	for _, content := range result.Content {
 		if textContent, ok := content.(*mcp.TextContent); ok {
-			output += textContent.Text
+			output.WriteString(textContent.Text)
 		}
 	}
-	return output, nil
+	return output.String(), nil
 }
 
 // MCPTool wraps an MCP tool with its server origin for tracking.

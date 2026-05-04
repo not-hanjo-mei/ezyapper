@@ -180,6 +180,7 @@ func setFlashCookieProfiles(w http.ResponseWriter, flashType, message string) {
 		Value:    flashType,
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   60,
 	})
@@ -188,6 +189,7 @@ func setFlashCookieProfiles(w http.ResponseWriter, flashType, message string) {
 		Value:    base64.URLEncoding.EncodeToString([]byte(message)),
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   60,
 	})

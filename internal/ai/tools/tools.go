@@ -153,7 +153,7 @@ func HandleToolCall(ctx context.Context, registry *ToolRegistry, toolCall openai
 func (r *ToolRegistry) ExecuteTool(ctx context.Context, name string, args map[string]any) (string, error) {
 	r.mu.RLock()
 	tool, exists := r.tools[name]
-	r.mu.RUnlock()
+	defer r.mu.RUnlock()
 
 	if !exists {
 		return "", fmt.Errorf("tool not found: %s", name)

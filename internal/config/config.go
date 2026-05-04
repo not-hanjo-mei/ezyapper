@@ -652,7 +652,7 @@ func validate(cfg *Config) error {
 	if len(errs) > 0 {
 		errList := make([]error, len(errs))
 		for i, s := range errs {
-			errList[i] = fmt.Errorf("%s", s)
+			errList[i] = errors.New(s)
 		}
 		return errors.Join(errList...)
 	}

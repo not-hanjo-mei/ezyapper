@@ -1,6 +1,6 @@
 # EZyapper Makefile
 
-.PHONY: all build clean test test-coverage lint fmt run docker-build docker-up docker-down
+.PHONY: all build clean test test-coverage test-race lint fmt run docker-build docker-up docker-down docker-logs deps deps-update vuln ci help
 
 # Build variables
 BINARY_NAME=ezyapper
@@ -54,7 +54,6 @@ lint:
 # Format code
 fmt:
 	$(GO) fmt ./...
-	gofmt -w .
 
 # Run the bot (requires config.yaml)
 run: build
