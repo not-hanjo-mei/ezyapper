@@ -109,6 +109,7 @@ func CSRFMiddleware(secret []byte) Middleware {
 					Value:    signed,
 					Path:     "/",
 					HttpOnly: false,
+					Secure:   true,
 					SameSite: http.SameSiteStrictMode,
 				})
 				ctx := context.WithValue(r.Context(), csrfCtxKey, signed)
