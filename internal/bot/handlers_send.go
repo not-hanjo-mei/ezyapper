@@ -101,14 +101,21 @@ func closeAllClosers(closers []io.Closer) {
 	}
 }
 
-// cleanupUploadedTempFiles cleans up temporary upload files
+// cleanupUploadedTempFiles cleans up temporary upload files.
+// Paths are resolved to absolute and validated to prevent traversal.
 func cleanupUploadedTempFiles(paths []string) {
 	for _, path := range paths {
 		if strings.TrimSpace(path) == "" {
 			continue
 		}
-		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			logger.Warnf("[send] failed to remove temp upload file %s: %v", path, err)
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			logger.Warnf("[send] failed to resolve upload path %s: %v", path, err)
+			continue
+		}
+		cleaned := filepath.Clean(absPath)
+		if err := os.Remove(cleaned); err != nil && !errors.Is(err, os.ErrNotExist) {
+			logger.Warnf("[send] failed to remove temp upload file %s: %v", cleaned, err)
 		}
 	}
 }
@@ -164,7 +171,7 @@ func buildDiscordFiles(localFiles []localUploadFile) ([]*discordgo.File, []io.Cl
 		closers = append(closers, openedFile)
 
 		if name == "" {
-			name = filepath.Base(path)
+			name = filepath.Base(filepath.Clean(path))
 		}
 
 		files = append(files, &discordgo.File{

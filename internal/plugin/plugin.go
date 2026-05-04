@@ -168,7 +168,23 @@ const (
 	pluginRuntimeCommand = "command"
 )
 
-var secretEnvPrefixes = []string{
+// safeEnvVars lists environment variable names that are always safe to pass to plugin subprocesses.
+var safeEnvVars = map[string]bool{
+	"PATH":       true,
+	"HOME":       true,
+	"USER":       true,
+	"TMP":        true,
+	"TEMP":       true,
+	"TMPDIR":     true,
+	"LANG":       true,
+	"LC_ALL":     true,
+	"SYSTEMROOT": true,
+	"WINDIR":     true,
+}
+
+// secretEnvKeywords are keywords that, if present in an env var name, cause it
+// to be filtered out to prevent secrets from leaking to plugin subprocesses.
+var secretEnvKeywords = []string{
 	"TOKEN",
 	"SECRET",
 	"KEY",
@@ -187,9 +203,15 @@ outer:
 		if !found {
 			continue
 		}
+		// Always pass known-safe system variables
+		if safeEnvVars[key] {
+			out = append(out, e)
+			continue
+		}
+		// Filter out any env var whose name contains a secret keyword
 		upper := strings.ToUpper(key)
-		for _, prefix := range secretEnvPrefixes {
-			if strings.Contains(upper, prefix) {
+		for _, kw := range secretEnvKeywords {
+			if strings.Contains(upper, kw) {
 				continue outer
 			}
 		}

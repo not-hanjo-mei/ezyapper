@@ -466,8 +466,13 @@ func (c *Client) fetchImageAsDataURL(ctx context.Context, url string, opts image
 		logger.Warnf("[ai] fetchImageAsDataURL: httpClient is nil, this should not happen (check NewClient initialization)")
 		httpClient = &http.Client{Timeout: timeout}
 	}
+	// Create a copy with redirects disabled to prevent SSRF via redirect chains
+	imageClient := *httpClient
+	imageClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := imageClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to download image: %w", err)
 	}
