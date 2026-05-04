@@ -261,14 +261,13 @@ func (s *Server) Start() error {
 
 // Stop gracefully shuts down the web server.
 func (s *Server) Stop(ctx context.Context) error {
+	s.sessionStore.Stop()
+
 	if s.server == nil {
 		return nil
 	}
 
 	logger.Info("Stopping web server...")
-
-	// Signal session cleanup goroutine to exit
-	s.sessionStore.Stop()
 
 	err := s.server.Shutdown(ctx)
 

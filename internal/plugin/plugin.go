@@ -168,6 +168,37 @@ const (
 	pluginRuntimeCommand = "command"
 )
 
+var secretEnvPrefixes = []string{
+	"TOKEN",
+	"SECRET",
+	"KEY",
+	"PASSWORD",
+	"PASSWD",
+	"CREDENTIAL",
+	"AUTH",
+}
+
+func buildPluginEnv(configDir string, extra ...string) []string {
+	env := os.Environ()
+	out := make([]string, 0, len(env)+len(extra))
+outer:
+	for _, e := range env {
+		key, _, found := strings.Cut(e, "=")
+		if !found {
+			continue
+		}
+		upper := strings.ToUpper(key)
+		for _, prefix := range secretEnvPrefixes {
+			if strings.Contains(upper, prefix) {
+				continue outer
+			}
+		}
+		out = append(out, e)
+	}
+	out = append(out, extra...)
+	return out
+}
+
 type disabledPlugin struct {
 	Info      Info
 	Path      string
@@ -312,7 +343,7 @@ func (pm *Manager) executeCommandTool(ctx context.Context, plugin *Client, toolN
 
 	cmd := exec.CommandContext(ctx, tool.CommandPath, commandArgs...)
 	cmd.Dir = plugin.configDir
-	cmd.Env = append(os.Environ(),
+	cmd.Env = buildPluginEnv(plugin.configDir,
 		fmt.Sprintf("EZYAPPER_PLUGIN_PATH=%s", plugin.configDir),
 		fmt.Sprintf("EZYAPPER_PLUGIN_CONFIG=%s", filepath.Join(plugin.configDir, "config.yaml")),
 	)

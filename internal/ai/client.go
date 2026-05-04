@@ -507,7 +507,11 @@ func (c *Client) downloadImageToBase64(ctx context.Context, url string) (string,
 	if err := validateImageURL(url); err != nil {
 		return "", fmt.Errorf("invalid image URL: %w", err)
 	}
-	return c.fetchImageAsDataURL(ctx, url, imageDownloadOptions{})
+	return c.fetchImageAsDataURL(ctx, url, imageDownloadOptions{
+		MaxBytes:                int64(c.config.MaxImageBytes),
+		RequireImageContentType: c.config.RequireImageContentType,
+		UserAgent:               c.config.UserAgent,
+	})
 }
 
 func validateImageURL(rawURL string) error {

@@ -112,7 +112,7 @@ func (pm *Manager) loadPluginWithConfig(pluginPath string, pluginConfigDir strin
 
 func (pm *Manager) loadRPCPlugin(pluginPath string, pluginConfigDir string) error {
 	cmd := exec.Command(pluginPath)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = buildPluginEnv(pluginConfigDir,
 		fmt.Sprintf("EZYAPPER_PLUGIN_PATH=%s", pluginConfigDir),
 		fmt.Sprintf("EZYAPPER_PLUGIN_CONFIG=%s", filepath.Join(pluginConfigDir, "config.yaml")),
 	)
