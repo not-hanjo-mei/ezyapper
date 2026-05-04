@@ -87,11 +87,6 @@ func (b *Bot) onMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) 
 	}
 }
 
-// onMessageReactionAdd handles reaction events.
-func (b *Bot) onMessageReactionAdd(s *discordgo.Session, r *discordgo.MessageReactionAdd) {
-	// Reserved for future interactive features.
-}
-
 // onMessageDelete handles message deletion events.
 // When a message being processed is deleted, cancels the processing context
 // to abort AI generation and skip sending the reply.

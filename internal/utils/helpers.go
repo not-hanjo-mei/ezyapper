@@ -5,16 +5,6 @@ import (
 	"unicode/utf8"
 )
 
-// Deprecated: Use slices.Contains from the standard library instead.
-func Contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
-}
-
 // SplitMessage splits at word boundaries for Discord's 2000 character limit.
 func SplitMessage(content string, maxLen int) []string {
 	if maxLen <= 0 {

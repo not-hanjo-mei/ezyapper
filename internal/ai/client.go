@@ -136,6 +136,22 @@ func (c *Client) requestTimeout() time.Duration {
 	panic("no timeout configured — validation should have caught this")
 }
 
+// visionMaxTokens returns the vision-specific MaxTokens, falling back to AI config.
+func (c *Client) visionMaxTokens() int {
+	if c.config.Vision.MaxTokens > 0 {
+		return c.config.Vision.MaxTokens
+	}
+	return c.config.MaxTokens
+}
+
+// visionTemperature returns the vision-specific temperature, falling back to AI config.
+func (c *Client) visionTemperature() float32 {
+	if c.config.Vision.Temperature > 0 {
+		return c.config.Vision.Temperature
+	}
+	return c.config.Temperature
+}
+
 func (c *Client) closeIdleConnections() {
 	if c.httpClient != nil {
 		c.httpClient.CloseIdleConnections()
@@ -584,8 +600,8 @@ func (c *Client) CreateVisionCompletion(ctx context.Context, systemPrompt, textP
 	visionReq := openai.ChatCompletionRequest{
 		Model:       c.config.VisionModel,
 		Messages:    messages,
-		MaxTokens:   c.config.MaxTokens,
-		Temperature: c.config.Temperature,
+		MaxTokens:   c.visionMaxTokens(),
+		Temperature: c.visionTemperature(),
 	}
 
 	resp, err := c.CreateChatCompletionWithRetry(ctx, visionReq, "vision completion")
@@ -704,8 +720,8 @@ func (c *Client) CreateVisionCompletionWithTools(ctx context.Context, systemProm
 	chatReq := openai.ChatCompletionRequest{
 		Model:       c.config.VisionModel,
 		Messages:    messages,
-		MaxTokens:   c.config.MaxTokens,
-		Temperature: c.config.Temperature,
+		MaxTokens:   c.visionMaxTokens(),
+		Temperature: c.visionTemperature(),
 		Tools:       tools,
 	}
 

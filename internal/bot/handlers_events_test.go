@@ -78,14 +78,6 @@ func TestOnMessageUpdateGuards(t *testing.T) {
 	})
 }
 
-func TestOnMessageReactionAddGuard(t *testing.T) {
-	b := &Bot{}
-
-	assertNoPanic(t, func() {
-		b.onMessageReactionAdd(nil, nil)
-	})
-}
-
 func TestFromDiscordgo_ImageURLsPopulated(t *testing.T) {
 	m := &discordgo.MessageCreate{
 		Message: &discordgo.Message{

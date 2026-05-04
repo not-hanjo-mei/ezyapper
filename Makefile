@@ -8,19 +8,17 @@ BUILD_DIR=.
 GO=go
 GOFLAGS=-v
 
-LDFLAGS=
-
 all: build
 
 # Build the binary
 build:
-	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/bot
+	$(GO) build $(GOFLAGS) -o $(BINARY_NAME) ./cmd/bot
 
 # Build for multiple platforms
 build-all:
-	GOOS=linux GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BINARY_NAME)-linux-amd64 ./cmd/bot
-	GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BINARY_NAME)-windows-amd64.exe ./cmd/bot
-	GOOS=darwin GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BINARY_NAME)-darwin-amd64 ./cmd/bot
+	GOOS=linux GOARCH=amd64 $(GO) build -o $(BINARY_NAME)-linux-amd64 ./cmd/bot
+	GOOS=windows GOARCH=amd64 $(GO) build -o $(BINARY_NAME)-windows-amd64.exe ./cmd/bot
+	GOOS=darwin GOARCH=amd64 $(GO) build -o $(BINARY_NAME)-darwin-amd64 ./cmd/bot
 
 # Clean build artifacts
 clean:

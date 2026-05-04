@@ -25,11 +25,8 @@ import (
 
 var configFile string
 
-func init() {
-	pflag.StringVarP(&configFile, "config", "c", "", "Path to config file (default: ./config.yaml)")
-}
-
 func main() {
+	pflag.StringVarP(&configFile, "config", "c", "", "Path to config file (default: ./config.yaml)")
 	pflag.Parse()
 
 	cfg, err := config.Load(configFile)
