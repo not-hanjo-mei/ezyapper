@@ -210,7 +210,7 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error 
 	}
 	memory.UpdatedAt = time.Now()
 
-	logger.Debugf("[UpsertMemory] userID=%s type=%s content=%.50s", memory.UserID, memory.MemoryType, memory.Content)
+	logger.Debugf("[qdrant] userID=%s type=%s content=%.50s", memory.UserID, memory.MemoryType, memory.Content)
 
 	// Prepare payload before retry loop (idempotent data only)
 	payload, err := qc.memoryToPayload(memory)
@@ -235,7 +235,7 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error 
 	if err != nil {
 		return fmt.Errorf("upsert memory for userID=%s: %w", memory.UserID, err)
 	}
-	logger.Debugf("[UpsertMemory] successfully stored memoryID=%s for userID=%s", memID, memory.UserID)
+	logger.Debugf("[qdrant] successfully stored memoryID=%s for userID=%s", memID, memory.UserID)
 	return nil
 }
 
@@ -275,9 +275,9 @@ func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embed
 
 	memories := []*Record{}
 	errs := []error{}
-	logger.Debugf("[SearchMemories] got %d results, min_score=%.4f", len(results), opts.MinScore)
+	logger.Debugf("[qdrant] got %d results, min_score=%.4f", len(results), opts.MinScore)
 	for i, result := range results {
-		logger.Debugf("[SearchMemories] result %d: score=%.4f", i+1, result.Score)
+		logger.Debugf("[qdrant] result %d: score=%.4f", i+1, result.Score)
 		if result.Score < float32(opts.MinScore) {
 			continue
 		}
@@ -287,12 +287,12 @@ func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embed
 			errs = append(errs, fmt.Errorf("convert payload %s: %w", result.Id.GetUuid(), err))
 			continue
 		}
-		logger.Debugf("[SearchMemories] result %d: score=%.4f type=%s content=%q", i+1, result.Score, memory.MemoryType, memory.Content)
+		logger.Debugf("[qdrant] result %d: score=%.4f type=%s content=%q", i+1, result.Score, memory.MemoryType, memory.Content)
 		memories = append(memories, memory)
 	}
 
 	if len(errs) > 0 {
-		logger.Warnf("[SearchMemories] %d payloads failed to convert", len(errs))
+		logger.Warnf("[qdrant] %d payloads failed to convert", len(errs))
 	}
 
 	return memories, nil
@@ -304,7 +304,7 @@ func (qc *QdrantClient) GetMemoriesByUser(ctx context.Context, userID string, li
 		return nil, fmt.Errorf("limit must be greater than 0, got: %d", limit)
 	}
 
-	logger.Debugf("[GetMemoriesByUser] retrieving memories for userID=%s limit=%d", userID, limit)
+	logger.Debugf("[qdrant] retrieving memories for userID=%s limit=%d", userID, limit)
 
 	// Use scroll to get all memories for a user
 	filter := &qdrant.Filter{
@@ -328,19 +328,19 @@ func (qc *QdrantClient) GetMemoriesByUser(ctx context.Context, userID string, li
 	for _, point := range results {
 		memory, err := qc.payloadToMemory(point.Payload, point.Id.GetUuid())
 		if err != nil {
-			logger.Warnf("[GetMemoriesByUser] failed to convert payload to memory: %v", err)
+			logger.Warnf("[qdrant] failed to convert payload to memory: %v", err)
 			continue
 		}
 		memories = append(memories, memory)
 	}
 
-	logger.Debugf("[GetMemoriesByUser] retrieved %d memories for userID=%s", len(memories), userID)
+	logger.Debugf("[qdrant] retrieved %d memories for userID=%s", len(memories), userID)
 	return memories, nil
 }
 
 // GetMemory retrieves a single memory by ID
 func (qc *QdrantClient) GetMemory(ctx context.Context, memoryID string) (*Record, error) {
-	logger.Debugf("[GetMemory] retrieving memoryID=%s", memoryID)
+	logger.Debugf("[qdrant] retrieving memoryID=%s", memoryID)
 
 	points, err := qc.client.Get(ctx, &qdrant.GetPoints{
 		CollectionName: CollectionMemories,
@@ -354,7 +354,7 @@ func (qc *QdrantClient) GetMemory(ctx context.Context, memoryID string) (*Record
 	}
 
 	if len(points) == 0 {
-		logger.Warnf("[GetMemory] memory not found: memoryID=%s", memoryID)
+		logger.Warnf("[qdrant] memory not found: memoryID=%s", memoryID)
 		return nil, fmt.Errorf("memory not found")
 	}
 
@@ -363,13 +363,13 @@ func (qc *QdrantClient) GetMemory(ctx context.Context, memoryID string) (*Record
 		return nil, fmt.Errorf("convert payload for memoryID=%s: %w", memoryID, err)
 	}
 
-	logger.Debugf("[GetMemory] successfully retrieved memoryID=%s type=%s", memoryID, memory.MemoryType)
+	logger.Debugf("[qdrant] successfully retrieved memoryID=%s type=%s", memoryID, memory.MemoryType)
 	return memory, nil
 }
 
 // DeleteMemory deletes a single memory
 func (qc *QdrantClient) DeleteMemory(ctx context.Context, memoryID string) error {
-	logger.Warnf("[DeleteMemory] deleting memoryID=%s", memoryID)
+	logger.Warnf("[qdrant] deleting memoryID=%s", memoryID)
 
 	_, err := qc.client.Delete(ctx, &qdrant.DeletePoints{
 		CollectionName: CollectionMemories,
@@ -379,13 +379,13 @@ func (qc *QdrantClient) DeleteMemory(ctx context.Context, memoryID string) error
 		return fmt.Errorf("delete memory %s: %w", memoryID, err)
 	}
 
-	logger.Infof("[DeleteMemory] successfully deleted memoryID=%s", memoryID)
+	logger.Infof("[qdrant] successfully deleted memoryID=%s", memoryID)
 	return nil
 }
 
 // DeleteUserMemories deletes all memories for a user
 func (qc *QdrantClient) DeleteUserMemories(ctx context.Context, userID string) error {
-	logger.Warnf("[DeleteUserMemories] deleting all memories for userID=%s", userID)
+	logger.Warnf("[qdrant] deleting all memories for userID=%s", userID)
 
 	_, err := qc.client.Delete(ctx, &qdrant.DeletePoints{
 		CollectionName: CollectionMemories,
@@ -399,7 +399,7 @@ func (qc *QdrantClient) DeleteUserMemories(ctx context.Context, userID string) e
 		return fmt.Errorf("delete user memories for userID=%s: %w", userID, err)
 	}
 
-	logger.Infof("[DeleteUserMemories] successfully deleted all memories for userID=%s", userID)
+	logger.Infof("[qdrant] successfully deleted all memories for userID=%s", userID)
 	return nil
 }
 
@@ -407,7 +407,7 @@ func (qc *QdrantClient) DeleteUserMemories(ctx context.Context, userID string) e
 func (qc *QdrantClient) UpsertProfile(ctx context.Context, profile *Profile) error {
 	profile.LastActiveAt = time.Now()
 
-	logger.Debugf("[UpsertProfile] storing profile for userID=%s messageCount=%d memoryCount=%d",
+	logger.Debugf("[qdrant] storing profile for userID=%s messageCount=%d memoryCount=%d",
 		profile.UserID, profile.MessageCount, profile.MemoryCount)
 
 	// Prepare all data before retry loop
@@ -442,13 +442,13 @@ func (qc *QdrantClient) UpsertProfile(ctx context.Context, profile *Profile) err
 	if err != nil {
 		return fmt.Errorf("upsert profile for userID=%s: %w", profile.UserID, err)
 	}
-	logger.Debugf("[UpsertProfile] successfully stored profile for userID=%s", profile.UserID)
+	logger.Debugf("[qdrant] successfully stored profile for userID=%s", profile.UserID)
 	return nil
 }
 
 // GetProfile retrieves a user profile
 func (qc *QdrantClient) GetProfile(ctx context.Context, userID string) (*Profile, error) {
-	logger.Debugf("[GetProfile] getting profile for userID=%s", userID)
+	logger.Debugf("[qdrant] getting profile for userID=%s", userID)
 
 	numID, err := discordIDToUint64(userID)
 	if err != nil {
@@ -463,18 +463,18 @@ func (qc *QdrantClient) GetProfile(ctx context.Context, userID string) (*Profile
 		WithPayload: qdrant.NewWithPayload(true),
 	})
 	if err != nil {
-		logger.Debugf("[GetProfile] get error: %v", err)
+		logger.Debugf("[qdrant] get error: %v", err)
 		return nil, fmt.Errorf("failed to get profile: %w", err)
 	}
 
-	logger.Debugf("[GetProfile] got %d points", len(points))
+	logger.Debugf("[qdrant] got %d points", len(points))
 
 	if len(points) == 0 {
 		return nil, ErrProfileNotFound
 	}
 
 	point := points[0]
-	logger.Debugf("[GetProfile] point ID: %v, payload keys: %v", point.Id, getPayloadKeys(point.Payload))
+	logger.Debugf("[qdrant] point ID: %v, payload keys: %v", point.Id, getPayloadKeys(point.Payload))
 	return qc.payloadToProfile(point.Payload, userID)
 }
 
@@ -502,7 +502,7 @@ func (qc *QdrantClient) CountCollection(ctx context.Context, collectionName stri
 
 // DeleteProfile deletes a user profile
 func (qc *QdrantClient) DeleteProfile(ctx context.Context, userID string) error {
-	logger.Warnf("[DeleteProfile] deleting profile for userID=%s", userID)
+	logger.Warnf("[qdrant] deleting profile for userID=%s", userID)
 
 	numID, err := discordIDToUint64(userID)
 	if err != nil {
@@ -517,6 +517,6 @@ func (qc *QdrantClient) DeleteProfile(ctx context.Context, userID string) error 
 		return fmt.Errorf("delete profile for userID=%s: %w", userID, err)
 	}
 
-	logger.Infof("[DeleteProfile] successfully deleted profile for userID=%s", userID)
+	logger.Infof("[qdrant] successfully deleted profile for userID=%s", userID)
 	return nil
 }

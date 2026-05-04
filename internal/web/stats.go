@@ -71,7 +71,7 @@ func (s *StatsProvider) countMemories(ctx context.Context) (int64, error) {
 		if err == nil {
 			return count, nil
 		}
-		logger.Warnf("[StatsProvider] failed to count memories: %v", err)
+		logger.Warnf("[stats] failed to count memories: %v", err)
 	}
 	// Fallback: use GetStats if the store supports it
 	gs, err := s.memStore.GetStats(ctx)
@@ -94,7 +94,7 @@ func (s *StatsProvider) countProfiles(ctx context.Context) (int64, error) {
 		if err == nil {
 			return count, nil
 		}
-		logger.Warnf("[StatsProvider] failed to count profiles: %v", err)
+		logger.Warnf("[stats] failed to count profiles: %v", err)
 	}
 	// Fallback: try GetStats from MemoryStore
 	gs, err := s.memStore.GetStats(ctx)
