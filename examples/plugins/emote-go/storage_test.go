@@ -10,7 +10,10 @@ import (
 func TestNewStorage(t *testing.T) {
 	tmpDir := t.TempDir()
 	dataDir := filepath.Join(tmpDir, "emote-data")
-	s := NewStorage(dataDir)
+	s, err := NewStorage(dataDir)
+	if err != nil {
+		t.Fatalf("NewStorage failed: %v", err)
+	}
 	if s == nil {
 		t.Fatal("NewStorage returned nil")
 	}
@@ -24,7 +27,10 @@ func TestNewStorage(t *testing.T) {
 
 func TestSaveAndLoadMetadata(t *testing.T) {
 	tmpDir := t.TempDir()
-	s := NewStorage(tmpDir)
+	s, err := NewStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("NewStorage failed: %v", err)
+	}
 	guildID := "test-guild"
 
 	orig := &MetadataFile{
@@ -51,7 +57,10 @@ func TestSaveAndLoadMetadata(t *testing.T) {
 
 func TestLoadMetadata_NonExistent(t *testing.T) {
 	tmpDir := t.TempDir()
-	s := NewStorage(tmpDir)
+	s, err := NewStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("NewStorage failed: %v", err)
+	}
 
 	mf, err := s.LoadMetadata("nonexistent-guild")
 	if err != nil {
@@ -67,7 +76,10 @@ func TestLoadMetadata_NonExistent(t *testing.T) {
 
 func TestAddEmote(t *testing.T) {
 	tmpDir := t.TempDir()
-	s := NewStorage(tmpDir)
+	s, err := NewStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("NewStorage failed: %v", err)
+	}
 	guildID := "g-add"
 
 	e1 := EmoteEntry{ID: "e1", Name: "first"}
@@ -96,7 +108,10 @@ func TestAddEmote(t *testing.T) {
 }
 
 func TestCheckBlacklist_WhitelistPriority(t *testing.T) {
-	s := NewStorage(t.TempDir())
+	s, err := NewStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStorage failed: %v", err)
+	}
 
 	if !s.CheckBlacklist("g", "wl-chan", "user1", nil, []string{"wl-chan"}, nil) {
 		t.Error("whitelisted channel should pass (no blacklist)")
@@ -112,7 +127,10 @@ func TestCheckBlacklist_WhitelistPriority(t *testing.T) {
 }
 
 func TestCheckBlacklist_Blacklist(t *testing.T) {
-	s := NewStorage(t.TempDir())
+	s, err := NewStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStorage failed: %v", err)
+	}
 
 	if s.CheckBlacklist("g", "bad-chan", "user1", []string{"bad-chan", "also-bad"}, nil, nil) {
 		t.Error("blacklisted channel should be rejected")
@@ -133,7 +151,10 @@ func TestCheckBlacklist_Blacklist(t *testing.T) {
 
 func TestSaveMetadata_Atomicity(t *testing.T) {
 	tmpDir := t.TempDir()
-	s := NewStorage(tmpDir)
+	s, err := NewStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("NewStorage failed: %v", err)
+	}
 	guildID := "g-atomic"
 
 	mf := &MetadataFile{

@@ -104,7 +104,9 @@ func (p *EmotePlugin) OnResponse(msg types.DiscordMessage, response string) erro
 	}
 
 	if strings.HasPrefix(content, "__file__:") {
-		filePath := filepath.Join(p.config.DataDir, "global", "images", strings.TrimPrefix(content, "__file__:"))
+		fileName := strings.TrimPrefix(content, "__file__:")
+		fileName = filepath.Base(fileName)
+		filePath := filepath.Join(p.config.DataDir, "global", "images", fileName)
 		if err := p.discord.SendFile(msg.ChannelID, filePath); err != nil {
 			return fmt.Errorf("failed to send file: %w", err)
 		}
@@ -378,9 +380,14 @@ func newEmotePlugin(cfg Config) (*EmotePlugin, error) {
 		return nil, fmt.Errorf("failed to create data dir %s: %w", dataDir, err)
 	}
 
+	storage, err := NewStorage(dataDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create storage: %v\n", err)
+		os.Exit(1)
+	}
 	p := &EmotePlugin{
 		config:    cfg,
-		storage:   NewStorage(dataDir),
+		storage:   storage,
 		sendQueue: make(map[string]string),
 	}
 

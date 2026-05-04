@@ -68,7 +68,10 @@ func (c *CDNRefreshClient) callRefreshAPI(bareURL string) (string, error) {
 	reqBody := map[string]interface{}{
 		"attachment_urls": []string{bareURL},
 	}
-	body, _ := json.Marshal(reqBody)
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal CDN refresh request: %w", err)
+	}
 
 	req, err := http.NewRequest("POST", "https://discord.com/api/v9/attachments/refresh-urls", bytes.NewReader(body))
 	if err != nil {

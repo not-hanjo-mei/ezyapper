@@ -66,7 +66,10 @@ func (v *VisionClient) AnalyzeImage(imageBytes []byte) (*VisionResult, error) {
 		"temperature": 0.1,
 	}
 
-	body, _ := json.Marshal(reqBody)
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal vision request: %w", err)
+	}
 	req, err := http.NewRequest("POST", v.baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return nil, err

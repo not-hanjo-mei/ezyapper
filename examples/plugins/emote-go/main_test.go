@@ -13,6 +13,10 @@ import (
 func newTestPlugin(t *testing.T) *EmotePlugin {
 	t.Helper()
 	tmpDir := t.TempDir()
+	storage, err := NewStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("NewStorage failed: %v", err)
+	}
 	return &EmotePlugin{
 		config: Config{
 			DataDir:                     tmpDir,
@@ -40,7 +44,7 @@ func newTestPlugin(t *testing.T) *EmotePlugin {
 			SearchEmoteMs:               15000,
 			SendEmoteMs:                 10000,
 		},
-		storage: NewStorage(tmpDir),
+		storage: storage,
 	}
 }
 

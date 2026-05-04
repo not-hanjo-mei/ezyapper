@@ -58,7 +58,10 @@ func (c *EmoteLLMClient) Match(query string, emotes []EmoteEntry) ([]MatchResult
 		"temperature": c.temperature,
 	}
 
-	body, _ := json.Marshal(reqBody)
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal emote LLM request: %w", err)
+	}
 	req, err := http.NewRequest("POST", c.baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -87,9 +90,6 @@ func (c *EmoteLLMClient) Match(query string, emotes []EmoteEntry) ([]MatchResult
 	}
 
 	content := strings.TrimSpace(chatResp.Choices[0].Message.Content)
-
-	// Log raw response for debugging
-	fmt.Fprintf(os.Stderr, "[EMOTE-LLM] raw response: %s\n", content)
 
 	content = stripJSONFences(content)
 

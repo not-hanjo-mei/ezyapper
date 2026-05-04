@@ -646,7 +646,10 @@ func (p *openAITTSPlugin) ExecuteTool(name string, args map[string]interface{}) 
 		return "", err
 	}
 
-	data, _ := json.MarshalIndent(result, "", "  ")
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal tool result: %w", err)
+	}
 	return string(data), nil
 }
 

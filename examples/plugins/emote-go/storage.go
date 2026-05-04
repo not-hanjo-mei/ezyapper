@@ -37,11 +37,13 @@ type Storage struct {
 
 // NewStorage creates a new Storage backed by dataDir.
 // The data directory is created if it does not already exist.
-func NewStorage(dataDir string) *Storage {
-	os.MkdirAll(dataDir, 0755)
+func NewStorage(dataDir string) (*Storage, error) {
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create storage directory %s: %w", dataDir, err)
+	}
 	return &Storage{
 		dataDir: dataDir,
-	}
+	}, nil
 }
 
 // LoadMetadata reads the metadata file for a guild.
