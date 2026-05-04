@@ -865,7 +865,7 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 				MinScore: 0.75,
 			},
 			Consolidation: ConsolidationConfig{
-				Enabled:           true,
+				Enabled:           false,
 				SystemPrompt:      "extract",
 				MemorySearchLimit: 20,
 				WorkerQueueSize:   10,

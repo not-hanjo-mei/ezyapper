@@ -95,8 +95,8 @@ func TestValidateLimit(t *testing.T) {
 		{1, false, "", 1},
 		{100, false, "", 100},
 		{500, false, "", 500},
-		{600, false, "", 500}, // capped to maxPaginatedLimit
-		{1000, false, "", 500},
+		{600, false, "", 600}, // honored (warn, don't clamp)
+		{1000, false, "", 1000},
 	}
 
 	for _, tt := range tests {

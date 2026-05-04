@@ -406,8 +406,8 @@ func TestValidateToolSpec_MaxCap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error for clamped timeout_ms, got %v", err)
 	}
-	if ts.TimeoutMs != 300000 {
-		t.Fatalf("expected timeout_ms clamped to 300000, got %d", ts.TimeoutMs)
+	if ts.TimeoutMs != 500000 {
+		t.Fatalf("expected timeout_ms honored as-is (warn, don't clamp), got %d", ts.TimeoutMs)
 	}
 }
 

@@ -42,6 +42,8 @@ core:
       description_prompt: "test"
       max_images: 4
       max_tokens: 512
+      retry_count: 1
+      timeout: 30
     max_tokens: 1024
     temperature: 0.8
     retry_count: 3

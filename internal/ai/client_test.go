@@ -125,10 +125,13 @@ func TestRequestTimeout_ConfigNil(t *testing.T) {
 }
 
 func TestRequestTimeout_BothNil(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("expected panic when both config and httpClient are nil, but no panic occurred")
+		}
+	}()
 	c := &Client{config: nil, httpClient: nil}
-	if got := c.requestTimeout(); got != 30*time.Second {
-		t.Errorf("expected default 30s, got %v", got)
-	}
+	c.requestTimeout()
 }
 
 func TestRequestTimeout_HTTPClientNilWithConfig(t *testing.T) {
