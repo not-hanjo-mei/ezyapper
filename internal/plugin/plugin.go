@@ -396,6 +396,7 @@ func sanitizeCommandArg(arg string) (string, error) {
 
 	var buf bytes.Buffer
 	buf.Grow(len(trimmed))
+	hadControlChars := false
 	for _, r := range trimmed {
 		if r == '\n' || r == '\r' {
 			return "", fmt.Errorf("argument value contains newline character")
@@ -405,9 +406,13 @@ func sanitizeCommandArg(arg string) (string, error) {
 		}
 		if r < 0x20 && r != '\t' {
 			buf.WriteByte(' ')
+			hadControlChars = true
 			continue
 		}
 		buf.WriteRune(r)
+	}
+	if hadControlChars {
+		logger.Warnf("[plugin] control characters stripped from command argument")
 	}
 	sanitized := buf.String()
 

@@ -436,7 +436,7 @@ func resolvePluginCommandPath(command string, pluginDir string) (string, error) 
 		if err != nil {
 			return "", err
 		}
-		if strings.Contains(trimmedCommand, "..") {
+		if !filepath.IsAbs(trimmedCommand) {
 			if err := ensurePathWithinBase(resolved, absPluginDir); err != nil {
 				return "", fmt.Errorf("plugin command path escapes plugin directory: %w", err)
 			}

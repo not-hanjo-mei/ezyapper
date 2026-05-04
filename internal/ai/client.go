@@ -544,13 +544,12 @@ func validateImageURL(rawURL string) error {
 }
 
 func isPrivateIP(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-		return true
+	if ip == nil {
+		return false
 	}
-	if ip.IsPrivate() {
-		return true
-	}
-	return false
+	return ip.IsLoopback() || ip.IsUnspecified() ||
+		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		ip.IsPrivate()
 }
 
 // CreateVisionCompletion creates a vision completion for image analysis
