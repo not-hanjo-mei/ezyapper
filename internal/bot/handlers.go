@@ -4,6 +4,7 @@ package bot
 import (
 	"context"
 	"time"
+	"unicode/utf8"
 
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
@@ -97,9 +98,10 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
 			msg.ReplyToUsername = m.ReferencedMessage.Author.Username
 			content := m.ReferencedMessage.Content
-			if len(content) > b.cfg().Discord.ReplyTruncationLength {
-				logger.Warnf("reply content truncated from %d to %d chars", len(content), b.cfg().Discord.ReplyTruncationLength)
-				content = content[:b.cfg().Discord.ReplyTruncationLength]
+			if utf8.RuneCountInString(content) > b.cfg().Discord.ReplyTruncationLength {
+				logger.Warnf("reply content truncated from %d to %d chars", utf8.RuneCountInString(content), b.cfg().Discord.ReplyTruncationLength)
+				runes := []rune(content)
+				content = string(runes[:b.cfg().Discord.ReplyTruncationLength])
 			}
 			msg.ReplyToContent = content
 		} else {
