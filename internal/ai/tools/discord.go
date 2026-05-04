@@ -282,7 +282,7 @@ func (d *DiscordTools) createThread(ctx context.Context, args map[string]any) (s
 	}
 
 	messageID, ok := args["message_id"].(string)
-	if !ok {
+	if !ok && args["message_id"] != nil {
 		return "", fmt.Errorf("message_id must be a string")
 	}
 

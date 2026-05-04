@@ -132,7 +132,7 @@ func LoginHandler(store *SessionStore, username, password string, loginTmpl *tem
 				Value:    session.ID,
 				Path:     "/",
 				HttpOnly: true,
-				Secure:   r.TLS != nil,
+				Secure:   true,
 				SameSite: http.SameSiteStrictMode,
 				MaxAge:   sessionTTLMin * 60,
 			})
@@ -189,6 +189,8 @@ func LogoutHandler(store *SessionStore) http.HandlerFunc {
 			return
 		}
 
+		// Defense-in-depth: CSRFMiddleware already validates the token,
+		// but we explicitly check presence here as an additional guard.
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, "Bad request", http.StatusBadRequest)
 			return

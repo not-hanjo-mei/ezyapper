@@ -217,12 +217,10 @@ func (d *DecisionService) parseResponse(content string) (*DecisionResult, error)
 	}
 
 	if result.Confidence < 0 {
-		logger.Warnf("[decision] confidence %f is below 0, clamping to 0", result.Confidence)
-		result.Confidence = 0
+		return nil, fmt.Errorf("confidence %f is below 0", result.Confidence)
 	}
 	if result.Confidence > 1 {
-		logger.Warnf("[decision] confidence %f is above 1, clamping to 1", result.Confidence)
-		result.Confidence = 1
+		return nil, fmt.Errorf("confidence %f is above 1", result.Confidence)
 	}
 
 	return &result, nil
