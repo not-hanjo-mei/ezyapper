@@ -190,7 +190,8 @@ type Manager struct {
 	commandTimeoutSec    int
 	shutdownTimeoutSec   int
 	disableTimeoutSec    int
-	wg                   sync.WaitGroup // tracks in-flight goroutines (plugin loads, RPC calls, process shutdown)
+	pluginsDir           string
+	wg                   sync.WaitGroup
 }
 
 // ListTools returns all tools exposed by currently enabled plugins.
@@ -209,7 +210,7 @@ func (pm *Manager) ListTools() []PluginTool {
 }
 
 // ExecuteTool executes a named tool on a specific plugin.
-func (pm *Manager) ExecuteTool(pluginName string, toolName string, args map[string]interface{}) (string, error) {
+func (pm *Manager) ExecuteTool(ctx context.Context, pluginName string, toolName string, args map[string]interface{}) (string, error) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
@@ -219,7 +220,7 @@ func (pm *Manager) ExecuteTool(pluginName string, toolName string, args map[stri
 	}
 
 	if plugin.runtime == pluginRuntimeCommand {
-		return pm.executeCommandTool(plugin, toolName, args)
+		return pm.executeCommandTool(ctx, plugin, toolName, args)
 	}
 
 	if plugin.jsonrpc != nil {
@@ -270,7 +271,7 @@ func (pm *Manager) executeJSONRPCTool(plugin *Client, toolName string, args map[
 	return reply, nil
 }
 
-func (pm *Manager) executeCommandTool(plugin *Client, toolName string, args map[string]interface{}) (string, error) {
+func (pm *Manager) executeCommandTool(ctx context.Context, plugin *Client, toolName string, args map[string]interface{}) (string, error) {
 	if plugin == nil {
 		return "", fmt.Errorf("plugin is nil")
 	}
@@ -306,7 +307,7 @@ func (pm *Manager) executeCommandTool(plugin *Client, toolName string, args map[
 		timeout = time.Duration(pm.commandTimeoutSec) * time.Second
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, tool.CommandPath, commandArgs...)
@@ -346,32 +347,73 @@ func commandArgumentValue(value interface{}) (string, error) {
 		return "", fmt.Errorf("value is null")
 	}
 
+	var result string
 	switch typed := value.(type) {
 	case string:
-		return typed, nil
+		result = typed
 	case bool:
-		return fmt.Sprint(typed), nil
+		result = fmt.Sprint(typed)
 	case float64:
-		return fmt.Sprint(typed), nil
+		result = fmt.Sprint(typed)
 	case float32:
-		return fmt.Sprint(typed), nil
+		result = fmt.Sprint(typed)
 	case int:
-		return fmt.Sprint(typed), nil
+		result = fmt.Sprint(typed)
 	case int64:
-		return fmt.Sprint(typed), nil
+		result = fmt.Sprint(typed)
 	case int32:
-		return fmt.Sprint(typed), nil
+		result = fmt.Sprint(typed)
 	case uint:
-		return fmt.Sprint(typed), nil
+		result = fmt.Sprint(typed)
 	case uint64:
-		return fmt.Sprint(typed), nil
+		result = fmt.Sprint(typed)
 	case uint32:
-		return fmt.Sprint(typed), nil
+		result = fmt.Sprint(typed)
 	default:
 		encoded, err := json.Marshal(value)
 		if err != nil {
 			return "", fmt.Errorf("failed to encode argument: %w", err)
 		}
-		return string(encoded), nil
+		result = string(encoded)
 	}
+	return sanitizeCommandArg(result)
+}
+
+// sanitizeCommandArg validates and sanitizes a single argument value
+// for command-tool plugin execution. Since exec.Command uses argv (not
+// shell), shell metacharacters are not directly exploitable, but this
+// provides defense-in-depth against control character injection.
+func sanitizeCommandArg(arg string) (string, error) {
+	trimmed := strings.TrimSpace(arg)
+	if trimmed == "" {
+		return "", fmt.Errorf("argument value is empty")
+	}
+
+	const maxArgLen = 4096
+	if len(trimmed) > maxArgLen {
+		return "", fmt.Errorf("argument value exceeds maximum length of %d", maxArgLen)
+	}
+
+	var buf bytes.Buffer
+	buf.Grow(len(trimmed))
+	for _, r := range trimmed {
+		if r == '\n' || r == '\r' {
+			return "", fmt.Errorf("argument value contains newline character")
+		}
+		if r == 0 {
+			return "", fmt.Errorf("argument value contains null byte")
+		}
+		if r < 0x20 && r != '\t' {
+			buf.WriteByte(' ')
+			continue
+		}
+		buf.WriteRune(r)
+	}
+	sanitized := buf.String()
+
+	if strings.TrimSpace(sanitized) == "" {
+		return "", fmt.Errorf("argument value is empty after sanitization")
+	}
+
+	return sanitized, nil
 }

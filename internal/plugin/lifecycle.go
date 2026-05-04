@@ -432,14 +432,46 @@ func resolvePluginCommandPath(command string, pluginDir string) (string, error) 
 		if !filepath.IsAbs(candidate) {
 			candidate = filepath.Join(absPluginDir, candidate)
 		}
-		return resolveExecutablePath(candidate)
+		resolved, err := resolveExecutablePath(candidate)
+		if err != nil {
+			return "", err
+		}
+		if strings.Contains(trimmedCommand, "..") {
+			if err := ensurePathWithinBase(resolved, absPluginDir); err != nil {
+				return "", fmt.Errorf("plugin command path escapes plugin directory: %w", err)
+			}
+		}
+		return resolved, nil
 	}
 
 	if lookedUp, err := exec.LookPath(trimmedCommand); err == nil {
 		return toAbsolutePath(lookedUp), nil
 	}
 
-	return resolveExecutablePath(filepath.Join(absPluginDir, trimmedCommand))
+	resolved, err := resolveExecutablePath(filepath.Join(absPluginDir, trimmedCommand))
+	if err != nil {
+		return "", err
+	}
+	return resolved, nil
+}
+
+func ensurePathWithinBase(resolved, base string) error {
+	base, err := filepath.EvalSymlinks(base)
+	if err != nil {
+		return fmt.Errorf("cannot resolve plugin base directory %s: %w", base, err)
+	}
+	resolved, err = filepath.EvalSymlinks(resolved)
+	if err != nil {
+		return fmt.Errorf("cannot resolve plugin command path %s: %w", resolved, err)
+	}
+	rel, err := filepath.Rel(base, resolved)
+	if err != nil {
+		return fmt.Errorf("cannot determine relative path: %w", err)
+	}
+	if strings.HasPrefix(rel, "..") {
+		return fmt.Errorf("command %q is outside plugin directory %s", resolved, base)
+	}
+	return nil
 }
 
 func (pm *Manager) LoadPluginsFromDir(dir string) error {

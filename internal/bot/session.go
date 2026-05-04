@@ -617,7 +617,7 @@ func (b *Bot) registerPluginTools() {
 			Description: fmt.Sprintf("[plugin:%s] %s", pluginName, description),
 			Parameters:  parameters,
 			Handler: func(ctx context.Context, args map[string]interface{}) (string, error) {
-				return b.pluginManager.ExecuteTool(pluginName, toolName, args)
+				return b.pluginManager.ExecuteTool(ctx, pluginName, toolName, args)
 			},
 		})
 	}

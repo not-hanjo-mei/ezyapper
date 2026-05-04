@@ -369,7 +369,7 @@ func TestLoadPluginsFromDirCommandRuntimeWithoutLocalExecutable(t *testing.T) {
 		t.Fatalf("unexpected plugin name: %s", plugins[0].Name)
 	}
 
-	output, err := pm.ExecuteTool("command-plugin", "echo_value", map[string]interface{}{"value": "hello"})
+	output, err := pm.ExecuteTool(context.Background(), "command-plugin", "echo_value", map[string]interface{}{"value": "hello"})
 	if err != nil {
 		t.Fatalf("ExecuteTool returned error: %v", err)
 	}
@@ -377,11 +377,11 @@ func TestLoadPluginsFromDirCommandRuntimeWithoutLocalExecutable(t *testing.T) {
 		t.Fatalf("unexpected tool output: %q", output)
 	}
 
-	if _, err := pm.ExecuteTool("command-plugin", "echo_value", map[string]interface{}{}); err == nil {
+	if _, err := pm.ExecuteTool(context.Background(), "command-plugin", "echo_value", map[string]interface{}{}); err == nil {
 		t.Fatal("expected ExecuteTool to fail when required argument is missing")
 	}
 
-	envOutput, err := pm.ExecuteTool("command-plugin", "check_env", map[string]interface{}{})
+	envOutput, err := pm.ExecuteTool(context.Background(), "command-plugin", "check_env", map[string]interface{}{})
 	if err != nil {
 		t.Fatalf("ExecuteTool check_env returned error: %v", err)
 	}
@@ -515,7 +515,7 @@ func newTimeoutTestManager(t *testing.T, toolTimeoutMs int, toolDelay time.Durat
 func TestExecuteToolTimeout_ToolSpecWins(t *testing.T) {
 	pm := newTimeoutTestManager(t, 200, 1*time.Second, 0)
 
-	_, err := pm.ExecuteTool("mock-plugin", "mock-tool", map[string]interface{}{})
+	_, err := pm.ExecuteTool(context.Background(), "mock-plugin", "mock-tool", map[string]interface{}{})
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}
@@ -530,7 +530,7 @@ func TestExecuteToolTimeout_ToolSpecWins(t *testing.T) {
 func TestExecuteToolTimeout_ConfigWins(t *testing.T) {
 	pm := newTimeoutTestManager(t, 0, 2*time.Second, 500)
 
-	_, err := pm.ExecuteTool("mock-plugin", "mock-tool", map[string]interface{}{})
+	_, err := pm.ExecuteTool(context.Background(), "mock-plugin", "mock-tool", map[string]interface{}{})
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}
@@ -542,7 +542,7 @@ func TestExecuteToolTimeout_ConfigWins(t *testing.T) {
 func TestExecuteToolTimeout_NoFallbackError(t *testing.T) {
 	pm := newTimeoutTestManager(t, 0, 100*time.Millisecond, 0)
 
-	_, err := pm.ExecuteTool("mock-plugin", "mock-tool", map[string]interface{}{})
+	_, err := pm.ExecuteTool(context.Background(), "mock-plugin", "mock-tool", map[string]interface{}{})
 	if err == nil {
 		t.Fatal("expected error when no tool timeout or config timeout is set, got nil")
 	}
@@ -554,7 +554,7 @@ func TestExecuteToolTimeout_NoFallbackError(t *testing.T) {
 func TestExecuteToolTimeout_SuccessWithToolTimeout(t *testing.T) {
 	pm := newTimeoutTestManager(t, 15000, 100*time.Millisecond, 0)
 
-	result, err := pm.ExecuteTool("mock-plugin", "mock-tool", map[string]interface{}{})
+	result, err := pm.ExecuteTool(context.Background(), "mock-plugin", "mock-tool", map[string]interface{}{})
 	if err != nil {
 		t.Fatalf("expected success, got error: %v", err)
 	}
@@ -566,7 +566,7 @@ func TestExecuteToolTimeout_SuccessWithToolTimeout(t *testing.T) {
 func TestExecuteToolTimeout_SuccessWithConfigTimeout(t *testing.T) {
 	pm := newTimeoutTestManager(t, 0, 100*time.Millisecond, 10000)
 
-	result, err := pm.ExecuteTool("mock-plugin", "mock-tool", map[string]interface{}{})
+	result, err := pm.ExecuteTool(context.Background(), "mock-plugin", "mock-tool", map[string]interface{}{})
 	if err != nil {
 		t.Fatalf("expected success, got error: %v", err)
 	}
@@ -585,7 +585,7 @@ func TestManagerDefaultToolTimeoutMsZero(t *testing.T) {
 func TestToolSpecTimeoutMsZeroRequiresConfig(t *testing.T) {
 	pm := newTimeoutTestManager(t, 0, 50*time.Millisecond, 0)
 
-	_, err := pm.ExecuteTool("mock-plugin", "mock-tool", map[string]interface{}{})
+	_, err := pm.ExecuteTool(context.Background(), "mock-plugin", "mock-tool", map[string]interface{}{})
 	if err == nil {
 		t.Fatal("expected error when ToolSpec.TimeoutMs is 0 and no config fallback, got nil")
 	}
@@ -690,7 +690,7 @@ func TestExecuteCommandTool_PerToolTimeout(t *testing.T) {
 	}
 
 	start := time.Now()
-	_, err = pm.ExecuteTool("timeout-plugin", "slow_tool", map[string]interface{}{})
+	_, err = pm.ExecuteTool(context.Background(), "timeout-plugin", "slow_tool", map[string]interface{}{})
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -725,7 +725,7 @@ func TestConcurrentExecuteToolAndDisablePluginNoPanic(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_, err := pm.ExecuteTool("test", "tool", map[string]interface{}{})
+		_, err := pm.ExecuteTool(context.Background(), "test", "tool", map[string]interface{}{})
 		errCh <- err
 	}()
 
