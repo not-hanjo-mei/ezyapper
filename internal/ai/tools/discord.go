@@ -250,7 +250,7 @@ func (d *DiscordTools) getRecentMessages(ctx context.Context, args map[string]an
 		return "", err
 	}
 
-	limit := extractLimit(args, "limit", 5, 10)
+	limit := extractLimit(args, "limit", 5, maxRecentMessageLimit)
 
 	messages, err := d.session.ChannelMessages(channelID, limit, "", "", "")
 	if err != nil {
@@ -339,7 +339,7 @@ func (d *DiscordTools) getChannelMembers(ctx context.Context, args map[string]an
 		return "", err
 	}
 
-	limit := extractLimit(args, "limit", 20, 100)
+	limit := extractLimit(args, "limit", defaultChannelMemberLimit, maxChannelMemberLimit)
 
 	members, err := d.session.GuildMembers(guildID, "", limit)
 	if err != nil {

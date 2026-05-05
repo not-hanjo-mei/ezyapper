@@ -1,14 +1,14 @@
 # Vision Modes
 
-EZyapper supports three different vision modes to balance cost, speed, and functionality. Configure via `ai.vision.mode` in `config.yaml`.
+EZyapper supports three different vision modes to balance cost, speed, and functionality. Configure via `core.ai.vision.mode` in `config.yaml`.
 
 ## Overview
 
 | Mode | Images | Tools | API Calls | Cost | Use Case |
 |------|--------|-------|-----------|------|----------|
-| `text_only` | Ignored | �?| 1 | Lowest | Budget, speed |
-| `hybrid` | Described | �?| 2 | Medium | Tool-heavy workflows |
-| `multimodal` | Direct | �?| 1 | Higher | Visual reasoning |
+| `text_only` | Ignored | Yes | 1 | Lowest | Budget, speed |
+| `hybrid` | Described | Yes | 2 | Medium | Tool-heavy workflows |
+| `multimodal` | Direct | Yes | 1 | Higher | Visual reasoning |
 
 ## Mode Details
 
@@ -16,9 +16,10 @@ EZyapper supports three different vision modes to balance cost, speed, and funct
 
 **Configuration:**
 ```yaml
-ai:
-  vision:
-    mode: "text_only"
+core:
+  ai:
+    vision:
+      mode: "text_only"
 ```
 
 **Behavior:**
@@ -35,18 +36,19 @@ ai:
 
 **Data Flow:**
 ```
-Discord Message with Image �?Skip Image Extraction �?Text Model + Tools �?Response
+Discord Message with Image -> Skip Image Extraction -> Text Model + Tools -> Response
 ```
 
 ### Hybrid Mode
 
 **Configuration:**
 ```yaml
-ai:
-  vision:
-    mode: "hybrid"
-    description_prompt: "Describe this image in 1-2 sentences."
-    max_images: 4
+core:
+  ai:
+    vision:
+      mode: "hybrid"
+      description_prompt: "Describe this image in 1-2 sentences."
+      max_images: 4
 ```
 
 **Behavior:**
@@ -63,10 +65,10 @@ ai:
 **Data Flow:**
 ```
 Discord Message with Image
-  �?Vision Model (gpt-4o)
-  �?Image Description ("A photo of a black cat")
-  �?Text Model (gpt-4o-mini) + Tools
-  �?Response with tool execution
+  -> Vision Model (gpt-4o)
+  -> Image Description ("A photo of a black cat")
+  -> Text Model (gpt-4o-mini) + Tools
+  -> Response with tool execution
 ```
 
 **Example Response:**
@@ -81,10 +83,11 @@ Bot: I see that's a photo of a black cat sitting on a couch.
 
 **Configuration:**
 ```yaml
-ai:
-  vision:
-    mode: "multimodal"
-    max_images: 4
+core:
+  ai:
+    vision:
+      mode: "multimodal"
+      max_images: 4
 ```
 
 **Behavior:**
@@ -101,8 +104,8 @@ ai:
 **Data Flow:**
 ```
 Discord Message with Image
-  �?Multimodal Model (gpt-4o) with Tools
-  �?Response (can execute tools with image understanding)
+  -> Multimodal Model (gpt-4o) with Tools
+  -> Response (can execute tools with image understanding)
 ```
 
 **Example Response:**
@@ -120,16 +123,16 @@ Bot: The issue is missing a closing brace on line 42.
 
 | Option | Description |
 |--------|-------------|
-| `ai.vision.mode` | Vision mode to use (required: text_only, hybrid, or multimodal) |
-| `ai.vision.max_images` | Maximum images per message (required, must be > 0) |
-| `ai.vision.description_prompt` | Prompt for hybrid mode (required only when mode is "hybrid") |
+| `core.ai.vision.mode` | Vision mode to use (required: text_only, hybrid, or multimodal) |
+| `core.ai.vision.max_images` | Maximum images per message (required, must be > 0) |
+| `core.ai.vision.description_prompt` | Prompt for hybrid mode (required only when mode is "hybrid") |
 
 ### Environment Variables
 
 | Variable | Config Path |
 |----------|-------------|
-| `EZYAPPER_AI_VISION_MODEL` | `ai.vision_model` |
-| `EZYAPPER_AI_VISION_MODE` | `ai.vision.mode` (e.g. `text_only`) |
+| `EZYAPPER_CORE_AI_VISION_MODEL` | `core.ai.vision_model` |
+| `EZYAPPER_CORE_AI_VISION_MODE` | `core.ai.vision.mode` (e.g. `text_only`) |
 
 ## Decision System Integration
 
@@ -167,7 +170,7 @@ The decision service (if enabled) is **image-aware** and considers images when d
 | API Calls | 1 | 2 | 1 |
 | Latency | Low | Medium | Medium |
 | Cost per Image | $0 | vision | vision model |
-| Tool Support | �?Full | �?Full | �?Full |
+| Tool Support | Full | Full | Full |
 | Visual Fidelity | None | Low | High |
 
 ## Best Practices
@@ -210,13 +213,13 @@ The decision service (if enabled) is **image-aware** and considers images when d
 ## Troubleshooting
 
 ### Bot ignores images
-- Check `ai.vision.mode` is not set to `text_only`
-- Verify `ai.vision_model` is configured
+- Check `core.ai.vision.mode` is not set to `text_only`
+- Verify `core.ai.vision_model` is configured
 - Check logs for vision API errors
 
 ### Slow responses with images
 - Try switching to `text_only` mode
-- Consider reducing `ai.vision.max_images`
+- Consider reducing `core.ai.vision.max_images`
 - Use faster vision model if available
 
 ### Tools not seeing images
@@ -227,4 +230,4 @@ The decision service (if enabled) is **image-aware** and considers images when d
 ### Consolidation misses image context
 - By design: Memory system is text-only
 - Images are only in short-term Discord context (20 messages default)
-- Consider increasing `memory.short_term_limit` to keep image URLs longer
+- Consider increasing `memory_pipeline.memory.short_term_limit` to keep image URLs longer

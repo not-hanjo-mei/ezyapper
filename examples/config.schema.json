@@ -44,7 +44,7 @@
         },
         "ai": {
           "type": "object",
-          "required": ["api_base_url", "api_key", "model", "vision_model", "max_tokens", "temperature", "system_prompt", "vision", "http_timeout_sec", "max_tool_iterations", "max_image_bytes"],
+          "required": ["api_base_url", "api_key", "model", "vision_model", "max_tokens", "temperature", "retry_count", "timeout", "system_prompt", "vision", "http_timeout_sec", "max_tool_iterations", "max_image_bytes", "user_agent"],
           "additionalProperties": false,
           "properties": {
             "api_base_url":   { "type": "string" },
@@ -110,7 +110,7 @@
       "properties": {
         "embedding": {
           "type": "object",
-          "required": ["model"],
+          "required": ["model", "timeout"],
           "additionalProperties": false,
           "properties": {
             "api_base_url": { "type": "string" },

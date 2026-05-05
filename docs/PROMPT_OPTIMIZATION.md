@@ -4,203 +4,83 @@ This document describes the prompt caching optimizations implemented in EZyapper
 
 ## Overview
 
-EZyapper implements several strategies to maximize prompt caching with LLM providers (OpenAI, Anthropic, etc.):
+EZyapper maximizes provider-side caching by:
 
-1. **Static/Dynamic Content Separation** - Separate cacheable system prompt from dynamic user context
+1. **Static/Dynamic Content Separation** - Keep the system prompt stable and move dynamic context to the user message
 2. **Stable Tool Ordering** - Alphabetically sorted tools for consistent cache keys
 3. **Tool Schema Caching** - Pre-computed schemas to avoid rebuild overhead
-4. **Cache Hit Monitoring** - Logging to track optimization effectiveness
+4. **Prompt Length Logging** - Debug logs to validate static vs dynamic sizing
 
 ## How It Works
 
 ### Static vs Dynamic Content
 
-```
-┌─────────────────────────────────────────────────────────�?�?System Prompt (CACHED)                                  �?├─────────────────────────────────────────────────────────�?�?- Bot persona definition                                �?�?- Static guidelines                                     �?�?- Mention instructions                                  �?�?- Tool schemas (alphabetically sorted)                  �?└─────────────────────────────────────────────────────────�?                           �?                           �?┌─────────────────────────────────────────────────────────�?�?User Message (NOT CACHED)                               �?├─────────────────────────────────────────────────────────�?�?Dynamic Context:                                        �?�?- User traits/facts/preferences                         �?�?- Retrieved memories                                    �?�?- Recent users list                                     �?�?                                                        �?�?Original user message                                   �?└─────────────────────────────────────────────────────────�?```
+System prompt (cached):
+- Bot persona and rules
+- Static guidelines
+- Tool schemas (alphabetically sorted)
 
-### Why This Works
+User message (not cached):
+- Dynamic context (profile, memories, recent messages)
+- Original user message
 
-LLM providers cache prompts based on the **prefix** of the request. By keeping the system prompt static and moving dynamic content to the user message:
+### Tool Registry Caching
 
-- The system prompt hash remains constant across requests
-- LLM provider can cache and reuse the system prompt
-- Only the user message (with dynamic content) needs to be processed fresh
+**File:** `internal/ai/tools/tools.go`
 
-## Implementation Details
+Tool schemas are sorted and cached once at registration. `GetTools()` returns a copy to keep ordering stable across requests.
 
-### 1. Tool Registry Caching
+### Static/Dynamic Separation
 
-**File:** `internal/ai/tools.go`
-
-```go
-// ToolRegistry with caching
-type ToolRegistry struct {
-    tools        map[string]*Tool
-    cachedSchema []openai.Tool  // Pre-computed
-    schemaHash   string         // Cache key
-    mu           sync.RWMutex   // Thread-safe
-}
-
-// GetTools returns cached schema (stable ordering)
-func (r *ToolRegistry) GetTools() []openai.Tool {
-    r.mu.RLock()
-    defer r.mu.RUnlock()
-    
-    tools := make([]openai.Tool, len(r.cachedSchema))
-    copy(tools, r.cachedSchema)
-    return tools
-}
-```
-
-**Key Features:**
-- Tools sorted alphabetically by name
-- Schema computed once at registration
-- Copy returned to prevent external modification
-- Thread-safe with RWMutex
-
-### 2. Static/Dynamic Separation
-
-**File:** `internal/bot/handlers.go`
+**Files:** `internal/bot/handlers_response.go`, `internal/bot/handlers_context.go`
 
 ```go
-func (b *Bot) generateResponse(...) {
-    // Static system prompt (cacheable)
-    baseSystemPrompt := b.config.FormatSystemPrompt(...)
-    staticInstructions := "\n\nMention Guidelines:..."
-    systemPrompt := baseSystemPrompt + staticInstructions
-    
-    // Dynamic context (not cached)
-    dynamicContext := b.buildDynamicContext(
-        authorName,
-        profile,      // User traits/facts/preferences
-        memories,     // Retrieved memories
-        recentMessages,
-    )
-    
-    req := ai.ChatCompletionRequest{
-        SystemPrompt: systemPrompt,  // Cached
-        Messages:     history,
-        UserContext:  dynamicContext, // Appended to user message
-    }
+systemPrompt := b.cfg().FormatSystemPrompt(...)
+dynamicContext := b.buildDynamicContext(...)
+
+req := ai.ChatCompletionRequest{
+    SystemPrompt: systemPrompt,
+    Messages:     history,
+    UserContext:  dynamicContext,
 }
 ```
 
-### 3. Prompt Compiler
+### System Prompt Formatting
 
-**File:** `internal/prompt/compiler.go`
+**File:** `internal/config/config.go`
 
-```go
-// Compiler for safe template substitution
-type Compiler struct{}
-
-// Compile substitutes variables, preserves unknown placeholders
-func (c *Compiler) Compile(template string, vars map[string]string) string {
-    result := template
-    for key, value := range vars {
-        placeholder := "{" + key + "}"
-        result = strings.ReplaceAll(result, placeholder, value)
-    }
-    return result  // Unknown {vars} preserved
-}
-
-// Registry for named templates
-type Registry struct {
-    templates map[string]string
-}
-
-func (r *Registry) Register(id, template string)
-func (r *Registry) GetWithCompile(id string, vars map[string]string) string
-```
-
-**Usage Example:**
-
-```go
-registry := prompt.NewRegistry()
-registry.Register("greeting", "Hello {UserName}! I'm {BotName}.")
-
-result := registry.GetWithCompile("greeting", map[string]string{
-    "{UserName}": "Alice",
-    "{BotName}":  "EZyapper",
-})
-// Result: "Hello Alice! I'm EZyapper."
-```
+`FormatSystemPrompt` replaces `{BotName}`, `{AuthorName}`, `{ServerName}`, `{GuildID}`, and `{ChannelID}` in the template.
 
 ## Configuration
 
 No additional configuration required. Optimizations are automatic.
 
-### Monitoring Cache Hits
+Enable debug logs:
 
-Cache hit information is logged at DEBUG level:
-
-```bash
-# Enable debug logging in config.yaml
-logging:
-  level: "debug"
+```yaml
+operations:
+  logging:
+    level: "debug"
 ```
 
-**Example log output:**
-```
-[prompt] system prompt length: 1250 chars (static)
-[prompt] dynamic context length: 450 chars
-[cache] prompt cache hit: 850/1000 tokens (85.0%)
-```
-
-## Expected Benefits
-
-| Scenario | Token Reduction | Cost Reduction |
-|----------|----------------|----------------|
-| High-frequency users | 70-90% | 70-90% |
-| Multi-turn conversations | 60-80% | 60-80% |
-| Tool-heavy interactions | 50-70% | 50-70% |
-
-**Note:** Actual benefits depend on your LLM provider's caching implementation.
-
-## Provider-Specific Notes
-
-### OpenAI
-- Caches prompts with matching prefixes
-- 1024+ token prefixes eligible for caching
-- Cache hits reduce latency by 2-5x
-- Monitor `usage.prompt_tokens_details.cached_tokens` in API response
-
-### Anthropic Claude
-- Use `cache_control` field for explicit caching
-- Automatic caching available in newer API versions
-- Check [Anthropic prompt caching docs](https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching)
+Relevant logs:
+- `[prompt] system prompt length` (static)
+- `[prompt] dynamic context length` (per request)
+- `[prompt] full context length` (when user context is inlined)
 
 ## Best Practices
 
 1. **Keep system prompt stable** - Avoid adding timestamps or random content
 2. **Use tool descriptions consistently** - Don't change tool schemas between requests
-3. **Monitor cache hit rates** - Check logs to verify optimizations working
-4. **Consider provider limits** - Different providers have different caching rules
+3. **Keep dynamic content in `UserContext`** - Avoid putting it in the system prompt
 
 ## Troubleshooting
 
-### Low Cache Hit Rates
+If cache benefits seem low:
 
-If cache hits are lower than expected:
-
-1. Check system prompt is truly static
-2. Verify tool schemas aren't changing
-3. Ensure `UserContext` is properly separated
-4. Review provider-specific caching requirements
-
-### Debugging
-
-Enable detailed logging:
-
-```yaml
-logging:
-  level: "debug"
-  file: "bot.log"
-```
-
-Check for:
-- `[prompt] system prompt length` - Should be consistent
-- `[prompt] dynamic context length` - Should vary per request
-- `[cache] prompt cache hit` - Should show >50% for benefit
+1. Ensure the system prompt is stable across requests
+2. Verify tool schemas are registered once and not mutated
+3. Confirm dynamic context is appended via `UserContext`
 
 ## API Reference
 
@@ -225,36 +105,10 @@ type ChatCompletionRequest struct {
 }
 ```
 
-### Compiler
+### Config.FormatSystemPrompt
 
 ```go
-// Create compiler
-func NewCompiler() *Compiler
-
-// Compile template with variables
-func (c *Compiler) Compile(template string, vars map[string]string) string
-
-// Safe compile with brace escaping
-func (c *Compiler) SafeCompile(template string, vars map[string]string) string
-
-// Extract variable names from template
-func (c *Compiler) ExtractVariables(template string) []string
-```
-
-### Registry
-
-```go
-// Create registry
-func NewRegistry() *Registry
-
-// Register template
-func (r *Registry) Register(id, template string)
-
-// Get and compile template
-func (r *Registry) GetWithCompile(id string, vars map[string]string) string
-
-// List all template IDs
-func (r *Registry) List() []string
+func (c *Config) FormatSystemPrompt(authorName, serverName, guildID, channelID string) string
 ```
 
 ## See Also

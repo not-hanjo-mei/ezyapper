@@ -621,7 +621,7 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for missing vision.mode, got nil")
 	}
-	if !strings.Contains(err.Error(), "ai.vision.mode is required") {
+	if !strings.Contains(err.Error(), "core.ai.vision.mode is required") {
 		t.Errorf("Expected error about vision.mode, got: %v", err)
 	}
 }
@@ -715,7 +715,7 @@ func TestValidate_MissingVisionMaxImages(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for vision.max_images = 0, got nil")
 	}
-	if !strings.Contains(err.Error(), "ai.vision.max_images") {
+	if !strings.Contains(err.Error(), "core.ai.vision.max_images") {
 		t.Errorf("Expected error about vision.max_images, got: %v", err)
 	}
 }
@@ -810,7 +810,7 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for missing vision.description_prompt in hybrid mode, got nil")
 	}
-	if !strings.Contains(err.Error(), "ai.vision.description_prompt is required") {
+	if !strings.Contains(err.Error(), "core.ai.vision.description_prompt is required") {
 		t.Errorf("Expected error about vision.description_prompt, got: %v", err)
 	}
 }
@@ -1013,10 +1013,10 @@ func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected validation error for invalid MCP server config")
 	}
-	if !strings.Contains(err.Error(), "mcp.servers[0].name is required") {
+	if !strings.Contains(err.Error(), "operations.mcp.servers[0].name is required") {
 		t.Fatalf("Expected MCP name validation error, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "mcp.servers[0].command is required when type is stdio") {
+	if !strings.Contains(err.Error(), "operations.mcp.servers[0].command is required when type is stdio") {
 		t.Fatalf("Expected MCP stdio command validation error, got: %v", err)
 	}
 }
@@ -1079,10 +1079,10 @@ func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T
 	if err == nil {
 		t.Fatal("Expected validation to fail when memory retrieval is enabled without embedding/qdrant config")
 	}
-	if !strings.Contains(err.Error(), "embedding.model is required") {
+	if !strings.Contains(err.Error(), "memory_pipeline.embedding.model is required") {
 		t.Fatalf("Expected embedding model requirement error, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "qdrant.host is required") {
+	if !strings.Contains(err.Error(), "memory_pipeline.qdrant.host is required") {
 		t.Fatalf("Expected qdrant requirement error, got: %v", err)
 	}
 }
@@ -1115,7 +1115,7 @@ func TestValidate_MemoryEnabled_MissingRetryBaseDelay(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected validation error for missing memory.retry_base_delay_ms when memory is enabled")
 	}
-	if !strings.Contains(err.Error(), "memory.retry_base_delay_ms") {
+	if !strings.Contains(err.Error(), "memory_pipeline.memory.retry_base_delay_ms") {
 		t.Fatalf("Expected error about memory.retry_base_delay_ms, got: %v", err)
 	}
 }
@@ -1149,7 +1149,7 @@ func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected vector size relation validation error")
 	}
-	if !strings.Contains(err.Error(), "qdrant.vector_size") {
+	if !strings.Contains(err.Error(), "memory_pipeline.qdrant.vector_size") {
 		t.Fatalf("Expected vector size relation error, got: %v", err)
 	}
 }
@@ -1192,10 +1192,10 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation failure for missing decision credentials")
 	}
-	if !strings.Contains(err.Error(), "decision.api_base_url is required") {
+	if !strings.Contains(err.Error(), "core.decision.api_base_url is required") {
 		t.Fatalf("expected decision.api_base_url validation error, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "decision.api_key is required") {
+	if !strings.Contains(err.Error(), "core.decision.api_key is required") {
 		t.Fatalf("expected decision.api_key validation error, got: %v", err)
 	}
 }
@@ -1547,7 +1547,7 @@ operations:
 	if err == nil {
 		t.Fatal("expected validation error for negative plugins.default_tool_timeout_ms")
 	}
-	if !strings.Contains(err.Error(), "plugins.default_tool_timeout_ms must be non-negative") {
+	if !strings.Contains(err.Error(), "operations.plugins.default_tool_timeout_ms must be non-negative") {
 		t.Fatalf("expected default_tool_timeout_ms error, got: %v", err)
 	}
 }
@@ -1623,7 +1623,7 @@ func TestValidate_ConsolidationEnabled_RequiresOwnBotID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation failure when consolidation enabled but discord.own_bot_id is empty")
 	}
-	if !strings.Contains(err.Error(), "discord.own_bot_id") {
+	if !strings.Contains(err.Error(), "core.discord.own_bot_id") {
 		t.Fatalf("expected error about discord.own_bot_id, got: %v", err)
 	}
 }
@@ -1688,7 +1688,7 @@ func TestValidateAI_MissingHTTPTimeoutSec(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error for missing ai.http_timeout_sec")
 	}
-	if !strings.Contains(err.Error(), "ai.http_timeout_sec must be greater than 0") {
+	if !strings.Contains(err.Error(), "core.ai.http_timeout_sec must be greater than 0") {
 		t.Fatalf("expected ai.http_timeout_sec error, got: %v", err)
 	}
 }
@@ -1723,7 +1723,7 @@ func TestValidateAI_MissingMaxToolIterations(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error for missing ai.max_tool_iterations")
 	}
-	if !strings.Contains(err.Error(), "ai.max_tool_iterations must be greater than 0") {
+	if !strings.Contains(err.Error(), "core.ai.max_tool_iterations must be greater than 0") {
 		t.Fatalf("expected ai.max_tool_iterations error, got: %v", err)
 	}
 }
@@ -1757,7 +1757,7 @@ func TestValidate_VisionMaxTokensNegative(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error for negative ai.vision.max_tokens")
 	}
-	if !strings.Contains(err.Error(), "ai.vision.max_tokens must be greater than 0") {
+	if !strings.Contains(err.Error(), "core.ai.vision.max_tokens must be greater than 0") {
 		t.Fatalf("expected ai.vision.max_tokens error, got: %v", err)
 	}
 }
@@ -2069,7 +2069,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsNegative(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error for negative plugins.default_tool_timeout_ms")
 	}
-	if !strings.Contains(err.Error(), "plugins.default_tool_timeout_ms must be non-negative") {
+	if !strings.Contains(err.Error(), "operations.plugins.default_tool_timeout_ms must be non-negative") {
 		t.Fatalf("expected default_tool_timeout_ms error, got: %v", err)
 	}
 }

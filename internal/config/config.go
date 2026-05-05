@@ -379,76 +379,76 @@ func validateCore(cfg *Config, errs *[]string) {
 }
 
 func validateAI(cfg *Config, errs *[]string) {
-	requireNonEmpty(cfg.AI.APIBaseURL, "ai.api_base_url", errs)
-	requireNonEmpty(cfg.AI.APIKey, "ai.api_key", errs)
-	requireNonEmpty(cfg.AI.Model, "ai.model", errs)
-	requirePositive(cfg.AI.MaxTokens, "ai.max_tokens", errs)
+	requireNonEmpty(cfg.AI.APIBaseURL, "core.ai.api_base_url", errs)
+	requireNonEmpty(cfg.AI.APIKey, "core.ai.api_key", errs)
+	requireNonEmpty(cfg.AI.Model, "core.ai.model", errs)
+	requirePositive(cfg.AI.MaxTokens, "core.ai.max_tokens", errs)
 	if cfg.AI.Temperature < 0 || cfg.AI.Temperature > 2 {
-		*errs = append(*errs, "ai.temperature must be between 0 and 2")
+		*errs = append(*errs, "core.ai.temperature must be between 0 and 2")
 	}
-	requireNonEmpty(cfg.AI.SystemPrompt, "ai.system_prompt", errs)
-	requirePositive(cfg.AI.RetryCount, "ai.retry_count", errs)
-	requirePositive(cfg.AI.Timeout, "ai.timeout", errs)
-	requirePositive(cfg.AI.HTTPTimeoutSec, "ai.http_timeout_sec", errs)
-	requirePositive(cfg.AI.MaxToolIterations, "ai.max_tool_iterations", errs)
-	requirePositive(cfg.AI.MaxImageBytes, "ai.max_image_bytes", errs)
-	requireNonEmpty(cfg.AI.UserAgent, "ai.user_agent", errs)
+	requireNonEmpty(cfg.AI.SystemPrompt, "core.ai.system_prompt", errs)
+	requirePositive(cfg.AI.RetryCount, "core.ai.retry_count", errs)
+	requirePositive(cfg.AI.Timeout, "core.ai.timeout", errs)
+	requirePositive(cfg.AI.HTTPTimeoutSec, "core.ai.http_timeout_sec", errs)
+	requirePositive(cfg.AI.MaxToolIterations, "core.ai.max_tool_iterations", errs)
+	requirePositive(cfg.AI.MaxImageBytes, "core.ai.max_image_bytes", errs)
+	requireNonEmpty(cfg.AI.UserAgent, "core.ai.user_agent", errs)
 	if !cfg.AI.VisionBase64 {
-		fmt.Fprintf(os.Stderr, "WARNING: ai.vision_base64 is false — images will be sent as URLs (may not work with local endpoints)\n")
+		fmt.Fprintf(os.Stderr, "WARNING: core.ai.vision_base64 is false — images will be sent as URLs (may not work with local endpoints)\n")
 	}
 }
 
 func validateVision(cfg *Config, errs *[]string) {
-	requireNonEmpty(string(cfg.AI.Vision.Mode), "ai.vision.mode", errs)
+	requireNonEmpty(string(cfg.AI.Vision.Mode), "core.ai.vision.mode", errs)
 	validVisionModes := map[VisionMode]bool{
 		VisionModeTextOnly:   true,
 		VisionModeHybrid:     true,
 		VisionModeMultimodal: true,
 	}
 	if !validVisionModes[cfg.AI.Vision.Mode] {
-		*errs = append(*errs, "ai.vision.mode must be one of: text_only, hybrid, multimodal")
+		*errs = append(*errs, "core.ai.vision.mode must be one of: text_only, hybrid, multimodal")
 	}
 	if cfg.AI.Vision.Mode != VisionModeTextOnly && cfg.AI.VisionModel == "" {
-		*errs = append(*errs, "ai.vision_model is required when vision.mode is not text_only")
+		*errs = append(*errs, "core.ai.vision_model is required when vision.mode is not text_only")
 	}
 	if cfg.AI.Vision.Mode != VisionModeTextOnly && cfg.AI.Vision.MaxImages <= 0 {
-		*errs = append(*errs, "ai.vision.max_images must be greater than 0")
+		*errs = append(*errs, "core.ai.vision.max_images must be greater than 0")
 	}
 	if cfg.AI.Vision.Mode == VisionModeHybrid && cfg.AI.Vision.DescriptionPrompt == "" {
-		*errs = append(*errs, "ai.vision.description_prompt is required when vision.mode is hybrid")
+		*errs = append(*errs, "core.ai.vision.description_prompt is required when vision.mode is hybrid")
 	}
 	if cfg.AI.Vision.MaxTokens != 0 {
-		requirePositive(cfg.AI.Vision.MaxTokens, "ai.vision.max_tokens", errs)
+		requirePositive(cfg.AI.Vision.MaxTokens, "core.ai.vision.max_tokens", errs)
 	}
 	if cfg.AI.Vision.Mode != VisionModeTextOnly && cfg.AI.Vision.MaxTokens == 0 {
-		*errs = append(*errs, "ai.vision.max_tokens is required when vision.mode is not text_only")
+		*errs = append(*errs, "core.ai.vision.max_tokens is required when vision.mode is not text_only")
 	}
 	if cfg.AI.Vision.Mode != VisionModeTextOnly {
 		if cfg.AI.Vision.APIBaseURL == "" && cfg.AI.APIBaseURL == "" {
-			*errs = append(*errs, "ai.vision.api_base_url is required when vision.mode is not text_only (or set ai.api_base_url)")
+			*errs = append(*errs, "core.ai.vision.api_base_url is required when vision.mode is not text_only (or set core.ai.api_base_url)")
 		}
 		if cfg.AI.Vision.APIKey == "" && cfg.AI.APIKey == "" {
-			*errs = append(*errs, "ai.vision.api_key is required when vision.mode is not text_only (or set ai.api_key)")
+			*errs = append(*errs, "core.ai.vision.api_key is required when vision.mode is not text_only (or set core.ai.api_key)")
 		}
-		requirePositive(cfg.AI.Vision.RetryCount, "ai.vision.retry_count", errs)
-		requirePositive(cfg.AI.Vision.Timeout, "ai.vision.timeout", errs)
+		requirePositive(cfg.AI.Vision.RetryCount, "core.ai.vision.retry_count", errs)
+		requirePositive(cfg.AI.Vision.Timeout, "core.ai.vision.timeout", errs)
 	}
 }
 
 func validateDiscord(cfg *Config, errs *[]string) {
-	requireNonEmpty(cfg.Discord.Token, "discord.token", errs)
-	requireNonEmpty(cfg.Discord.BotName, "discord.bot_name", errs)
+	requireNonEmpty(cfg.Discord.Token, "core.discord.token", errs)
+	requireNonEmpty(cfg.Discord.BotName, "core.discord.bot_name", errs)
 	if cfg.Discord.ReplyPercentage < 0 || cfg.Discord.ReplyPercentage > 1 {
-		*errs = append(*errs, "discord.reply_percentage must be between 0 and 1")
+		*errs = append(*errs, "core.discord.reply_percentage must be between 0 and 1")
 	}
-	requirePositive(cfg.Discord.ConsolidationTimeoutSec, "discord.consolidation_timeout_sec", errs)
-	requirePositive(cfg.Discord.TypingIndicatorIntervalSec, "discord.typing_indicator_interval_sec", errs)
-	requirePositive(cfg.Discord.LongResponseDelayMs, "discord.long_response_delay_ms", errs)
-	requirePositive(cfg.Discord.ReplyTruncationLength, "discord.reply_truncation_length", errs)
-	requirePositive(cfg.Discord.ImageCacheTTLMin, "discord.image_cache_ttl_min", errs)
-	requirePositive(cfg.Discord.ImageCacheMaxEntries, "discord.image_cache_max_entries", errs)
+	requirePositive(cfg.Discord.ConsolidationTimeoutSec, "core.discord.consolidation_timeout_sec", errs)
+	requirePositive(cfg.Discord.TypingIndicatorIntervalSec, "core.discord.typing_indicator_interval_sec", errs)
+	requirePositive(cfg.Discord.LongResponseDelayMs, "core.discord.long_response_delay_ms", errs)
+	requirePositive(cfg.Discord.ReplyTruncationLength, "core.discord.reply_truncation_length", errs)
+	requirePositive(cfg.Discord.ImageCacheTTLMin, "core.discord.image_cache_ttl_min", errs)
+	requirePositive(cfg.Discord.ImageCacheMaxEntries, "core.discord.image_cache_max_entries", errs)
 	if cfg.Discord.ReplyToBots {
-		fmt.Fprintf(os.Stderr, "WARNING: discord.reply_to_bots is true — bot will respond to other bots\n")
+		fmt.Fprintf(os.Stderr, "WARNING: core.discord.reply_to_bots is true — bot will respond to other bots\n")
 	}
 }
 
@@ -457,47 +457,47 @@ func validateQdrant(cfg *Config, errs *[]string) {
 	if !memoryEnabled {
 		return
 	}
-	requireNonEmpty(cfg.Embedding.Model, "embedding.model", errs)
+	requireNonEmpty(cfg.Embedding.Model, "memory_pipeline.embedding.model", errs)
 	if cfg.Embedding.RetryCount < 0 {
-		*errs = append(*errs, "embedding.retry_count must be greater than or equal to 0")
+		*errs = append(*errs, "memory_pipeline.embedding.retry_count must be greater than or equal to 0")
 	}
 	requirePositive(cfg.Embedding.Timeout, "memory_pipeline.embedding.timeout", errs)
-	requireNonEmpty(cfg.Qdrant.Host, "qdrant.host", errs)
+	requireNonEmpty(cfg.Qdrant.Host, "memory_pipeline.qdrant.host", errs)
 	if cfg.Qdrant.Port <= 0 {
-		*errs = append(*errs, "qdrant.port must be greater than 0 when memory retrieval or consolidation is enabled")
+		*errs = append(*errs, "memory_pipeline.qdrant.port must be greater than 0 when memory retrieval or consolidation is enabled")
 	}
 	if cfg.Qdrant.VectorSize <= 0 {
-		*errs = append(*errs, "qdrant.vector_size must be greater than 0 when memory retrieval or consolidation is enabled")
+		*errs = append(*errs, "memory_pipeline.qdrant.vector_size must be greater than 0 when memory retrieval or consolidation is enabled")
 	}
 	expectedVectorSize := expectedEmbeddingVectorSize(cfg.Embedding.Model)
 	if expectedVectorSize > 0 && cfg.Qdrant.VectorSize > 0 && cfg.Qdrant.VectorSize != expectedVectorSize {
-		*errs = append(*errs, fmt.Sprintf("qdrant.vector_size (%d) must match embedding.model %q size (%d)", cfg.Qdrant.VectorSize, cfg.Embedding.Model, expectedVectorSize))
+		*errs = append(*errs, fmt.Sprintf("memory_pipeline.qdrant.vector_size (%d) must match memory_pipeline.embedding.model %q size (%d)", cfg.Qdrant.VectorSize, cfg.Embedding.Model, expectedVectorSize))
 	}
-	requirePositive(cfg.Memory.RetryBaseDelayMs, "memory.retry_base_delay_ms", errs)
-	requirePositive(cfg.Memory.RetryMaxDelayMs, "memory.retry_max_delay_ms", errs)
-	requirePositive(cfg.Memory.MaxRetries, "memory.max_retries", errs)
+	requirePositive(cfg.Memory.RetryBaseDelayMs, "memory_pipeline.memory.retry_base_delay_ms", errs)
+	requirePositive(cfg.Memory.RetryMaxDelayMs, "memory_pipeline.memory.retry_max_delay_ms", errs)
+	requirePositive(cfg.Memory.MaxRetries, "memory_pipeline.memory.max_retries", errs)
 }
 
 func validateMemory(cfg *Config, errs *[]string) {
-	requirePositive(cfg.Memory.ConsolidationInterval, "memory.consolidation_interval", errs)
+	requirePositive(cfg.Memory.ConsolidationInterval, "memory_pipeline.memory.consolidation_interval", errs)
 	if cfg.Memory.MaxBufferSize < 0 {
-		*errs = append(*errs, "memory.max_buffer_size must be greater than or equal to 0")
+		*errs = append(*errs, "memory_pipeline.memory.max_buffer_size must be greater than or equal to 0")
 	}
-	requirePositive(cfg.Memory.ShortTermLimit, "memory.short_term_limit", errs)
-	requirePositive(cfg.Memory.MaxPaginatedLimit, "memory.max_paginated_limit", errs)
+	requirePositive(cfg.Memory.ShortTermLimit, "memory_pipeline.memory.short_term_limit", errs)
+	requirePositive(cfg.Memory.MaxPaginatedLimit, "memory_pipeline.memory.max_paginated_limit", errs)
 	if cfg.Memory.Retrieval.TopK < 0 {
-		*errs = append(*errs, "memory.retrieval.top_k must be greater than or equal to 0")
+		*errs = append(*errs, "memory_pipeline.memory.retrieval.top_k must be greater than or equal to 0")
 	}
 	if cfg.Memory.Retrieval.MinScore < 0 || cfg.Memory.Retrieval.MinScore > 1 {
-		*errs = append(*errs, "memory.retrieval.min_score must be between 0 and 1")
+		*errs = append(*errs, "memory_pipeline.memory.retrieval.min_score must be between 0 and 1")
 	}
-	requirePositive(cfg.Memory.Consolidation.MemorySearchLimit, "memory.consolidation.memory_search_limit", errs)
+	requirePositive(cfg.Memory.Consolidation.MemorySearchLimit, "memory_pipeline.memory.consolidation.memory_search_limit", errs)
 }
 
 func validateRateLimit(cfg *Config, errs *[]string) {
-	requirePositive(cfg.Discord.CooldownSeconds, "discord.cooldown_seconds", errs)
-	requirePositive(cfg.Discord.MaxResponsesPerMin, "discord.max_responses_per_minute", errs)
-	requirePositive(cfg.Discord.RateLimit.ResetPeriodSeconds, "discord.rate_limit.reset_period_seconds", errs)
+	requirePositive(cfg.Discord.CooldownSeconds, "core.discord.cooldown_seconds", errs)
+	requirePositive(cfg.Discord.MaxResponsesPerMin, "core.discord.max_responses_per_minute", errs)
+	requirePositive(cfg.Discord.RateLimit.ResetPeriodSeconds, "core.discord.rate_limit.reset_period_seconds", errs)
 }
 
 func validateWeb(cfg *Config, errs *[]string) {
@@ -505,41 +505,41 @@ func validateWeb(cfg *Config, errs *[]string) {
 		return
 	}
 	if cfg.Web.Port <= 0 {
-		*errs = append(*errs, "web.port must be greater than 0 when web is enabled")
+		*errs = append(*errs, "operations.web.port must be greater than 0 when web is enabled")
 	}
 	if cfg.Web.Username == "" {
-		*errs = append(*errs, "web.username is required when web is enabled")
+		*errs = append(*errs, "operations.web.username is required when web is enabled")
 	}
 	if cfg.Web.Password == "" {
-		*errs = append(*errs, "web.password is required when web is enabled")
+		*errs = append(*errs, "operations.web.password is required when web is enabled")
 	}
-	requirePositive(cfg.Web.MemoriesPageLimit, "web.memories_page_limit", errs)
-	requirePositive(cfg.Web.ContentTruncationLength, "web.content_truncation_length", errs)
-	requirePositive(cfg.Web.SessionTTLMin, "web.session_ttl_min", errs)
-	requirePositive(cfg.Web.SessionCleanupIntervalMin, "web.session_cleanup_interval_min", errs)
-	requirePositive(cfg.Web.StatsQueryTimeoutSec, "web.stats_query_timeout_sec", errs)
-	requirePositive(cfg.Web.LogDefaultLines, "web.log_default_lines", errs)
-	requirePositive(cfg.Web.LogMaxLines, "web.log_max_lines", errs)
-	requirePositive(cfg.Web.LogMaxReadBytes, "web.log_max_read_bytes", errs)
+	requirePositive(cfg.Web.MemoriesPageLimit, "operations.web.memories_page_limit", errs)
+	requirePositive(cfg.Web.ContentTruncationLength, "operations.web.content_truncation_length", errs)
+	requirePositive(cfg.Web.SessionTTLMin, "operations.web.session_ttl_min", errs)
+	requirePositive(cfg.Web.SessionCleanupIntervalMin, "operations.web.session_cleanup_interval_min", errs)
+	requirePositive(cfg.Web.StatsQueryTimeoutSec, "operations.web.stats_query_timeout_sec", errs)
+	requirePositive(cfg.Web.LogDefaultLines, "operations.web.log_default_lines", errs)
+	requirePositive(cfg.Web.LogMaxLines, "operations.web.log_max_lines", errs)
+	requirePositive(cfg.Web.LogMaxReadBytes, "operations.web.log_max_read_bytes", errs)
 }
 
 func validatePlugins(cfg *Config, errs *[]string) {
 	if cfg.Plugins.DefaultToolTimeoutMs < 0 {
-		*errs = append(*errs, "plugins.default_tool_timeout_ms must be non-negative")
+		*errs = append(*errs, "operations.plugins.default_tool_timeout_ms must be non-negative")
 	}
 	if !cfg.Plugins.Enabled {
 		return
 	}
-	requireNonEmpty(cfg.Plugins.PluginsDir, "plugins.plugins_dir", errs)
+	requireNonEmpty(cfg.Plugins.PluginsDir, "operations.plugins.plugins_dir", errs)
 	if cfg.Plugins.DefaultToolTimeoutMs == 0 {
-		fmt.Fprintf(os.Stderr, "[config][WARNING] plugins.default_tool_timeout_ms is 0 — tool execution will fail unless per-tool timeouts are set in plugin config\n")
+		fmt.Fprintf(os.Stderr, "[config][WARNING] operations.plugins.default_tool_timeout_ms is 0 — tool execution will fail unless per-tool timeouts are set in plugin config\n")
 	}
-	requirePositive(cfg.Plugins.StartupTimeoutSec, "plugins.startup_timeout_sec", errs)
-	requirePositive(cfg.Plugins.RPCTimeoutSec, "plugins.rpc_timeout_sec", errs)
-	requirePositive(cfg.Plugins.BeforeSendTimeoutSec, "plugins.before_send_timeout_sec", errs)
-	requirePositive(cfg.Plugins.CommandTimeoutSec, "plugins.command_timeout_sec", errs)
-	requirePositive(cfg.Plugins.ShutdownTimeoutSec, "plugins.shutdown_timeout_sec", errs)
-	requirePositive(cfg.Plugins.DisableTimeoutSec, "plugins.disable_timeout_sec", errs)
+	requirePositive(cfg.Plugins.StartupTimeoutSec, "operations.plugins.startup_timeout_sec", errs)
+	requirePositive(cfg.Plugins.RPCTimeoutSec, "operations.plugins.rpc_timeout_sec", errs)
+	requirePositive(cfg.Plugins.BeforeSendTimeoutSec, "operations.plugins.before_send_timeout_sec", errs)
+	requirePositive(cfg.Plugins.CommandTimeoutSec, "operations.plugins.command_timeout_sec", errs)
+	requirePositive(cfg.Plugins.ShutdownTimeoutSec, "operations.plugins.shutdown_timeout_sec", errs)
+	requirePositive(cfg.Plugins.DisableTimeoutSec, "operations.plugins.disable_timeout_sec", errs)
 }
 
 func validateBlacklist(cfg *Config, errs *[]string) {
@@ -547,14 +547,14 @@ func validateBlacklist(cfg *Config, errs *[]string) {
 }
 
 func validateOperations(cfg *Config, errs *[]string) {
-	requireNonEmpty(cfg.Logging.Level, "logging.level", errs)
+	requireNonEmpty(cfg.Logging.Level, "operations.logging.level", errs)
 	if _, err := zapcore.ParseLevel(cfg.Logging.Level); err != nil && cfg.Logging.Level != "" {
-		*errs = append(*errs, fmt.Sprintf("logging.level %q is invalid: %v", cfg.Logging.Level, err))
+		*errs = append(*errs, fmt.Sprintf("operations.logging.level %q is invalid: %v", cfg.Logging.Level, err))
 	}
-	requireNonEmpty(cfg.Logging.File, "logging.file", errs)
-	requirePositive(cfg.Logging.MaxSize, "logging.max_size", errs)
-	requirePositive(cfg.Logging.MaxBackups, "logging.max_backups", errs)
-	requirePositive(cfg.Logging.MaxAge, "logging.max_age", errs)
+	requireNonEmpty(cfg.Logging.File, "operations.logging.file", errs)
+	requirePositive(cfg.Logging.MaxSize, "operations.logging.max_size", errs)
+	requirePositive(cfg.Logging.MaxBackups, "operations.logging.max_backups", errs)
+	requirePositive(cfg.Logging.MaxAge, "operations.logging.max_age", errs)
 	requirePositive(cfg.Operations.ShutdownTimeoutSec, "operations.runtime.shutdown_timeout_sec", errs)
 	requirePositive(cfg.Operations.CleanupIntervalMin, "operations.runtime.cleanup_interval_min", errs)
 }
@@ -565,13 +565,13 @@ func validatePrompt(cfg *Config, errs *[]string) {
 
 func validateAccess(cfg *Config, errs *[]string) {
 	if len(cfg.Blacklist.Users) > 0 && len(cfg.Whitelist.Users) > 0 {
-		*errs = append(*errs, "cannot have both blacklist.users and whitelist.users enabled")
+		*errs = append(*errs, "cannot have both access_control.blacklist.users and access_control.whitelist.users enabled")
 	}
 	if len(cfg.Blacklist.Guilds) > 0 && len(cfg.Whitelist.Guilds) > 0 {
-		*errs = append(*errs, "cannot have both blacklist.guilds and whitelist.guilds enabled")
+		*errs = append(*errs, "cannot have both access_control.blacklist.guilds and access_control.whitelist.guilds enabled")
 	}
 	if len(cfg.Blacklist.Channels) > 0 && len(cfg.Whitelist.Channels) > 0 {
-		*errs = append(*errs, "cannot have both blacklist.channels and whitelist.channels enabled")
+		*errs = append(*errs, "cannot have both access_control.blacklist.channels and access_control.whitelist.channels enabled")
 	}
 }
 
@@ -580,19 +580,19 @@ func validateConsolidation(cfg *Config, errs *[]string) {
 		return
 	}
 	if cfg.Discord.OwnBotID == "" {
-		*errs = append(*errs, "discord.own_bot_id is required when consolidation is enabled")
+		*errs = append(*errs, "core.discord.own_bot_id is required when consolidation is enabled")
 	}
-	requireNonEmpty(cfg.Memory.Consolidation.Model, "memory.consolidation.model", errs)
-	requireNonEmpty(cfg.Memory.Consolidation.APIBaseURL, "memory.consolidation.api_base_url", errs)
-	requireNonEmpty(cfg.Memory.Consolidation.APIKey, "memory.consolidation.api_key", errs)
-	requirePositive(cfg.Memory.Consolidation.MaxTokens, "memory.consolidation.max_tokens", errs)
+	requireNonEmpty(cfg.Memory.Consolidation.Model, "memory_pipeline.memory.consolidation.model", errs)
+	requireNonEmpty(cfg.Memory.Consolidation.APIBaseURL, "memory_pipeline.memory.consolidation.api_base_url", errs)
+	requireNonEmpty(cfg.Memory.Consolidation.APIKey, "memory_pipeline.memory.consolidation.api_key", errs)
+	requirePositive(cfg.Memory.Consolidation.MaxTokens, "memory_pipeline.memory.consolidation.max_tokens", errs)
 	if cfg.Memory.Consolidation.Temperature < 0 || cfg.Memory.Consolidation.Temperature > 2 {
-		*errs = append(*errs, "memory.consolidation.temperature must be between 0 and 2")
+		*errs = append(*errs, "memory_pipeline.memory.consolidation.temperature must be between 0 and 2")
 	}
-	requirePositive(cfg.Memory.Consolidation.RetryCount, "memory.consolidation.retry_count", errs)
-	requirePositive(cfg.Memory.Consolidation.Timeout, "memory.consolidation.timeout", errs)
+	requirePositive(cfg.Memory.Consolidation.RetryCount, "memory_pipeline.memory.consolidation.retry_count", errs)
+	requirePositive(cfg.Memory.Consolidation.Timeout, "memory_pipeline.memory.consolidation.timeout", errs)
 	if cfg.Memory.Consolidation.SystemPrompt == "" {
-		*errs = append(*errs, "memory.consolidation.system_prompt is required when consolidation is enabled")
+		*errs = append(*errs, "memory_pipeline.memory.consolidation.system_prompt is required when consolidation is enabled")
 	}
 }
 
@@ -600,23 +600,23 @@ func validateDecision(cfg *Config, errs *[]string) {
 	if !cfg.Decision.Enabled {
 		return
 	}
-	requireNonEmpty(cfg.Decision.Model, "decision.model", errs)
-	requireNonEmpty(cfg.Decision.APIBaseURL, "decision.api_base_url", errs)
-	requireNonEmpty(cfg.Decision.APIKey, "decision.api_key", errs)
-	requireNonEmpty(cfg.Decision.SystemPrompt, "decision.system_prompt", errs)
+	requireNonEmpty(cfg.Decision.Model, "core.decision.model", errs)
+	requireNonEmpty(cfg.Decision.APIBaseURL, "core.decision.api_base_url", errs)
+	requireNonEmpty(cfg.Decision.APIKey, "core.decision.api_key", errs)
+	requireNonEmpty(cfg.Decision.SystemPrompt, "core.decision.system_prompt", errs)
 	if cfg.Decision.MaxTokens <= 0 {
-		*errs = append(*errs, "decision.max_tokens must be greater than 0 when decision is enabled")
+		*errs = append(*errs, "core.decision.max_tokens must be greater than 0 when decision is enabled")
 	}
 	if cfg.Decision.Temperature < 0 || cfg.Decision.Temperature > 2 {
-		*errs = append(*errs, "decision.temperature must be between 0 and 2")
+		*errs = append(*errs, "core.decision.temperature must be between 0 and 2")
 	}
 	if cfg.Decision.Timeout <= 0 {
-		*errs = append(*errs, "decision.timeout must be greater than 0 when decision is enabled")
+		*errs = append(*errs, "core.decision.timeout must be greater than 0 when decision is enabled")
 	}
 	if cfg.Decision.RetryCount < 0 {
-		*errs = append(*errs, "decision.retry_count must be greater than or equal to 0")
+		*errs = append(*errs, "core.decision.retry_count must be greater than or equal to 0")
 	}
-	requirePositive(cfg.Decision.HTTPTimeoutSec, "decision.http_timeout_sec", errs)
+	requirePositive(cfg.Decision.HTTPTimeoutSec, "core.decision.http_timeout_sec", errs)
 }
 
 func validateSystem(cfg *Config, errs *[]string) {
@@ -624,11 +624,11 @@ func validateSystem(cfg *Config, errs *[]string) {
 		return
 	}
 	if len(cfg.MCP.Servers) == 0 {
-		*errs = append(*errs, "mcp.servers must contain at least one server when mcp is enabled")
+		*errs = append(*errs, "operations.mcp.servers must contain at least one server when mcp is enabled")
 		return
 	}
 	for i, server := range cfg.MCP.Servers {
-		prefix := fmt.Sprintf("mcp.servers[%d]", i)
+		prefix := fmt.Sprintf("operations.mcp.servers[%d]", i)
 		requireNonEmpty(server.Name, prefix+".name", errs)
 		if server.Type == "" {
 			*errs = append(*errs, prefix+".type is required")

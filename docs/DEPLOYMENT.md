@@ -554,14 +554,16 @@ docker logs qdrant
 
 1. Reduce context window:
 ```yaml
-memory:
-  short_term_limit: 10
+memory_pipeline:
+  memory:
+    short_term_limit: 10
 ```
 
 2. Lower max tokens:
 ```yaml
-ai:
-  max_tokens: 512
+core:
+  ai:
+    max_tokens: 512
 ```
 
 3. Check Qdrant memory usage:
@@ -594,7 +596,7 @@ curl -X DELETE https://your-cluster.qdrant.io:6333/collections/memories \
 The existing collection expects the old dimension and rejects new vectors.
 
 **Prevention:**
-- Set correct `qdrant.vector_size` before first run
+- Set correct `memory_pipeline.qdrant.vector_size` before first run
 - Or always delete collections when switching embedding models
 - Vector sizes by model:
   - OpenAI text-embedding-3-small: 1536
