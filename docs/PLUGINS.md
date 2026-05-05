@@ -16,7 +16,7 @@ EZyapper does not use Go native shared-library plugins.
 
 ## Discovery and Loading
 
-- Bot scans entries under `plugins.plugins_dir`.
+- Bot scans entries under `operations.plugins.plugins_dir`.
 - If an entry is a directory:
   - If `plugin.json` resolves to `runtime=command`, it is loaded as command runtime.
   - Otherwise the first executable file in that directory (sorted by filename) is loaded as persistent runtime.

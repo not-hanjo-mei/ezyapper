@@ -1,34 +1,57 @@
 # Architecture Overview
 
-EZyapper is designed with a modular, layered architecture optimized for high concurrency and extensibility. It uses **Qdrant vector database** for long-term memory storage, making it completely stateless.
+EZyapper is designed with a modular, layered architecture optimized for high concurrency and extensibility. It uses the **Qdrant vector database** for long-term memory storage, keeping runtime state minimal outside caches.
 
 ## System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────�?�?                        Discord Gateway                          �?└─────────────────────────────────────────────────────────────────�?                                 �?                                 �?┌─────────────────────────────────────────────────────────────────�?�?                       Bot Layer (internal/bot)                  �?�? ┌──────────────�? ┌──────────────�? ┌──────────────────────�? �?�? �?  Session    �? �?  Handlers   �? �?  Rate Limiter       �? �?�? �? Management  �? �? (Events)    �? �?  & Cooldown         �? �?�? └──────────────�? └──────────────�? └──────────────────────�? �?└─────────────────────────────────────────────────────────────────�?                                 �?                     ┌───────────┼───────────�?                     �?          �?          �?┌────────────────�?┌────────────────�?┌────────────────────────�?�? AI Layer      �?�? Memory Layer  �?�? Plugin Layer          �?�?(internal/ai)  �?�?(internal/memory) �?�?(internal/plugin)   �?�?               �?�?               �?�?                       �?�?┌────────────�?�?�?┌────────────�?�?�?┌────────────────────�?�?�?�? Client    �?�?�?�? Service   �?�?�?�? Plugin Registry   �?�?�?�? (OpenAI)  �?�?�?�? Interface �?�?�?�? & Manager         �?�?�?└────────────�?�?�?└────────────�?�?�?└────────────────────�?�?�?┌────────────�?�?�?┌────────────�?�?�?┌────────────────────�?�?�?�? Tools     �?�?�?�? Qdrant    �?�?�?�? Built-in Plugins  �?�?�?�? (MCP)     �?�?�?�? Client    �?�?�?�? - AntiSpam        �?�?�?└────────────�?�?�?└────────────�?�?�?└────────────────────�?�?└────────────────�?└────────────────�?└────────────────────────�?                     �?                     �?┌─────────────────────────────────────────────────────────────────�?�?                   Qdrant Vector Database                        �?�? ┌──────────────�? ┌──────────────�? ┌──────────────────────�? �?�? �? Memories    �? �?  Profiles   �? �?  Collections        �? �?�? �? Collection  �? �?  Collection �? �?  (Vector Search)    �? �?�? └──────────────�? └──────────────�? └──────────────────────�? �?└─────────────────────────────────────────────────────────────────�?                                 �?                                 �?┌─────────────────────────────────────────────────────────────────�?�?                     WebUI Layer (internal/web)                  �?�? ┌──────────────�? ┌──────────────�? ┌──────────────────────�? �?�? �? Gin Server  �? �? REST API    �? �? Static Files        �? �?�? �?             �? �? Endpoints   �? �? (Dashboard)         �? �?�? └──────────────�? └──────────────�? └──────────────────────�? �?└─────────────────────────────────────────────────────────────────�?```
+Discord Gateway
+      |
+Bot Layer (internal/bot)
+      |-> AI Layer (internal/ai) -> LLM providers
+      |-> Memory Layer (internal/memory) -> Qdrant Vector DB
+      |-> Plugin Layer (internal/plugin)
+WebUI (internal/web) -> HTTP API + dashboard
+```
 
 ## Core Components
 
 ### 1. Configuration Layer (`internal/config`)
 
-Uses Viper for flexible configuration management:
-- YAML configuration files
-- Environment variable overrides (prefix: `EZYAPPER_`)
-- Validation at startup
+Uses Viper for configuration management:
+- YAML configuration files (`schema_version: 3`)
+- Environment variable overrides (prefix: `EZYAPPER_`, path uppercased with `_`)
+- Validation at startup (no defaults)
 - No hot-reload (requires restart)
 
-```go
-type Config struct {
-    Discord   DiscordConfig
-    AI        AIConfig
-    Memory    MemoryConfig
-    Web       WebConfig
-    Qdrant    QdrantConfig
-    Blacklist BlacklistConfig
-    Plugins   PluginsConfig
-    MCP       MCPConfig
-}
+Config file shape:
+
+```yaml
+schema_version: 3
+
+core:
+  discord: {}
+  ai: {}
+  decision: {}
+
+memory_pipeline:
+  embedding: {}
+  memory: {}
+  qdrant: {}
+
+access_control:
+  blacklist: {}
+  whitelist: {}
+
+operations:
+  web: {}
+  logging: {}
+  plugins: {}
+  mcp: {}
+  runtime: {}
 ```
+
+Runtime config is flattened into `Config` fields (Discord, AI, Embedding, Memory, Qdrant, Web, Logging, Plugins, MCP, Decision, Operations, Blacklist, Whitelist).
 
 ### 2. Logging Layer (`internal/logger`)
 
@@ -54,33 +77,46 @@ Uses Zap for high-performance structured logging:
 - Point upserts and deletions
 
 #### Models (`models.go`)
-- User profiles are **auto-created** on first message/access if not present in Qdrant.
+- Profiles are created during consolidation when missing, then upserted to Qdrant.
 
-**Memory Struct:**
+**Record Struct:**
 ```go
-type Memory struct {
-    ID          string
-    UserID      string
-    MemoryType  MemoryType  // summary, fact, episode
-    Content     string
-    Summary     string
-    Embedding   []float32   // 1536 dimensions
-    Keywords    []string
-    Confidence  float64
-    CreatedAt   time.Time
+type Record struct {
+  ID           string
+  UserID       string
+  GuildID      string
+  ChannelID    string
+  MemoryType   Type       // summary, fact, episode
+  Content      string
+  Summary      string
+  Embedding    []float32  // Vector size matches embedding model
+  Keywords     []string
+  Metadata     map[string]any
+  Confidence   float64
+  MessageRange [2]int
+  CreatedAt    time.Time
+  UpdatedAt    time.Time
+  AccessCount  int
 }
 ```
 
 **Profile Struct:**
 ```go
 type Profile struct {
-    UserID       string
-    Traits       []string
-    Facts        map[string]string
-    Preferences  map[string]string
-    Interests    []string
-    MessageCount int
-    MemoryCount  int
+  UserID             string
+  DisplayName        string
+  Traits             []string
+  Facts              map[string]string
+  Preferences        map[string]string
+  Interests          []string
+  LastSummary        string
+  PersonalitySummary string
+  MessageCount       int
+  MemoryCount        int
+  FirstSeenAt        time.Time
+  LastActiveAt       time.Time
+  LastConsolidatedAt time.Time
+  Embedding          []float32
 }
 ```
 
@@ -97,8 +133,8 @@ type Profile struct {
 
 #### Embedder (`embedder.go`)
 - Generates vector embeddings via AI
-- Uses text-embedding-3-small model
-- 1536-dimensional vectors
+- Uses the embedding model from config
+- Vector size must match `memory_pipeline.qdrant.vector_size`
 
 ### 4. AI Layer (`internal/ai`)
 
@@ -111,7 +147,7 @@ type Profile struct {
 - **NEW**: Embedding generation
 
 #### Tools (`tools.go`)
-MCP (Model Context Protocol) tools for Discord operations:
+Built-in Discord tools and tool registry:
 - Server info retrieval
 - Channel management
 - User lookups
@@ -120,12 +156,14 @@ MCP (Model Context Protocol) tools for Discord operations:
 - **Tool schema caching with stable alphabetical ordering**
 - **Schema hash generation for cache key tracking**
 
-#### Prompt Optimization (`internal/prompt`)
-Template compilation and caching utilities:
-- **Compiler**: Safe variable substitution preserving unknown placeholders
-- **Registry**: Named template management for different scenarios
-- **Static/Dynamic Separation**: Maximizes LLM provider prompt caching
-- **Multi-stage Compilation**: Supports partial variable substitution
+#### MCP Client (`mcp/mcp.go`)
+- Connects to external MCP servers configured under `operations.mcp`
+- Discovers tools and executes remote calls
+
+#### Prompt Formatting and Cache Hygiene
+- System prompt formatting in `config.FormatSystemPrompt`
+- Dynamic context assembly in `internal/bot/handlers_context.go`
+- User context appended to the user message to keep the system prompt stable
 
 ### 5. Bot Layer (`internal/bot`)
 
@@ -186,11 +224,11 @@ Reference implementations are available under `examples/plugins/`.
 
 ### 7. WebUI Layer (`internal/web`)
 
-Gin-based web server:
-- Basic authentication
-- RESTful API endpoints
+net/http-based server:
+- Basic authentication with session cookies
+- CSRF protection
+- REST API endpoints and HTML templates
 - Static file serving
-- CORS support
 - Security headers
 - **Memory management endpoints**
 - **Profile management endpoints**
@@ -206,23 +244,14 @@ Gin-based web server:
 
 ### Message Processing Flow
 
-```
-Discord Message
-      �?      �?┌──────────────�?�?Rate Limit   �?──�?Reject if exceeded
-�?Check        �?└──────────────�?      �?      �?┌──────────────�?�?Blacklist    �?──�?Reject if blacklisted
-�?Check        �?    (config-based)
-└──────────────�?      �?      �?┌──────────────�?�?Should       �?──�?Skip if not mentioned
-�?Respond?     �?    and random check fails
-└──────────────�?      �?      �?┌──────────────�?�?Fetch Short  �?�?Term Context �?──�?From Discord API
-└──────────────�?      �?      �?┌──────────────�?�?Search Long  �?�?Term Memory  �?──�?Semantic search in Qdrant
-└──────────────�?      �?      �?┌──────────────�?�?Get User     �?�?Profile      �?──�?From Qdrant
-└──────────────�?      �?      �?┌──────────────�?�?Build        �?�?Context      �?──�?Short-term + memories + profile
-└──────────────�?      �?      �?┌──────────────────────────────�?�?Prompt Optimization          �?�?                             �?�?┌──────────────────────────�?�?�?�?Static System Prompt     �?�?──�?Cacheable (persona + guidelines)
-�?�?                         �?�?�?�?Dynamic User Context     �?�?──�?Appended to user message
-�?�?(facts, memories, users) �?�?�?└──────────────────────────�?�?└──────────────────────────────�?      �?      �?┌──────────────�?�?AI Request   �?◀── With MCP tools
-�?(with tools) �?└──────────────�?      �?      �?┌──────────────�?�?Tool Call?   �?──�?Execute tool ──�?New AI request
-�?             �?          �?└──────────────�?          �?      �?                   �?      �?                   �?┌──────────────────────────────�?�?Send Response to Discord     �?└──────────────────────────────�?      �?      �?┌──────────────�?�?Increment    �?�?Msg Counter  �?└──────────────�?      �?      �?┌──────────────�?�?Trigger      �?──�?If threshold reached
-�?Consolidate? �?└──────────────�?```
+1. Discord event received.
+2. Rate limit, blacklist/whitelist, and decision checks.
+3. Fetch short-term context from Discord if needed.
+4. Retrieve relevant memories and user profile (when enabled).
+5. Build dynamic context and format the system prompt.
+6. Send AI request with tools; execute tool calls as needed.
+7. Send response to Discord.
+8. Increment counters and trigger consolidation when thresholds are met.
 
 ## Concurrency Model
 
@@ -232,17 +261,15 @@ Discord Message
 |-----------|------------|---------|
 | Discord Gateway | 1+ | WebSocket event handling |
 | Message Processing | Per-message | Parallel message handling |
-| Consolidation | Async | Memory processing |
+| Consolidation | Background worker | Memory processing |
 | Web Server | Handler pool | HTTP request handling |
-| Scheduled Tasks | Per-plugin | Plugin scheduled tasks |
-| Bot Cache Cleanup | 1 | Rate limit cache cleanup |
 
 ### Synchronization
 
-- `sync.RWMutex` for configuration access
-- `sync.Mutex` for rate limit and cooldown maps
+- `atomic.Value` for config snapshots
+- `sync.Mutex`/`sync.RWMutex` for caches and counters
 - Context-based cancellation for graceful shutdown
-- Channel-based signaling for shutdown coordination
+- `sync.WaitGroup` for shutdown coordination
 
 ## Performance Considerations
 
@@ -250,43 +277,28 @@ Discord Message
 
 - **Short-term**: Only keeps last N messages (configurable)
 - **Long-term**: Vector search in Qdrant (external service)
-- **No local state**: Bot is completely stateless
-- **Embeddings**: Cached when possible
+- **Runtime state**: Minimal in-memory caches only
+- **Embeddings**: Vector size must match the configured model
 
 ### Qdrant Optimization
 
-- **Vector dimensions**: 1536 (text-embedding-3-small)
-- **Distance metric**: Cosine similarity
-- **Collection sharding**: Automatic
-- **Payload indexes**: For filtering (user_id, memory_type)
+- **Vector dimensions**: Set by config and must match the embedding model
+- **Distance metric**: Cosine similarity (configured at collection creation)
+- **Payload indexes**: `user_id`, `memory_type` (memories collection)
 
 ### AI API Efficiency
 
-- **Prompt caching**: Static system prompt separated from dynamic context
-  - Reduces token costs by up to 90% for repeated contexts
-  - Tool schemas sorted alphabetically for stable cache keys
-  - Cache hit rate logged for monitoring
+- **Prompt caching hygiene**: Static system prompt separated from dynamic context; tool schemas sorted alphabetically for stable cache keys; schema hash available for cache routing
 - **Context windowing**: Only relevant messages + memories sent
-- **Tool batching**: Multiple tools in single response
-- **Streaming support**: For long responses
-- **Vision on demand**: Images processed separately
-- **Embeddings**: Batched when possible
+- **Vision mode**: Controls whether images require extra calls
 
 ## Error Handling
 
 ### Error Propagation
 
-1. **Qdrant errors**: Logged, graceful degradation (no memories)
-2. **AI API errors**: Retried with backoff, fallback responses
-3. **Discord API errors**: Rate limit handling, reconnection
-4. **Plugin errors**: Logged, doesn't crash bot
-
-### Graceful Degradation
-
-- WebUI failure doesn't affect bot
-- Plugin failure doesn't affect core
-- Qdrant failure falls back to short-term only
-- AI failure returns error message
+1. **Configuration errors**: Collected and reported at startup, then exit
+2. **Qdrant/AI/plugin errors**: Returned to callers and logged
+3. **Retries**: Use configured backoff and limits where applicable
 
 ## Security
 
@@ -298,20 +310,18 @@ Discord Message
 
 ### Input Validation
 
-- Message content sanitization
 - Configuration validation at startup
-- API request validation with Gin binding
+- HTTP handlers validate request payloads
 
 ### Rate Limiting
 
 - Per-user cooldown
 - Per-channel rate limit
-- Global rate limit for AI API
 
 ## Extensibility Points
 
 1. **Plugins**: Add new features without modifying core
-2. **Tools**: Register new MCP tools for AI
-3. **Middleware**: Add Gin middleware for WebUI
+2. **Tools**: Register new tools in `internal/ai/tools` or via plugins/MCP
+3. **WebUI**: Add handlers or middleware in `internal/web`
 4. **Memory Types**: Add new memory types to Qdrant
 5. **Handlers**: Register new Discord event handlers

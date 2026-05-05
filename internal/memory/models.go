@@ -29,7 +29,7 @@ type Record struct {
 	Content    string `json:"content"`
 	Summary    string `json:"summary"`
 
-	// Vector embedding (1536 dimensions for text-embedding-3-small)
+	// Vector embedding (size must match the configured embedding model)
 	Embedding    []float32      `json:"embedding"`
 	Keywords     []string       `json:"keywords"`
 	Metadata     map[string]any `json:"metadata,omitempty"`
