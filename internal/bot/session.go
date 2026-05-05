@@ -123,7 +123,6 @@ type Bot struct {
 
 	mu               sync.RWMutex
 	pluginRegisterMu sync.Mutex
-	lastResponseTime map[string]time.Time
 	wg               sync.WaitGroup
 
 	channelMessageBuffer   map[string][]*types.DiscordMessage // Channel-level buffer for batch consolidation
@@ -216,7 +215,6 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 		rateLimiter:              limiter,
 		visionDescriber:          nil,
 		pluginToolNames:          make(map[string]struct{}),
-		lastResponseTime:         make(map[string]time.Time),
 		channelMessageBuffer:     make(map[string][]*types.DiscordMessage),
 		channelConsolidating:     make(map[string]bool),
 		historicalImageDescCache: make(map[string]historicalImageDescCacheEntry),

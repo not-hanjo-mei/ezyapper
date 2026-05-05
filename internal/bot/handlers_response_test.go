@@ -57,33 +57,6 @@ func TestExtractReplyToUsername_ValidReply(t *testing.T) {
 	}
 }
 
-func TestTruncateString_Short(t *testing.T) {
-	result := truncateString("hello", 100)
-	if result != "hello" {
-		t.Fatalf("expected 'hello', got %q", result)
-	}
-}
-
-func TestTruncateString_WordBoundary(t *testing.T) {
-	result := truncateString("hello world foo bar", 12)
-	if !strings.HasSuffix(result, "...") {
-		t.Fatalf("expected truncated with ..., got %q", result)
-	}
-	if len(result) > 12 {
-		t.Fatalf("expected length <= 12, got %d", len(result))
-	}
-}
-
-func TestTruncateString_NoWordBoundary(t *testing.T) {
-	result := truncateString("abcdefghijklmnop", 10)
-	if len(result) > 10 {
-		t.Fatalf("expected length <= 10, got %d", len(result))
-	}
-	if !strings.HasSuffix(result, "...") {
-		t.Fatalf("expected ellipsis, got %q", result)
-	}
-}
-
 func TestShouldSendGenerationFallback_NoError(t *testing.T) {
 	if shouldSendGenerationFallback(nil) {
 		t.Fatal("expected false for nil error")
@@ -426,23 +399,6 @@ func TestModeContext_Fields(t *testing.T) {
 	}
 	if mc.ReplyToUsername != "Bob" {
 		t.Fatal("unexpected ReplyToUsername")
-	}
-}
-
-func TestGenerateContext_Fields(t *testing.T) {
-	gc := GenerateContext{
-		Request:           "req",
-		ImageURLs:         []string{"url1"},
-		ImageDescriptions: []string{"desc1"},
-	}
-	if gc.Request != "req" {
-		t.Fatal("unexpected Request")
-	}
-	if len(gc.ImageURLs) != 1 {
-		t.Fatal("unexpected ImageURLs")
-	}
-	if len(gc.ImageDescriptions) != 1 {
-		t.Fatal("unexpected ImageDescriptions")
 	}
 }
 

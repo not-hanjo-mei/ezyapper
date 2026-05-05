@@ -120,8 +120,8 @@ func Retry[T any](ctx context.Context, maxRetries int, fn func(context.Context) 
 		}
 	}
 
-	// This line is unreachable because the loop always returns
-	// either on success, non-retryable error, or retry exhaustion.
+	// Guard: timeout/cancellation should have been caught in the loop.
+	// This return is unreachable — kept to satisfy the compiler.
 	return zero, fmt.Errorf("retry exhausted after %d attempts: %w", maxRetries+1, lastErr)
 }
 

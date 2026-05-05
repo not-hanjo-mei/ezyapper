@@ -153,7 +153,6 @@ type PageData struct {
 	Flash     *FlashMessage
 	Data      any
 	NavItems  []NavItem
-	BuildTag  string
 }
 
 // FlashMessage represents a one-time notification displayed on a page.

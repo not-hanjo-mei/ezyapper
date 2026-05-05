@@ -35,7 +35,6 @@ type ModeContext struct {
 
 // GenerateContext bundles request and image parameters for response generation.
 type GenerateContext struct {
-	Request           any
 	ImageURLs         []string
 	ImageDescriptions []string
 }

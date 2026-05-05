@@ -13,22 +13,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-// truncateString truncates a string to a maximum length.
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	// Try to truncate at a word boundary.
-	if maxLen > 3 {
-		for i := maxLen - 3; i > 0; i-- {
-			if s[i] == ' ' {
-				return s[:i] + "..."
-			}
-		}
-	}
-	return s[:maxLen-3] + "..."
-}
-
 // buildDynamicContext builds the dynamic user context that changes each request.
 // This content is appended to the user message rather than the system prompt
 // to preserve prompt caching benefits.
