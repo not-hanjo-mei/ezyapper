@@ -128,7 +128,7 @@ func (d *DiscordTools) RegisterTools(registry *ToolRegistry) {
 			name: "get_channel_members", description: "Get a list of members in a channel/server for mentioning users. Returns user IDs and usernames that can be used with <@USER_ID> mentions.",
 			params: []paramDef{
 				{name: "guild_id", typ: "string", description: "The ID of the server/guild to get members from", required: true},
-				{name: "limit", typ: "number", description: "Maximum number of members to return (default 20, max 100)"},
+				{name: "limit", typ: "integer", description: "Maximum number of members to return (default 20, max 100)"},
 			},
 			handler: d.getChannelMembers,
 		},
@@ -137,7 +137,7 @@ func (d *DiscordTools) RegisterTools(registry *ToolRegistry) {
 			params: []paramDef{
 				{name: "guild_id", typ: "string", description: "The ID of the server/guild to search members in", required: true},
 				{name: "query", typ: "string", description: "The name to search for (e.g., 'alex', 'chris', 'john'). Use the name the user mentioned.", required: true},
-				{name: "limit", typ: "number", description: "Maximum number of members to return (default 10, max 50)"},
+				{name: "limit", typ: "integer", description: "Maximum number of members to return (default 10, max 50)"},
 			},
 			handler: d.searchGuildMembers,
 		},

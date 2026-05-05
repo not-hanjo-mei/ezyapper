@@ -270,7 +270,8 @@ memory_pipeline:
       # Consolidation system prompt. Required when enabled.
       ## system_prompt: |
       ##   Extract memorable information about USERS from this conversation.
-      ##   Return JSON array: [{"user_id": "...", "memories": [{"content": "...", "type": "fact|episode", "confidence": 0.0-1.0, "keywords": []}]}]
+      ##   For type=fact, prefer "key: value" content (e.g., "name: Alice").
+      ##   Return JSON array: [{"user_id": "...", "memories": [{"content": "...", "type": "fact|episode|interest", "confidence": 0.0-1.0, "keywords": []}]}]
 
   # ── Qdrant Vector Database ────────────────────────────
   qdrant:

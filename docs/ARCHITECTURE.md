@@ -86,7 +86,7 @@ type Record struct {
   UserID       string
   GuildID      string
   ChannelID    string
-  MemoryType   Type       // summary, fact, episode
+  MemoryType   Type       // summary, fact, episode, interest
   Content      string
   Summary      string
   Embedding    []float32  // Vector size matches embedding model

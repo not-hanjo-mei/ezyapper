@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -533,11 +532,10 @@ func (c *Consolidator) callExtractionLLM(ctx context.Context, conversation strin
 }
 
 func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []Extract) {
-	// TODO: Heuristic extraction uses English-only strings.Contains patterns
-	// ("name is", "lives in", "software engineer", etc.). This fragile approach
-	// should be replaced with structured LLM output parsing that supports any
-	// language the LLM produces. The function currently only works for English
-	// conversation extracts.
+	// TODO: Fact extraction uses English-only strings.Contains patterns ("name is",
+	// "lives in", "software engineer", etc.). This fragile approach should be
+	// replaced with structured LLM output parsing that supports any language the
+	// LLM produces.
 	var interestsAdded int
 	var factsAdded int
 
@@ -550,10 +548,18 @@ func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []
 	}
 
 	for _, extract := range extracts {
-		content := strings.ToLower(extract.Content)
-
 		switch extract.Type {
 		case string(TypeFact):
+			if facts := parseFactKeyValues(extract.Content); len(facts) > 0 {
+				for key, value := range facts {
+					profile.Facts[key] = value
+					factsAdded++
+					logger.Debugf("[consolidation] added fact %s=%q to profile for user=%s", key, value, profile.UserID)
+				}
+				continue
+			}
+
+			content := strings.ToLower(extract.Content)
 			// Extract name
 			if strings.Contains(content, "name is") || strings.Contains(content, "user's name") {
 				if idx := strings.Index(extract.Content, "'"); idx != -1 {
@@ -607,22 +613,15 @@ func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []
 				}
 			}
 
-		case "interest":
-			// Extract interests
-			if strings.Contains(content, "enjoys") || strings.Contains(content, "enjoy") {
-				if strings.Contains(content, "hiking") {
-					if !slices.Contains(profile.Interests, "hiking") {
-						profile.Interests = append(profile.Interests, "hiking")
-						interestsAdded++
-						logger.Debugf("[consolidation] added interest=hiking to profile for user=%s", profile.UserID)
-					}
+		case string(TypeInterest):
+			for _, interest := range extractInterestItems(extract) {
+				if interest == "" {
+					continue
 				}
-				if strings.Contains(content, "rpg") || strings.Contains(content, "video games") {
-					if !slices.Contains(profile.Interests, "RPG games") {
-						profile.Interests = append(profile.Interests, "RPG games")
-						interestsAdded++
-						logger.Debugf("[consolidation] added interest=RPG games to profile for user=%s", profile.UserID)
-					}
+				if !containsFold(profile.Interests, interest) {
+					profile.Interests = append(profile.Interests, interest)
+					interestsAdded++
+					logger.Debugf("[consolidation] added interest=%q to profile for user=%s", interest, profile.UserID)
 				}
 			}
 		}
@@ -634,4 +633,95 @@ func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []
 	if interestsAdded > 0 {
 		logger.Infof("[consolidation] added %d new interests to profile for user=%s", interestsAdded, profile.UserID)
 	}
+}
+
+func parseFactKeyValues(content string) map[string]string {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return nil
+	}
+
+	if strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}") {
+		var raw map[string]any
+		if err := json.Unmarshal([]byte(trimmed), &raw); err == nil {
+			values := make(map[string]string, len(raw))
+			for key, value := range raw {
+				factKey := normalizeFactKey(key)
+				factValue := normalizeFactValue(fmt.Sprint(value))
+				if factKey != "" && factValue != "" {
+					values[factKey] = factValue
+				}
+			}
+			if len(values) > 0 {
+				return values
+			}
+		}
+	}
+
+	key, value, ok := splitFactKeyValue(trimmed)
+	if !ok {
+		return nil
+	}
+	return map[string]string{key: value}
+}
+
+func splitFactKeyValue(content string) (string, string, bool) {
+	for _, sep := range []string{":", "="} {
+		if idx := strings.Index(content, sep); idx != -1 {
+			key := normalizeFactKey(content[:idx])
+			value := normalizeFactValue(content[idx+1:])
+			if key != "" && value != "" {
+				return key, value, true
+			}
+		}
+	}
+	return "", "", false
+}
+
+func normalizeFactKey(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.Trim(value, "\"'")
+	return strings.ToLower(value)
+}
+
+func normalizeFactValue(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.Trim(value, "\"'")
+	value = strings.TrimSuffix(value, ".")
+	return strings.TrimSpace(value)
+}
+
+func extractInterestItems(extract Extract) []string {
+	if len(extract.Keywords) > 0 {
+		items := make([]string, 0, len(extract.Keywords))
+		for _, keyword := range extract.Keywords {
+			value := normalizeInterestValue(keyword)
+			if value != "" {
+				items = append(items, value)
+			}
+		}
+		return items
+	}
+
+	value := normalizeInterestValue(extract.Content)
+	if value == "" {
+		return nil
+	}
+	return []string{value}
+}
+
+func normalizeInterestValue(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.Trim(value, "\"'")
+	value = strings.TrimSuffix(value, ".")
+	return strings.TrimSpace(value)
+}
+
+func containsFold(values []string, candidate string) bool {
+	for _, value := range values {
+		if strings.EqualFold(value, candidate) {
+			return true
+		}
+	}
+	return false
 }

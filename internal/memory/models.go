@@ -17,6 +17,8 @@ const (
 	TypeFact Type = "fact"
 	// TypeEpisode represents an episodic memory (specific event)
 	TypeEpisode Type = "episode"
+	// TypeInterest represents a user interest memory
+	TypeInterest Type = "interest"
 )
 
 // Record represents a stored memory in the vector database.

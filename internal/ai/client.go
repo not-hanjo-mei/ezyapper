@@ -616,6 +616,65 @@ func (c *Client) CreateVisionCompletion(ctx context.Context, systemPrompt, textP
 	return resp.Choices[0].Message.Content, nil
 }
 
+type toolLoopResponse struct {
+	content          string
+	reasoningContent string
+	toolCalls        []openai.ToolCall
+	finishReason     string
+	usage            openai.Usage
+}
+
+type toolLoopRequester func(ctx context.Context, messages []openai.ChatCompletionMessage) (*toolLoopResponse, error)
+
+func (c *Client) runToolLoop(ctx context.Context, initialMessages []openai.ChatCompletionMessage, initial *toolLoopResponse, maxIterations int, toolHandler ToolHandler, request toolLoopRequester, toolError func(error) string, warnLabel string) (*toolLoopResponse, error) {
+	if initial == nil {
+		return nil, fmt.Errorf("tool loop: initial response is nil")
+	}
+
+	messages := make([]openai.ChatCompletionMessage, len(initialMessages))
+	copy(messages, initialMessages)
+	resp := initial
+
+	for i := 0; i < maxIterations && len(resp.toolCalls) > 0; i++ {
+		messages = append(messages, openai.ChatCompletionMessage{
+			Role:             openai.ChatMessageRoleAssistant,
+			Content:          resp.content,
+			ReasoningContent: resp.reasoningContent,
+			ToolCalls:        resp.toolCalls,
+		})
+
+		for _, toolCall := range resp.toolCalls {
+			result, err := toolHandler(ctx, toolCall)
+			if err != nil {
+				logger.Errorf("[ai] tool call failed for %s: %v", toolCall.Function.Name, err)
+				result = toolError(err)
+				if strings.TrimSpace(result) == "" {
+					result = "Error: tool execution failed"
+				}
+			}
+
+			messages = append(messages, openai.ChatCompletionMessage{
+				Role:       openai.ChatMessageRoleTool,
+				Content:    result,
+				ToolCallID: toolCall.ID,
+			})
+		}
+
+		var err error
+		resp, err = request(ctx, messages)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if len(resp.toolCalls) > 0 {
+		logger.Warnf("[ai] %s loop exhausted with %d unprocessed tool calls", warnLabel, len(resp.toolCalls))
+		resp.toolCalls = nil
+	}
+
+	return resp, nil
+}
+
 // CreateChatCompletionWithTools creates a chat completion with tool support
 func (c *Client) CreateChatCompletionWithTools(ctx context.Context, req ChatCompletionRequest, toolHandler ToolHandler) (*ChatCompletionResponse, error) {
 	// Get available tools
@@ -630,54 +689,44 @@ func (c *Client) CreateChatCompletionWithTools(ctx context.Context, req ChatComp
 		return nil, err
 	}
 
-	// Process tool calls iteratively
-	messages := make([]openai.ChatCompletionMessage, len(req.Messages))
-	copy(messages, req.Messages)
-	maxIterations := c.config.MaxToolIterations // Prevent infinite loops
+	initial := &toolLoopResponse{
+		content:          resp.Content,
+		reasoningContent: resp.ReasoningContent,
+		toolCalls:        resp.ToolCalls,
+		finishReason:     resp.FinishReason,
+		usage:            resp.Usage,
+	}
 
-	for i := 0; i < maxIterations && len(resp.ToolCalls) > 0; i++ {
-		// Add assistant message with tool calls
-		messages = append(messages, openai.ChatCompletionMessage{
-			Role:             openai.ChatMessageRoleAssistant,
-			Content:          resp.Content,
-			ReasoningContent: resp.ReasoningContent,
-			ToolCalls:        resp.ToolCalls,
-		})
-
-		// Process each tool call
-		for _, toolCall := range resp.ToolCalls {
-			// Execute tool
-			result, err := toolHandler(ctx, toolCall)
-			if err != nil {
-				logger.Errorf("[ai] tool call failed for %s: %v", toolCall.Function.Name, err)
-				result = fmt.Sprintf("Error: %v", err)
-			}
-
-			// Add tool result message
-			messages = append(messages, openai.ChatCompletionMessage{
-				Role:       openai.ChatMessageRoleTool,
-				Content:    result,
-				ToolCallID: toolCall.ID,
-			})
-		}
-
-		// Make follow-up request
+	request := func(ctx context.Context, messages []openai.ChatCompletionMessage) (*toolLoopResponse, error) {
 		req.Messages = messages
 		req.Tools = tools
-
-		resp, err = c.CreateChatCompletion(ctx, req)
+		next, err := c.CreateChatCompletion(ctx, req)
 		if err != nil {
 			return nil, err
 		}
+		return &toolLoopResponse{
+			content:          next.Content,
+			reasoningContent: next.ReasoningContent,
+			toolCalls:        next.ToolCalls,
+			finishReason:     next.FinishReason,
+			usage:            next.Usage,
+		}, nil
 	}
 
-	// If we exited the loop with unprocessed tool calls, strip them
-	if len(resp.ToolCalls) > 0 {
-		logger.Warnf("[ai] tool loop exhausted with %d unprocessed tool calls", len(resp.ToolCalls))
-		resp.ToolCalls = nil
+	final, err := c.runToolLoop(ctx, req.Messages, initial, c.config.MaxToolIterations, toolHandler, request, func(err error) string {
+		return fmt.Sprintf("Error: %v", err)
+	}, "tool")
+	if err != nil {
+		return nil, err
 	}
 
-	return resp, nil
+	return &ChatCompletionResponse{
+		Content:          final.content,
+		ToolCalls:        final.toolCalls,
+		ReasoningContent: final.reasoningContent,
+		FinishReason:     final.finishReason,
+		Usage:            final.usage,
+	}, nil
 }
 
 // CreateVisionCompletionWithTools creates a chat completion with vision and tool support (multimodal mode)
@@ -734,62 +783,46 @@ func (c *Client) CreateVisionCompletionWithTools(ctx context.Context, systemProm
 		return nil, fmt.Errorf("no response choices returned")
 	}
 
-	// Process tool calls iteratively
-	maxIterations := c.config.MaxToolIterations
-	currentMessages := messages
+	initial := &toolLoopResponse{
+		content:          resp.Choices[0].Message.Content,
+		reasoningContent: resp.Choices[0].Message.ReasoningContent,
+		toolCalls:        resp.Choices[0].Message.ToolCalls,
+		finishReason:     string(resp.Choices[0].FinishReason),
+		usage:            resp.Usage,
+	}
 
-	for i := 0; i < maxIterations && len(resp.Choices[0].Message.ToolCalls) > 0; i++ {
-		// Add assistant message with tool calls
-		currentMessages = append(currentMessages, openai.ChatCompletionMessage{
-			Role:             openai.ChatMessageRoleAssistant,
-			Content:          resp.Choices[0].Message.Content,
-			ReasoningContent: resp.Choices[0].Message.ReasoningContent,
-			ToolCalls:        resp.Choices[0].Message.ToolCalls,
-		})
-
-		// Process each tool call
-		for _, toolCall := range resp.Choices[0].Message.ToolCalls {
-			// Execute tool
-			result, err := toolHandler(ctx, toolCall)
-			if err != nil {
-				logger.Errorf("[ai] tool call failed for %s: %v", toolCall.Function.Name, err)
-				result = "Error: tool execution failed"
-			}
-
-			// Add tool result message
-			currentMessages = append(currentMessages, openai.ChatCompletionMessage{
-				Role:       openai.ChatMessageRoleTool,
-				Content:    result,
-				ToolCallID: toolCall.ID,
-			})
-		}
-
-		// Make follow-up request with retry logic
-		chatReq.Messages = currentMessages
+	request := func(ctx context.Context, messages []openai.ChatCompletionMessage) (*toolLoopResponse, error) {
+		chatReq.Messages = messages
 		chatReq.Tools = tools
-
-		resp, err = c.CreateChatCompletionWithRetry(ctx, chatReq, "vision+tools follow-up")
+		next, err := c.CreateChatCompletionWithRetry(ctx, chatReq, "vision+tools follow-up")
 		if err != nil {
 			return nil, fmt.Errorf("tool iteration failed: %w", err)
 		}
-
-		if len(resp.Choices) == 0 {
+		if len(next.Choices) == 0 {
 			return nil, fmt.Errorf("no response choices returned after tool call")
 		}
+		return &toolLoopResponse{
+			content:          next.Choices[0].Message.Content,
+			reasoningContent: next.Choices[0].Message.ReasoningContent,
+			toolCalls:        next.Choices[0].Message.ToolCalls,
+			finishReason:     string(next.Choices[0].FinishReason),
+			usage:            next.Usage,
+		}, nil
 	}
 
-	// Strip unprocessed tool calls if loop exhausted
-	if len(resp.Choices[0].Message.ToolCalls) > 0 {
-		logger.Warnf("[ai] vision tool loop exhausted with %d unprocessed tool calls", len(resp.Choices[0].Message.ToolCalls))
-		resp.Choices[0].Message.ToolCalls = nil
+	final, err := c.runToolLoop(ctx, messages, initial, c.config.MaxToolIterations, toolHandler, request, func(err error) string {
+		return fmt.Sprintf("Error: %v", err)
+	}, "vision tool")
+	if err != nil {
+		return nil, err
 	}
 
 	return &ChatCompletionResponse{
-		Content:          resp.Choices[0].Message.Content,
-		ToolCalls:        resp.Choices[0].Message.ToolCalls,
-		ReasoningContent: resp.Choices[0].Message.ReasoningContent,
-		FinishReason:     string(resp.Choices[0].FinishReason),
-		Usage:            resp.Usage,
+		Content:          final.content,
+		ToolCalls:        final.toolCalls,
+		ReasoningContent: final.reasoningContent,
+		FinishReason:     final.finishReason,
+		Usage:            final.usage,
 	}, nil
 }
 
