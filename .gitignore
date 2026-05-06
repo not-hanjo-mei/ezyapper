@@ -45,6 +45,7 @@ temp.*
 tmp.*
 temp/
 tmp/
+/test*/
 
 # OS
 .DS_Store
@@ -62,5 +63,5 @@ build.ps1
 # AI
 AGENTS.md
 README_FIELDTEST.md
-.*/
+.[!.]*/
 !.github/
