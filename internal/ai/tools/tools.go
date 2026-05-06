@@ -81,15 +81,6 @@ func (r *ToolRegistry) GetTools() []openai.Tool {
 	return tools
 }
 
-// GetSchemaHash returns a hash of the current tool schema.
-// This can be used as a prompt_cache_key to help LLM providers
-// route requests with identical tool schemas to the same cache.
-func (r *ToolRegistry) GetSchemaHash() string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.schemaHash
-}
-
 // rebuildSchemaLocked rebuilds the cached schema with alphabetically sorted tools.
 // Must be called with lock held.
 func (r *ToolRegistry) rebuildSchemaLocked() {

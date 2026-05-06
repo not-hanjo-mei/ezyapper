@@ -63,10 +63,6 @@ func (s *NoopService) IncrementChannelMessageCount(ctx context.Context, channelI
 	return 0, nil
 }
 
-func (s *NoopService) ResetMessageCount(userID string) {}
-
-func (s *NoopService) ResetChannelMessageCount(channelID string) {}
-
 func (s *NoopService) ConsumeChannelMessageCount(channelID string, consumed int) int {
 	return 0
 }

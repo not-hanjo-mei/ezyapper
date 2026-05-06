@@ -197,58 +197,6 @@ func TestFilterByKeywords_ContentMatch(t *testing.T) {
 	}
 }
 
-func TestShouldConsolidate_NoCounter(t *testing.T) {
-	s := &MemoryService{
-		messageCounters:       make(map[string]int),
-		consolidationInterval: 10,
-	}
-	if s.ShouldConsolidate("user-1") {
-		t.Fatal("expected false for user with no counter")
-	}
-}
-
-func TestShouldConsolidate_BelowThreshold(t *testing.T) {
-	s := &MemoryService{
-		messageCounters:       map[string]int{"user-1": 5},
-		consolidationInterval: 10,
-	}
-	if s.ShouldConsolidate("user-1") {
-		t.Fatal("expected false when below threshold")
-	}
-}
-
-func TestShouldConsolidate_AtThreshold(t *testing.T) {
-	s := &MemoryService{
-		messageCounters:       map[string]int{"user-1": 10},
-		consolidationInterval: 10,
-	}
-	if !s.ShouldConsolidate("user-1") {
-		t.Fatal("expected true when at threshold")
-	}
-}
-
-func TestResetMessageCount(t *testing.T) {
-	s := &MemoryService{
-		messageCounters:       map[string]int{"user-1": 15},
-		consolidationInterval: 10,
-	}
-	s.ResetMessageCount("user-1")
-	if s.messageCounters["user-1"] != 0 {
-		t.Fatalf("expected 0 after reset, got %d", s.messageCounters["user-1"])
-	}
-}
-
-func TestResetChannelMessageCount(t *testing.T) {
-	s := &MemoryService{
-		channelCounters:       map[string]int{"ch-1": 5},
-		consolidationInterval: 10,
-	}
-	s.ResetChannelMessageCount("ch-1")
-	if _, exists := s.channelCounters["ch-1"]; exists {
-		t.Fatal("expected channel counter to be deleted")
-	}
-}
-
 func TestConsumeChannelMessageCount_Positive(t *testing.T) {
 	s := &MemoryService{
 		channelCounters:       map[string]int{"ch-1": 10},

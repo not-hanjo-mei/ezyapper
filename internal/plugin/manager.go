@@ -150,18 +150,6 @@ func (pm *Manager) BeforeSend(
 	return currentResponse, uploadFiles, false, nil
 }
 
-// ListPlugins returns a list of loaded plugins
-func (pm *Manager) ListPlugins() []Info {
-	pm.mu.RLock()
-	defer pm.mu.RUnlock()
-
-	infos := make([]Info, 0, len(pm.plugins))
-	for _, p := range pm.plugins {
-		infos = append(infos, p.Info)
-	}
-	return infos
-}
-
 // ListPluginsExt returns a list of loaded plugins with extended info
 func (pm *Manager) ListPluginsExt() []InfoExt {
 	pm.mu.RLock()

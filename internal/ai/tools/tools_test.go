@@ -8,7 +8,7 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 )
 
-func TestToolRegistryStableOrderingAndHash(t *testing.T) {
+func TestToolRegistryStableOrdering(t *testing.T) {
 	r1 := NewToolRegistry()
 	r1.Register(&Tool{
 		Name:        "b_tool",
@@ -38,33 +38,6 @@ func TestToolRegistryStableOrderingAndHash(t *testing.T) {
 		t.Fatalf("expected second tool to be b_tool, got %+v", tools[1].Function)
 	}
 
-	hash1 := r1.GetSchemaHash()
-	if hash1 == "" {
-		t.Fatal("expected non-empty schema hash")
-	}
-
-	r2 := NewToolRegistry()
-	r2.Register(&Tool{
-		Name:        "a_tool",
-		Description: "a",
-		Parameters:  map[string]any{"type": "object"},
-		Handler: func(ctx context.Context, args map[string]any) (string, error) {
-			return "a", nil
-		},
-	})
-	r2.Register(&Tool{
-		Name:        "b_tool",
-		Description: "b",
-		Parameters:  map[string]any{"type": "object"},
-		Handler: func(ctx context.Context, args map[string]any) (string, error) {
-			return "b", nil
-		},
-	})
-
-	hash2 := r2.GetSchemaHash()
-	if hash1 != hash2 {
-		t.Fatalf("expected identical hash for same schema, got %s and %s", hash1, hash2)
-	}
 }
 
 func TestToolRegistryExecuteToolNotFound(t *testing.T) {

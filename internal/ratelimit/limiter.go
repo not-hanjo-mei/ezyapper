@@ -73,11 +73,6 @@ func (l *Limiter) SetCooldown(userID string, duration time.Duration) {
 	l.cooldownCache[userID] = time.Now().Add(duration)
 }
 
-// SetCooldownDefault puts a user on cooldown using the configured default cooldown period.
-func (l *Limiter) SetCooldownDefault(userID string) {
-	l.SetCooldown(userID, l.cooldownPeriod)
-}
-
 // Cleanup removes expired rate limit entries and cooldowns.
 func (l *Limiter) Cleanup() {
 	l.mu.Lock()

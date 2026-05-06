@@ -104,27 +104,6 @@ func (c *Client) processMessages(ctx context.Context, messages []openai.ChatComp
 	return processed, nil
 }
 
-// retryableError checks if an error should trigger a retry
-func (c *Client) retryableError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := strings.ToLower(err.Error())
-	// Rate limit errors
-	if strings.Contains(errStr, "429") || strings.Contains(errStr, "too many requests") {
-		return true
-	}
-	// Server errors
-	if strings.Contains(errStr, "500") || strings.Contains(errStr, "502") || strings.Contains(errStr, "503") || strings.Contains(errStr, "504") {
-		return true
-	}
-	// Connection errors
-	if strings.Contains(errStr, "connection refused") || strings.Contains(errStr, "timeout") || strings.Contains(errStr, "context deadline exceeded") || strings.Contains(errStr, "eof") {
-		return true
-	}
-	return false
-}
-
 func (c *Client) requestTimeout() time.Duration {
 	if c.config != nil && c.config.Timeout > 0 {
 		return time.Duration(c.config.Timeout) * time.Second
@@ -191,7 +170,7 @@ func (c *Client) CreateChatCompletionWithRetry(ctx context.Context, req openai.C
 	},
 		retry.WithBaseDelay(1*time.Second),
 		retry.WithMaxDelay(30*time.Second),
-		retry.WithErrorClassifier(c.retryableError),
+		retry.WithErrorClassifier(IsRetryableError),
 	)
 }
 
@@ -208,7 +187,7 @@ func (c *Client) createEmbeddingWithRetry(ctx context.Context, req openai.Embedd
 	},
 		retry.WithBaseDelay(1*time.Second),
 		retry.WithMaxDelay(30*time.Second),
-		retry.WithErrorClassifier(c.retryableError),
+		retry.WithErrorClassifier(IsRetryableError),
 	)
 }
 

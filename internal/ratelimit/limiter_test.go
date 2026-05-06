@@ -92,23 +92,6 @@ func TestLimiter_Check_Reset(t *testing.T) {
 	}
 }
 
-func TestLimiter_SetCooldownDefault(t *testing.T) {
-	limiter := NewLimiter(10, 100*time.Millisecond, time.Minute)
-
-	// First request should pass
-	if !limiter.Check("channel1", "user1") {
-		t.Error("first request should be allowed")
-	}
-
-	// Set default cooldown
-	limiter.SetCooldownDefault("user1")
-
-	// Should be blocked
-	if limiter.Check("channel1", "user1") {
-		t.Error("should be blocked during default cooldown")
-	}
-}
-
 func TestLimiter_Cleanup(t *testing.T) {
 	limiter := NewLimiter(10, 0, time.Minute)
 

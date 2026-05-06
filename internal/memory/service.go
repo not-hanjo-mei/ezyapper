@@ -75,12 +75,6 @@ type Service interface {
 	// IncrementChannelMessageCount increments the channel message counter for consolidation triggering
 	IncrementChannelMessageCount(ctx context.Context, channelID string) (int, error)
 
-	// ResetMessageCount resets the message counter after consolidation
-	ResetMessageCount(userID string)
-
-	// ResetChannelMessageCount resets the channel message counter after consolidation
-	ResetChannelMessageCount(channelID string)
-
 	// ConsumeChannelMessageCount decreases the channel message counter after consolidation
 	// and returns the remaining count.
 	ConsumeChannelMessageCount(channelID string, consumed int) int
@@ -373,24 +367,6 @@ func (s *MemoryService) IncrementMessageCount(ctx context.Context, userID string
 	return count, nil
 }
 
-func (s *MemoryService) ShouldConsolidate(userID string) bool {
-	s.counterMu.RLock()
-	defer s.counterMu.RUnlock()
-
-	count, exists := s.messageCounters[userID]
-	if !exists {
-		return false
-	}
-
-	return count >= s.consolidationInterval
-}
-
-func (s *MemoryService) ResetMessageCount(userID string) {
-	s.counterMu.Lock()
-	defer s.counterMu.Unlock()
-	s.messageCounters[userID] = 0
-}
-
 func (s *MemoryService) IncrementChannelMessageCount(ctx context.Context, channelID string) (int, error) {
 	s.counterMu.Lock()
 	defer s.counterMu.Unlock()
@@ -400,12 +376,6 @@ func (s *MemoryService) IncrementChannelMessageCount(ctx context.Context, channe
 
 	logger.Debugf("[memory] channelID=%s count=%d/%d", channelID, count, s.consolidationInterval)
 	return count, nil
-}
-
-func (s *MemoryService) ResetChannelMessageCount(channelID string) {
-	s.counterMu.Lock()
-	defer s.counterMu.Unlock()
-	delete(s.channelCounters, channelID)
 }
 
 // ConsumeChannelMessageCount decreases the channel message counter and returns remaining count.

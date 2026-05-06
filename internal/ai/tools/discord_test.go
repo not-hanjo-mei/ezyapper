@@ -152,22 +152,6 @@ func TestRegisterTools_AllToolsRegistered(t *testing.T) {
 	}
 }
 
-func TestRegisterTools_SchemaHashStable(t *testing.T) {
-	r1 := NewToolRegistry()
-	dt1 := NewDiscordTools(nil)
-	dt1.RegisterTools(r1)
-	hash1 := r1.GetSchemaHash()
-
-	r2 := NewToolRegistry()
-	dt2 := NewDiscordTools(nil)
-	dt2.RegisterTools(r2)
-	hash2 := r2.GetSchemaHash()
-
-	if hash1 != hash2 {
-		t.Fatalf("expected identical hashes, got %s and %s", hash1, hash2)
-	}
-}
-
 // --- Handler argument validation (nil session — tests argument parsing only) ---
 
 func TestGetServerInfo_MissingGuildID(t *testing.T) {

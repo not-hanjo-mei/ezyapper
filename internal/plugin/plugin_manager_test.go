@@ -361,7 +361,7 @@ func TestLoadPluginsFromDirCommandRuntimeWithoutLocalExecutable(t *testing.T) {
 		t.Fatalf("LoadPluginsFromDir returned error: %v", err)
 	}
 
-	plugins := pm.ListPlugins()
+	plugins := pm.ListPluginsExt()
 	if len(plugins) != 1 {
 		t.Fatalf("expected 1 plugin, got %d", len(plugins))
 	}

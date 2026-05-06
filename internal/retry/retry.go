@@ -14,16 +14,14 @@ import (
 type retryConfig struct {
 	baseDelay              time.Duration
 	maxDelay               time.Duration
-	maxRetriesOverride     int // -1 means not set (use maxRetries param)
 	ignoreDeadlineExceeded bool
 	errorClassifier        func(error) bool // returns true if error is retryable
 }
 
 func defaultConfig() retryConfig {
 	return retryConfig{
-		baseDelay:          1 * time.Second,
-		maxDelay:           30 * time.Second,
-		maxRetriesOverride: -1,
+		baseDelay: 1 * time.Second,
+		maxDelay:  30 * time.Second,
 	}
 }
 
@@ -38,11 +36,6 @@ func WithBaseDelay(d time.Duration) RetryOption {
 // WithMaxDelay sets the maximum delay cap for exponential backoff. Default: 30s.
 func WithMaxDelay(d time.Duration) RetryOption {
 	return func(c *retryConfig) { c.maxDelay = d }
-}
-
-// WithMaxRetries overrides the maxRetries parameter passed to Retry.
-func WithMaxRetries(n int) RetryOption {
-	return func(c *retryConfig) { c.maxRetriesOverride = n }
 }
 
 // WithIgnoreDeadlineExceeded instructs the retry loop to continue even when
@@ -72,9 +65,6 @@ func Retry[T any](ctx context.Context, maxRetries int, fn func(context.Context) 
 	cfg := defaultConfig()
 	for _, opt := range opts {
 		opt(&cfg)
-	}
-	if cfg.maxRetriesOverride >= 0 {
-		maxRetries = cfg.maxRetriesOverride
 	}
 
 	var zero T

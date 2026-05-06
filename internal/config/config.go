@@ -218,7 +218,6 @@ type ConsolidationConfig struct {
 	SystemPrompt      string         `mapstructure:"system_prompt" yaml:"system_prompt"`
 	ExtraParams       map[string]any `mapstructure:"extra_params" yaml:"extra_params"`
 	MemorySearchLimit int            `mapstructure:"memory_search_limit" yaml:"memory_search_limit"`
-	WorkerQueueSize   int            `mapstructure:"worker_queue_size" yaml:"worker_queue_size"`
 }
 
 type RetrievalConfig struct {

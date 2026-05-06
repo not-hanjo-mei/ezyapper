@@ -42,23 +42,6 @@ func TestFetchRecentMessages(t *testing.T) {
 	}
 }
 
-func TestFetchUserMessages(t *testing.T) {
-	msgs := []types.DiscordMessage{
-		{ID: "1", AuthorID: "u1", Content: "hello"},
-		{ID: "2", AuthorID: "u2", Content: "world"},
-		{ID: "3", AuthorID: "u1", Content: "again"},
-	}
-	client := NewShortTermClient(&mockFetcher{messages: msgs}, 500)
-
-	result, err := client.FetchUserMessages(context.Background(), "chan", "u1", 10)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(result) != 2 {
-		t.Fatalf("got %d messages, want 2", len(result))
-	}
-}
-
 func TestFetchChannelMessages(t *testing.T) {
 	msgs := []types.DiscordMessage{
 		{ID: "1", Content: "hello"},

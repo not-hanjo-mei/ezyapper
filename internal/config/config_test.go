@@ -185,7 +185,6 @@ memory_pipeline:
 			enabled: false
 			system_prompt: "test"
 			memory_search_limit: 20
-			worker_queue_size: 10
 	qdrant:
 		host: "localhost"
 		port: 6334
@@ -285,7 +284,6 @@ memory_pipeline:
 			enabled: false
 			system_prompt: "test"
 			memory_search_limit: 20
-			worker_queue_size: 10
 	qdrant:
 		host: "localhost"
 		port: 6334
@@ -378,7 +376,6 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 			Consolidation: ConsolidationConfig{
 				Enabled:           true,
 				MemorySearchLimit: 20,
-				WorkerQueueSize:   10,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -465,7 +462,6 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 			Consolidation: ConsolidationConfig{
 				Enabled:           true,
 				MemorySearchLimit: 20,
-				WorkerQueueSize:   10,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -576,7 +572,6 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 			Consolidation: ConsolidationConfig{
 				Enabled:           true,
 				MemorySearchLimit: 20,
-				WorkerQueueSize:   10,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -670,7 +665,6 @@ func TestValidate_MissingVisionMaxImages(t *testing.T) {
 			Consolidation: ConsolidationConfig{
 				Enabled:           true,
 				MemorySearchLimit: 20,
-				WorkerQueueSize:   10,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -765,7 +759,6 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 			Consolidation: ConsolidationConfig{
 				Enabled:           true,
 				MemorySearchLimit: 20,
-				WorkerQueueSize:   10,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -868,7 +861,6 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 				Enabled:           false,
 				SystemPrompt:      "extract",
 				MemorySearchLimit: 20,
-				WorkerQueueSize:   10,
 			},
 		},
 		Qdrant: QdrantConfig{
@@ -934,7 +926,7 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 			RetryMaxDelayMs:  30000,
 			MaxRetries:       3,
 			Retrieval:        RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation:    ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+			Consolidation:    ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:        WebConfig{Enabled: false},
@@ -967,7 +959,7 @@ func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 			RetryMaxDelayMs:  30000,
 			MaxRetries:       3,
 			Retrieval:        RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation:    ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+			Consolidation:    ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:        WebConfig{Enabled: false},
@@ -997,7 +989,7 @@ func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 			MaxPaginatedLimit:     100,
 
 			Retrieval:     RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:     WebConfig{Enabled: false},
@@ -1037,7 +1029,7 @@ func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *test
 			MaxPaginatedLimit:     100,
 
 			Retrieval:     RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{},
 		Web:        WebConfig{Enabled: false},
@@ -1067,7 +1059,7 @@ func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T
 			MaxPaginatedLimit:     100,
 
 			Retrieval:     RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{},
 		Web:        WebConfig{Enabled: false},
@@ -1103,7 +1095,7 @@ func TestValidate_MemoryEnabled_MissingRetryBaseDelay(t *testing.T) {
 			MaxPaginatedLimit:     100,
 
 			Retrieval:     RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{Host: "localhost", Port: 6333, VectorSize: 1536},
 		Web:        WebConfig{Enabled: false},
@@ -1137,7 +1129,7 @@ func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 			MaxPaginatedLimit:     100,
 
 			Retrieval:     RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{Host: "localhost", Port: 6334, VectorSize: 3072},
 		Web:        WebConfig{Enabled: false},
@@ -1170,7 +1162,7 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 			MaxPaginatedLimit:     100,
 
 			Retrieval:     RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{},
 		Web:        WebConfig{Enabled: false},
@@ -1258,7 +1250,6 @@ memory_pipeline:
       max_messages: 20
       system_prompt: "test"
       memory_search_limit: 20
-      worker_queue_size: 10
   qdrant:
     host: "localhost"
     port: 6334
@@ -1376,7 +1367,6 @@ memory_pipeline:
       max_messages: 20
       system_prompt: "test"
       memory_search_limit: 20
-      worker_queue_size: 10
   qdrant:
     host: "localhost"
     port: 6334
@@ -1493,7 +1483,6 @@ memory_pipeline:
       max_messages: 20
       system_prompt: "test"
       memory_search_limit: 20
-      worker_queue_size: 10
   qdrant:
     host: "localhost"
     port: 6334
@@ -1569,7 +1558,7 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 			MaxPaginatedLimit:     100,
 
 			Retrieval:     RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{},
 		Web:        WebConfig{Enabled: false},
@@ -1611,7 +1600,7 @@ func TestValidate_ConsolidationEnabled_RequiresOwnBotID(t *testing.T) {
 			MaxPaginatedLimit:     100,
 
 			Retrieval:     RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: true, SystemPrompt: "sp", MemorySearchLimit: 20, WorkerQueueSize: 10},
+			Consolidation: ConsolidationConfig{Enabled: true, SystemPrompt: "sp", MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{Host: "localhost", Port: 6333, VectorSize: 1536},
 		Web:        WebConfig{Enabled: false},
@@ -1645,7 +1634,7 @@ func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 			MaxPaginatedLimit:     100,
 
 			Retrieval:     RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{},
 		Web:        WebConfig{Enabled: false},
@@ -1676,7 +1665,7 @@ func TestValidateAI_MissingHTTPTimeoutSec(t *testing.T) {
 			MaxPaginatedLimit:     100,
 
 			Retrieval:     RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{},
 		Web:        WebConfig{Enabled: false},
@@ -1711,7 +1700,7 @@ func TestValidateAI_MissingMaxToolIterations(t *testing.T) {
 			MaxPaginatedLimit:     100,
 
 			Retrieval:     RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{},
 		Web:        WebConfig{Enabled: false},
@@ -1745,7 +1734,7 @@ func TestValidate_VisionMaxTokensNegative(t *testing.T) {
 			MaxPaginatedLimit:     100,
 
 			Retrieval:     RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{Host: "localhost", Port: 6333, VectorSize: 1536},
 		Web:        WebConfig{Enabled: false},
@@ -1779,7 +1768,7 @@ func TestValidate_EmbeddingTimeoutZero(t *testing.T) {
 			MaxPaginatedLimit:     100,
 
 			Retrieval:     RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{Host: "localhost", Port: 6333, VectorSize: 1536},
 		Web:        WebConfig{Enabled: false},
@@ -2047,7 +2036,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsNegative(t *testing.T) {
 			RetryMaxDelayMs:       30000,
 			MaxRetries:            3,
 			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:     WebConfig{Enabled: false},
@@ -2093,7 +2082,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
 			RetryMaxDelayMs:       30000,
 			MaxRetries:            3,
 			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20, WorkerQueueSize: 10},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:     WebConfig{Enabled: false},

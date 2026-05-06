@@ -60,28 +60,6 @@ func (c *ShortTermClient) FetchRecentMessages(ctx context.Context, channelID str
 	return result, nil
 }
 
-// FetchUserMessages fetches messages from a specific user in a channel.
-func (c *ShortTermClient) FetchUserMessages(ctx context.Context, channelID string, userID string, limit int) ([]*DiscordMessage, error) {
-	limit, err := validateLimit(limit, c.maxPaginatedLimit, "FetchUserMessages")
-	if err != nil {
-		return nil, err
-	}
-
-	messages, err := c.fetcher.FetchMessages(ctx, channelID, limit)
-	if err != nil {
-		return nil, err
-	}
-
-	userMessages := make([]*DiscordMessage, 0, len(messages))
-	for i := range messages {
-		if messages[i].AuthorID == userID {
-			userMessages = append(userMessages, &messages[i])
-		}
-	}
-
-	return userMessages, nil
-}
-
 // FetchChannelMessages fetches all messages from a channel for batch consolidation.
 func (c *ShortTermClient) FetchChannelMessages(ctx context.Context, channelID string, limit int) ([]*DiscordMessage, error) {
 	limit, err := validateLimit(limit, c.maxPaginatedLimit, "FetchChannelMessages")

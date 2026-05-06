@@ -158,37 +158,33 @@ func TestCloseIdleConnections_NilHTTPClient(t *testing.T) {
 // --- retryableError ---
 
 func TestRetryableError_NilError(t *testing.T) {
-	c := testClient(defaultAIConfig())
-	if c.retryableError(nil) {
+	if IsRetryableError(nil) {
 		t.Error("nil error should not be retryable")
 	}
 }
 
 func TestRetryableError_RateLimit(t *testing.T) {
-	c := testClient(defaultAIConfig())
 	cases := []string{
 		"HTTP 429 Too Many Requests",
 		"too many requests, please slow down",
 		"429 rate limit exceeded",
 	}
 	for _, msg := range cases {
-		if !c.retryableError(fmt.Errorf("%s", msg)) {
+		if !IsRetryableError(fmt.Errorf("%s", msg)) {
 			t.Errorf("expected retryable for: %s", msg)
 		}
 	}
 }
 
 func TestRetryableError_ServerErrors(t *testing.T) {
-	c := testClient(defaultAIConfig())
 	for _, code := range []string{"500", "502", "503", "504"} {
-		if !c.retryableError(fmt.Errorf("HTTP %s Internal Server Error", code)) {
+		if !IsRetryableError(fmt.Errorf("HTTP %s Internal Server Error", code)) {
 			t.Errorf("expected retryable for code %s", code)
 		}
 	}
 }
 
 func TestRetryableError_ConnectionErrors(t *testing.T) {
-	c := testClient(defaultAIConfig())
 	cases := []string{
 		"connection refused",
 		"read tcp: i/o timeout",
@@ -196,21 +192,20 @@ func TestRetryableError_ConnectionErrors(t *testing.T) {
 		"unexpected EOF",
 	}
 	for _, msg := range cases {
-		if !c.retryableError(fmt.Errorf("%s", msg)) {
+		if !IsRetryableError(fmt.Errorf("%s", msg)) {
 			t.Errorf("expected retryable for: %s", msg)
 		}
 	}
 }
 
 func TestRetryableError_NonRetryable(t *testing.T) {
-	c := testClient(defaultAIConfig())
 	cases := []string{
 		"invalid API key",
 		"model not found",
 		"rate limited: 400 bad request",
 	}
 	for _, msg := range cases {
-		if c.retryableError(fmt.Errorf("%s", msg)) {
+		if IsRetryableError(fmt.Errorf("%s", msg)) {
 			t.Errorf("expected non-retryable for: %s", msg)
 		}
 	}
