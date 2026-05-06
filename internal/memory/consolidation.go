@@ -23,6 +23,7 @@ type qdrantStore interface {
 	UpsertProfile(ctx context.Context, profile *Profile) error
 	GetProfile(ctx context.Context, userID string) (*Profile, error)
 	GetMemoriesByUser(ctx context.Context, userID string, limit int) ([]*Record, error)
+	SearchMemories(ctx context.Context, userID string, embedding []float32, opts *SearchOptions) ([]*Record, error)
 }
 
 // aiChatCompleter is the subset of ai.Client methods used by Consolidator.
@@ -190,8 +191,13 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 	profileAfter := fmt.Sprintf("traits=%d facts=%d preferences=%d interests=%d",
 		len(profile.Traits), len(profile.Facts), len(profile.Preferences), len(profile.Interests))
 
-	// Store memories first, then update profile
-	stored, err := c.storeMemories(ctx, userID, extracted)
+	var channelID, guildID string
+	if len(messages) > 0 {
+		channelID = messages[0].ChannelID
+		guildID = messages[0].GuildID
+	}
+
+	stored, err := c.storeMemories(ctx, userID, extracted, channelID, guildID)
 	if err != nil {
 		if stored == 0 {
 			return fmt.Errorf("failed to store memories for user=%s: %w", userID, err)
@@ -220,23 +226,20 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 }
 
 // storeMemories creates Records from extracts, generates embeddings with retry,
-// upserts them into Qdrant, and returns the number successfully stored.
-func (c *Consolidator) storeMemories(ctx context.Context, userID string, extracts []Extract) (int, error) {
+// performs evolutionary deduplication (reusing IDs of similar existing memories),
+// and upserts into Qdrant. Returns the number successfully stored.
+// channelID and guildID are used to scope memories for retrieval filtering.
+func (c *Consolidator) storeMemories(ctx context.Context, userID string, extracts []Extract, channelID, guildID string) (int, error) {
 	var stored int
 	errs := make([]error, 0, len(extracts))
 	for i, extract := range extracts {
-		memory := &Record{
-			UserID:     userID,
-			MemoryType: Type(extract.Type),
-			Content:    extract.Content,
-			Summary:    extract.Content,
-			Keywords:   extract.Keywords,
-			Confidence: extract.Confidence,
-			CreatedAt:  time.Now(),
+		content := extract.Content
+		if content == "" {
+			continue
 		}
 
 		embedding, err := retry.Retry(ctx, c.retryMaxRetries, func(ctx context.Context) ([]float32, error) {
-			return c.embedder.Embed(ctx, memory.Content)
+			return c.embedder.Embed(ctx, content)
 		},
 			retry.WithBaseDelay(c.retryBaseDelay),
 			retry.WithMaxDelay(c.retryMaxDelay),
@@ -246,7 +249,62 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 			errs = append(errs, fmt.Errorf("embedding memory %d for user=%s: %w", i+1, userID, err))
 			continue
 		}
-		memory.Embedding = embedding
+
+		// Evolutionary dedup: search for existing similar memories (score >= 0.90)
+		dedupOpts := &SearchOptions{
+			TopK:     1,
+			MinScore: 0.90,
+		}
+		existing, searchErr := c.qdrant.SearchMemories(ctx, userID, embedding, dedupOpts)
+		if searchErr != nil {
+			logger.Warnf("[consolidation] dedup search failed for memory %d user=%s: %v", i+1, userID, searchErr)
+		}
+
+		memory := &Record{
+			UserID:     userID,
+			GuildID:    guildID,
+			ChannelID:  channelID,
+			MemoryType: Type(extract.Type),
+			Content:    content,
+			Summary:    content,
+			Keywords:   extract.Keywords,
+			Confidence: extract.Confidence,
+			Embedding:  embedding,
+			Metadata: map[string]any{
+				"source":    "consolidation",
+				"extracted": time.Now().UTC().Format(time.RFC3339),
+			},
+		}
+
+		if searchErr == nil && len(existing) > 0 {
+			old := existing[0]
+			memory.ID = old.ID
+			memory.CreatedAt = old.CreatedAt
+			memory.GuildID = old.GuildID
+			memory.ChannelID = old.ChannelID
+			memory.MemoryType = old.MemoryType
+
+			// Union keywords
+			if len(old.Keywords) > 0 {
+				seen := make(map[string]struct{}, len(old.Keywords)+len(extract.Keywords))
+				for _, kw := range old.Keywords {
+					seen[kw] = struct{}{}
+				}
+				for _, kw := range extract.Keywords {
+					seen[kw] = struct{}{}
+				}
+				merged := make([]string, 0, len(seen))
+				for kw := range seen {
+					merged = append(merged, kw)
+				}
+				memory.Keywords = merged
+			}
+
+			logger.Debugf("[consolidation] dedup: reused memoryID=%s for user=%s type=%s",
+				old.ID, userID, old.MemoryType)
+		} else {
+			memory.CreatedAt = time.Now()
+		}
 
 		if err := c.qdrant.UpsertMemory(ctx, memory); err != nil {
 			logger.Errorf("[consolidation] failed to store memory %d for user=%s: %v", i+1, userID, err)
@@ -319,7 +377,11 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 			continue
 		}
 
-		stored, err := c.storeMemories(ctx, userID, extracts)
+		var guildID string
+		if len(messages) > 0 {
+			guildID = messages[0].GuildID
+		}
+		stored, err := c.storeMemories(ctx, userID, extracts, channelID, guildID)
 		if err != nil {
 			if stored == 0 {
 				allErrs = append(allErrs, fmt.Errorf("user=%s: %w", userID, err))

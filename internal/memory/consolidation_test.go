@@ -118,6 +118,10 @@ func (m *mockQdrantStore) GetMemoriesByUser(ctx context.Context, userID string, 
 	return result, nil
 }
 
+func (m *mockQdrantStore) SearchMemories(ctx context.Context, userID string, embedding []float32, opts *SearchOptions) ([]*Record, error) {
+	return nil, nil
+}
+
 // TestEmbedWithRetry_Success verifies embedWithRetry retries on failure then succeeds.
 func TestEmbedWithRetry_Success(t *testing.T) {
 	defer func() { embedSleep = nil }()

@@ -31,12 +31,6 @@ func (qc *QdrantClient) memoryToPayload(memory *Record) (map[string]*qdrant.Valu
 	}
 	payload["keywords"] = &qdrant.Value{Kind: &qdrant.Value_ListValue{ListValue: &qdrant.ListValue{Values: keywordValues}}}
 
-	// Persist message range to preserve source boundaries.
-	payload["message_range"] = &qdrant.Value{Kind: &qdrant.Value_ListValue{ListValue: &qdrant.ListValue{Values: []*qdrant.Value{
-		{Kind: &qdrant.Value_IntegerValue{IntegerValue: int64(memory.MessageRange[0])}},
-		{Kind: &qdrant.Value_IntegerValue{IntegerValue: int64(memory.MessageRange[1])}},
-	}}}}
-
 	metadata := memory.Metadata
 	if metadata == nil {
 		metadata = make(map[string]any)
@@ -106,15 +100,6 @@ func (qc *QdrantClient) payloadToMemory(payload map[string]*qdrant.Value, id str
 	for _, kw := range keywords {
 		memory.Keywords = append(memory.Keywords, kw.GetStringValue())
 	}
-
-	messageRangeValues, err := getRequiredList(payload, "message_range")
-	if err != nil {
-		return nil, err
-	}
-	if len(messageRangeValues) != 2 {
-		return nil, fmt.Errorf("message_range must contain exactly 2 elements")
-	}
-	memory.MessageRange = [2]int{int(messageRangeValues[0].GetIntegerValue()), int(messageRangeValues[1].GetIntegerValue())}
 
 	metadataJSON, err := getRequiredString(payload, "metadata_json")
 	if err != nil {

@@ -25,11 +25,10 @@ func TestMemoryPayloadRoundTrip_PreservesExtendedFields(t *testing.T) {
 			"source": "consolidation",
 			"vision": true,
 		},
-		Confidence:   0.88,
-		MessageRange: [2]int{10, 20},
-		CreatedAt:    now,
-		UpdatedAt:    now,
-		AccessCount:  3,
+		Confidence:  0.88,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		AccessCount: 3,
 	}
 
 	payload, err := qc.memoryToPayload(input)
@@ -49,9 +48,6 @@ func TestMemoryPayloadRoundTrip_PreservesExtendedFields(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.Keywords, input.Keywords) {
 		t.Fatalf("keywords mismatch: got=%v want=%v", got.Keywords, input.Keywords)
-	}
-	if got.MessageRange != input.MessageRange {
-		t.Fatalf("message_range mismatch: got=%v want=%v", got.MessageRange, input.MessageRange)
 	}
 	if got.Metadata["source"] != input.Metadata["source"] || got.Metadata["vision"] != input.Metadata["vision"] {
 		t.Fatalf("metadata mismatch: got=%v want=%v", got.Metadata, input.Metadata)

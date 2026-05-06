@@ -99,6 +99,13 @@ type MemoryService struct {
 
 	// Consolidation interval from config
 	consolidationInterval int
+
+	// accessQueue carries memory IDs whose access count should be incremented.
+	// Search/HybridSearch drop IDs here without blocking; the background worker
+	// batches them and updates Qdrant payloads via SetPayload (no vector touch).
+	accessQueue chan string
+	done        chan struct{}
+	wg          sync.WaitGroup
 }
 
 // ServiceConfig holds configuration parameters for the memory service.
@@ -160,9 +167,13 @@ func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedde
 		messageCounters:       make(map[string]int),
 		channelCounters:       make(map[string]int),
 		consolidationInterval: cfg.ConsolidationInterval,
+		accessQueue:           make(chan string, 200),
+		done:                  make(chan struct{}),
 	}
 
 	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, vd, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit, cfg.RetryMaxRetries, cfg.RetryBaseDelayMs, cfg.RetryMaxDelayMs)
+
+	service.startAccessWorker()
 
 	logger.Info("[memory] Memory service initialized")
 	return service, nil
@@ -201,6 +212,8 @@ func (s *MemoryService) Search(ctx context.Context, userID string, query string,
 		return nil, fmt.Errorf("search for userID=%s: %w", userID, err)
 	}
 
+	s.enqueueAccessIDs(memories)
+
 	logger.Debugf("[memory] found %d memories for userID=%s", len(memories), userID)
 	return memories, nil
 }
@@ -228,6 +241,8 @@ func (s *MemoryService) HybridSearch(ctx context.Context, userID string, query s
 	if len(keywords) > 0 {
 		memories = s.filterByKeywords(memories, keywords)
 	}
+
+	s.enqueueAccessIDs(memories)
 
 	return memories, nil
 }
@@ -473,7 +488,84 @@ func (s *MemoryService) GetUserStats(ctx context.Context, userID string) (*UserS
 	return stats, nil
 }
 
+func (s *MemoryService) enqueueAccessIDs(memories []*Record) {
+	for _, m := range memories {
+		if m.ID == "" {
+			continue
+		}
+		select {
+		case s.accessQueue <- m.ID:
+		default:
+		}
+	}
+}
+
+func (s *MemoryService) startAccessWorker() {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+
+		batch := make([]string, 0, 50)
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+
+		flush := func() {
+			if len(batch) == 0 {
+				return
+			}
+			ids := make([]string, len(batch))
+			copy(ids, batch)
+			batch = batch[:0]
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			counts, err := s.qdrant.GetMemoryPayloads(ctx, ids)
+			if err != nil {
+				logger.Warnf("[memory] access worker: failed to get payloads: %v", err)
+				return
+			}
+
+			increments := make(map[string]int, len(ids))
+			for _, id := range ids {
+				increments[id] = counts[id] + 1
+			}
+
+			if err := s.qdrant.IncrementAccessCount(ctx, ids, increments); err != nil {
+				logger.Warnf("[memory] access worker: failed to increment access counts: %v", err)
+			}
+		}
+
+		for {
+			select {
+			case <-s.done:
+				for {
+					select {
+					case id := <-s.accessQueue:
+						batch = append(batch, id)
+						if len(batch) >= 50 {
+							flush()
+						}
+					default:
+						flush()
+						return
+					}
+				}
+			case id := <-s.accessQueue:
+				batch = append(batch, id)
+				if len(batch) >= 50 {
+					flush()
+				}
+			case <-ticker.C:
+				flush()
+			}
+		}
+	}()
+}
+
 func (s *MemoryService) Close() error {
+	close(s.done)
+	s.wg.Wait()
 	s.embedder.Stop()
 	return s.qdrant.Close()
 }

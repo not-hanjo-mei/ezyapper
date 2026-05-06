@@ -32,14 +32,13 @@ type Record struct {
 	Summary    string `json:"summary"`
 
 	// Vector embedding (size must match the configured embedding model)
-	Embedding    []float32      `json:"embedding"`
-	Keywords     []string       `json:"keywords"`
-	Metadata     map[string]any `json:"metadata,omitempty"`
-	Confidence   float64        `json:"confidence"`
-	MessageRange [2]int         `json:"message_range,omitempty"` // [start, end] message IDs
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
-	AccessCount  int            `json:"access_count"`
+	Embedding   []float32      `json:"embedding"`
+	Keywords    []string       `json:"keywords"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
+	Confidence  float64        `json:"confidence"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	AccessCount int            `json:"access_count"`
 }
 
 // Profile represents a user's profile stored in Qdrant.

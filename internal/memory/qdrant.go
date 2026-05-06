@@ -239,6 +239,92 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error 
 	return nil
 }
 
+// IncrementAccessCount atomically increments the access_count payload field
+// and updates updated_at for the given memory IDs, without touching vectors.
+func (qc *QdrantClient) IncrementAccessCount(ctx context.Context, memoryIDs []string, increments map[string]int) error {
+	if len(memoryIDs) == 0 {
+		return nil
+	}
+
+	now := float64(time.Now().UnixMilli()) / 1000.0
+	pointIDs := make([]*qdrant.PointId, len(memoryIDs))
+	for i, id := range memoryIDs {
+		pointIDs[i] = qdrant.NewID(id)
+	}
+
+	// Build payload: updated_at is common; access_count differs per point.
+	// SetPayload applies the same payload to all selected points, so we use
+	// SetPayload once with updated_at, then OverwritePayload per-point for
+	// access_count to handle different values.
+	commonPayload := map[string]*qdrant.Value{
+		"updated_at": {Kind: &qdrant.Value_DoubleValue{DoubleValue: now}},
+	}
+
+	_, err := qc.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
+		CollectionName: CollectionMemories,
+		Payload:        commonPayload,
+		PointsSelector: qdrant.NewPointsSelector(pointIDs...),
+	})
+	if err != nil {
+		return fmt.Errorf("increment access count: %w", err)
+	}
+
+	for _, id := range memoryIDs {
+		inc, ok := increments[id]
+		if !ok {
+			continue
+		}
+		perPointPayload := map[string]*qdrant.Value{
+			"access_count": {Kind: &qdrant.Value_IntegerValue{IntegerValue: int64(inc)}},
+		}
+		_, err := qc.client.OverwritePayload(ctx, &qdrant.SetPayloadPoints{
+			CollectionName: CollectionMemories,
+			Payload:        perPointPayload,
+			PointsSelector: qdrant.NewPointsSelector(qdrant.NewID(id)),
+		})
+		if err != nil {
+			logger.Warnf("[qdrant] failed to overwrite access_count for memoryID=%s: %v", id, err)
+		}
+	}
+
+	return nil
+}
+
+// GetMemoryPayloads retrieves lightweight payload data for multiple memory IDs.
+// Returns a map of memoryID -> access_count. Only fetches necessary fields.
+func (qc *QdrantClient) GetMemoryPayloads(ctx context.Context, memoryIDs []string) (map[string]int, error) {
+	if len(memoryIDs) == 0 {
+		return map[string]int{}, nil
+	}
+
+	pointIDs := make([]*qdrant.PointId, len(memoryIDs))
+	for i, id := range memoryIDs {
+		pointIDs[i] = qdrant.NewID(id)
+	}
+
+	points, err := qc.client.Get(ctx, &qdrant.GetPoints{
+		CollectionName: CollectionMemories,
+		Ids:            pointIDs,
+		WithPayload:    qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get memory payloads: %w", err)
+	}
+
+	result := make(map[string]int, len(points))
+	for _, pt := range points {
+		id := pt.Id.GetUuid()
+		ac, err := getRequiredInt(pt.Payload, "access_count")
+		if err != nil {
+			logger.Warnf("[qdrant] missing access_count for memoryID=%s: %v", id, err)
+			result[id] = 0
+			continue
+		}
+		result[id] = int(ac)
+	}
+	return result, nil
+}
+
 // SearchMemories searches for similar memories. opts must be non-nil.
 func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embedding []float32, opts *SearchOptions) ([]*Record, error) {
 	if opts == nil {
