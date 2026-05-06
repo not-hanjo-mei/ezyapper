@@ -420,6 +420,9 @@ func (qc *QdrantClient) UpsertProfile(ctx context.Context, profile *Profile) err
 	var vectors *qdrant.Vectors
 	if len(embedding) > 0 {
 		vectors = qdrant.NewVectors(embedding...)
+	} else {
+		// Qdrant requires vectors for all points; use a zero-vector placeholder
+		vectors = qdrant.NewVectors(make([]float32, qc.vectorSize)...)
 	}
 
 	numID, err := discordIDToUint64(profile.UserID)
