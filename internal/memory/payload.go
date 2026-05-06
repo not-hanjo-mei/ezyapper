@@ -19,27 +19,16 @@ func (qc *QdrantClient) memoryToPayload(memory *Record) (map[string]*qdrant.Valu
 	payload["channel_id"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: memory.ChannelID}}
 	payload["memory_type"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: string(memory.MemoryType)}}
 	payload["content"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: memory.Content}}
-	payload["summary"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: memory.Summary}}
 	payload["confidence"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: memory.Confidence}}
 	payload["created_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(memory.CreatedAt.UnixMilli()) / 1000.0}}
-	payload["updated_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(memory.UpdatedAt.UnixMilli()) / 1000.0}}
-	payload["access_count"] = &qdrant.Value{Kind: &qdrant.Value_IntegerValue{IntegerValue: int64(memory.AccessCount)}}
+	// updated_at is always set to current time on write; not read back into the Go struct
+	payload["updated_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(time.Now().UnixMilli()) / 1000.0}}
 
 	keywordValues := []*qdrant.Value{}
 	for _, kw := range memory.Keywords {
 		keywordValues = append(keywordValues, &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: kw}})
 	}
 	payload["keywords"] = &qdrant.Value{Kind: &qdrant.Value_ListValue{ListValue: &qdrant.ListValue{Values: keywordValues}}}
-
-	metadata := memory.Metadata
-	if metadata == nil {
-		metadata = make(map[string]any)
-	}
-	metadataJSON, err := json.Marshal(metadata)
-	if err != nil {
-		return nil, fmt.Errorf("marshal metadata: %w", err)
-	}
-	payload["metadata_json"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: string(metadataJSON)}}
 
 	return payload, nil
 }
@@ -69,9 +58,6 @@ func (qc *QdrantClient) payloadToMemory(payload map[string]*qdrant.Value, id str
 	if memory.Content, err = getRequiredString(payload, "content"); err != nil {
 		return nil, err
 	}
-	if memory.Summary, err = getRequiredString(payload, "summary"); err != nil {
-		return nil, err
-	}
 	confidence, err := getRequiredDouble(payload, "confidence")
 	if err != nil {
 		return nil, err
@@ -82,16 +68,6 @@ func (qc *QdrantClient) payloadToMemory(payload map[string]*qdrant.Value, id str
 		return nil, err
 	}
 	memory.CreatedAt = time.UnixMilli(int64(createdAt * 1000))
-	updatedAt, err := getRequiredDouble(payload, "updated_at")
-	if err != nil {
-		return nil, err
-	}
-	memory.UpdatedAt = time.UnixMilli(int64(updatedAt * 1000))
-	accessCount, err := getRequiredInt(payload, "access_count")
-	if err != nil {
-		return nil, err
-	}
-	memory.AccessCount = int(accessCount)
 
 	keywords, err := getRequiredList(payload, "keywords")
 	if err != nil {
@@ -101,16 +77,6 @@ func (qc *QdrantClient) payloadToMemory(payload map[string]*qdrant.Value, id str
 		memory.Keywords = append(memory.Keywords, kw.GetStringValue())
 	}
 
-	metadataJSON, err := getRequiredString(payload, "metadata_json")
-	if err != nil {
-		return nil, err
-	}
-	var metadata map[string]any
-	if err := json.Unmarshal([]byte(metadataJSON), &metadata); err != nil {
-		return nil, fmt.Errorf("failed to parse metadata_json: %w", err)
-	}
-	memory.Metadata = metadata
-
 	return memory, nil
 }
 
@@ -119,8 +85,6 @@ func (qc *QdrantClient) profileToPayload(profile *Profile) (map[string]*qdrant.V
 	payload["schema_version"] = &qdrant.Value{Kind: &qdrant.Value_IntegerValue{IntegerValue: payloadSchemaVersion}}
 
 	payload["user_id"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: profile.UserID}}
-	payload["last_summary"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: profile.LastSummary}}
-	payload["personality_summary"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: profile.PersonalitySummary}}
 	payload["message_count"] = &qdrant.Value{Kind: &qdrant.Value_IntegerValue{IntegerValue: int64(profile.MessageCount)}}
 	payload["memory_count"] = &qdrant.Value{Kind: &qdrant.Value_IntegerValue{IntegerValue: int64(profile.MemoryCount)}}
 	payload["first_seen_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(profile.FirstSeenAt.UnixMilli()) / 1000.0}}
@@ -175,13 +139,6 @@ func (qc *QdrantClient) payloadToProfile(payload map[string]*qdrant.Value, userI
 		Traits:      []string{},
 	}
 
-	var err error
-	if profile.LastSummary, err = getRequiredString(payload, "last_summary"); err != nil {
-		return nil, err
-	}
-	if profile.PersonalitySummary, err = getRequiredString(payload, "personality_summary"); err != nil {
-		return nil, err
-	}
 	messageCount, err := getRequiredInt(payload, "message_count")
 	if err != nil {
 		return nil, err

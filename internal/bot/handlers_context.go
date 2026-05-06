@@ -63,7 +63,7 @@ func (b *Bot) buildDynamicContext(authorName string, profile *memory.Profile, me
 	if len(memories) > 0 {
 		context.WriteString("\n\n<memory>\n")
 		for _, mem := range memories {
-			fmt.Fprintf(&context, "[%s] %s\n", mem.MemoryType, mem.Summary)
+			fmt.Fprintf(&context, "[%s] %s\n", mem.MemoryType, mem.Content)
 		}
 		context.WriteString("</memory>")
 		logger.Debugf("[memory] added %d memories to dynamic context", len(memories))

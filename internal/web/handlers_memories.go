@@ -17,7 +17,6 @@ type memoryDisplayEntry struct {
 	UserID     string
 	MemoryType string
 	Content    string
-	Summary    string
 	Keywords   []string
 	Confidence float64
 	CreatedAt  string
@@ -136,7 +135,6 @@ func toDisplayEntry(m *memory.Record, truncLen int) memoryDisplayEntry {
 		UserID:     m.UserID,
 		MemoryType: string(m.MemoryType),
 		Content:    content,
-		Summary:    m.Summary,
 		Keywords:   m.Keywords,
 		Confidence: m.Confidence,
 		CreatedAt:  createdAt,

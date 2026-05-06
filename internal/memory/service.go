@@ -47,9 +47,6 @@ type ProfileStore interface {
 
 	// UpdateProfile updates a user profile
 	UpdateProfile(ctx context.Context, p *Profile) error
-
-	// GetUserStats retrieves user statistics
-	GetUserStats(ctx context.Context, userID string) (*UserStats, error)
 }
 
 // ConsolidationManager groups consolidation trigger and execution operations.
@@ -455,37 +452,6 @@ func (s *MemoryService) CountMemories(ctx context.Context) (int64, error) {
 func (s *MemoryService) CountProfiles(ctx context.Context) (int64, error) {
 	count, err := s.qdrant.CountCollection(ctx, CollectionProfiles)
 	return int64(count), err
-}
-
-func (s *MemoryService) GetUserStats(ctx context.Context, userID string) (*UserStats, error) {
-	logger.Debugf("[memory] retrieving stats for userID=%s", userID)
-
-	profile, err := s.GetProfile(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("get user stats profile for userID=%s: %w", userID, err)
-	}
-
-	memoryLimit := s.config.TopK
-	if memoryLimit <= 0 {
-		memoryLimit = s.config.MemorySearchLimit
-	}
-
-	memories, err := s.GetMemories(ctx, userID, memoryLimit)
-	if err != nil {
-		return nil, fmt.Errorf("get user stats memories for userID=%s: %w", userID, err)
-	}
-
-	stats := &UserStats{
-		UserID:        userID,
-		MessageCount:  profile.MessageCount,
-		MemoryCount:   len(memories),
-		FirstSeenAt:   profile.FirstSeenAt,
-		LastActiveAt:  profile.LastActiveAt,
-		LastSummaryAt: profile.LastConsolidatedAt,
-	}
-
-	logger.Debugf("[memory] userID=%s messageCount=%d memoryCount=%d", userID, stats.MessageCount, stats.MemoryCount)
-	return stats, nil
 }
 
 func (s *MemoryService) enqueueAccessIDs(memories []*Record) {

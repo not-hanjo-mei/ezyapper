@@ -83,10 +83,6 @@ func (m *mockProfileStore) GetProfile(ctx context.Context, userID string) (*memo
 	return nil, nil
 }
 func (m *mockProfileStore) UpdateProfile(ctx context.Context, p *memory.Profile) error { return nil }
-func (m *mockProfileStore) GetUserStats(ctx context.Context, userID string) (*memory.UserStats, error) {
-	return nil, nil
-}
-
 func testDashboardTemplate() *TemplateSet {
 	tmpl := template.New("").Funcs(template.FuncMap{
 		"formatDuration": formatDuration,
@@ -101,7 +97,6 @@ func testDashboardTemplate() *TemplateSet {
 <div class="md3-card-grid">
 	<div class="md3-stat-card"><p class="md3-stat-label">Total Memories</p><p class="md3-stat-value">{{.Data.TotalMemories}}</p></div>
 	<div class="md3-stat-card"><p class="md3-stat-label">Total Users</p><p class="md3-stat-value">{{.Data.TotalUsers}}</p></div>
-	<div class="md3-stat-card"><p class="md3-stat-label">Total Messages</p><p class="md3-stat-value">{{.Data.TotalMessages}}</p></div>
 	<div class="md3-stat-card"><p class="md3-stat-label">Uptime</p><p class="md3-stat-value">{{formatDuration .Data.Uptime}}</p></div>
 </div>
 {{end}}`

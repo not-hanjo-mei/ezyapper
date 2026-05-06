@@ -266,14 +266,9 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 			ChannelID:  channelID,
 			MemoryType: Type(extract.Type),
 			Content:    content,
-			Summary:    content,
 			Keywords:   extract.Keywords,
 			Confidence: extract.Confidence,
 			Embedding:  embedding,
-			Metadata: map[string]any{
-				"source":    "consolidation",
-				"extracted": time.Now().UTC().Format(time.RFC3339),
-			},
 		}
 
 		if searchErr == nil && len(existing) > 0 {

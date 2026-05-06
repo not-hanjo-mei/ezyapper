@@ -29,16 +29,12 @@ type Record struct {
 	ChannelID  string `json:"channel_id,omitempty"`
 	MemoryType Type   `json:"memory_type"`
 	Content    string `json:"content"`
-	Summary    string `json:"summary"`
 
 	// Vector embedding (size must match the configured embedding model)
-	Embedding   []float32      `json:"embedding"`
-	Keywords    []string       `json:"keywords"`
-	Metadata    map[string]any `json:"metadata,omitempty"`
-	Confidence  float64        `json:"confidence"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	AccessCount int            `json:"access_count"`
+	Embedding  []float32 `json:"embedding"`
+	Keywords   []string  `json:"keywords"`
+	Confidence float64   `json:"confidence"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // Profile represents a user's profile stored in Qdrant.
@@ -49,8 +45,6 @@ type Profile struct {
 	Facts              map[string]string `json:"facts"`
 	Preferences        map[string]string `json:"preferences"`
 	Interests          []string          `json:"interests"`
-	LastSummary        string            `json:"last_summary"`
-	PersonalitySummary string            `json:"personality_summary"`
 	MessageCount       int               `json:"message_count"`
 	MemoryCount        int               `json:"memory_count"`
 	FirstSeenAt        time.Time         `json:"first_seen_at"`
@@ -92,20 +86,9 @@ type UserMemoryExtract struct {
 // DiscordMessage is an alias for the canonical type defined in internal/types.
 type DiscordMessage = types.DiscordMessage
 
-// UserStats represents statistics for a user
-type UserStats struct {
-	UserID        string    `json:"user_id"`
-	MessageCount  int       `json:"message_count"`
-	MemoryCount   int       `json:"memory_count"`
-	FirstSeenAt   time.Time `json:"first_seen_at"`
-	LastActiveAt  time.Time `json:"last_active_at"`
-	LastSummaryAt time.Time `json:"last_summary_at"`
-}
-
 // GlobalStats represents global statistics
 type GlobalStats struct {
 	TotalUsers       int64     `json:"total_users"`
 	TotalMemories    int64     `json:"total_memories"`
-	TotalMessages    int64     `json:"total_messages"`
 	LastConsolidated time.Time `json:"last_consolidated"`
 }

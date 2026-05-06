@@ -19,16 +19,9 @@ func TestMemoryPayloadRoundTrip_PreservesExtendedFields(t *testing.T) {
 		ChannelID:  "789",
 		MemoryType: TypeFact,
 		Content:    "user likes golang",
-		Summary:    "likes golang",
 		Keywords:   []string{"golang", "backend"},
-		Metadata: map[string]any{
-			"source": "consolidation",
-			"vision": true,
-		},
-		Confidence:  0.88,
-		CreatedAt:   now,
-		UpdatedAt:   now,
-		AccessCount: 3,
+		Confidence: 0.88,
+		CreatedAt:  now,
 	}
 
 	payload, err := qc.memoryToPayload(input)
@@ -43,14 +36,11 @@ func TestMemoryPayloadRoundTrip_PreservesExtendedFields(t *testing.T) {
 	if got.UserID != input.UserID || got.GuildID != input.GuildID || got.ChannelID != input.ChannelID {
 		t.Fatalf("identity fields mismatch: got=%+v", got)
 	}
-	if got.MemoryType != input.MemoryType || got.Content != input.Content || got.Summary != input.Summary {
+	if got.MemoryType != input.MemoryType || got.Content != input.Content {
 		t.Fatalf("content fields mismatch: got=%+v", got)
 	}
 	if !reflect.DeepEqual(got.Keywords, input.Keywords) {
 		t.Fatalf("keywords mismatch: got=%v want=%v", got.Keywords, input.Keywords)
-	}
-	if got.Metadata["source"] != input.Metadata["source"] || got.Metadata["vision"] != input.Metadata["vision"] {
-		t.Fatalf("metadata mismatch: got=%v want=%v", got.Metadata, input.Metadata)
 	}
 }
 
@@ -64,8 +54,6 @@ func TestProfilePayloadRoundTrip_PreservesFactsPreferencesInterests(t *testing.T
 		Facts:              map[string]string{"name": "alice", "location": "tokyo"},
 		Preferences:        map[string]string{"language": "go", "editor": "vscode"},
 		Interests:          []string{"hiking", "rpg"},
-		LastSummary:        "summary",
-		PersonalitySummary: "personality",
 		MessageCount:       42,
 		MemoryCount:        7,
 		FirstSeenAt:        now,

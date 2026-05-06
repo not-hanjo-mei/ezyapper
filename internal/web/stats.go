@@ -53,8 +53,6 @@ func (s *StatsProvider) GetDashboardStats(ctx context.Context) (memory.GlobalSta
 	}
 	stats.TotalUsers = totalUsers
 
-	stats.TotalMessages = 0 // not directly countable from Qdrant
-
 	return stats, nil
 }
 

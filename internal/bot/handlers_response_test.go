@@ -183,8 +183,8 @@ func TestBuildDynamicContext_WithMemories(t *testing.T) {
 		Preferences: make(map[string]string),
 	}
 	memories := []*memory.Record{
-		{Summary: "User likes pizza"},
-		{Summary: "User dislikes coffee"},
+		{Content: "User likes pizza"},
+		{Content: "User dislikes coffee"},
 	}
 	result := b.buildDynamicContext("Alice", profile, memories, nil)
 	if !strings.Contains(result, "likes pizza") {

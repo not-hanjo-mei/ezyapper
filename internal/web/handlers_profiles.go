@@ -17,8 +17,6 @@ type profileDisplayEntry struct {
 	Facts              map[string]string
 	Preferences        map[string]string
 	Interests          []string
-	LastSummary        string
-	PersonalitySummary string
 	MessageCount       int
 	MemoryCount        int
 	FirstSeenAt        string
@@ -115,16 +113,14 @@ func handleProfilesUpdate(w http.ResponseWriter, r *http.Request, profileStore m
 
 func toProfileDisplayEntry(p *memory.Profile) *profileDisplayEntry {
 	entry := &profileDisplayEntry{
-		UserID:             p.UserID,
-		DisplayName:        p.DisplayName,
-		Traits:             p.Traits,
-		Facts:              p.Facts,
-		Preferences:        p.Preferences,
-		Interests:          p.Interests,
-		LastSummary:        p.LastSummary,
-		PersonalitySummary: p.PersonalitySummary,
-		MessageCount:       p.MessageCount,
-		MemoryCount:        p.MemoryCount,
+		UserID:       p.UserID,
+		DisplayName:  p.DisplayName,
+		Traits:       p.Traits,
+		Facts:        p.Facts,
+		Preferences:  p.Preferences,
+		Interests:    p.Interests,
+		MessageCount: p.MessageCount,
+		MemoryCount:  p.MemoryCount,
 	}
 
 	if !p.FirstSeenAt.IsZero() {

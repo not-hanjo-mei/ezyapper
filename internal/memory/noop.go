@@ -71,8 +71,4 @@ func (s *NoopService) GetStats(ctx context.Context) (*GlobalStats, error) {
 	return &GlobalStats{}, nil
 }
 
-func (s *NoopService) GetUserStats(ctx context.Context, userID string) (*UserStats, error) {
-	return &UserStats{UserID: userID}, nil
-}
-
 func (s *NoopService) Close() error { return nil }

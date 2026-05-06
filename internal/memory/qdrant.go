@@ -208,7 +208,6 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error 
 	if memory.CreatedAt.IsZero() {
 		memory.CreatedAt = time.Now()
 	}
-	memory.UpdatedAt = time.Now()
 
 	logger.Debugf("[qdrant] userID=%s type=%s content=%.50s", memory.UserID, memory.MemoryType, memory.Content)
 

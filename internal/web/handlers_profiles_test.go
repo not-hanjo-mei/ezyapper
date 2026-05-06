@@ -39,10 +39,6 @@ func (m *testProfileStore) UpdateProfile(ctx context.Context, p *memory.Profile)
 	return nil
 }
 
-func (m *testProfileStore) GetUserStats(ctx context.Context, userID string) (*memory.UserStats, error) {
-	return &memory.UserStats{UserID: userID}, nil
-}
-
 func testProfilesTemplate() *TemplateSet {
 	tmpl := template.New("").Funcs(templateFuncs()).Option("missingkey=error")
 
