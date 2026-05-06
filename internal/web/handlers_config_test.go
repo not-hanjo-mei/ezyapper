@@ -51,7 +51,6 @@ core:
     http_timeout_sec: 30
     max_tool_iterations: 10
     max_image_bytes: 5242880
-    user_agent: "ezyapper-test"
     system_prompt: "test"
   decision:
     enabled: false

@@ -168,8 +168,7 @@ core:
 		http_timeout_sec: 30
 		max_tool_iterations: 5
 		max_image_bytes: 10485760
-		user_agent: "EZyapper/1.0"
-memory_pipeline:
+	memory_pipeline:
 	embedding:
 		model: "text-embedding-3-small"
 		retry_count: 1
@@ -267,8 +266,7 @@ core:
 		http_timeout_sec: 30
 		max_tool_iterations: 5
 		max_image_bytes: 10485760
-		user_agent: "EZyapper/1.0"
-memory_pipeline:
+	memory_pipeline:
 	embedding:
 		model: "text-embedding-3-small"
 		retry_count: 1
@@ -359,7 +357,7 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 			MaxTokens:      1024,
 			Temperature:    0.8,
 			SystemPrompt:   "test",
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{
 			Model: "text-embedding-3-small",
@@ -445,7 +443,7 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 			MaxTokens:      1024,
 			Temperature:    3.0,
 			SystemPrompt:   "test",
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{
 			Model: "text-embedding-3-small",
@@ -555,7 +553,7 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 			Vision: VisionConfig{
 				MaxImages: 4,
 			},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{
 			Model: "text-embedding-3-small",
@@ -648,7 +646,7 @@ func TestValidate_MissingVisionMaxImages(t *testing.T) {
 				Mode:      VisionModeMultimodal,
 				MaxImages: 0,
 			},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{
 			Model: "text-embedding-3-small",
@@ -742,7 +740,7 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 				MaxImages:         4,
 				DescriptionPrompt: "",
 			},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{
 			Model: "text-embedding-3-small",
@@ -838,7 +836,7 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 				Mode:      VisionModeTextOnly,
 				MaxImages: 1,
 			},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{
 			Model:      "text-embedding-3-small",
@@ -914,7 +912,7 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
 			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
@@ -947,7 +945,7 @@ func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
 			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
@@ -980,7 +978,7 @@ func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
 			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
@@ -1020,7 +1018,7 @@ func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *test
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
 			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1050,7 +1048,7 @@ func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
 			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1085,7 +1083,7 @@ func TestValidate_MemoryEnabled_MissingRetryBaseDelay(t *testing.T) {
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 			Vision: VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
@@ -1120,7 +1118,7 @@ func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
 			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
@@ -1153,7 +1151,7 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
 			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1223,7 +1221,6 @@ core:
     http_timeout_sec: 30
     max_tool_iterations: 5
     max_image_bytes: 10485760
-    user_agent: "EZyapper/1.0"
     vision:
       mode: "text_only"
       max_images: 1
@@ -1340,7 +1337,6 @@ core:
     http_timeout_sec: 30
     max_tool_iterations: 5
     max_image_bytes: 10485760
-    user_agent: "EZyapper/1.0"
     vision:
       mode: "text_only"
       max_images: 1
@@ -1456,7 +1452,6 @@ core:
     http_timeout_sec: 30
     max_tool_iterations: 5
     max_image_bytes: 10485760
-    user_agent: "EZyapper/1.0"
     vision:
       mode: "text_only"
       max_images: 1
@@ -1549,7 +1544,7 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
 			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1591,7 +1586,7 @@ func TestValidate_ConsolidationEnabled_RequiresOwnBotID(t *testing.T) {
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
 			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
 		Memory: MemoryConfig{
@@ -1625,7 +1620,7 @@ func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
 			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1656,7 +1651,7 @@ func TestValidateAI_MissingHTTPTimeoutSec(t *testing.T) {
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
 			Vision: VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
 			// HTTPTimeoutSec intentionally omitted
-			MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1690,7 +1685,7 @@ func TestValidateAI_MissingMaxToolIterations(t *testing.T) {
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
 			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
-			HTTPTimeoutSec: 30, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxImageBytes: 10485760,
 			// MaxToolIterations intentionally omitted
 		},
 		Embedding: EmbeddingConfig{},
@@ -1725,7 +1720,7 @@ func TestValidate_VisionMaxTokensNegative(t *testing.T) {
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
 			Vision:         VisionConfig{Mode: VisionModeHybrid, MaxImages: 1, DescriptionPrompt: "desc", MaxTokens: -1},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
 		Memory: MemoryConfig{
@@ -1759,7 +1754,7 @@ func TestValidate_EmbeddingTimeoutZero(t *testing.T) {
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
 			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 0},
 		Memory: MemoryConfig{
@@ -2025,7 +2020,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsNegative(t *testing.T) {
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
 			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
@@ -2071,7 +2066,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
 			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760, UserAgent: "EZyapper/1.0",
+			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{

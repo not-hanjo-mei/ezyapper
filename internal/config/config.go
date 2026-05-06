@@ -172,7 +172,6 @@ type AIConfig struct {
 	HTTPTimeoutSec          int            `mapstructure:"http_timeout_sec" yaml:"http_timeout_sec"`
 	MaxToolIterations       int            `mapstructure:"max_tool_iterations" yaml:"max_tool_iterations"`
 	MaxImageBytes           int            `mapstructure:"max_image_bytes" yaml:"max_image_bytes"`
-	UserAgent               string         `mapstructure:"user_agent" yaml:"user_agent"`
 	RequireImageContentType bool           `mapstructure:"require_image_content_type" yaml:"require_image_content_type"`
 }
 
@@ -391,7 +390,6 @@ func validateAI(cfg *Config, errs *[]string) {
 	requirePositive(cfg.AI.HTTPTimeoutSec, "core.ai.http_timeout_sec", errs)
 	requirePositive(cfg.AI.MaxToolIterations, "core.ai.max_tool_iterations", errs)
 	requirePositive(cfg.AI.MaxImageBytes, "core.ai.max_image_bytes", errs)
-	requireNonEmpty(cfg.AI.UserAgent, "core.ai.user_agent", errs)
 	if !cfg.AI.VisionBase64 {
 		fmt.Fprintf(os.Stderr, "WARNING: core.ai.vision_base64 is false — images will be sent as URLs (may not work with local endpoints)\n")
 	}

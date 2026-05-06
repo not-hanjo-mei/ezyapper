@@ -133,9 +133,6 @@ core:
     # Max bytes for an image fetched from Discord CDN.
     max_image_bytes: 10485760
 
-    # User-Agent header sent when fetching images from Discord.
-    user_agent: "EZyapper/1.0"
-
     # If true, rejects image responses that lack a Content-Type header.
     require_image_content_type: false
 

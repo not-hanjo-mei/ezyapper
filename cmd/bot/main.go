@@ -166,10 +166,15 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 	embedderClient := ai.NewClient(embeddingAIConfig, tools.NewToolRegistry())
 
 	consolidationConfig := &config.AIConfig{
-		APIBaseURL:  cfg.AI.APIBaseURL,
-		APIKey:      cfg.AI.APIKey,
-		Model:       cfg.AI.Model,
-		VisionModel: cfg.AI.VisionModel,
+		APIBaseURL:     cfg.AI.APIBaseURL,
+		APIKey:         cfg.AI.APIKey,
+		Model:          cfg.AI.Model,
+		VisionModel:    cfg.AI.VisionModel,
+		Timeout:        cfg.AI.Timeout,
+		HTTPTimeoutSec: cfg.AI.HTTPTimeoutSec,
+		RetryCount:     cfg.AI.RetryCount,
+		MaxTokens:      cfg.AI.MaxTokens,
+		Temperature:    cfg.AI.Temperature,
 	}
 	if cfg.Memory.Consolidation.APIBaseURL != "" {
 		consolidationConfig.APIBaseURL = cfg.Memory.Consolidation.APIBaseURL
@@ -179,6 +184,18 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 	}
 	if cfg.Memory.Consolidation.Model != "" {
 		consolidationConfig.Model = cfg.Memory.Consolidation.Model
+	}
+	if cfg.Memory.Consolidation.Timeout > 0 {
+		consolidationConfig.Timeout = cfg.Memory.Consolidation.Timeout
+	}
+	if cfg.Memory.Consolidation.RetryCount > 0 {
+		consolidationConfig.RetryCount = cfg.Memory.Consolidation.RetryCount
+	}
+	if cfg.Memory.Consolidation.MaxTokens > 0 {
+		consolidationConfig.MaxTokens = cfg.Memory.Consolidation.MaxTokens
+	}
+	if cfg.Memory.Consolidation.Temperature > 0 {
+		consolidationConfig.Temperature = cfg.Memory.Consolidation.Temperature
 	}
 	// Copy extra params from consolidation config
 	consolidationConfig.ExtraParams = cfg.Memory.Consolidation.ExtraParams

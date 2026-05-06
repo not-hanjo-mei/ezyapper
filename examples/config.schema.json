@@ -44,7 +44,7 @@
         },
         "ai": {
           "type": "object",
-          "required": ["api_base_url", "api_key", "model", "vision_model", "max_tokens", "temperature", "retry_count", "timeout", "system_prompt", "vision", "http_timeout_sec", "max_tool_iterations", "max_image_bytes", "user_agent"],
+          "required": ["api_base_url", "api_key", "model", "vision_model", "max_tokens", "temperature", "retry_count", "timeout", "system_prompt", "vision", "http_timeout_sec", "max_tool_iterations", "max_image_bytes"],
           "additionalProperties": false,
           "properties": {
             "api_base_url":   { "type": "string" },
@@ -59,7 +59,6 @@
             "http_timeout_sec":           { "type": "integer", "minimum": 1 },
             "max_tool_iterations":        { "type": "integer", "minimum": 1 },
             "max_image_bytes":            { "type": "integer", "minimum": 1 },
-            "user_agent":                 { "type": "string" },
             "require_image_content_type": { "type": "boolean" },
             "system_prompt":  { "type": "string" },
             "extra_params":   { "type": "object" },

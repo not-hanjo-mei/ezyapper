@@ -42,7 +42,6 @@ func defaultAIConfig() *config.AIConfig {
 		HTTPTimeoutSec:          30,
 		MaxToolIterations:       5,
 		MaxImageBytes:           10485760,
-		UserAgent:               "EZyapper/1.0",
 		RequireImageContentType: true,
 	}
 }
@@ -659,9 +658,6 @@ func TestProcessMessages_DownloadError(t *testing.T) {
 func TestFetchImageAsDataURL_Success(t *testing.T) {
 	imgData := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A} // PNG header
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("User-Agent") != "MyAgent/1.0" {
-			t.Errorf("expected User-Agent MyAgent/1.0, got %s", r.Header.Get("User-Agent"))
-		}
 		w.Header().Set("Content-Type", "image/png")
 		w.Write(imgData)
 	}))
@@ -670,9 +666,7 @@ func TestFetchImageAsDataURL_Success(t *testing.T) {
 	c := testClient(defaultAIConfig())
 	c.httpClient = server.Client()
 
-	result, err := c.fetchImageAsDataURL(context.Background(), server.URL+"/img.png", imageDownloadOptions{
-		UserAgent: "MyAgent/1.0",
-	})
+	result, err := c.fetchImageAsDataURL(context.Background(), server.URL+"/img.png", imageDownloadOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1024,9 +1018,6 @@ func TestBuildVisionParts_DownloadError(t *testing.T) {
 
 func TestDownloadImage_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("User-Agent") != "EZyapper/1.0" {
-			t.Errorf("expected User-Agent EZyapper/1.0, got %s", r.Header.Get("User-Agent"))
-		}
 		w.Header().Set("Content-Type", "image/png")
 		w.Header().Set("Content-Length", "4")
 		w.Write([]byte{0x89, 0x50, 0x4E, 0x47})

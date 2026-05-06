@@ -439,17 +439,12 @@ func setFieldValue(field reflect.Value, value any) error {
 type imageDownloadOptions struct {
 	RequireImageContentType bool
 	MaxBytes                int64
-	UserAgent               string
 }
 
 func (c *Client) fetchImageAsDataURL(ctx context.Context, url string, opts imageDownloadOptions) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	if opts.UserAgent != "" {
-		req.Header.Set("User-Agent", opts.UserAgent)
 	}
 
 	httpClient := c.httpClient
@@ -510,7 +505,6 @@ func (c *Client) downloadImageToBase64(ctx context.Context, url string) (string,
 	return c.fetchImageAsDataURL(ctx, url, imageDownloadOptions{
 		MaxBytes:                int64(c.config.MaxImageBytes),
 		RequireImageContentType: c.config.RequireImageContentType,
-		UserAgent:               c.config.UserAgent,
 	})
 }
 
@@ -813,7 +807,6 @@ func (c *Client) DownloadImage(ctx context.Context, url string) (string, error) 
 	return c.fetchImageAsDataURL(ctx, url, imageDownloadOptions{
 		RequireImageContentType: c.config.RequireImageContentType,
 		MaxBytes:                int64(c.config.MaxImageBytes),
-		UserAgent:               c.config.UserAgent,
 	})
 }
 
