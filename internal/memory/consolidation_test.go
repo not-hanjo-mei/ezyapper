@@ -111,7 +111,32 @@ func (m *mockQdrantStore) GetMemoriesByUser(ctx context.Context, userID string, 
 }
 
 func (m *mockQdrantStore) SearchMemories(ctx context.Context, userID string, embedding []float32, opts *SearchOptions) ([]*Record, error) {
-	return nil, nil
+	if opts == nil {
+		return nil, nil
+	}
+	var result []*Record
+	for _, mem := range m.memories {
+		if mem.UserID != userID {
+			continue
+		}
+		if len(opts.MemoryTypes) > 0 {
+			match := false
+			for _, mt := range opts.MemoryTypes {
+				if string(mem.MemoryType) == mt {
+					match = true
+					break
+				}
+			}
+			if !match {
+				continue
+			}
+		}
+		result = append(result, mem)
+		if len(result) >= opts.TopK {
+			break
+		}
+	}
+	return result, nil
 }
 
 func (m *mockQdrantStore) ListMemoriesByType(ctx context.Context, userID string, memoryType string) ([]*Record, error) {

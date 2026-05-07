@@ -290,45 +290,46 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 		skip := false
 		switch extract.Type {
 		case string(TypeFact):
-			if facts := parseFactKeyValues(content); len(facts) > 0 {
-				existingFacts, searchErr := c.qdrant.ListMemoriesByType(ctx, userID, string(TypeFact))
-				if searchErr != nil {
-					logger.Warnf("[consolidation] fact list failed for user=%s: %v", userID, searchErr)
-				} else {
-					match := findFactByKey(existingFacts, facts)
-					if match != nil {
-						// Importance-aware dedup
-						newImportance := 0.5
-						if extract.ImportanceScore != nil {
-							newImportance = *extract.ImportanceScore
-						}
-						if extract.ImportanceScore != nil && match.Confidence > newImportance {
-							logger.Debugf("[consolidation] skipping fact extract: old confidence=%.2f > new importance=%.2f", match.Confidence, newImportance)
-							skip = true
-							break
-						}
-						memory.ID = match.ID
-						memory.CreatedAt = match.CreatedAt
-						memory.GuildID = match.GuildID
-						memory.ChannelID = match.ChannelID
-						// Union keywords
-						if len(match.Keywords) > 0 {
-							seen := make(map[string]struct{}, len(match.Keywords)+len(extract.Keywords))
-							for _, kw := range match.Keywords {
-								seen[kw] = struct{}{}
-							}
-							for _, kw := range extract.Keywords {
-								seen[kw] = struct{}{}
-							}
-							merged := make([]string, 0, len(seen))
-							for kw := range seen {
-								merged = append(merged, kw)
-							}
-							memory.Keywords = merged
-						}
-						logger.Debugf("[consolidation] fact dedup: reused memoryID=%s for user=%s key match", match.ID, userID)
-					}
+			dedupOpts := &SearchOptions{
+				TopK:        1,
+				MinScore:    0.70,
+				MemoryTypes: []string{string(TypeFact)},
+			}
+			existing, searchErr := c.qdrant.SearchMemories(ctx, userID, embedding, dedupOpts)
+			if searchErr != nil {
+				logger.Warnf("[consolidation] fact dedup search failed for user=%s: %v", userID, searchErr)
+			} else if len(existing) > 0 {
+				old := existing[0]
+				// Importance-aware dedup
+				newImportance := 0.5
+				if extract.ImportanceScore != nil {
+					newImportance = *extract.ImportanceScore
 				}
+				if extract.ImportanceScore != nil && old.Confidence > newImportance {
+					logger.Debugf("[consolidation] skipping fact extract: old confidence=%.2f > new importance=%.2f", old.Confidence, newImportance)
+					skip = true
+					break
+				}
+				memory.ID = old.ID
+				memory.CreatedAt = old.CreatedAt
+				memory.GuildID = old.GuildID
+				memory.ChannelID = old.ChannelID
+				// Union keywords
+				if len(old.Keywords) > 0 {
+					seen := make(map[string]struct{}, len(old.Keywords)+len(extract.Keywords))
+					for _, kw := range old.Keywords {
+						seen[kw] = struct{}{}
+					}
+					for _, kw := range extract.Keywords {
+						seen[kw] = struct{}{}
+					}
+					merged := make([]string, 0, len(seen))
+					for kw := range seen {
+						merged = append(merged, kw)
+					}
+					memory.Keywords = merged
+				}
+				logger.Debugf("[consolidation] fact dedup: reused memoryID=%s for user=%s semantic match", old.ID, userID)
 			}
 
 		case string(TypeEpisode):
@@ -443,20 +444,6 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 		}
 	}
 	return stored, errors.Join(errs...)
-}
-
-// findFactByKey returns an existing fact record if any of its content's key-value pairs
-// match the new extract's keys. Returns nil if no match.
-func findFactByKey(existingFacts []*Record, newKeys map[string]string) *Record {
-	for _, fact := range existingFacts {
-		existingKeys := parseFactKeyValues(fact.Content)
-		for newKey := range newKeys {
-			if _, ok := existingKeys[newKey]; ok {
-				return fact
-			}
-		}
-	}
-	return nil
 }
 
 // ProcessChannelMessages performs batch consolidation for all users identified in the channel messages.
