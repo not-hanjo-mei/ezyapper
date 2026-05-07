@@ -122,6 +122,16 @@ func (m *mockQdrantStore) SearchMemories(ctx context.Context, userID string, emb
 	return nil, nil
 }
 
+func (m *mockQdrantStore) ListMemoriesByType(ctx context.Context, userID string, memoryType string) ([]*Record, error) {
+	var result []*Record
+	for _, mem := range m.memories {
+		if mem.UserID == userID && string(mem.MemoryType) == memoryType {
+			result = append(result, mem)
+		}
+	}
+	return result, nil
+}
+
 // TestEmbedWithRetry_Success verifies embedWithRetry retries on failure then succeeds.
 func TestEmbedWithRetry_Success(t *testing.T) {
 	defer func() { embedSleep = nil }()

@@ -24,6 +24,7 @@ type qdrantStore interface {
 	GetProfile(ctx context.Context, userID string) (*Profile, error)
 	GetMemoriesByUser(ctx context.Context, userID string, limit int) ([]*Record, error)
 	SearchMemories(ctx context.Context, userID string, embedding []float32, opts *SearchOptions) ([]*Record, error)
+	ListMemoriesByType(ctx context.Context, userID string, memoryType string) ([]*Record, error)
 }
 
 // aiChatCompleter is the subset of ai.Client methods used by Consolidator.
@@ -250,16 +251,6 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 			continue
 		}
 
-		// Evolutionary dedup: search for existing similar memories (score >= 0.90)
-		dedupOpts := &SearchOptions{
-			TopK:     1,
-			MinScore: 0.90,
-		}
-		existing, searchErr := c.qdrant.SearchMemories(ctx, userID, embedding, dedupOpts)
-		if searchErr != nil {
-			logger.Warnf("[consolidation] dedup search failed for memory %d user=%s: %v", i+1, userID, searchErr)
-		}
-
 		memory := &Record{
 			UserID:     userID,
 			GuildID:    guildID,
@@ -271,33 +262,112 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 			Embedding:  embedding,
 		}
 
-		if searchErr == nil && len(existing) > 0 {
-			old := existing[0]
-			memory.ID = old.ID
-			memory.CreatedAt = old.CreatedAt
-			memory.GuildID = old.GuildID
-			memory.ChannelID = old.ChannelID
-			memory.MemoryType = old.MemoryType
-
-			// Union keywords
-			if len(old.Keywords) > 0 {
-				seen := make(map[string]struct{}, len(old.Keywords)+len(extract.Keywords))
-				for _, kw := range old.Keywords {
-					seen[kw] = struct{}{}
+		// Type-aware dedup
+		switch extract.Type {
+		case string(TypeFact):
+			// Fact dedup: match by key (no vector search needed)
+			if facts := parseFactKeyValues(content); len(facts) > 0 {
+				existingFacts, searchErr := c.qdrant.ListMemoriesByType(ctx, userID, string(TypeFact))
+				if searchErr != nil {
+					logger.Warnf("[consolidation] fact list failed for user=%s: %v", userID, searchErr)
+				} else {
+					match := findFactByKey(existingFacts, facts)
+					if match != nil {
+						memory.ID = match.ID
+						memory.CreatedAt = match.CreatedAt
+						memory.GuildID = match.GuildID
+						memory.ChannelID = match.ChannelID
+						// Union keywords
+						if len(match.Keywords) > 0 {
+							seen := make(map[string]struct{}, len(match.Keywords)+len(extract.Keywords))
+							for _, kw := range match.Keywords {
+								seen[kw] = struct{}{}
+							}
+							for _, kw := range extract.Keywords {
+								seen[kw] = struct{}{}
+							}
+							merged := make([]string, 0, len(seen))
+							for kw := range seen {
+								merged = append(merged, kw)
+							}
+							memory.Keywords = merged
+						}
+						logger.Debugf("[consolidation] fact dedup: reused memoryID=%s for user=%s key match", match.ID, userID)
+					}
 				}
-				for _, kw := range extract.Keywords {
-					seen[kw] = struct{}{}
-				}
-				merged := make([]string, 0, len(seen))
-				for kw := range seen {
-					merged = append(merged, kw)
-				}
-				memory.Keywords = merged
 			}
 
-			logger.Debugf("[consolidation] dedup: reused memoryID=%s for user=%s type=%s",
-				old.ID, userID, old.MemoryType)
-		} else {
+		case string(TypeEpisode):
+			// Episode dedup: vector search with type filter
+			dedupOpts := &SearchOptions{
+				TopK:        1,
+				MinScore:    0.85,
+				MemoryTypes: []string{string(TypeEpisode)},
+			}
+			existing, searchErr := c.qdrant.SearchMemories(ctx, userID, embedding, dedupOpts)
+			if searchErr != nil {
+				logger.Warnf("[consolidation] episode dedup search failed for user=%s: %v", userID, searchErr)
+			} else if len(existing) > 0 {
+				old := existing[0]
+				memory.ID = old.ID
+				memory.CreatedAt = old.CreatedAt
+				memory.GuildID = old.GuildID
+				memory.ChannelID = old.ChannelID
+				// Union keywords
+				if len(old.Keywords) > 0 {
+					seen := make(map[string]struct{}, len(old.Keywords)+len(extract.Keywords))
+					for _, kw := range old.Keywords {
+						seen[kw] = struct{}{}
+					}
+					for _, kw := range extract.Keywords {
+						seen[kw] = struct{}{}
+					}
+					merged := make([]string, 0, len(seen))
+					for kw := range seen {
+						merged = append(merged, kw)
+					}
+					memory.Keywords = merged
+				}
+				logger.Debugf("[consolidation] episode dedup: reused memoryID=%s for user=%s", old.ID, userID)
+			}
+
+		default:
+			// Other types: keep existing vector-based dedup with type filter
+			dedupOpts := &SearchOptions{
+				TopK:        1,
+				MinScore:    0.90,
+				MemoryTypes: []string{extract.Type},
+			}
+			existing, searchErr := c.qdrant.SearchMemories(ctx, userID, embedding, dedupOpts)
+			if searchErr != nil {
+				logger.Warnf("[consolidation] dedup search failed for memory %d user=%s: %v", i+1, userID, searchErr)
+			} else if len(existing) > 0 {
+				old := existing[0]
+				memory.ID = old.ID
+				memory.CreatedAt = old.CreatedAt
+				memory.GuildID = old.GuildID
+				memory.ChannelID = old.ChannelID
+				// Union keywords
+				if len(old.Keywords) > 0 {
+					seen := make(map[string]struct{}, len(old.Keywords)+len(extract.Keywords))
+					for _, kw := range old.Keywords {
+						seen[kw] = struct{}{}
+					}
+					for _, kw := range extract.Keywords {
+						seen[kw] = struct{}{}
+					}
+					merged := make([]string, 0, len(seen))
+					for kw := range seen {
+						merged = append(merged, kw)
+					}
+					memory.Keywords = merged
+				}
+				logger.Debugf("[consolidation] dedup: reused memoryID=%s for user=%s type=%s", old.ID, userID, old.MemoryType)
+			}
+		}
+
+		// If no dedup match, set CreatedAt to now
+		if memory.ID == "" {
 			memory.CreatedAt = time.Now()
 		}
 
@@ -309,6 +379,20 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 		}
 	}
 	return stored, errors.Join(errs...)
+}
+
+// findFactByKey returns an existing fact record if any of its content's key-value pairs
+// match the new extract's keys. Returns nil if no match.
+func findFactByKey(existingFacts []*Record, newKeys map[string]string) *Record {
+	for _, fact := range existingFacts {
+		existingKeys := parseFactKeyValues(fact.Content)
+		for newKey := range newKeys {
+			if _, ok := existingKeys[newKey]; ok {
+				return fact
+			}
+		}
+	}
+	return nil
 }
 
 // ProcessChannelMessages performs batch consolidation for all users identified in the channel messages.

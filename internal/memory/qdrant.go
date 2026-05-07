@@ -423,6 +423,42 @@ func (qc *QdrantClient) GetMemoriesByUser(ctx context.Context, userID string, li
 	return memories, nil
 }
 
+// ListMemoriesByType retrieves all memories for a user filtered by memory_type
+func (qc *QdrantClient) ListMemoriesByType(ctx context.Context, userID string, memoryType string) ([]*Record, error) {
+	logger.Debugf("[qdrant] listing memories for userID=%s type=%s", userID, memoryType)
+
+	filter := &qdrant.Filter{
+		Must: []*qdrant.Condition{
+			qdrant.NewMatch("user_id", userID),
+			qdrant.NewMatch("memory_type", memoryType),
+		},
+	}
+
+	limit := uint32(1000)
+	results, err := qc.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: CollectionMemories,
+		Filter:         filter,
+		Limit:          &limit,
+		WithPayload:    qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list memories for userID=%s type=%s: %w", userID, memoryType, err)
+	}
+
+	memories := []*Record{}
+	for _, point := range results {
+		memory, err := qc.payloadToMemory(point.Payload, point.Id.GetUuid())
+		if err != nil {
+			logger.Warnf("[qdrant] failed to convert payload to memory in list: %v", err)
+			continue
+		}
+		memories = append(memories, memory)
+	}
+
+	logger.Debugf("[qdrant] listed %d memories for userID=%s type=%s", len(memories), userID, memoryType)
+	return memories, nil
+}
+
 // GetMemory retrieves a single memory by ID
 func (qc *QdrantClient) GetMemory(ctx context.Context, memoryID string) (*Record, error) {
 	logger.Debugf("[qdrant] retrieving memoryID=%s", memoryID)
