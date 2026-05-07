@@ -16,7 +16,7 @@ import (
 	"ezyapper/internal/config"
 )
 
-const testConfigYAML = `schema_version: 3
+const testConfigYAML = `schema_version: 4
 core:
   discord:
     token: "test-token"
@@ -74,6 +74,27 @@ memory_pipeline:
       enabled: false
       memory_search_limit: 20
       worker_queue_size: 10
+    maintenance_interval_sec: 3600
+    merge_cron_hour_utc: 3
+    summarize_cron_day: 0
+    merge_cosine_threshold: 0.85
+    prune_decay_threshold: 0.1
+    prune_age_days: 90
+    max_maintenance_llm_calls_per_day: 50
+    entropy_min_content_length: 10
+    entropy_min_unique_word_ratio: 0.15
+    decay_rates:
+      fact: 0.01
+      episode: 0.05
+      interest: 0.02
+      summary: 0.005
+    scoring:
+      importance_weight: 0.4
+      recency_weight: 0.3
+      access_weight: 0.2
+      confidence_weight: 0.1
+    rrf_k: 60
+    context_max_memories: 20
   qdrant:
     host: "localhost"
     port: 6333
