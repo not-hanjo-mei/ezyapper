@@ -465,6 +465,9 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 
 	userIDSet := make(map[string]struct{})
 	for _, msg := range messages {
+		if msg.AuthorID == c.ownBotID {
+			continue
+		}
 		userIDSet[msg.AuthorID] = struct{}{}
 	}
 
