@@ -466,6 +466,34 @@ func TestToolSpecTimeoutMsJSONOmittedDefaultsToZero(t *testing.T) {
 	}
 }
 
+func writeJSONRPCResponse(enc *json.Encoder, id int64, result any, err error) error {
+	resp := jsonRPCResponse{
+		JSONRPC: "2.0",
+		ID:      id,
+	}
+
+	if err != nil {
+		resp.Error = &jsonRPCError{Code: -32000, Message: err.Error()}
+	} else {
+		if result == nil {
+			result = map[string]any{}
+		}
+
+		resultBytes, marshalErr := json.Marshal(result)
+		if marshalErr != nil {
+			resp.Error = &jsonRPCError{Code: -32603, Message: fmt.Sprintf("failed to marshal jsonrpc response: %v", marshalErr)}
+		} else {
+			resp.Result = json.RawMessage(resultBytes)
+		}
+	}
+
+	if encodeErr := enc.Encode(resp); encodeErr != nil {
+		return fmt.Errorf("failed to write jsonrpc response: %w", encodeErr)
+	}
+
+	return nil
+}
+
 func newMockJSONRPCClient(responseDelay time.Duration) (*stdioJSONRPCClient, func()) {
 	stdinReader, stdinWriter := io.Pipe()
 	stdoutReader, stdoutWriter := io.Pipe()

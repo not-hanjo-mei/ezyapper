@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"ezyapper/internal/plugin"
+	pluginserver "ezyapper/internal/plugin/server"
 	"ezyapper/internal/types"
 
 	"gopkg.in/yaml.v3"
@@ -226,7 +227,7 @@ func main() {
 	fmt.Printf("[ANTISPAM] Config: max %d messages per %v\n", p.config.MaxMessages, p.config.TimeWindow)
 
 	// This will connect to the host process and serve RPC requests
-	if err := plugin.Serve(p); err != nil {
+	if err := pluginserver.Serve(p); err != nil {
 		fmt.Fprintf(os.Stderr, "[ANTISPAM] Error: %v\n", err)
 		os.Exit(1)
 	}

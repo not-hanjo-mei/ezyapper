@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"ezyapper/internal/plugin"
+	pluginserver "ezyapper/internal/plugin/server"
 	"ezyapper/internal/types"
 )
 
@@ -426,7 +427,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "[EMOTE] Config: data_dir=%s, auto_steal=%v\n", p.config.DataDir, p.config.AutoStealEnabled)
 	}
 
-	if err := plugin.Serve(p); err != nil {
+	if err := pluginserver.Serve(p); err != nil {
 		fmt.Fprintf(os.Stderr, "[EMOTE] Error: %v\n", err)
 		os.Exit(1)
 	}

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"ezyapper/internal/plugin"
+	pluginserver "ezyapper/internal/plugin/server"
 	"ezyapper/internal/types"
 
 	"gopkg.in/yaml.v3"
@@ -175,7 +176,7 @@ func main() {
 	}
 
 	p := &ClankOMeterPlugin{config: config}
-	if err := plugin.Serve(p); err != nil {
+	if err := pluginserver.Serve(p); err != nil {
 		fmt.Fprintf(os.Stderr, "[CLANK-O-METER] Error: %v\n", err)
 		os.Exit(1)
 	}

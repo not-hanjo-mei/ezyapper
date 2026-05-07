@@ -31,5 +31,30 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
+      - name: Run deadcode (root module)
+        run: |
+          deadcode_output=$(go run golang.org/x/tools/cmd/deadcode@latest -test \
+            -filter='^ezyapper/(cmd|internal/(ai|bot|config|logger|memory|plugin$|ratelimit|retry|types|utils|web))' \
+            ./... 2>&1)
+          if [ -n "$deadcode_output" ]; then
+            echo "Unreachable functions detected:"
+            echo "$deadcode_output"
+            exit 1
+          fi
+
+      - name: Run deadcode (example plugins)
+        run: |
+          for dir in examples/plugins/*/; do
+            if [ -f "$dir/go.mod" ]; then
+              echo "Checking $dir..."
+              plugin_deadcode=$(cd "$dir" && go run golang.org/x/tools/cmd/deadcode@latest -test ./... 2>&1)
+              if [ -n "$plugin_deadcode" ]; then
+                echo "Unreachable functions in $dir:"
+                echo "$plugin_deadcode"
+                exit 1
+              fi
+            fi
+          done
+
       - name: Run tests
         run: go test ./...

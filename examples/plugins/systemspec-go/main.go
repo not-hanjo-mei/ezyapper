@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"ezyapper/internal/plugin"
+	pluginserver "ezyapper/internal/plugin/server"
 	"ezyapper/internal/types"
 
 	"github.com/shirou/gopsutil/v4/cpu"
@@ -182,7 +183,7 @@ func main() {
 	}
 
 	p := &SystemSpecPlugin{config: cfg}
-	if err := plugin.Serve(p); err != nil {
+	if err := pluginserver.Serve(p); err != nil {
 		fmt.Fprintf(os.Stderr, "[SYSTEMSPEC] Error: %v\n", err)
 		os.Exit(1)
 	}
