@@ -310,7 +310,8 @@ memory_pipeline:
       #   "profile_updates": {"traits": [], "facts": {}, "preferences": {}, "interests": []}}]}]
       ## system_prompt: |
       ##   Extract memorable information about USERS from this conversation.
-      ##   For type=fact, prefer "key: value" content (e.g., "name: Alice").
+      ##   For type=fact, content MUST be "key: value" format with a colon (e.g., "name: Alice", "personality: witty", "favorite_color: blue").
+      ##   BAD (no colon, breaks dedup): "My favorite color is blue", "Alice is a software engineer"
       ##   Return JSON array: [{"user_id": "...", "memories": [{"content": "...", "type": "fact|episode|interest", "confidence": 0.0-1.0, "keywords": [], "importance_score": 0.0-1.0, "profile_updates": {"traits": [], "facts": {}, "preferences": {}, "interests": []}}]}]
       ##   - importance_score: 1.0=critical identity info, 0.5=moderate facts, 0.1=trivial
       ##   - profile_updates: populate if memory reveals profile info, leave empty {} otherwise

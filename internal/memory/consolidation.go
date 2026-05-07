@@ -517,6 +517,12 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 
 	logger.Infof("[consolidation] extracted memories for %d users from channel=%s", len(batchExtracts), channelID)
 
+	// Count messages per user from the filtered batch to update profile.MessageCount
+	userMsgCount := make(map[string]int, len(targetUserIDs))
+	for _, msg := range messages {
+		userMsgCount[msg.AuthorID]++
+	}
+
 	var totalStored int
 	allErrs := make([]error, 0, len(batchExtracts))
 	for _, userExtract := range batchExtracts {
@@ -534,6 +540,7 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 			continue
 		}
 		c.updateProfileFromExtraction(profile, extracts)
+		profile.MessageCount += userMsgCount[userID]
 		profile.LastConsolidatedAt = time.Now()
 
 		if err := c.qdrant.UpsertProfile(ctx, profile); err != nil {
@@ -560,7 +567,7 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 			}
 		}
 		totalStored += stored
-		logger.Infof("[consolidation] stored %d memories for user=%s", stored, userID)
+		logger.Infof("[consolidation] stored %d memories for user=%s (message_count=%d)", stored, userID, profile.MessageCount)
 	}
 
 	c.setLastConsolidatedAt(time.Now())
