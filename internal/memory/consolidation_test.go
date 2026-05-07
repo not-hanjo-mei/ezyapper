@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"ezyapper/internal/ai"
 	"ezyapper/internal/logger"
 )
 
@@ -379,5 +380,332 @@ func TestProfileMemoryCount_Consistent(t *testing.T) {
 	}
 	if stored != 3 {
 		t.Errorf("expected 3 stored memories (2 fail at embedding), got %d", stored)
+	}
+}
+
+// TestPassesEntropyGate_NilMessage verifies nil messages are rejected.
+func TestPassesEntropyGate_NilMessage(t *testing.T) {
+	cfg := EntropyGateConfig{MinContentLength: 10, MinUniqueWordRatio: 0.15}
+	if PassesEntropyGate(nil, cfg) {
+		t.Error("expected false for nil message")
+	}
+}
+
+// TestPassesEntropyGate_BotMessage verifies bot messages are rejected.
+func TestPassesEntropyGate_BotMessage(t *testing.T) {
+	cfg := EntropyGateConfig{MinContentLength: 10, MinUniqueWordRatio: 0.15}
+	msg := &DiscordMessage{IsBot: true, Content: "hello world from bot"}
+	if PassesEntropyGate(msg, cfg) {
+		t.Error("expected false for bot message")
+	}
+}
+
+// TestPassesEntropyGate_TooShort verifies messages below min length are rejected.
+func TestPassesEntropyGate_TooShort(t *testing.T) {
+	cfg := EntropyGateConfig{MinContentLength: 20, MinUniqueWordRatio: 0.15}
+	msg := &DiscordMessage{Content: "hi"}
+	if PassesEntropyGate(msg, cfg) {
+		t.Error("expected false for too-short message")
+	}
+}
+
+// TestPassesEntropyGate_PureEmoji verifies purely emoji messages are rejected.
+func TestPassesEntropyGate_PureEmoji(t *testing.T) {
+	cfg := EntropyGateConfig{MinContentLength: 1, MinUniqueWordRatio: 0.15}
+	msg := &DiscordMessage{Content: "😀🎉👍"}
+	if PassesEntropyGate(msg, cfg) {
+		t.Error("expected false for purely emoji message")
+	}
+}
+
+// TestPassesEntropyGate_LowUniqueRatio verifies repetitive messages are rejected.
+func TestPassesEntropyGate_LowUniqueRatio(t *testing.T) {
+	cfg := EntropyGateConfig{MinContentLength: 5, MinUniqueWordRatio: 0.5}
+	msg := &DiscordMessage{Content: "hello hello hello hello world"}
+	// 5 words, 2 unique → ratio=0.4 < 0.5 → rejected
+	if PassesEntropyGate(msg, cfg) {
+		t.Error("expected false for low unique word ratio")
+	}
+}
+
+// TestPassesEntropyGate_ValidMessage verifies a normal message passes.
+func TestPassesEntropyGate_ValidMessage(t *testing.T) {
+	cfg := EntropyGateConfig{MinContentLength: 5, MinUniqueWordRatio: 0.15}
+	msg := &DiscordMessage{Content: "hello world, how are you today?"}
+	if !PassesEntropyGate(msg, cfg) {
+		t.Error("expected true for valid message with diverse words")
+	}
+}
+
+// TestUpdateProfileFromExtraction_ProfileUpdates verifies structured profile updates
+// from LLM output correctly populate profile fields.
+func TestUpdateProfileFromExtraction_ProfileUpdates(t *testing.T) {
+	c := &Consolidator{}
+	profile := &Profile{
+		UserID: "user-1",
+		Traits: []string{"friendly"},
+	}
+	importance := 0.8
+	extracts := []Extract{
+		{
+			Type:            string(TypeFact),
+			Content:         "user works at Acme Corp",
+			ImportanceScore: &importance,
+			ProfileUpdates: &ProfileUpdateSet{
+				Traits:      []string{"helpful", "curious"},
+				Facts:       map[string]string{"workplace": "Acme Corp", "role": "engineer"},
+				Preferences: map[string]string{"language": "Go"},
+				Interests:   []string{"distributed systems", "open source"},
+			},
+		},
+	}
+
+	c.updateProfileFromExtraction(profile, extracts)
+
+	if len(profile.Traits) != 3 {
+		t.Errorf("expected 3 traits, got %d: %v", len(profile.Traits), profile.Traits)
+	}
+	if profile.Facts["workplace"] != "Acme Corp" {
+		t.Errorf("expected workplace=Acme Corp, got %q", profile.Facts["workplace"])
+	}
+	if profile.Facts["role"] != "engineer" {
+		t.Errorf("expected role=engineer, got %q", profile.Facts["role"])
+	}
+	if profile.Preferences["language"] != "Go" {
+		t.Errorf("expected preference language=Go, got %q", profile.Preferences["language"])
+	}
+	if len(profile.Interests) != 2 {
+		t.Errorf("expected 2 interests, got %d: %v", len(profile.Interests), profile.Interests)
+	}
+}
+
+// TestUpdateProfileFromExtraction_ProfileUpdates_DedupTraits verifies duplicate traits are not added.
+func TestUpdateProfileFromExtraction_ProfileUpdates_DedupTraits(t *testing.T) {
+	c := &Consolidator{}
+	profile := &Profile{
+		UserID: "user-1",
+		Traits: []string{"helpful"},
+	}
+	extracts := []Extract{
+		{
+			Type: string(TypeFact),
+			ProfileUpdates: &ProfileUpdateSet{
+				Traits: []string{"helpful", "friendly"},
+			},
+		},
+	}
+
+	c.updateProfileFromExtraction(profile, extracts)
+
+	if len(profile.Traits) != 2 {
+		t.Errorf("expected 2 traits (dedup), got %d: %v", len(profile.Traits), profile.Traits)
+	}
+}
+
+// TestUpdateProfileFromExtraction_LegacyFallback verifies legacy fact parsing still works.
+func TestUpdateProfileFromExtraction_LegacyFallback(t *testing.T) {
+	c := &Consolidator{}
+	profile := &Profile{
+		UserID: "user-1",
+	}
+	extracts := []Extract{
+		{
+			Type:    string(TypeFact),
+			Content: "name: Alice",
+		},
+	}
+
+	c.updateProfileFromExtraction(profile, extracts)
+
+	if profile.Facts["name"] != "Alice" {
+		t.Errorf("expected name=Alice from legacy fallback, got %q", profile.Facts["name"])
+	}
+}
+
+// TestUpdateProfileFromExtraction_LegacyInterestFallback verifies legacy interest extraction still works.
+func TestUpdateProfileFromExtraction_LegacyInterestFallback(t *testing.T) {
+	c := &Consolidator{}
+	profile := &Profile{
+		UserID: "user-1",
+	}
+	extracts := []Extract{
+		{
+			Type:     string(TypeInterest),
+			Keywords: []string{"golang", "rust"},
+		},
+	}
+
+	c.updateProfileFromExtraction(profile, extracts)
+
+	if len(profile.Interests) != 2 {
+		t.Errorf("expected 2 interests from legacy fallback, got %d: %v", len(profile.Interests), profile.Interests)
+	}
+}
+
+// TestStoreMemories_ImportanceAwareDedup verifies that a lower-importance extract
+// does not overwrite a higher-confidence existing memory.
+func TestStoreMemories_ImportanceAwareDedup(t *testing.T) {
+	ctx := context.Background()
+	qdrant := newMockQdrantStore()
+
+	// Pre-populate an existing high-confidence fact
+	existing := &Record{
+		UserID:     "user-1",
+		MemoryType: TypeFact,
+		Content:    "name: Alice",
+		Confidence: 0.95,
+		CreatedAt:  time.Now(),
+	}
+	if err := qdrant.UpsertMemory(ctx, existing); err != nil {
+		t.Fatalf("failed to seed existing memory: %v", err)
+	}
+
+	c := &Consolidator{
+		qdrant:          qdrant,
+		embedder:        newRetryableEmbedder(0),
+		retryMaxRetries: 1,
+		retryBaseDelay:  1 * time.Second,
+		retryMaxDelay:   30 * time.Second,
+	}
+
+	lowImportance := 0.3
+	extracts := []Extract{
+		{
+			Content:         "name: Alice",
+			Type:            string(TypeFact),
+			Confidence:      0.5,
+			ImportanceScore: &lowImportance,
+		},
+	}
+
+	stored, err := c.storeMemories(ctx, "user-1", extracts, "chan-1", "guild-1")
+	if err != nil {
+		t.Fatalf("storeMemories failed: %v", err)
+	}
+	if stored != 0 {
+		t.Errorf("expected 0 stored (low importance vs high confidence existing), got %d", stored)
+	}
+}
+
+// TestStoreMemories_HighImportanceOverwrites verifies that a higher-importance extract
+// does overwrite a lower-confidence existing memory.
+func TestStoreMemories_HighImportanceOverwrites(t *testing.T) {
+	ctx := context.Background()
+	qdrant := newMockQdrantStore()
+
+	existing := &Record{
+		UserID:     "user-1",
+		MemoryType: TypeFact,
+		Content:    "name: Alice",
+		Confidence: 0.4,
+		CreatedAt:  time.Now(),
+	}
+	if err := qdrant.UpsertMemory(ctx, existing); err != nil {
+		t.Fatalf("failed to seed existing memory: %v", err)
+	}
+
+	c := &Consolidator{
+		qdrant:          qdrant,
+		embedder:        newRetryableEmbedder(0),
+		retryMaxRetries: 1,
+		retryBaseDelay:  1 * time.Second,
+		retryMaxDelay:   30 * time.Second,
+	}
+
+	highImportance := 0.9
+	extracts := []Extract{
+		{
+			Content:         "name: Alice",
+			Type:            string(TypeFact),
+			Confidence:      0.85,
+			ImportanceScore: &highImportance,
+		},
+	}
+
+	stored, err := c.storeMemories(ctx, "user-1", extracts, "chan-1", "guild-1")
+	if err != nil {
+		t.Fatalf("storeMemories failed: %v", err)
+	}
+	if stored != 1 {
+		t.Errorf("expected 1 stored (high importance overwrites low confidence), got %d", stored)
+	}
+
+	// Verify tier was assigned
+	for _, m := range qdrant.memories {
+		if m.DecayCategory == "" {
+			t.Error("expected DecayCategory to be assigned")
+		}
+	}
+}
+
+// TestStoreMemories_TierAssignment verifies DecayCategory is assigned on store.
+func TestStoreMemories_TierAssignment(t *testing.T) {
+	ctx := context.Background()
+	qdrant := newMockQdrantStore()
+
+	c := &Consolidator{
+		qdrant:          qdrant,
+		embedder:        newRetryableEmbedder(0),
+		retryMaxRetries: 1,
+		retryBaseDelay:  1 * time.Second,
+		retryMaxDelay:   30 * time.Second,
+	}
+
+	highImp := 0.95
+	extracts := []Extract{
+		{
+			Content:         "some unique fact",
+			Type:            string(TypeFact),
+			Confidence:      0.9,
+			ImportanceScore: &highImp,
+		},
+	}
+
+	stored, err := c.storeMemories(ctx, "user-1", extracts, "chan-1", "guild-1")
+	if err != nil {
+		t.Fatalf("storeMemories failed: %v", err)
+	}
+	if stored != 1 {
+		t.Fatalf("expected 1 stored, got %d", stored)
+	}
+
+	for _, m := range qdrant.memories {
+		if m.DecayCategory != "hot" {
+			t.Errorf("expected hot tier for high score memory, got %q (imp=%.2f conf=%.2f)", m.DecayCategory, m.ImportanceScore, m.Confidence)
+		}
+		if m.ImportanceScore != highImp {
+			t.Errorf("expected ImportanceScore=%.2f, got %.2f", highImp, m.ImportanceScore)
+		}
+	}
+}
+
+// TestEntropyGate_IntegrationWithProcessWithMessages verifies entropy gate filters
+// messages before consolidation in ProcessWithMessages.
+func TestEntropyGate_IntegrationWithProcessWithMessages(t *testing.T) {
+	mock := &mockAIClient{
+		createChatCompletionFn: func(ctx context.Context, req ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error) {
+			return &ai.ChatCompletionResponse{Content: "[]"}, nil
+		},
+	}
+	qdrant := newMockQdrantStore()
+	c := &Consolidator{
+		qdrant:               qdrant,
+		aiClient:             mock,
+		prompt:               "test prompt",
+		maxMessages:          100,
+		entropyMinContentLen: 10,
+		entropyMinWordRatio:  0.15,
+	}
+	ctx := context.Background()
+
+	// All messages too short — should return nil early
+	messages := []*DiscordMessage{
+		{AuthorID: "user-1", Username: "test", Content: "hi", Timestamp: time.Now()},
+		{AuthorID: "user-1", Username: "test", Content: "ok", Timestamp: time.Now()},
+	}
+
+	err := c.ProcessWithMessages(ctx, "user-1", messages)
+	if err != nil {
+		t.Fatalf("expected nil error when all filtered, got: %v", err)
 	}
 }

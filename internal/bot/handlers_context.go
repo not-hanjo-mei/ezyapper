@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
@@ -61,11 +62,18 @@ func (b *Bot) buildDynamicContext(authorName string, profile *memory.Profile, me
 
 	// Add relevant memories.
 	if len(memories) > 0 {
-		context.WriteString("\n\n<memory>\n")
-		for _, mem := range memories {
-			fmt.Fprintf(&context, "[%s] %s\n", mem.MemoryType, mem.Content)
+		decayRates := map[memory.Type]float64{
+			memory.TypeFact:     b.cfg().Memory.DecayRates.Fact,
+			memory.TypeEpisode:  b.cfg().Memory.DecayRates.Episode,
+			memory.TypeInterest: b.cfg().Memory.DecayRates.Interest,
+			memory.TypeSummary:  b.cfg().Memory.DecayRates.Summary,
 		}
-		context.WriteString("</memory>")
+		decayRate := memory.DecayRateForType(memory.TypeFact, decayRates)
+		formatted := memory.FormatMemoriesForContext(memories, decayRate, time.Now())
+		if formatted != "" {
+			context.WriteString("\n")
+			context.WriteString(formatted)
+		}
 		logger.Debugf("[memory] added %d memories to dynamic context", len(memories))
 	}
 

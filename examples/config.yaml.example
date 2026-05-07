@@ -12,7 +12,7 @@
 #    - ON: set embedding + qdrant + retrieval/consolidation
 # 3) Enable optional modules in operations.* as needed
 
-schema_version: 3
+schema_version: 4
 
 core:
   # ── Discord Bot Settings ──────────────────────────────
@@ -268,7 +268,41 @@ memory_pipeline:
       ## system_prompt: |
       ##   Extract memorable information about USERS from this conversation.
       ##   For type=fact, prefer "key: value" content (e.g., "name: Alice").
-      ##   Return JSON array: [{"user_id": "...", "memories": [{"content": "...", "type": "fact|episode|interest", "confidence": 0.0-1.0, "keywords": []}]}]
+      ##   Return JSON array: [{"user_id": "...", "memories": [{"content": "...", "type": "fact|episode|interest", "confidence": 0.0-1.0, "keywords": [], "importance_score": 0.0-1.0, "profile_updates": {"traits": [], "facts": {}, "preferences": {}, "interests": []}}]}]
+      ##   - importance_score: 1.0=critical identity info, 0.5=moderate facts, 0.1=trivial
+      ##   - profile_updates: populate if memory reveals profile info, leave empty {} otherwise
+
+    # ── Maintenance ──
+    # Cron-based memory lifecycle management
+    maintenance_interval_sec: 3600
+    merge_cron_hour_utc: 3
+    summarize_cron_day: 0
+    merge_cosine_threshold: 0.85
+    prune_decay_threshold: 0.1
+    prune_age_days: 90
+    max_maintenance_llm_calls_per_day: 10
+
+    # ── Entropy Gate ──
+    entropy_min_content_length: 20
+    entropy_min_unique_word_ratio: 0.2
+
+    # ── Decay Rates (lower = decays slower) ──
+    decay_rates:
+      fact: 0.01
+      episode: 0.05
+      interest: 0.02
+      summary: 0.005
+
+    # ── Scoring Weights ──
+    scoring:
+      importance_weight: 0.4
+      recency_weight: 0.3
+      access_weight: 0.2
+      confidence_weight: 0.1
+
+    # ── RRF + Context ──
+    rrf_k: 60
+    context_max_memories: 10
 
   # ── Qdrant Vector Database ────────────────────────────
   qdrant:

@@ -76,6 +76,12 @@ type Service interface {
 	// and returns the remaining count.
 	ConsumeChannelMessageCount(channelID string, consumed int) int
 
+	// StartMaintenance starts periodic memory maintenance (merge, prune, summarize).
+	StartMaintenance(ctx context.Context) error
+
+	// StopMaintenance stops periodic memory maintenance.
+	StopMaintenance()
+
 	// Close closes the service and its connections
 	Close() error
 }
@@ -103,6 +109,8 @@ type MemoryService struct {
 	accessQueue chan string
 	done        chan struct{}
 	wg          sync.WaitGroup
+
+	maintenance *MaintenanceWorker
 }
 
 // ServiceConfig holds configuration parameters for the memory service.
@@ -112,12 +120,32 @@ type ServiceConfig struct {
 	TopK                  int
 	MinScore              float64
 	Consolidation         *config.ConsolidationConfig
-	OwnBotID              string // Bot's own Discord ID to distinguish from other bots
+	OwnBotID              string
 	MemorySearchLimit     int
 	MaxPaginatedLimit     int
 	RetryMaxRetries       int
 	RetryBaseDelayMs      int
 	RetryMaxDelayMs       int
+
+	// Maintenance
+	MaintenanceIntervalSec       int
+	MergeCronHourUTC             int
+	SummarizeCronDay             int
+	MergeCosineThreshold         float64
+	PruneDecayThreshold          float64
+	PruneAgeDays                 int
+	MaxMaintenanceLLMCallsPerDay int
+
+	// Entropy
+	EntropyMinContentLength   int
+	EntropyMinUniqueWordRatio float64
+
+	// Scoring
+	Scoring ScoringConfig
+
+	// RRF
+	RRFK               int
+	ContextMaxMemories int
 }
 
 // Embedder defines the interface for generating embeddings
@@ -168,7 +196,7 @@ func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedde
 		done:                  make(chan struct{}),
 	}
 
-	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, vd, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit, cfg.RetryMaxRetries, cfg.RetryBaseDelayMs, cfg.RetryMaxDelayMs)
+	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, vd, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit, cfg.EntropyMinContentLength, cfg.EntropyMinUniqueWordRatio, cfg.RetryMaxRetries, cfg.RetryBaseDelayMs, cfg.RetryMaxDelayMs)
 
 	service.startAccessWorker()
 
@@ -201,13 +229,17 @@ func (s *MemoryService) Search(ctx context.Context, userID string, query string,
 
 	embedding, err := s.embedder.Embed(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("generate embedding for userID=%s: %w", userID, err)
+		return nil, fmt.Errorf("embed query for userID=%s: %w", userID, err)
 	}
 
 	memories, err := s.qdrant.SearchMemories(ctx, userID, embedding, opts)
 	if err != nil {
 		return nil, fmt.Errorf("search for userID=%s: %w", userID, err)
 	}
+
+	// Post-process: sort by decayed score, assign tiers, enforce type diversity
+	decayRate := DecayRateForType(TypeFact, s.config.Scoring.DecayRates)
+	memories = PostProcessResults(memories, decayRate, time.Now(), s.config.Scoring.Weights)
 
 	s.enqueueAccessIDs(memories)
 
@@ -529,7 +561,25 @@ func (s *MemoryService) startAccessWorker() {
 	}()
 }
 
+func (s *MemoryService) StartMaintenance(ctx context.Context) error {
+	if s.maintenance != nil {
+		return fmt.Errorf("maintenance already started")
+	}
+	s.maintenance = StartMaintenanceWorker(ctx, s.qdrant, s.config)
+	return nil
+}
+
+func (s *MemoryService) StopMaintenance() {
+	if s.maintenance != nil {
+		s.maintenance.Stop()
+		s.maintenance = nil
+	}
+}
+
 func (s *MemoryService) Close() error {
+	if s.maintenance != nil {
+		s.maintenance.Stop()
+	}
 	close(s.done)
 	s.wg.Wait()
 	s.embedder.Stop()

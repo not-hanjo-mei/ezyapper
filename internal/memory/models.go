@@ -35,6 +35,12 @@ type Record struct {
 	Keywords   []string  `json:"keywords"`
 	Confidence float64   `json:"confidence"`
 	CreatedAt  time.Time `json:"created_at"`
+
+	ImportanceScore float64   `json:"importance_score"`
+	AccessCount     int       `json:"access_count"`
+	LastAccessedAt  time.Time `json:"last_accessed_at"`
+	DecayCategory   string    `json:"decay_category"`
+	ExpiresAt       time.Time `json:"expires_at,omitempty"`
 }
 
 // Profile represents a user's profile stored in Qdrant.
@@ -75,12 +81,37 @@ type Extract struct {
 	Type       string   `json:"type"`
 	Confidence float64  `json:"confidence"`
 	Keywords   []string `json:"keywords"`
+
+	ImportanceScore *float64          `json:"importance_score,omitempty"`
+	ProfileUpdates  *ProfileUpdateSet `json:"profile_updates,omitempty"`
 }
 
 // UserMemoryExtract represents extracted memories for a specific user
 type UserMemoryExtract struct {
 	UserID   string    `json:"user_id"`
 	Memories []Extract `json:"memories"`
+}
+
+// ProfileUpdateSet represents structured profile updates from LLM extraction.
+type ProfileUpdateSet struct {
+	Traits      []string          `json:"traits,omitempty"`
+	Facts       map[string]string `json:"facts,omitempty"`
+	Preferences map[string]string `json:"preferences,omitempty"`
+	Interests   []string          `json:"interests,omitempty"`
+}
+
+// ScoringConfig holds config for memory scoring and decay.
+type ScoringConfig struct {
+	Weights    ScoringWeights
+	DecayRates map[Type]float64
+}
+
+// ScoringWeights holds weights for compositing scores.
+type ScoringWeights struct {
+	Importance float64
+	Recency    float64
+	Access     float64
+	Confidence float64
 }
 
 // DiscordMessage is an alias for the canonical type defined in internal/types.

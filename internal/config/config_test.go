@@ -142,7 +142,7 @@ func validatePluginManifest(manifest map[string]interface{}) []string {
 func TestLoad_MissingDiscordToken(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	config := `schema_version: 3
+	config := `schema_version: 4
 core:
 	discord:
 		bot_name: "TestBot"
@@ -240,7 +240,7 @@ operations:
 func TestLoad_MissingAPIKey(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	config := `schema_version: 3
+	config := `schema_version: 4
 core:
 	discord:
 		token: "test-token"
@@ -860,6 +860,29 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 				SystemPrompt:      "extract",
 				MemorySearchLimit: 20,
 			},
+			MaintenanceIntervalSec:       3600,
+			MergeCronHourUTC:             3,
+			SummarizeCronDay:             0,
+			MergeCosineThreshold:         0.85,
+			PruneDecayThreshold:          0.1,
+			PruneAgeDays:                 90,
+			MaxMaintenanceLLMCallsPerDay: 50,
+			EntropyMinContentLength:      10,
+			EntropyMinUniqueWordRatio:    0.15,
+			DecayRates: DecayRatesConfig{
+				Fact:     0.01,
+				Episode:  0.05,
+				Interest: 0.02,
+				Summary:  0.005,
+			},
+			Scoring: ScoringWeights{
+				ImportanceWeight: 0.4,
+				RecencyWeight:    0.3,
+				AccessWeight:     0.2,
+				ConfidenceWeight: 0.1,
+			},
+			RRFK:               60,
+			ContextMaxMemories: 20,
 		},
 		Qdrant: QdrantConfig{
 			Host:       "localhost",
@@ -920,11 +943,34 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			RetryBaseDelayMs: 1000,
-			RetryMaxDelayMs:  30000,
-			MaxRetries:       3,
-			Retrieval:        RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation:    ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			RetryBaseDelayMs:             1000,
+			RetryMaxDelayMs:              30000,
+			MaxRetries:                   3,
+			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5},
+			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			MaintenanceIntervalSec:       3600,
+			MergeCronHourUTC:             3,
+			SummarizeCronDay:             0,
+			MergeCosineThreshold:         0.85,
+			PruneDecayThreshold:          0.1,
+			PruneAgeDays:                 90,
+			MaxMaintenanceLLMCallsPerDay: 50,
+			EntropyMinContentLength:      10,
+			EntropyMinUniqueWordRatio:    0.15,
+			DecayRates: DecayRatesConfig{
+				Fact:     0.01,
+				Episode:  0.05,
+				Interest: 0.02,
+				Summary:  0.005,
+			},
+			Scoring: ScoringWeights{
+				ImportanceWeight: 0.4,
+				RecencyWeight:    0.3,
+				AccessWeight:     0.2,
+				ConfidenceWeight: 0.1,
+			},
+			RRFK:               60,
+			ContextMaxMemories: 20,
 		},
 		Qdrant:     QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:        WebConfig{Enabled: false},
@@ -953,11 +999,34 @@ func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			RetryBaseDelayMs: 1000,
-			RetryMaxDelayMs:  30000,
-			MaxRetries:       3,
-			Retrieval:        RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation:    ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			RetryBaseDelayMs:             1000,
+			RetryMaxDelayMs:              30000,
+			MaxRetries:                   3,
+			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5},
+			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			MaintenanceIntervalSec:       3600,
+			MergeCronHourUTC:             3,
+			SummarizeCronDay:             0,
+			MergeCosineThreshold:         0.85,
+			PruneDecayThreshold:          0.1,
+			PruneAgeDays:                 90,
+			MaxMaintenanceLLMCallsPerDay: 50,
+			EntropyMinContentLength:      10,
+			EntropyMinUniqueWordRatio:    0.15,
+			DecayRates: DecayRatesConfig{
+				Fact:     0.01,
+				Episode:  0.05,
+				Interest: 0.02,
+				Summary:  0.005,
+			},
+			Scoring: ScoringWeights{
+				ImportanceWeight: 0.4,
+				RecencyWeight:    0.3,
+				AccessWeight:     0.2,
+				ConfidenceWeight: 0.1,
+			},
+			RRFK:               60,
+			ContextMaxMemories: 20,
 		},
 		Qdrant:     QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:        WebConfig{Enabled: false},
@@ -986,8 +1055,31 @@ func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:     RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5},
+			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			MaintenanceIntervalSec:       3600,
+			MergeCronHourUTC:             3,
+			SummarizeCronDay:             0,
+			MergeCosineThreshold:         0.85,
+			PruneDecayThreshold:          0.1,
+			PruneAgeDays:                 90,
+			MaxMaintenanceLLMCallsPerDay: 50,
+			EntropyMinContentLength:      10,
+			EntropyMinUniqueWordRatio:    0.15,
+			DecayRates: DecayRatesConfig{
+				Fact:     0.01,
+				Episode:  0.05,
+				Interest: 0.02,
+				Summary:  0.005,
+			},
+			Scoring: ScoringWeights{
+				ImportanceWeight: 0.4,
+				RecencyWeight:    0.3,
+				AccessWeight:     0.2,
+				ConfidenceWeight: 0.1,
+			},
+			RRFK:               60,
+			ContextMaxMemories: 20,
 		},
 		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:     WebConfig{Enabled: false},
@@ -1026,8 +1118,31 @@ func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *test
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:     RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5},
+			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			MaintenanceIntervalSec:       3600,
+			MergeCronHourUTC:             3,
+			SummarizeCronDay:             0,
+			MergeCosineThreshold:         0.85,
+			PruneDecayThreshold:          0.1,
+			PruneAgeDays:                 90,
+			MaxMaintenanceLLMCallsPerDay: 50,
+			EntropyMinContentLength:      10,
+			EntropyMinUniqueWordRatio:    0.15,
+			DecayRates: DecayRatesConfig{
+				Fact:     0.01,
+				Episode:  0.05,
+				Interest: 0.02,
+				Summary:  0.005,
+			},
+			Scoring: ScoringWeights{
+				ImportanceWeight: 0.4,
+				RecencyWeight:    0.3,
+				AccessWeight:     0.2,
+				ConfidenceWeight: 0.1,
+			},
+			RRFK:               60,
+			ContextMaxMemories: 20,
 		},
 		Qdrant:     QdrantConfig{},
 		Web:        WebConfig{Enabled: false},
@@ -1192,7 +1307,7 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 func TestPluginsConfig_DefaultToolTimeoutMs_ParsesCorrectly(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	config := `schema_version: 3
+	config := `schema_version: 4
 core:
   discord:
     token: "test-token"
@@ -1247,6 +1362,27 @@ memory_pipeline:
       max_messages: 20
       system_prompt: "test"
       memory_search_limit: 20
+    maintenance_interval_sec: 3600
+    merge_cron_hour_utc: 3
+    summarize_cron_day: 0
+    merge_cosine_threshold: 0.85
+    prune_decay_threshold: 0.1
+    prune_age_days: 90
+    max_maintenance_llm_calls_per_day: 50
+    entropy_min_content_length: 10
+    entropy_min_unique_word_ratio: 0.15
+    decay_rates:
+      fact: 0.01
+      episode: 0.05
+      interest: 0.02
+      summary: 0.005
+    scoring:
+      importance_weight: 0.4
+      recency_weight: 0.3
+      access_weight: 0.2
+      confidence_weight: 0.1
+    rrf_k: 60
+    context_max_memories: 20
   qdrant:
     host: "localhost"
     port: 6334
@@ -1308,7 +1444,7 @@ operations:
 func TestPluginsConfig_DefaultToolTimeoutMs_OmitsDefaultsToZero(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	config := `schema_version: 3
+	config := `schema_version: 4
 core:
   discord:
     token: "test-token"
@@ -1363,6 +1499,27 @@ memory_pipeline:
       max_messages: 20
       system_prompt: "test"
       memory_search_limit: 20
+    maintenance_interval_sec: 3600
+    merge_cron_hour_utc: 3
+    summarize_cron_day: 0
+    merge_cosine_threshold: 0.85
+    prune_decay_threshold: 0.1
+    prune_age_days: 90
+    max_maintenance_llm_calls_per_day: 50
+    entropy_min_content_length: 10
+    entropy_min_unique_word_ratio: 0.15
+    decay_rates:
+      fact: 0.01
+      episode: 0.05
+      interest: 0.02
+      summary: 0.005
+    scoring:
+      importance_weight: 0.4
+      recency_weight: 0.3
+      access_weight: 0.2
+      confidence_weight: 0.1
+    rrf_k: 60
+    context_max_memories: 20
   qdrant:
     host: "localhost"
     port: 6334
@@ -1423,7 +1580,7 @@ operations:
 func TestPluginsConfig_DefaultToolTimeoutMs_NegativeClampedToZero(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	config := `schema_version: 3
+	config := `schema_version: 4
 core:
   discord:
     token: "test-token"
@@ -1552,8 +1709,31 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:     RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5},
+			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			MaintenanceIntervalSec:       3600,
+			MergeCronHourUTC:             3,
+			SummarizeCronDay:             0,
+			MergeCosineThreshold:         0.85,
+			PruneDecayThreshold:          0.1,
+			PruneAgeDays:                 90,
+			MaxMaintenanceLLMCallsPerDay: 50,
+			EntropyMinContentLength:      10,
+			EntropyMinUniqueWordRatio:    0.15,
+			DecayRates: DecayRatesConfig{
+				Fact:     0.01,
+				Episode:  0.05,
+				Interest: 0.02,
+				Summary:  0.005,
+			},
+			Scoring: ScoringWeights{
+				ImportanceWeight: 0.4,
+				RecencyWeight:    0.3,
+				AccessWeight:     0.2,
+				ConfidenceWeight: 0.1,
+			},
+			RRFK:               60,
+			ContextMaxMemories: 20,
 		},
 		Qdrant:     QdrantConfig{},
 		Web:        WebConfig{Enabled: false},
@@ -1628,8 +1808,31 @@ func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:     RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5},
+			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			MaintenanceIntervalSec:       3600,
+			MergeCronHourUTC:             3,
+			SummarizeCronDay:             0,
+			MergeCosineThreshold:         0.85,
+			PruneDecayThreshold:          0.1,
+			PruneAgeDays:                 90,
+			MaxMaintenanceLLMCallsPerDay: 50,
+			EntropyMinContentLength:      10,
+			EntropyMinUniqueWordRatio:    0.15,
+			DecayRates: DecayRatesConfig{
+				Fact:     0.01,
+				Episode:  0.05,
+				Interest: 0.02,
+				Summary:  0.005,
+			},
+			Scoring: ScoringWeights{
+				ImportanceWeight: 0.4,
+				RecencyWeight:    0.3,
+				AccessWeight:     0.2,
+				ConfidenceWeight: 0.1,
+			},
+			RRFK:               60,
+			ContextMaxMemories: 20,
 		},
 		Qdrant:     QdrantConfig{},
 		Web:        WebConfig{Enabled: false},
@@ -2070,14 +2273,37 @@ func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
-			ConsolidationInterval: 1,
-			ShortTermLimit:        1,
-			MaxPaginatedLimit:     100,
-			RetryBaseDelayMs:      1000,
-			RetryMaxDelayMs:       30000,
-			MaxRetries:            3,
-			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			ConsolidationInterval:        1,
+			ShortTermLimit:               1,
+			MaxPaginatedLimit:            100,
+			RetryBaseDelayMs:             1000,
+			RetryMaxDelayMs:              30000,
+			MaxRetries:                   3,
+			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5},
+			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			MaintenanceIntervalSec:       3600,
+			MergeCronHourUTC:             3,
+			SummarizeCronDay:             0,
+			MergeCosineThreshold:         0.85,
+			PruneDecayThreshold:          0.1,
+			PruneAgeDays:                 90,
+			MaxMaintenanceLLMCallsPerDay: 50,
+			EntropyMinContentLength:      10,
+			EntropyMinUniqueWordRatio:    0.15,
+			DecayRates: DecayRatesConfig{
+				Fact:     0.01,
+				Episode:  0.05,
+				Interest: 0.02,
+				Summary:  0.005,
+			},
+			Scoring: ScoringWeights{
+				ImportanceWeight: 0.4,
+				RecencyWeight:    0.3,
+				AccessWeight:     0.2,
+				ConfidenceWeight: 0.1,
+			},
+			RRFK:               60,
+			ContextMaxMemories: 20,
 		},
 		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:     WebConfig{Enabled: false},

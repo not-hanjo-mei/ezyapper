@@ -31,7 +31,7 @@ type Config struct {
 	configPath string `yaml:"-"`
 }
 
-const currentConfigSchemaVersion = 3
+const currentConfigSchemaVersion = 4
 
 type fileConfig struct {
 	SchemaVersion int                 `mapstructure:"schema_version" yaml:"schema_version"`
@@ -195,6 +195,29 @@ type MemoryConfig struct {
 	MaxRetries            int                 `mapstructure:"max_retries" yaml:"max_retries"`
 	Retrieval             RetrievalConfig     `mapstructure:"retrieval" yaml:"retrieval"`
 	Consolidation         ConsolidationConfig `mapstructure:"consolidation" yaml:"consolidation"`
+
+	// Maintenance
+	MaintenanceIntervalSec       int     `mapstructure:"maintenance_interval_sec" yaml:"maintenance_interval_sec"`
+	MergeCronHourUTC             int     `mapstructure:"merge_cron_hour_utc" yaml:"merge_cron_hour_utc"`
+	SummarizeCronDay             int     `mapstructure:"summarize_cron_day" yaml:"summarize_cron_day"`
+	MergeCosineThreshold         float64 `mapstructure:"merge_cosine_threshold" yaml:"merge_cosine_threshold"`
+	PruneDecayThreshold          float64 `mapstructure:"prune_decay_threshold" yaml:"prune_decay_threshold"`
+	PruneAgeDays                 int     `mapstructure:"prune_age_days" yaml:"prune_age_days"`
+	MaxMaintenanceLLMCallsPerDay int     `mapstructure:"max_maintenance_llm_calls_per_day" yaml:"max_maintenance_llm_calls_per_day"`
+
+	// Entropy gate
+	EntropyMinContentLength   int     `mapstructure:"entropy_min_content_length" yaml:"entropy_min_content_length"`
+	EntropyMinUniqueWordRatio float64 `mapstructure:"entropy_min_unique_word_ratio" yaml:"entropy_min_unique_word_ratio"`
+
+	// Decay rates per type
+	DecayRates DecayRatesConfig `mapstructure:"decay_rates" yaml:"decay_rates"`
+
+	// Scoring weights
+	Scoring ScoringWeights `mapstructure:"scoring" yaml:"scoring"`
+
+	// RRF
+	RRFK               int `mapstructure:"rrf_k" yaml:"rrf_k"`
+	ContextMaxMemories int `mapstructure:"context_max_memories" yaml:"context_max_memories"`
 }
 
 type ConsolidationConfig struct {
@@ -222,6 +245,20 @@ type ConsolidationConfig struct {
 type RetrievalConfig struct {
 	TopK     int     `mapstructure:"top_k" yaml:"top_k"`
 	MinScore float64 `mapstructure:"min_score" yaml:"min_score"`
+}
+
+type DecayRatesConfig struct {
+	Fact     float64 `mapstructure:"fact" yaml:"fact"`
+	Episode  float64 `mapstructure:"episode" yaml:"episode"`
+	Interest float64 `mapstructure:"interest" yaml:"interest"`
+	Summary  float64 `mapstructure:"summary" yaml:"summary"`
+}
+
+type ScoringWeights struct {
+	ImportanceWeight float64 `mapstructure:"importance_weight" yaml:"importance_weight"`
+	RecencyWeight    float64 `mapstructure:"recency_weight" yaml:"recency_weight"`
+	AccessWeight     float64 `mapstructure:"access_weight" yaml:"access_weight"`
+	ConfidenceWeight float64 `mapstructure:"confidence_weight" yaml:"confidence_weight"`
 }
 
 type WebConfig struct {
@@ -489,6 +526,56 @@ func validateMemory(cfg *Config, errs *[]string) {
 		*errs = append(*errs, "memory_pipeline.memory.retrieval.min_score must be between 0 and 1")
 	}
 	requirePositive(cfg.Memory.Consolidation.MemorySearchLimit, "memory_pipeline.memory.consolidation.memory_search_limit", errs)
+
+	requirePositive(cfg.Memory.MaintenanceIntervalSec, "memory_pipeline.memory.maintenance_interval_sec", errs)
+	if cfg.Memory.MergeCronHourUTC < 0 || cfg.Memory.MergeCronHourUTC > 23 {
+		*errs = append(*errs, "memory_pipeline.memory.merge_cron_hour_utc must be between 0 and 23")
+	}
+	if cfg.Memory.SummarizeCronDay < 0 || cfg.Memory.SummarizeCronDay > 6 {
+		*errs = append(*errs, "memory_pipeline.memory.summarize_cron_day must be between 0 and 6")
+	}
+	if cfg.Memory.MergeCosineThreshold < 0 || cfg.Memory.MergeCosineThreshold > 1 {
+		*errs = append(*errs, "memory_pipeline.memory.merge_cosine_threshold must be between 0 and 1")
+	}
+	if cfg.Memory.PruneDecayThreshold < 0 || cfg.Memory.PruneDecayThreshold > 1 {
+		*errs = append(*errs, "memory_pipeline.memory.prune_decay_threshold must be between 0 and 1")
+	}
+	requirePositive(cfg.Memory.PruneAgeDays, "memory_pipeline.memory.prune_age_days", errs)
+	if cfg.Memory.MaxMaintenanceLLMCallsPerDay < 0 {
+		*errs = append(*errs, "memory_pipeline.memory.max_maintenance_llm_calls_per_day must be greater than or equal to 0")
+	}
+	if cfg.Memory.EntropyMinContentLength < 0 {
+		*errs = append(*errs, "memory_pipeline.memory.entropy_min_content_length must be greater than or equal to 0")
+	}
+	if cfg.Memory.EntropyMinUniqueWordRatio < 0 || cfg.Memory.EntropyMinUniqueWordRatio > 1 {
+		*errs = append(*errs, "memory_pipeline.memory.entropy_min_unique_word_ratio must be between 0 and 1")
+	}
+	if cfg.Memory.DecayRates.Fact <= 0 {
+		*errs = append(*errs, "memory_pipeline.memory.decay_rates.fact must be greater than 0")
+	}
+	if cfg.Memory.DecayRates.Episode <= 0 {
+		*errs = append(*errs, "memory_pipeline.memory.decay_rates.episode must be greater than 0")
+	}
+	if cfg.Memory.DecayRates.Interest <= 0 {
+		*errs = append(*errs, "memory_pipeline.memory.decay_rates.interest must be greater than 0")
+	}
+	if cfg.Memory.DecayRates.Summary <= 0 {
+		*errs = append(*errs, "memory_pipeline.memory.decay_rates.summary must be greater than 0")
+	}
+	if cfg.Memory.Scoring.ImportanceWeight < 0 {
+		*errs = append(*errs, "memory_pipeline.memory.scoring.importance_weight must be greater than or equal to 0")
+	}
+	if cfg.Memory.Scoring.RecencyWeight < 0 {
+		*errs = append(*errs, "memory_pipeline.memory.scoring.recency_weight must be greater than or equal to 0")
+	}
+	if cfg.Memory.Scoring.AccessWeight < 0 {
+		*errs = append(*errs, "memory_pipeline.memory.scoring.access_weight must be greater than or equal to 0")
+	}
+	if cfg.Memory.Scoring.ConfidenceWeight < 0 {
+		*errs = append(*errs, "memory_pipeline.memory.scoring.confidence_weight must be greater than or equal to 0")
+	}
+	requirePositive(cfg.Memory.RRFK, "memory_pipeline.memory.rrf_k", errs)
+	requirePositive(cfg.Memory.ContextMaxMemories, "memory_pipeline.memory.context_max_memories", errs)
 }
 
 func validateRateLimit(cfg *Config, errs *[]string) {

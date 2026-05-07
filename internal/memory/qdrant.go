@@ -4,8 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/fnv"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
+	"unicode"
 
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
@@ -134,57 +138,71 @@ func (qc *QdrantClient) initializeCollections(ctx context.Context) error {
 
 // createCollectionIfNotExists creates a collection with proper configuration
 func (qc *QdrantClient) createCollectionIfNotExists(ctx context.Context, name string) error {
-	// Check if collection exists
 	exists, err := qc.client.CollectionExists(ctx, name)
 	if err != nil {
 		return err
 	}
-
 	if exists {
 		logger.Infof("[qdrant] Collection %s already exists", name)
 		return nil
 	}
 
-	// Create collection with configured vector size
-	err = qc.client.CreateCollection(ctx, &qdrant.CreateCollection{
+	createReq := &qdrant.CreateCollection{
 		CollectionName: name,
 		VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
 			Size:     uint64(qc.vectorSize),
 			Distance: qdrant.Distance_Cosine,
 		}),
-	})
+	}
+
+	// Memories-specific: tenant HNSW + quantization + sparse vectors
+	if name == CollectionMemories {
+		createReq.HnswConfig = &qdrant.HnswConfigDiff{
+			M:        qdrant.PtrOf(uint64(0)),
+			PayloadM: qdrant.PtrOf(uint64(16)),
+		}
+		createReq.QuantizationConfig = qdrant.NewQuantizationScalar(&qdrant.ScalarQuantization{
+			Type:      qdrant.QuantizationType_Int8,
+			Quantile:  qdrant.PtrOf(float32(0.99)),
+			AlwaysRam: qdrant.PtrOf(true),
+		})
+		createReq.SparseVectorsConfig = qdrant.NewSparseVectorsConfig(map[string]*qdrant.SparseVectorParams{
+			"bm25_keywords": {},
+		})
+		createReq.OnDiskPayload = qdrant.PtrOf(true)
+	}
+
+	err = qc.client.CreateCollection(ctx, createReq)
 	if err != nil {
 		return fmt.Errorf("failed to create collection: %w", err)
 	}
 
 	logger.Infof("[qdrant] Created collection: %s", name)
 
-	// Create payload indexes for filtering
 	if err := qc.createPayloadIndexes(ctx, name); err != nil {
 		logger.Warnf("[qdrant] Failed to create payload indexes for %s: %v", name, err)
 	}
-
 	return nil
 }
 
 // createPayloadIndexes creates indexes for payload fields used in filtering
 func (qc *QdrantClient) createPayloadIndexes(ctx context.Context, collectionName string) error {
-	// Only create indexes for memories collection
 	if collectionName != CollectionMemories {
 		return nil
 	}
 
-	// Create index for user_id field (required for filtering)
 	_, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
 		CollectionName: collectionName,
 		FieldName:      "user_id",
 		FieldType:      qdrant.FieldType_FieldTypeKeyword.Enum(),
+		FieldIndexParams: qdrant.NewPayloadIndexParamsKeyword(&qdrant.KeywordIndexParams{
+			IsTenant: qdrant.PtrOf(true),
+		}),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create user_id index: %w", err)
 	}
 
-	// Create index for memory_type field
 	_, err = qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
 		CollectionName: collectionName,
 		FieldName:      "memory_type",
@@ -194,13 +212,34 @@ func (qc *QdrantClient) createPayloadIndexes(ctx context.Context, collectionName
 		return fmt.Errorf("failed to create memory_type index: %w", err)
 	}
 
+	_, err = qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+		CollectionName: collectionName,
+		FieldName:      "created_at",
+		FieldType:      qdrant.FieldType_FieldTypeDatetime.Enum(),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create created_at index: %w", err)
+	}
+
+	_, err = qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+		CollectionName: collectionName,
+		FieldName:      "content",
+		FieldType:      qdrant.FieldType_FieldTypeText.Enum(),
+		FieldIndexParams: qdrant.NewPayloadIndexParamsText(&qdrant.TextIndexParams{
+			Tokenizer: qdrant.TokenizerType_Word,
+			Lowercase: qdrant.PtrOf(true),
+		}),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create content index: %w", err)
+	}
+
 	logger.Infof("[qdrant] Created payload indexes for collection: %s", collectionName)
 	return nil
 }
 
 // UpsertMemory stores or updates a memory
 func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error {
-	// Generate ID BEFORE retry loop to prevent duplicate records on retry
 	if memory.ID == "" {
 		memory.ID = uuid.New().String()
 	}
@@ -211,7 +250,6 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error 
 
 	logger.Debugf("[qdrant] userID=%s type=%s content=%.50s", memory.UserID, memory.MemoryType, memory.Content)
 
-	// Prepare payload before retry loop (idempotent data only)
 	payload, err := qc.memoryToPayload(memory)
 	if err != nil {
 		return fmt.Errorf("failed to prepare memory payload: %w", err)
@@ -219,13 +257,26 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error 
 	memID := memory.ID
 	embedding := memory.Embedding
 
+	sparseIndices, sparseValues := computeBM25SparseVector(memory.Content, memory.Keywords)
+
 	_, err = retry.Retry(ctx, qc.maxRetries, func(ctx context.Context) (*qdrant.UpdateResult, error) {
+		var vectorsConfig *qdrant.Vectors
+		if len(sparseIndices) > 0 {
+			vectorsConfig = qdrant.NewVectorsMap(map[string]*qdrant.Vector{
+				"":              qdrant.NewVectorDense(embedding),
+				"bm25_keywords": qdrant.NewVectorSparse(sparseIndices, sparseValues),
+			})
+		} else {
+			vectorsConfig = qdrant.NewVectors(embedding...)
+		}
+
 		return qc.client.Upsert(ctx, &qdrant.UpsertPoints{
 			CollectionName: CollectionMemories,
+			UpdateMode:     qdrant.UpdateMode_Upsert.Enum(),
 			Points: []*qdrant.PointStruct{
 				{
 					Id:      qdrant.NewID(memID),
-					Vectors: qdrant.NewVectors(embedding...),
+					Vectors: vectorsConfig,
 					Payload: payload,
 				},
 			},
@@ -459,6 +510,49 @@ func (qc *QdrantClient) ListMemoriesByType(ctx context.Context, userID string, m
 	return memories, nil
 }
 
+// ScrollMemories scrolls all memories with payload and vectors, limited to `limit` points.
+func (qc *QdrantClient) ScrollMemories(ctx context.Context, limit uint32) ([]*scrollPoint, error) {
+	limitPtr := limit
+	results, err := qc.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: CollectionMemories,
+		Limit:          &limitPtr,
+		WithPayload:    qdrant.NewWithPayload(true),
+		WithVectors:    qdrant.NewWithVectors(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scroll memories: %w", err)
+	}
+
+	points := make([]*scrollPoint, 0, len(results))
+	for _, pt := range results {
+		sp := &scrollPoint{
+			ID:      pt.Id.GetUuid(),
+			Payload: pt.Payload,
+		}
+		if vo := pt.GetVectors(); vo != nil {
+			if vout := vo.GetVector(); vout != nil {
+				if dense, ok := vout.GetVector().(*qdrant.VectorOutput_Dense); ok {
+					sp.Embedding = dense.Dense.Data
+				}
+			}
+		}
+		points = append(points, sp)
+	}
+	return points, nil
+}
+
+// DeletePoint deletes a single point by ID from the memories collection.
+func (qc *QdrantClient) DeletePoint(ctx context.Context, id string) error {
+	_, err := qc.client.Delete(ctx, &qdrant.DeletePoints{
+		CollectionName: CollectionMemories,
+		Points:         qdrant.NewPointsSelector(qdrant.NewID(id)),
+	})
+	if err != nil {
+		return fmt.Errorf("delete point %s: %w", id, err)
+	}
+	return nil
+}
+
 // GetMemory retrieves a single memory by ID
 func (qc *QdrantClient) GetMemory(ctx context.Context, memoryID string) (*Record, error) {
 	logger.Debugf("[qdrant] retrieving memoryID=%s", memoryID)
@@ -643,4 +737,65 @@ func (qc *QdrantClient) DeleteProfile(ctx context.Context, userID string) error 
 
 	logger.Infof("[qdrant] successfully deleted profile for userID=%s", userID)
 	return nil
+}
+
+func computeBM25SparseVector(content string, keywords []string) ([]uint32, []float32) {
+	const k1, b = 1.2, 0.75
+
+	tokens := tokenize(strings.ToLower(content))
+	for _, kw := range keywords {
+		tokens = append(tokens, strings.ToLower(kw))
+	}
+	if len(tokens) == 0 {
+		return nil, nil
+	}
+
+	tf := make(map[string]int)
+	for _, t := range tokens {
+		tf[t]++
+	}
+
+	avgdl := 10.0
+	dl := float64(len(tokens))
+
+	type entry struct {
+		idx uint32
+		w   float32
+	}
+	entries := make([]entry, 0, len(tf))
+	for term, freq := range tf {
+		tfNorm := (float64(freq) * (k1 + 1)) / (float64(freq) + k1*(1-b+b*dl/avgdl))
+		idx := hashToken(term)
+		entries = append(entries, entry{idx: idx, w: float32(tfNorm)})
+	}
+
+	slices.SortFunc(entries, func(a, b entry) int {
+		if a.idx < b.idx {
+			return -1
+		}
+		if a.idx > b.idx {
+			return 1
+		}
+		return 0
+	})
+
+	indices := make([]uint32, len(entries))
+	values := make([]float32, len(entries))
+	for i, e := range entries {
+		indices[i] = e.idx
+		values[i] = e.w
+	}
+	return indices, values
+}
+
+func tokenize(s string) []string {
+	return strings.FieldsFunc(s, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+}
+
+func hashToken(s string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(s))
+	return h.Sum32() % (1 << 24)
 }

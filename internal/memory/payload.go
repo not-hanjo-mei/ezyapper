@@ -8,7 +8,7 @@ import (
 	"github.com/qdrant/go-client/qdrant"
 )
 
-const payloadSchemaVersion = 2
+const payloadSchemaVersion = 3
 
 func (qc *QdrantClient) memoryToPayload(memory *Record) (map[string]*qdrant.Value, error) {
 	payload := make(map[string]*qdrant.Value)
@@ -29,6 +29,14 @@ func (qc *QdrantClient) memoryToPayload(memory *Record) (map[string]*qdrant.Valu
 		keywordValues = append(keywordValues, &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: kw}})
 	}
 	payload["keywords"] = &qdrant.Value{Kind: &qdrant.Value_ListValue{ListValue: &qdrant.ListValue{Values: keywordValues}}}
+
+	payload["importance_score"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: memory.ImportanceScore}}
+	payload["access_count"] = &qdrant.Value{Kind: &qdrant.Value_IntegerValue{IntegerValue: int64(memory.AccessCount)}}
+	payload["last_accessed_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(memory.LastAccessedAt.UnixMilli()) / 1000.0}}
+	payload["decay_category"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: memory.DecayCategory}}
+	if !memory.ExpiresAt.IsZero() {
+		payload["expires_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(memory.ExpiresAt.UnixMilli()) / 1000.0}}
+	}
 
 	return payload, nil
 }
@@ -75,6 +83,28 @@ func (qc *QdrantClient) payloadToMemory(payload map[string]*qdrant.Value, id str
 	}
 	for _, kw := range keywords {
 		memory.Keywords = append(memory.Keywords, kw.GetStringValue())
+	}
+
+	if v, ok := payload["importance_score"]; ok && v != nil {
+		memory.ImportanceScore = v.GetDoubleValue()
+	}
+	if v, ok := payload["access_count"]; ok && v != nil {
+		memory.AccessCount = int(v.GetIntegerValue())
+	}
+	if v, ok := payload["last_accessed_at"]; ok && v != nil {
+		ts := v.GetDoubleValue()
+		if ts > 0 {
+			memory.LastAccessedAt = time.UnixMilli(int64(ts * 1000))
+		}
+	}
+	if v, ok := payload["decay_category"]; ok && v != nil {
+		memory.DecayCategory = v.GetStringValue()
+	}
+	if v, ok := payload["expires_at"]; ok && v != nil {
+		ts := v.GetDoubleValue()
+		if ts > 0 {
+			memory.ExpiresAt = time.UnixMilli(int64(ts * 1000))
+		}
 	}
 
 	return memory, nil
@@ -203,8 +233,9 @@ func validatePayloadSchema(payload map[string]*qdrant.Value) error {
 	if !ok || v == nil {
 		return fmt.Errorf("missing schema_version")
 	}
-	if v.GetIntegerValue() != payloadSchemaVersion {
-		return fmt.Errorf("unsupported schema_version: %d", v.GetIntegerValue())
+	version := v.GetIntegerValue()
+	if version < 2 || version > payloadSchemaVersion {
+		return fmt.Errorf("unsupported schema_version: %d", version)
 	}
 	return nil
 }

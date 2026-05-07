@@ -2,7 +2,6 @@ package bot
 
 import (
 	"context"
-	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -14,93 +13,6 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 )
-
-var stopWords = map[string]struct{}{
-	"a": {}, "an": {}, "the": {}, "is": {}, "are": {}, "was": {}, "were": {},
-	"be": {}, "been": {}, "being": {}, "have": {}, "has": {}, "had": {},
-	"do": {}, "does": {}, "did": {}, "will": {}, "would": {}, "shall": {},
-	"should": {}, "may": {}, "might": {}, "must": {}, "can": {}, "could": {},
-	"i": {}, "you": {}, "he": {}, "she": {}, "it": {}, "we": {}, "they": {},
-	"me": {}, "him": {}, "her": {}, "us": {}, "them": {}, "my": {}, "your": {},
-	"his": {}, "its": {}, "our": {}, "their": {}, "this": {}, "that": {},
-	"these": {}, "those": {}, "in": {}, "on": {}, "at": {}, "to": {},
-	"for": {}, "of": {}, "with": {}, "by": {}, "from": {}, "up": {},
-	"down": {}, "out": {}, "off": {}, "over": {}, "under": {}, "and": {},
-	"but": {}, "or": {}, "not": {}, "so": {}, "if": {}, "then": {},
-	"else": {}, "when": {}, "where": {}, "why": {}, "how": {}, "all": {},
-	"no": {}, "yes": {}, "just": {}, "now": {}, "also": {}, "very": {},
-	"too": {}, "some": {}, "any": {}, "more": {}, "got": {}, "get": {},
-	"yeah": {}, "oh": {}, "ok": {}, "okay": {}, "well": {}, "like": {},
-	"really": {}, "still": {},
-}
-
-func buildMemorySearchQuery(userMessage string, recentMessages []*types.DiscordMessage) string {
-	const maxTotalLen = 200
-
-	seen := map[string]struct{}{}
-	keywords := []string{}
-
-	for _, msg := range recentMessages {
-		if msg == nil {
-			continue
-		}
-		if msg.IsBot {
-			continue
-		}
-		if msg.Content == userMessage {
-			continue
-		}
-		for _, word := range strings.Fields(msg.Content) {
-			word = strings.ToLower(strings.Trim(word, ".,!?;:\"'()[]{}<>"))
-			if len(word) < 3 {
-				continue
-			}
-			if _, skip := stopWords[word]; skip {
-				continue
-			}
-			if stringIsNumeric(word) {
-				continue
-			}
-			if _, found := seen[word]; found {
-				continue
-			}
-			seen[word] = struct{}{}
-			keywords = append(keywords, word)
-		}
-	}
-
-	if len(keywords) == 0 {
-		return userMessage
-	}
-
-	prefix := "Previous topic: " + strings.Join(keywords, ", ") + ". "
-	if len(prefix)+len(userMessage) <= maxTotalLen {
-		return prefix + userMessage
-	}
-
-	for len(keywords) > 0 {
-		keywords = keywords[1:]
-		prefix = "Previous topic: " + strings.Join(keywords, ", ") + ". "
-		if len(prefix)+len(userMessage) <= maxTotalLen {
-			break
-		}
-	}
-
-	if len(keywords) == 0 {
-		return userMessage
-	}
-
-	return prefix + userMessage
-}
-
-func stringIsNumeric(s string) bool {
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
-}
 
 func (b *Bot) processMessageWithoutImages(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, recentMessages []*types.DiscordMessage) {
 	defer b.wg.Done()
@@ -219,7 +131,8 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 
 	memories := []*memory.Record{}
 	if b.cfg().Memory.Retrieval.TopK > 0 {
-		memories, err = b.memoryStore.Search(ctx, m.Author.ID, buildMemorySearchQuery(m.Content, recentMessages), nil)
+		query, _ := memory.BuildSearchQuery(m.Content, recentMessages)
+		memories, err = b.memoryStore.Search(ctx, m.Author.ID, query, nil)
 		if err != nil {
 			logger.Warnf("[processing] Failed to search memories: %v", err)
 		} else if len(memories) > 0 {

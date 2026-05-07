@@ -39,18 +39,20 @@ type visionDescriber interface {
 
 // Consolidator extracts and stores memories from conversation context using LLM analysis.
 type Consolidator struct {
-	qdrant            qdrantStore
-	embedder          Embedder
-	aiClient          aiChatCompleter
-	visionDescriber   visionDescriber
-	maxMessages       int
-	model             string
-	prompt            string
-	ownBotID          string // Bot's own ID to distinguish from other bots
-	memorySearchLimit int
-	retryMaxRetries   int
-	retryBaseDelay    time.Duration
-	retryMaxDelay     time.Duration
+	qdrant               qdrantStore
+	embedder             Embedder
+	aiClient             aiChatCompleter
+	visionDescriber      visionDescriber
+	maxMessages          int
+	model                string
+	prompt               string
+	ownBotID             string // Bot's own ID to distinguish from other bots
+	memorySearchLimit    int
+	entropyMinContentLen int
+	entropyMinWordRatio  float64
+	retryMaxRetries      int
+	retryBaseDelay       time.Duration
+	retryMaxDelay        time.Duration
 
 	lastConsolidatedAt time.Time
 	mu                 sync.RWMutex
@@ -78,20 +80,22 @@ func (c *Consolidator) embedWithRetry(ctx context.Context, text string) ([]float
 }
 
 // NewConsolidator creates a new consolidator with the given Qdrant client, embedder, and AI configuration.
-func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient aiChatCompleter, visionDescriber visionDescriber, cfg *config.ConsolidationConfig, ownBotID string, consolidationInterval int, memorySearchLimit int, retryMaxRetries int, retryBaseDelayMs int, retryMaxDelayMs int) *Consolidator {
+func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient aiChatCompleter, visionDescriber visionDescriber, cfg *config.ConsolidationConfig, ownBotID string, consolidationInterval int, memorySearchLimit int, entropyMinContentLen int, entropyMinWordRatio float64, retryMaxRetries int, retryBaseDelayMs int, retryMaxDelayMs int) *Consolidator {
 	return &Consolidator{
-		qdrant:            qdrant,
-		embedder:          embedder,
-		aiClient:          aiClient,
-		visionDescriber:   visionDescriber,
-		maxMessages:       consolidationInterval,
-		model:             cfg.Model,
-		prompt:            cfg.SystemPrompt,
-		ownBotID:          ownBotID,
-		memorySearchLimit: memorySearchLimit,
-		retryMaxRetries:   retryMaxRetries,
-		retryBaseDelay:    time.Duration(retryBaseDelayMs) * time.Millisecond,
-		retryMaxDelay:     time.Duration(retryMaxDelayMs) * time.Millisecond,
+		qdrant:               qdrant,
+		embedder:             embedder,
+		aiClient:             aiClient,
+		visionDescriber:      visionDescriber,
+		maxMessages:          consolidationInterval,
+		model:                cfg.Model,
+		prompt:               cfg.SystemPrompt,
+		ownBotID:             ownBotID,
+		memorySearchLimit:    memorySearchLimit,
+		entropyMinContentLen: entropyMinContentLen,
+		entropyMinWordRatio:  entropyMinWordRatio,
+		retryMaxRetries:      retryMaxRetries,
+		retryBaseDelay:       time.Duration(retryBaseDelayMs) * time.Millisecond,
+		retryMaxDelay:        time.Duration(retryMaxDelayMs) * time.Millisecond,
 	}
 }
 
@@ -160,6 +164,23 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 		logger.Warnf("[consolidation] truncating messages for user=%s from %d to %d", userID, len(messages), c.maxMessages)
 		messages = messages[:c.maxMessages]
 	}
+
+	// Apply entropy gate — filter noise messages
+	filtered := make([]*DiscordMessage, 0, len(messages))
+	entropyCfg := EntropyGateConfig{
+		MinContentLength:   c.entropyMinContentLen,
+		MinUniqueWordRatio: c.entropyMinWordRatio,
+	}
+	for _, msg := range messages {
+		if PassesEntropyGate(msg, entropyCfg) {
+			filtered = append(filtered, msg)
+		}
+	}
+	if len(filtered) == 0 {
+		logger.Infof("[consolidation] all messages filtered by entropy gate for user=%s", userID)
+		return nil
+	}
+	messages = filtered
 
 	conversation, imageCount := c.buildConversationText(ctx, messages, userID)
 	logger.Infof("[consolidation] built conversation for user=%s length=%d chars images=%d", userID, len(conversation), imageCount)
@@ -263,9 +284,9 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 		}
 
 		// Type-aware dedup
+		skip := false
 		switch extract.Type {
 		case string(TypeFact):
-			// Fact dedup: match by key (no vector search needed)
 			if facts := parseFactKeyValues(content); len(facts) > 0 {
 				existingFacts, searchErr := c.qdrant.ListMemoriesByType(ctx, userID, string(TypeFact))
 				if searchErr != nil {
@@ -273,6 +294,16 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 				} else {
 					match := findFactByKey(existingFacts, facts)
 					if match != nil {
+						// Importance-aware dedup
+						newImportance := 0.5
+						if extract.ImportanceScore != nil {
+							newImportance = *extract.ImportanceScore
+						}
+						if extract.ImportanceScore != nil && match.Confidence > newImportance {
+							logger.Debugf("[consolidation] skipping fact extract: old confidence=%.2f > new importance=%.2f", match.Confidence, newImportance)
+							skip = true
+							break
+						}
 						memory.ID = match.ID
 						memory.CreatedAt = match.CreatedAt
 						memory.GuildID = match.GuildID
@@ -298,7 +329,6 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 			}
 
 		case string(TypeEpisode):
-			// Episode dedup: vector search with type filter
 			dedupOpts := &SearchOptions{
 				TopK:        1,
 				MinScore:    0.85,
@@ -309,6 +339,16 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 				logger.Warnf("[consolidation] episode dedup search failed for user=%s: %v", userID, searchErr)
 			} else if len(existing) > 0 {
 				old := existing[0]
+				// Importance-aware dedup
+				newImportance := 0.5
+				if extract.ImportanceScore != nil {
+					newImportance = *extract.ImportanceScore
+				}
+				if extract.ImportanceScore != nil && old.Confidence > newImportance {
+					logger.Debugf("[consolidation] skipping episode extract: old confidence=%.2f > new importance=%.2f", old.Confidence, newImportance)
+					skip = true
+					break
+				}
 				memory.ID = old.ID
 				memory.CreatedAt = old.CreatedAt
 				memory.GuildID = old.GuildID
@@ -332,7 +372,6 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 			}
 
 		default:
-			// Other types: keep existing vector-based dedup with type filter
 			dedupOpts := &SearchOptions{
 				TopK:        1,
 				MinScore:    0.90,
@@ -343,6 +382,16 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 				logger.Warnf("[consolidation] dedup search failed for memory %d user=%s: %v", i+1, userID, searchErr)
 			} else if len(existing) > 0 {
 				old := existing[0]
+				// Importance-aware dedup
+				newImportance := 0.5
+				if extract.ImportanceScore != nil {
+					newImportance = *extract.ImportanceScore
+				}
+				if extract.ImportanceScore != nil && old.Confidence > newImportance {
+					logger.Debugf("[consolidation] skipping extract: old confidence=%.2f > new importance=%.2f", old.Confidence, newImportance)
+					skip = true
+					break
+				}
 				memory.ID = old.ID
 				memory.CreatedAt = old.CreatedAt
 				memory.GuildID = old.GuildID
@@ -366,7 +415,19 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 			}
 		}
 
-		// If no dedup match, set CreatedAt to now
+		if skip {
+			continue
+		}
+
+		// Set importance score from extract
+		if extract.ImportanceScore != nil {
+			memory.ImportanceScore = *extract.ImportanceScore
+		}
+
+		// Assign decay tier
+		score := memory.ImportanceScore*0.7 + memory.Confidence*0.3
+		memory.DecayCategory = ClassifyTier(score)
+
 		if memory.ID == "" {
 			memory.CreatedAt = time.Now()
 		}
@@ -415,6 +476,23 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 		logger.Warnf("[consolidation] truncating messages from %d to %d", len(messages), c.maxMessages)
 		messages = messages[:c.maxMessages]
 	}
+
+	// Apply entropy gate — filter noise messages
+	filtered := make([]*DiscordMessage, 0, len(messages))
+	entropyCfg := EntropyGateConfig{
+		MinContentLength:   c.entropyMinContentLen,
+		MinUniqueWordRatio: c.entropyMinWordRatio,
+	}
+	for _, msg := range messages {
+		if PassesEntropyGate(msg, entropyCfg) {
+			filtered = append(filtered, msg)
+		}
+	}
+	if len(filtered) == 0 {
+		logger.Infof("[consolidation] all messages filtered by entropy gate for channel=%s", channelID)
+		return nil
+	}
+	messages = filtered
 
 	conversation, imageCount := c.buildConversationText(ctx, messages, "")
 
@@ -673,14 +751,9 @@ func (c *Consolidator) callExtractionLLM(ctx context.Context, conversation strin
 }
 
 func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []Extract) {
-	// TODO: Fact extraction uses English-only strings.Contains patterns ("name is",
-	// "lives in", "software engineer", etc.). This fragile approach should be
-	// replaced with structured LLM output parsing that supports any language the
-	// LLM produces.
 	var interestsAdded int
 	var factsAdded int
 
-	// Initialize maps if nil
 	if profile.Facts == nil {
 		profile.Facts = make(map[string]string)
 	}
@@ -689,68 +762,36 @@ func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []
 	}
 
 	for _, extract := range extracts {
+		// Structured profile updates (from LLM output) — supports ALL languages
+		if extract.ProfileUpdates != nil {
+			for _, t := range extract.ProfileUpdates.Traits {
+				if !containsFold(profile.Traits, t) {
+					profile.Traits = append(profile.Traits, t)
+				}
+			}
+			for k, v := range extract.ProfileUpdates.Facts {
+				profile.Facts[k] = v
+				factsAdded++
+			}
+			for k, v := range extract.ProfileUpdates.Preferences {
+				profile.Preferences[k] = v
+			}
+			for _, i := range extract.ProfileUpdates.Interests {
+				if !containsFold(profile.Interests, i) {
+					profile.Interests = append(profile.Interests, i)
+					interestsAdded++
+				}
+			}
+			continue
+		}
+
+		// Legacy fallback: fact key-value parsing (English-only, preserved for backward compat)
 		switch extract.Type {
 		case string(TypeFact):
 			if facts := parseFactKeyValues(extract.Content); len(facts) > 0 {
 				for key, value := range facts {
 					profile.Facts[key] = value
 					factsAdded++
-					logger.Debugf("[consolidation] added fact %s=%q to profile for user=%s", key, value, profile.UserID)
-				}
-				continue
-			}
-
-			content := strings.ToLower(extract.Content)
-			// Extract name
-			if strings.Contains(content, "name is") || strings.Contains(content, "user's name") {
-				if idx := strings.Index(extract.Content, "'"); idx != -1 {
-					endIdx := strings.Index(extract.Content[idx+1:], "'")
-					if endIdx != -1 {
-						name := extract.Content[idx+1 : idx+1+endIdx]
-						profile.Facts["name"] = name
-						factsAdded++
-						logger.Debugf("[consolidation] added name=%q to profile for user=%s", name, profile.UserID)
-					}
-				}
-			}
-
-			// Extract location
-			if strings.Contains(content, "lives in") || strings.Contains(content, "live in") {
-				parts := strings.Split(extract.Content, " in ")
-				if len(parts) > 1 {
-					location := strings.TrimSpace(strings.TrimSuffix(parts[1], "."))
-					profile.Facts["location"] = location
-					factsAdded++
-					logger.Debugf("[consolidation] added location=%q to profile for user=%s", location, profile.UserID)
-				}
-			}
-
-			// Extract job
-			if strings.Contains(content, "software engineer") || strings.Contains(content, "works as") || strings.Contains(content, "is a") {
-				if strings.Contains(content, "software engineer") {
-					profile.Facts["job"] = "software engineer"
-					factsAdded++
-					logger.Debugf("[consolidation] added job=software engineer to profile for user=%s", profile.UserID)
-				}
-			}
-
-			// Extract workplace
-			if strings.Contains(content, "works at") || strings.Contains(content, "work at") {
-				parts := strings.Split(extract.Content, " at ")
-				if len(parts) > 1 {
-					workplace := strings.TrimSpace(strings.TrimSuffix(parts[1], "."))
-					profile.Facts["workplace"] = workplace
-					factsAdded++
-					logger.Debugf("[consolidation] added workplace=%q to profile for user=%s", workplace, profile.UserID)
-				}
-			}
-
-			// Extract specialization/skills
-			if strings.Contains(content, "specializes in") || strings.Contains(content, "backend") {
-				if strings.Contains(content, "go and python") || strings.Contains(content, "backend") {
-					profile.Facts["specialization"] = "backend development with Go and Python"
-					factsAdded++
-					logger.Debugf("[consolidation] added specialization to profile for user=%s", profile.UserID)
 				}
 			}
 
@@ -762,17 +803,16 @@ func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []
 				if !containsFold(profile.Interests, interest) {
 					profile.Interests = append(profile.Interests, interest)
 					interestsAdded++
-					logger.Debugf("[consolidation] added interest=%q to profile for user=%s", interest, profile.UserID)
 				}
 			}
 		}
 	}
 
 	if factsAdded > 0 {
-		logger.Infof("[consolidation] added %d new facts to profile for user=%s", factsAdded, profile.UserID)
+		logger.Infof("[consolidation] added %d facts to profile for user=%s", factsAdded, profile.UserID)
 	}
 	if interestsAdded > 0 {
-		logger.Infof("[consolidation] added %d new interests to profile for user=%s", interestsAdded, profile.UserID)
+		logger.Infof("[consolidation] added %d interests to profile for user=%s", interestsAdded, profile.UserID)
 	}
 }
 

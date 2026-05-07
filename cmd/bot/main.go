@@ -55,6 +55,10 @@ func main() {
 	defer memoryService.Close()
 	logger.Info("[main] Memory service initialized")
 
+	if err := memoryService.StartMaintenance(context.Background()); err != nil {
+		logger.Warnf("[main] maintenance start failed: %v", err)
+	}
+
 	pluginManager := plugin.NewManager(cfg.Plugins.DefaultToolTimeoutMs,
 		cfg.Plugins.StartupTimeoutSec,
 		cfg.Plugins.RPCTimeoutSec,
@@ -227,6 +231,32 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 		RetryMaxRetries:       cfg.Memory.MaxRetries,
 		RetryBaseDelayMs:      cfg.Memory.RetryBaseDelayMs,
 		RetryMaxDelayMs:       cfg.Memory.RetryMaxDelayMs,
+
+		MaintenanceIntervalSec:       cfg.Memory.MaintenanceIntervalSec,
+		MergeCronHourUTC:             cfg.Memory.MergeCronHourUTC,
+		SummarizeCronDay:             cfg.Memory.SummarizeCronDay,
+		MergeCosineThreshold:         cfg.Memory.MergeCosineThreshold,
+		PruneDecayThreshold:          cfg.Memory.PruneDecayThreshold,
+		PruneAgeDays:                 cfg.Memory.PruneAgeDays,
+		MaxMaintenanceLLMCallsPerDay: cfg.Memory.MaxMaintenanceLLMCallsPerDay,
+		EntropyMinContentLength:      cfg.Memory.EntropyMinContentLength,
+		EntropyMinUniqueWordRatio:    cfg.Memory.EntropyMinUniqueWordRatio,
+		RRFK:                         cfg.Memory.RRFK,
+		ContextMaxMemories:           cfg.Memory.ContextMaxMemories,
+		Scoring: memory.ScoringConfig{
+			Weights: memory.ScoringWeights{
+				Importance: cfg.Memory.Scoring.ImportanceWeight,
+				Recency:    cfg.Memory.Scoring.RecencyWeight,
+				Access:     cfg.Memory.Scoring.AccessWeight,
+				Confidence: cfg.Memory.Scoring.ConfidenceWeight,
+			},
+			DecayRates: map[memory.Type]float64{
+				memory.TypeFact:     cfg.Memory.DecayRates.Fact,
+				memory.TypeEpisode:  cfg.Memory.DecayRates.Episode,
+				memory.TypeInterest: cfg.Memory.DecayRates.Interest,
+				memory.TypeSummary:  cfg.Memory.DecayRates.Summary,
+			},
+		},
 	}
 
 	return memory.NewService(memoryCfg, qdrantClient, embedder, consolidationAIClient, visionDescriber)

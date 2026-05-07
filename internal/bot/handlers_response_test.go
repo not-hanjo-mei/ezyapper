@@ -176,7 +176,19 @@ func TestBuildDynamicContext_WithPreferences(t *testing.T) {
 }
 
 func TestBuildDynamicContext_WithMemories(t *testing.T) {
-	b := &Bot{}
+	cfg := &config.Config{
+		Memory: config.MemoryConfig{
+			DecayRates: config.DecayRatesConfig{
+				Fact:     0.01,
+				Episode:  0.03,
+				Interest: 0.02,
+				Summary:  0.05,
+			},
+		},
+	}
+	cfgStore := &atomic.Value{}
+	cfgStore.Store(cfg)
+	b := &Bot{configStore: cfgStore}
 	profile := &memory.Profile{
 		Traits:      []string{},
 		Facts:       make(map[string]string),

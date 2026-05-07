@@ -71,4 +71,8 @@ func (s *NoopService) GetStats(ctx context.Context) (*GlobalStats, error) {
 	return &GlobalStats{}, nil
 }
 
+func (s *NoopService) StartMaintenance(ctx context.Context) error { return nil }
+
+func (s *NoopService) StopMaintenance() {}
+
 func (s *NoopService) Close() error { return nil }
