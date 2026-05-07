@@ -239,6 +239,7 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 		PruneDecayThreshold:          cfg.Memory.PruneDecayThreshold,
 		PruneAgeDays:                 cfg.Memory.PruneAgeDays,
 		MaxMaintenanceLLMCallsPerDay: cfg.Memory.MaxMaintenanceLLMCallsPerDay,
+		EntropyAllowBotMessages:      cfg.Memory.EntropyAllowBotMessages,
 		EntropyMinContentLength:      cfg.Memory.EntropyMinContentLength,
 		EntropyMinUniqueWordRatio:    cfg.Memory.EntropyMinUniqueWordRatio,
 		RRFK:                         cfg.Memory.RRFK,

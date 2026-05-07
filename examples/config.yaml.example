@@ -283,6 +283,10 @@ memory_pipeline:
     max_maintenance_llm_calls_per_day: 10
 
     # ── Entropy Gate ──
+    # Allow bot messages through the entropy gate.
+    # WARNING: enabling this means bot messages will be stored in long-term memory.
+    # Set true only for dev/test environments where all participants are bot accounts.
+    entropy_allow_bot_messages: false
     entropy_min_content_length: 20
     entropy_min_unique_word_ratio: 0.2
 

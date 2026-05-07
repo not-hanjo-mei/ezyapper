@@ -7,6 +7,7 @@ import (
 
 // EntropyGateConfig holds thresholds for the entropy gate.
 type EntropyGateConfig struct {
+	AllowBotMessages   bool
 	MinContentLength   int
 	MinUniqueWordRatio float64
 }
@@ -18,7 +19,7 @@ func PassesEntropyGate(msg *DiscordMessage, cfg EntropyGateConfig) bool {
 	if msg == nil {
 		return false
 	}
-	if msg.IsBot {
+	if msg.IsBot && !cfg.AllowBotMessages {
 		return false
 	}
 

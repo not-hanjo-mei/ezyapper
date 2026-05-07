@@ -48,6 +48,7 @@ type Consolidator struct {
 	prompt               string
 	ownBotID             string // Bot's own ID to distinguish from other bots
 	memorySearchLimit    int
+	allowBotMessages     bool
 	entropyMinContentLen int
 	entropyMinWordRatio  float64
 	retryMaxRetries      int
@@ -80,7 +81,7 @@ func (c *Consolidator) embedWithRetry(ctx context.Context, text string) ([]float
 }
 
 // NewConsolidator creates a new consolidator with the given Qdrant client, embedder, and AI configuration.
-func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient aiChatCompleter, visionDescriber visionDescriber, cfg *config.ConsolidationConfig, ownBotID string, consolidationInterval int, memorySearchLimit int, entropyMinContentLen int, entropyMinWordRatio float64, retryMaxRetries int, retryBaseDelayMs int, retryMaxDelayMs int) *Consolidator {
+func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient aiChatCompleter, visionDescriber visionDescriber, cfg *config.ConsolidationConfig, ownBotID string, consolidationInterval int, memorySearchLimit int, allowBotMessages bool, entropyMinContentLen int, entropyMinWordRatio float64, retryMaxRetries int, retryBaseDelayMs int, retryMaxDelayMs int) *Consolidator {
 	return &Consolidator{
 		qdrant:               qdrant,
 		embedder:             embedder,
@@ -91,6 +92,7 @@ func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient aiChatCom
 		prompt:               cfg.SystemPrompt,
 		ownBotID:             ownBotID,
 		memorySearchLimit:    memorySearchLimit,
+		allowBotMessages:     allowBotMessages,
 		entropyMinContentLen: entropyMinContentLen,
 		entropyMinWordRatio:  entropyMinWordRatio,
 		retryMaxRetries:      retryMaxRetries,
@@ -168,6 +170,7 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 	// Apply entropy gate — filter noise messages
 	filtered := make([]*DiscordMessage, 0, len(messages))
 	entropyCfg := EntropyGateConfig{
+		AllowBotMessages:   c.allowBotMessages,
 		MinContentLength:   c.entropyMinContentLen,
 		MinUniqueWordRatio: c.entropyMinWordRatio,
 	}
@@ -480,6 +483,7 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 	// Apply entropy gate — filter noise messages
 	filtered := make([]*DiscordMessage, 0, len(messages))
 	entropyCfg := EntropyGateConfig{
+		AllowBotMessages:   c.allowBotMessages,
 		MinContentLength:   c.entropyMinContentLen,
 		MinUniqueWordRatio: c.entropyMinWordRatio,
 	}

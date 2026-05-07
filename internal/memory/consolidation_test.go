@@ -400,6 +400,15 @@ func TestPassesEntropyGate_BotMessage(t *testing.T) {
 	}
 }
 
+// TestPassesEntropyGate_BotMessage_Allowed verifies bot messages pass when AllowBotMessages is true.
+func TestPassesEntropyGate_BotMessage_Allowed(t *testing.T) {
+	cfg := EntropyGateConfig{AllowBotMessages: true, MinContentLength: 10, MinUniqueWordRatio: 0.15}
+	msg := &DiscordMessage{IsBot: true, Content: "hello world from bot"}
+	if !PassesEntropyGate(msg, cfg) {
+		t.Error("expected true for bot message when AllowBotMessages is true")
+	}
+}
+
 // TestPassesEntropyGate_TooShort verifies messages below min length are rejected.
 func TestPassesEntropyGate_TooShort(t *testing.T) {
 	cfg := EntropyGateConfig{MinContentLength: 20, MinUniqueWordRatio: 0.15}

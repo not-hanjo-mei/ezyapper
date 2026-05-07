@@ -206,6 +206,7 @@ type MemoryConfig struct {
 	MaxMaintenanceLLMCallsPerDay int     `mapstructure:"max_maintenance_llm_calls_per_day" yaml:"max_maintenance_llm_calls_per_day"`
 
 	// Entropy gate
+	EntropyAllowBotMessages   bool    `mapstructure:"entropy_allow_bot_messages" yaml:"entropy_allow_bot_messages"`
 	EntropyMinContentLength   int     `mapstructure:"entropy_min_content_length" yaml:"entropy_min_content_length"`
 	EntropyMinUniqueWordRatio float64 `mapstructure:"entropy_min_unique_word_ratio" yaml:"entropy_min_unique_word_ratio"`
 
@@ -543,6 +544,9 @@ func validateMemory(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Memory.PruneAgeDays, "memory_pipeline.memory.prune_age_days", errs)
 	if cfg.Memory.MaxMaintenanceLLMCallsPerDay < 0 {
 		*errs = append(*errs, "memory_pipeline.memory.max_maintenance_llm_calls_per_day must be greater than or equal to 0")
+	}
+	if cfg.Memory.EntropyAllowBotMessages {
+		fmt.Fprintf(os.Stderr, "WARNING: memory_pipeline.memory.entropy_allow_bot_messages is true — bot messages will pass the entropy gate\n")
 	}
 	if cfg.Memory.EntropyMinContentLength < 0 {
 		*errs = append(*errs, "memory_pipeline.memory.entropy_min_content_length must be greater than or equal to 0")
