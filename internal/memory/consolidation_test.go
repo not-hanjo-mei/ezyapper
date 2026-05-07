@@ -45,16 +45,6 @@ func (m *retryableEmbedder) Embed(ctx context.Context, text string) ([]float32, 
 }
 func (m *retryableEmbedder) Stop() {}
 
-// forcedErrorEmbedder always returns the given error.
-type forcedErrorEmbedder struct {
-	err error
-}
-
-func (m *forcedErrorEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
-	return nil, m.err
-}
-func (m *forcedErrorEmbedder) Stop() {}
-
 // mockQdrantStore implements qdrantStore for consolidation tests.
 type mockQdrantStore struct {
 	memories map[string]*Record

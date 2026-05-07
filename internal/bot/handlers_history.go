@@ -13,7 +13,6 @@ import (
 	"ezyapper/internal/types"
 
 	"github.com/bwmarrin/discordgo"
-	openai "github.com/sashabaranov/go-openai"
 )
 
 // UserInfo holds information about a user for mention purposes
@@ -80,102 +79,6 @@ func shouldEnrichRecentHistoricalImages(userContent string, hasReference bool) b
 	}
 
 	return false
-}
-
-// buildConversationHistory builds message history from Discord messages
-func (b *Bot) buildConversationHistory(ctx context.Context, messages []*types.DiscordMessage) []openai.ChatCompletionMessage {
-	result := make([]openai.ChatCompletionMessage, 0, len(messages))
-	visionDescriber := b.getVisionDescriber()
-
-	// Discord returns messages in reverse chronological order (newest first)
-	// We need to reverse them to get chronological order for the AI
-	for i := len(messages) - 1; i >= 0; i-- {
-		msg := messages[i]
-		role := openai.ChatMessageRoleUser
-		if msg.IsBot {
-			role = openai.ChatMessageRoleAssistant
-		}
-
-		if len(msg.ImageURLs) == 0 {
-			result = append(result, openai.ChatCompletionMessage{
-				Role:    role,
-				Content: msg.Content,
-			})
-			continue
-		}
-
-		switch b.cfg().AI.Vision.Mode {
-		case config.VisionModeHybrid:
-			content := msg.Content
-			if visionDescriber != nil {
-				descriptions := make([]string, 0, len(msg.ImageDescriptions))
-
-				if len(msg.ImageDescriptions) > 0 {
-					descriptions = msg.ImageDescriptions
-					logger.Debugf("[vision] using cached image descriptions for message %s count=%d", msg.ID, len(descriptions))
-				} else if cachedDescriptions, ok := b.getHistoricalImageDescriptions(msg.ID, msg.ImageURLs); ok {
-					descriptions = cachedDescriptions
-					msg.ImageDescriptions = cachedDescriptions
-					logger.Debugf("[vision] using bot cache image descriptions for message %s count=%d", msg.ID, len(descriptions))
-				} else {
-					// Avoid blocking reply generation on cold-start history scans.
-					// Historical images are enriched only when descriptions are already cached.
-					logger.Debugf("[vision] skipping uncached historical image descriptions for message %s", msg.ID)
-				}
-
-				maxImages := b.cfg().AI.Vision.MaxImages
-				truncated := false
-				var sb strings.Builder
-				sb.WriteString(content)
-				for j, desc := range descriptions {
-					if j < maxImages || maxImages == 0 {
-						fmt.Fprintf(&sb, "\n[Image %d: %s]", j+1, desc)
-					} else {
-						truncated = true
-					}
-				}
-				content = sb.String()
-				if truncated {
-					logger.Warnf("[history] historical image descriptions truncated for message %s: %d descriptions but max_images=%d", msg.ID, len(descriptions), maxImages)
-				}
-			}
-			result = append(result, openai.ChatCompletionMessage{
-				Role:    role,
-				Content: content,
-			})
-
-		case config.VisionModeMultimodal:
-			parts := make([]openai.ChatMessagePart, 0, len(msg.ImageURLs)+1)
-			if msg.Content != "" {
-				parts = append(parts, openai.ChatMessagePart{
-					Type: openai.ChatMessagePartTypeText,
-					Text: msg.Content,
-				})
-			}
-			for _, imgURL := range msg.ImageURLs {
-				parts = append(parts, openai.ChatMessagePart{
-					Type: openai.ChatMessagePartTypeImageURL,
-					ImageURL: &openai.ChatMessageImageURL{
-						URL:    imgURL,
-						Detail: openai.ImageURLDetailAuto,
-					},
-				})
-			}
-			result = append(result, openai.ChatCompletionMessage{
-				Role:         role,
-				MultiContent: parts,
-			})
-
-		default:
-			// Text-only mode or unknown mode: ignore images, keep text only
-			result = append(result, openai.ChatCompletionMessage{
-				Role:    role,
-				Content: msg.Content,
-			})
-		}
-	}
-
-	return result
 }
 
 // buildConversationHistoryText builds formatted conversation history text from Discord messages

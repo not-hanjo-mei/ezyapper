@@ -228,19 +228,6 @@ func TestShouldEnrichRecentHistoricalImages_WithContent(t *testing.T) {
 	}
 }
 
-// mockAIClientForResponse mocks ai.Client for testing generateResponse path
-type mockAIClientForResponse struct {
-	completeTextErr  error
-	completeTextResp string
-}
-
-func (m *mockAIClientForResponse) CreateChatCompletionWithTools(ctx context.Context, req ai.ChatCompletionRequest, handler ai.ToolHandler) (*ai.ChatCompletionResponse, error) {
-	if m.completeTextErr != nil {
-		return nil, m.completeTextErr
-	}
-	return &ai.ChatCompletionResponse{Content: m.completeTextResp}, nil
-}
-
 func TestHandleTextOnlyMode_NoContext(t *testing.T) {
 	cfg := &config.Config{
 		AI: config.AIConfig{

@@ -182,8 +182,14 @@ func writeJSONRPCResponse(enc *json.Encoder, id int64, result any, err error) er
 	return nil
 }
 
-// Serve starts a plugin and connects to the host process.
-// This should be called from the plugin's main function.
+// Serve starts a plugin server loop over stdio, reading JSON-RPC requests from the
+// host bot process and dispatching them to impl.
+//
+// This function is intended to be called from a plugin binary's main function, NOT
+// from the bot process itself. The bot only spawns plugins as subprocesses and
+// communicates with them over stdio; it never calls Serve directly. Static analysis
+// tools (e.g. deadcode) may therefore flag this as unreachable from cmd/bot/main —
+// that is expected and correct.
 func Serve(impl Interface) error {
 	if impl == nil {
 		return fmt.Errorf("plugin implementation is nil")

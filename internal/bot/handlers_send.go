@@ -15,6 +15,7 @@ import (
 	"ezyapper/internal/logger"
 	"ezyapper/internal/plugin"
 	"ezyapper/internal/types"
+	"ezyapper/internal/utils"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -276,30 +277,7 @@ func (b *Bot) sendResponse(ctx context.Context, s *discordgo.Session, m *discord
 
 // sendLongResponse sends a response that exceeds Discord's character limit
 func (b *Bot) sendLongResponse(s *discordgo.Session, m *discordgo.MessageCreate, response string, firstChunkFiles []localUploadFile) error {
-	chunks := make([]string, 0, 4)
-	remaining := response
-
-	for len(remaining) > 0 {
-		if len(remaining) <= discordChunkLimit {
-			chunks = append(chunks, remaining)
-			break
-		}
-
-		splitAt := strings.LastIndex(remaining[:discordChunkLimit], "\n")
-		if splitAt <= 0 {
-			splitAt = strings.LastIndex(remaining[:discordChunkLimit], " ")
-		}
-		if splitAt <= 0 {
-			splitAt = discordChunkLimit
-		}
-
-		chunk := strings.TrimSpace(remaining[:splitAt])
-		if chunk == "" {
-			chunk = remaining[:splitAt]
-		}
-		chunks = append(chunks, chunk)
-		remaining = strings.TrimLeft(remaining[splitAt:], "\n ")
-	}
+	chunks := utils.SplitMessage(response, discordChunkLimit)
 
 	// Send chunks
 	for i, chunk := range chunks {

@@ -197,11 +197,6 @@ func Errorf(template string, args ...any) {
 	L().Errorf(template, args...)
 }
 
-// Fatal logs a fatal message and exits
-func Fatal(args ...any) {
-	L().Fatal(args...)
-}
-
 // Fatalf logs a formatted fatal message and exits
 func Fatalf(template string, args ...any) {
 	L().Fatalf(template, args...)

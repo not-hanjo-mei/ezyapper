@@ -547,10 +547,6 @@ func sanitizeToolNameToken(name string) string {
 	return string(out)
 }
 
-func pluginToolBaseName(toolName string) string {
-	return sanitizeToolNameToken(toolName)
-}
-
 func pluginToolScopedName(pluginName, toolName string) string {
 	return fmt.Sprintf("%s_%s", sanitizeToolNameToken(pluginName), sanitizeToolNameToken(toolName))
 }
@@ -566,13 +562,13 @@ func (b *Bot) registerPluginTools() {
 	pluginTools := b.pluginManager.ListTools()
 	nameCount := make(map[string]int, len(pluginTools))
 	for _, tool := range pluginTools {
-		baseName := pluginToolBaseName(tool.Spec.Name)
+		baseName := sanitizeToolNameToken(tool.Spec.Name)
 		nameCount[baseName]++
 	}
 
 	next := make(map[string]struct{}, len(pluginTools))
 	for _, tool := range pluginTools {
-		baseName := pluginToolBaseName(tool.Spec.Name)
+		baseName := sanitizeToolNameToken(tool.Spec.Name)
 		fullName := baseName
 		if nameCount[baseName] > 1 {
 			fullName = pluginToolScopedName(tool.PluginName, tool.Spec.Name)
@@ -748,16 +744,6 @@ func (b *Bot) getProcessingMessage(messageID string) *ProcessingMessage {
 	b.processingMu.RLock()
 	defer b.processingMu.RUnlock()
 	return b.processingMessages[messageID]
-}
-
-// removeProcessingMessage removes a message from processing tracking by messageID.
-// Prefer removeProcessingMessageIfMatch to avoid accidentally deleting a newly
-// registered ProcessingMessage when an old goroutine's cleanup runs after
-// a new one is registered (edit race condition).
-func (b *Bot) removeProcessingMessage(messageID string) {
-	b.processingMu.Lock()
-	defer b.processingMu.Unlock()
-	delete(b.processingMessages, messageID)
 }
 
 // removeProcessingMessageIfMatch removes a processing message only if the
