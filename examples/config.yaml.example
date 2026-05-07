@@ -37,8 +37,11 @@ core:
     # Hard cap: max responses per minute across all channels.
     max_responses_per_minute: 10
 
-    # Whether to respond to messages from other bots.
-    reply_to_bots: false
+    # How to treat messages from OTHER bots (not this bot itself).
+    # - "ignore":       skip entirely — no response, no memory, no search enrichment
+    # - "context_only": include in memory pipeline (retrieval + consolidation) but do NOT reply
+    # - "full":         treat other bots like human users — respond AND include in memory
+    other_bot_policy: "ignore"
 
     # ── Rate limit window settings ──
     rate_limit:
@@ -265,6 +268,46 @@ memory_pipeline:
       ## extra_params: {}
 
       # Consolidation system prompt. Required when enabled.
+      #
+      # Message format: "Username"{UserID=xxx,Time=...,BOT=SELF|OTHERS}: "content"
+      #   BOT=SELF   = this bot's own messages — always conversational context only, never extract
+      #   BOT=OTHERS = other bots' messages — extraction behavior controlled by prompt below
+      #   No BOT marker = human user
+      #
+      # ── Template for other_bot_policy: "ignore" ──
+      # system_prompt: |
+      #   You are a memory extraction assistant. Analyze the conversation and extract memorable information about USERS.
+      #   ...
+      #   - BOT=SELF and BOT=OTHERS: COMPLETELY IGNORE, do not extract
+      #   - No BOT marker (human): extract normally
+      #   ...
+      #
+      # ── Template for other_bot_policy: "context_only" ──
+      # system_prompt: |
+      #   You are a memory extraction assistant. Analyze the conversation and extract memorable information about USERS.
+      #   ...
+      #   - BOT=SELF: COMPLETELY IGNORE, do not extract
+      #   - BOT=OTHERS: extract MINIMALLY — only if notable/unusual and relevant to human users
+      #   - No BOT marker (human): extract normally
+      #   EXTRACTION RULES — BOT=OTHERS (MINIMAL):
+      #   1. Only extract if the bot shares significant information ABOUT human users
+      #   2. Do NOT extract bot capabilities, settings, or general bot-to-bot chatter
+      #   3. Skip routine bot responses, command confirmations, and standard output
+      #   ...
+      #
+      # ── Template for other_bot_policy: "full" ──
+      # system_prompt: |
+      #   You are a memory extraction assistant. Analyze the conversation and extract memorable information about USERS.
+      #   ...
+      #   - BOT=SELF: COMPLETELY IGNORE, do not extract
+      #   - BOT=OTHERS: extract normally, same as human users
+      #   - No BOT marker (human): extract normally
+      #   ...
+      #
+      # All templates use this output format:
+      #   [{"user_id": "...", "memories": [{"content": "...", "type": "fact|episode|interest",
+      #   "confidence": 0.0-1.0, "keywords": [], "importance_score": 0.0-1.0,
+      #   "profile_updates": {"traits": [], "facts": {}, "preferences": {}, "interests": []}}]}]
       ## system_prompt: |
       ##   Extract memorable information about USERS from this conversation.
       ##   For type=fact, prefer "key: value" content (e.g., "name: Alice").
@@ -283,10 +326,7 @@ memory_pipeline:
     max_maintenance_llm_calls_per_day: 10
 
     # ── Entropy Gate ──
-    # Allow bot messages through the entropy gate.
-    # WARNING: enabling this means bot messages will be stored in long-term memory.
-    # Set true only for dev/test environments where all participants are bot accounts.
-    entropy_allow_bot_messages: false
+    # Minimum content length for messages to pass the entropy gate.
     entropy_min_content_length: 20
     entropy_min_unique_word_ratio: 0.2
 

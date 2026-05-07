@@ -17,6 +17,7 @@ import (
 func TestNew(t *testing.T) {
 	cfg := &config.Config{
 		Discord: config.DiscordConfig{
+			OtherBotPolicy:  config.OtherBotIgnore,
 			Token:           "test-token",
 			BotName:         "TestBot",
 			ReplyPercentage: 0.15,

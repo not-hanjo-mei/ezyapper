@@ -16,6 +16,7 @@ func minimalConfigStore() *atomic.Value {
 	var v atomic.Value
 	v.Store(&config.Config{
 		Discord: config.DiscordConfig{
+			OtherBotPolicy:  config.OtherBotIgnore,
 			CooldownSeconds: 5,
 		},
 		Memory: config.MemoryConfig{

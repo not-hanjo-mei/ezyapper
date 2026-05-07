@@ -21,9 +21,11 @@ core:
   discord:
     token: "test-token"
     bot_name: "TestBot"
+    own_bot_id: "123"
     reply_percentage: 0.5
     cooldown_seconds: 5
     max_responses_per_minute: 10
+    other_bot_policy: "ignore"
     consolidation_timeout_sec: 300
     typing_indicator_interval_sec: 5
     long_response_delay_ms: 500

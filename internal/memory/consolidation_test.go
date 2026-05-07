@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"ezyapper/internal/ai"
+	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 )
 
@@ -381,21 +382,21 @@ func TestPassesEntropyGate_NilMessage(t *testing.T) {
 	}
 }
 
-// TestPassesEntropyGate_BotMessage verifies bot messages are rejected.
+// TestPassesEntropyGate_BotMessage verifies bot messages are rejected when OtherBotPolicy is ignore.
 func TestPassesEntropyGate_BotMessage(t *testing.T) {
-	cfg := EntropyGateConfig{MinContentLength: 10, MinUniqueWordRatio: 0.15}
+	cfg := EntropyGateConfig{OtherBotPolicy: config.OtherBotIgnore, MinContentLength: 10, MinUniqueWordRatio: 0.15}
 	msg := &DiscordMessage{IsBot: true, Content: "hello world from bot"}
 	if PassesEntropyGate(msg, cfg) {
-		t.Error("expected false for bot message")
+		t.Error("expected false for bot message when OtherBotPolicy is ignore")
 	}
 }
 
-// TestPassesEntropyGate_BotMessage_Allowed verifies bot messages pass when AllowBotMessages is true.
+// TestPassesEntropyGate_BotMessage_Allowed verifies bot messages pass when OtherBotPolicy is context_only or full.
 func TestPassesEntropyGate_BotMessage_Allowed(t *testing.T) {
-	cfg := EntropyGateConfig{AllowBotMessages: true, MinContentLength: 10, MinUniqueWordRatio: 0.15}
+	cfg := EntropyGateConfig{OtherBotPolicy: config.OtherBotContextOnly, MinContentLength: 10, MinUniqueWordRatio: 0.15}
 	msg := &DiscordMessage{IsBot: true, Content: "hello world from bot"}
 	if !PassesEntropyGate(msg, cfg) {
-		t.Error("expected true for bot message when AllowBotMessages is true")
+		t.Error("expected true for bot message when OtherBotPolicy is context_only")
 	}
 }
 

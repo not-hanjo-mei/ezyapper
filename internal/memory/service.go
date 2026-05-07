@@ -137,7 +137,7 @@ type ServiceConfig struct {
 	MaxMaintenanceLLMCallsPerDay int
 
 	// Entropy
-	EntropyAllowBotMessages   bool
+	OtherBotPolicy            config.OtherBotPolicy
 	EntropyMinContentLength   int
 	EntropyMinUniqueWordRatio float64
 
@@ -197,7 +197,7 @@ func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedde
 		done:                  make(chan struct{}),
 	}
 
-	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, vd, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit, cfg.EntropyAllowBotMessages, cfg.EntropyMinContentLength, cfg.EntropyMinUniqueWordRatio, cfg.RetryMaxRetries, cfg.RetryBaseDelayMs, cfg.RetryMaxDelayMs)
+	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, vd, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit, cfg.OtherBotPolicy, cfg.EntropyMinContentLength, cfg.EntropyMinUniqueWordRatio, cfg.RetryMaxRetries, cfg.RetryBaseDelayMs, cfg.RetryMaxDelayMs)
 
 	service.startAccessWorker()
 

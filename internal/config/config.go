@@ -137,6 +137,19 @@ type RateLimitConfig struct {
 	ResetPeriodSeconds int `mapstructure:"reset_period_seconds" yaml:"reset_period_seconds"`
 }
 
+// OtherBotPolicy controls how the bot treats messages from OTHER bots (not itself).
+type OtherBotPolicy string
+
+const (
+	// OtherBotIgnore — skip entirely: no response, no memory extraction, no search enrichment.
+	OtherBotIgnore OtherBotPolicy = "ignore"
+	// OtherBotContextOnly — include in memory pipeline (search enrichment + consolidation),
+	// but do NOT trigger AI responses. Prompt controls extraction level.
+	OtherBotContextOnly OtherBotPolicy = "context_only"
+	// OtherBotFull — treat other bots like human users: respond AND include in memory pipeline.
+	OtherBotFull OtherBotPolicy = "full"
+)
+
 // DiscordConfig holds Discord bot specific settings
 type DiscordConfig struct {
 	Token                      string          `mapstructure:"token" yaml:"token"`
@@ -146,7 +159,7 @@ type DiscordConfig struct {
 	CooldownSeconds            int             `mapstructure:"cooldown_seconds" yaml:"cooldown_seconds"`
 	MaxResponsesPerMin         int             `mapstructure:"max_responses_per_minute" yaml:"max_responses_per_minute"`
 	RateLimit                  RateLimitConfig `mapstructure:"rate_limit" yaml:"rate_limit"`
-	ReplyToBots                bool            `mapstructure:"reply_to_bots" yaml:"reply_to_bots"`
+	OtherBotPolicy             OtherBotPolicy  `mapstructure:"other_bot_policy" yaml:"other_bot_policy"`
 	ConsolidationTimeoutSec    int             `mapstructure:"consolidation_timeout_sec" yaml:"consolidation_timeout_sec"`
 	TypingIndicatorIntervalSec int             `mapstructure:"typing_indicator_interval_sec" yaml:"typing_indicator_interval_sec"`
 	LongResponseDelayMs        int             `mapstructure:"long_response_delay_ms" yaml:"long_response_delay_ms"`
@@ -206,7 +219,6 @@ type MemoryConfig struct {
 	MaxMaintenanceLLMCallsPerDay int     `mapstructure:"max_maintenance_llm_calls_per_day" yaml:"max_maintenance_llm_calls_per_day"`
 
 	// Entropy gate
-	EntropyAllowBotMessages   bool    `mapstructure:"entropy_allow_bot_messages" yaml:"entropy_allow_bot_messages"`
 	EntropyMinContentLength   int     `mapstructure:"entropy_min_content_length" yaml:"entropy_min_content_length"`
 	EntropyMinUniqueWordRatio float64 `mapstructure:"entropy_min_unique_word_ratio" yaml:"entropy_min_unique_word_ratio"`
 
@@ -482,8 +494,18 @@ func validateDiscord(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Discord.ReplyTruncationLength, "core.discord.reply_truncation_length", errs)
 	requirePositive(cfg.Discord.ImageCacheTTLMin, "core.discord.image_cache_ttl_min", errs)
 	requirePositive(cfg.Discord.ImageCacheMaxEntries, "core.discord.image_cache_max_entries", errs)
-	if cfg.Discord.ReplyToBots {
-		fmt.Fprintf(os.Stderr, "WARNING: core.discord.reply_to_bots is true — bot will respond to other bots\n")
+	if cfg.Discord.OtherBotPolicy != OtherBotFull {
+		fmt.Fprintf(os.Stderr, "WARNING: core.discord.other_bot_policy=%q — bot will not respond to other bots\n", cfg.Discord.OtherBotPolicy)
+	}
+	validPolicies := map[OtherBotPolicy]bool{
+		OtherBotIgnore:      true,
+		OtherBotContextOnly: true,
+		OtherBotFull:        true,
+	}
+	if cfg.Discord.OtherBotPolicy == "" {
+		*errs = append(*errs, "core.discord.other_bot_policy is required")
+	} else if !validPolicies[cfg.Discord.OtherBotPolicy] {
+		*errs = append(*errs, "core.discord.other_bot_policy must be one of: ignore, context_only, full")
 	}
 }
 
@@ -544,9 +566,6 @@ func validateMemory(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Memory.PruneAgeDays, "memory_pipeline.memory.prune_age_days", errs)
 	if cfg.Memory.MaxMaintenanceLLMCallsPerDay < 0 {
 		*errs = append(*errs, "memory_pipeline.memory.max_maintenance_llm_calls_per_day must be greater than or equal to 0")
-	}
-	if cfg.Memory.EntropyAllowBotMessages {
-		fmt.Fprintf(os.Stderr, "WARNING: memory_pipeline.memory.entropy_allow_bot_messages is true — bot messages will pass the entropy gate\n")
 	}
 	if cfg.Memory.EntropyMinContentLength < 0 {
 		*errs = append(*errs, "memory_pipeline.memory.entropy_min_content_length must be greater than or equal to 0")

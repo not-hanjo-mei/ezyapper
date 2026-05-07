@@ -1,13 +1,14 @@
 package memory
 
 import (
+	"ezyapper/internal/config"
 	"regexp"
 	"strings"
 )
 
 // EntropyGateConfig holds thresholds for the entropy gate.
 type EntropyGateConfig struct {
-	AllowBotMessages   bool
+	OtherBotPolicy     config.OtherBotPolicy
 	MinContentLength   int
 	MinUniqueWordRatio float64
 }
@@ -19,7 +20,7 @@ func PassesEntropyGate(msg *DiscordMessage, cfg EntropyGateConfig) bool {
 	if msg == nil {
 		return false
 	}
-	if msg.IsBot && !cfg.AllowBotMessages {
+	if msg.IsBot && cfg.OtherBotPolicy == config.OtherBotIgnore {
 		return false
 	}
 

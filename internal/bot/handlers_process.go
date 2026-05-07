@@ -131,7 +131,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 
 	memories := []*memory.Record{}
 	if b.cfg().Memory.Retrieval.TopK > 0 {
-		query, _ := memory.BuildSearchQuery(m.Content, recentMessages)
+		query, _ := memory.BuildSearchQuery(m.Content, recentMessages, b.cfg().Discord.OwnBotID)
 		memories, err = b.memoryStore.Search(ctx, m.Author.ID, query, nil)
 		if err != nil {
 			logger.Warnf("[processing] Failed to search memories: %v", err)

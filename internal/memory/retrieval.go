@@ -152,14 +152,14 @@ func PostProcessResults(records []*Record, decayRate float64, now time.Time, wei
 }
 
 // BuildSearchQuery constructs a search query from user message + recent messages.
-// Pure algorithm — NO LLM call.
-func BuildSearchQuery(userMessage string, recentMessages []*DiscordMessage) (string, []string) {
-	// Extract keywords from recent messages (non-bot, non-duplicate)
+// Pure algorithm — NO LLM call. ownBotID skips only the bot's own messages, not other bots.
+func BuildSearchQuery(userMessage string, recentMessages []*DiscordMessage, ownBotID string) (string, []string) {
+	// Extract keywords from recent messages (non-self-bot, non-duplicate)
 	seen := make(map[string]struct{})
 	keywords := make([]string, 0)
 
 	for _, msg := range recentMessages {
-		if msg == nil || msg.IsBot {
+		if msg == nil || msg.AuthorID == ownBotID {
 			continue
 		}
 		if msg.Content == userMessage {

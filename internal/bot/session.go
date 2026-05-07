@@ -619,8 +619,11 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 		return false, "own message"
 	}
 
-	if m.Author.Bot && !b.cfg().Discord.ReplyToBots {
-		return false, "bot message"
+	if m.Author.Bot {
+		switch b.cfg().Discord.OtherBotPolicy {
+		case config.OtherBotIgnore, config.OtherBotContextOnly:
+			return false, "other bot message (policy: " + string(b.cfg().Discord.OtherBotPolicy) + ")"
+		}
 	}
 
 	if b.IsUserBlacklisted(m.Author.ID) {

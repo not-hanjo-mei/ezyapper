@@ -235,6 +235,7 @@ func TestHandleTextOnlyMode_NoContext(t *testing.T) {
 			Model:  "gpt-4",
 		},
 		Discord: config.DiscordConfig{
+			OtherBotPolicy:  config.OtherBotIgnore,
 			Token:           "token",
 			BotName:         "Bot",
 			ReplyPercentage: 0.1,
@@ -273,6 +274,7 @@ func TestGenerateResponse_UnknownVisionMode(t *testing.T) {
 			Model:  "gpt-4",
 		},
 		Discord: config.DiscordConfig{
+			OtherBotPolicy:  config.OtherBotIgnore,
 			Token:           "token",
 			BotName:         "Bot",
 			ReplyPercentage: 0.1,
@@ -312,6 +314,7 @@ func TestGenerateResponse_ContextCancelled(t *testing.T) {
 			Model:  "gpt-4",
 		},
 		Discord: config.DiscordConfig{
+			OtherBotPolicy:  config.OtherBotIgnore,
 			Token:           "token",
 			BotName:         "Bot",
 			ReplyPercentage: 0.1,
@@ -352,6 +355,7 @@ func TestFormatSystemPrompt_Basic(t *testing.T) {
 			Model:        "gpt-4",
 		},
 		Discord: config.DiscordConfig{
+			OtherBotPolicy:  config.OtherBotIgnore,
 			Token:           "token",
 			BotName:         "TestBot",
 			ReplyPercentage: 0.1,
@@ -422,6 +426,7 @@ func TestAddGenerationFailureReaction_NilMessage(t *testing.T) {
 func TestLongResponseChunking_Basic(t *testing.T) {
 	cfg := &config.Config{
 		Discord: config.DiscordConfig{
+			OtherBotPolicy:      config.OtherBotIgnore,
 			LongResponseDelayMs: 10,
 		},
 		AI: config.AIConfig{
@@ -541,6 +546,7 @@ func TestDisasmMessageLimit_Constant(t *testing.T) {
 func TestRunBeforeSendPluginHooks_NilManager(t *testing.T) {
 	cfg := &config.Config{
 		Discord: config.DiscordConfig{
+			OtherBotPolicy:  config.OtherBotIgnore,
 			Token:           "token",
 			BotName:         "Bot",
 			ReplyPercentage: 0.1,
