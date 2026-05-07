@@ -4,6 +4,7 @@ package memory
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -151,6 +152,12 @@ func PostProcessResults(records []*Record, decayRate float64, now time.Time, wei
 	return diverse
 }
 
+var mentionRe = regexp.MustCompile(`<@!?(\d+)>`)
+
+func stripDiscordMentions(s string) string {
+	return mentionRe.ReplaceAllString(s, "")
+}
+
 // BuildSearchQuery constructs a search query from user message + recent messages.
 // Pure algorithm — NO LLM call. ownBotID skips only the bot's own messages, not other bots.
 func BuildSearchQuery(userMessage string, recentMessages []*DiscordMessage, ownBotID string) (string, []string) {
@@ -198,7 +205,7 @@ func BuildSearchQuery(userMessage string, recentMessages []*DiscordMessage, ownB
 		query.WriteString(strings.Join(keywords, ", "))
 		query.WriteString(". ")
 	}
-	query.WriteString(userMessage)
+	query.WriteString(stripDiscordMentions(userMessage))
 
 	return query.String(), keywords
 }
