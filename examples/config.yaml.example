@@ -38,9 +38,9 @@ core:
     max_responses_per_minute: 10
 
     # How to treat messages from OTHER bots (not this bot itself).
-    # - "ignore":       skip entirely â€?no response, no memory, no search enrichment
+    # - "ignore":       skip entirely - no response, no memory, no search enrichment
     # - "context_only": include in memory pipeline (retrieval + consolidation) but do NOT reply
-    # - "full":         treat other bots like human users â€?respond AND include in memory
+    # - "full":         treat other bots like human users - respond AND include in memory
     other_bot_policy: "ignore"
 
     # â”€â”€ Rate limit window settings â”€â”€
@@ -236,10 +236,10 @@ memory_pipeline:
 
     # Strength multiplier for memory importance scoring (must be > 0 and <= 100).
     # Presets:
-    #   0.0001 â€?extreme: only the most critical facts survive
-    #   0.1    â€?goldfish: weak memories, quick forgetting
-    #   1.0    â€?human: balanced retention and decay
-    #   > 1.0  â€?elephant: memories linger longer
+    #   0.0001 - extreme: only the most critical facts survive
+    #   0.1    - goldfish: weak memories, quick forgetting
+    #   1.0    - human: balanced retention and decay
+    #   > 1.0  - elephant: memories linger longer
     memory_strength_multiplier: 1.0
 
     # â”€â”€ Semantic Retrieval â”€â”€
@@ -299,8 +299,8 @@ memory_pipeline:
       # Consolidation system prompt. Required when enabled.
       #
       # Message format: "Username"{UserID=xxx,Time=...,BOT=SELF|OTHERS}: "content"
-      #   BOT=SELF   = this bot's own messages â€?always conversational context only, never extract
-      #   BOT=OTHERS = other bots' messages â€?extraction behavior controlled by prompt below
+      #   BOT=SELF   = this bot's own messages - always conversational context only, never extract
+      #   BOT=OTHERS = other bots' messages - extraction behavior controlled by prompt below
       #   No BOT marker = human user
       #
       # â”€â”€ Template for other_bot_policy: "ignore" â”€â”€
@@ -316,9 +316,9 @@ memory_pipeline:
       #   You are a memory extraction assistant. Analyze the conversation and extract memorable information about USERS.
       #   ...
       #   - BOT=SELF: COMPLETELY IGNORE, do not extract
-      #   - BOT=OTHERS: extract MINIMALLY â€?only if notable/unusual and relevant to human users
+      #   - BOT=OTHERS: extract MINIMALLY - only if notable/unusual and relevant to human users
       #   - No BOT marker (human): extract normally
-      #   EXTRACTION RULES â€?BOT=OTHERS (MINIMAL):
+      #   EXTRACTION RULES - BOT=OTHERS (MINIMAL):
       #   1. Only extract if the bot shares significant information ABOUT human users
       #   2. Do NOT extract bot capabilities, settings, or general bot-to-bot chatter
       #   3. Skip routine bot responses, command confirmations, and standard output

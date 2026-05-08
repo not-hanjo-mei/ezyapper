@@ -82,6 +82,7 @@ memory_pipeline:
     merge_cosine_threshold: 0.85
     prune_decay_threshold: 0.1
     prune_age_days: 90
+    relationship_prune_age_days: 90
     max_maintenance_llm_calls_per_day: 50
     entropy_min_content_length: 10
     entropy_min_unique_word_ratio: 0.15
