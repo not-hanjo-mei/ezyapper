@@ -15,6 +15,7 @@ import (
 	"ezyapper/internal/logger"
 	"ezyapper/internal/retry"
 
+	"github.com/google/uuid"
 	openai "github.com/sashabaranov/go-openai"
 )
 
@@ -95,12 +96,15 @@ func extractMentions(messages []*DiscordMessage) (userIDs, channelIDs []string) 
 	return
 }
 
-// relationshipID builds a deterministic relationship ID from two user IDs and a type.
+// relationshipID builds a deterministic UUID from two user IDs and a type.
+// Uses UUID v5 (SHA-1) to generate a valid RFC 4122 UUID that Qdrant accepts,
+// while remaining deterministic (same inputs → same UUID).
 func relationshipID(userA, userB string, relType RelationshipType) string {
 	if userA > userB {
 		userA, userB = userB, userA
 	}
-	return fmt.Sprintf("%s:%s:%s", userA, userB, relType)
+	name := []byte(userA + ":" + userB + ":" + string(relType))
+	return uuid.NewSHA1(uuid.NameSpaceDNS, name).String()
 }
 
 // aiChatCompleter is the subset of ai.Client methods used by Consolidator.
@@ -758,6 +762,15 @@ func (c *Consolidator) getOrCreateProfile(ctx context.Context, userID string) (*
 	return profile, nil
 }
 
+// truncate returns a truncated version of s with at most n characters.
+// If s is longer than n, it appends "..." to indicate truncation.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}
+
 // sanitizeJSON preprocesses JSON from LLM responses for Go 1.25 compatibility.
 // It handles invalid UTF-8 bytes and removes duplicate keys.
 func sanitizeJSON(s string) string {
@@ -861,6 +874,7 @@ func (c *Consolidator) analyzeConversationBatch(ctx context.Context, conversatio
 	}
 	batchExtracts := make([]UserMemoryExtract, 0, len(targetUserIDs))
 	if err := json.Unmarshal([]byte(content), &batchExtracts); err != nil {
+		logger.Debugf("[consolidation] failed to parse LLM batch response (len=%d): %s", len(content), truncate(content, 500))
 		return nil, fmt.Errorf("consolidation: failed to parse LLM batch response: %w", err)
 	}
 	logger.Infof("[consolidation] successfully extracted memories for %d users from LLM response", len(batchExtracts))

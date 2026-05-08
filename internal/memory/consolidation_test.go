@@ -13,6 +13,8 @@ import (
 	"ezyapper/internal/ai"
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
+
+	"github.com/google/uuid"
 )
 
 var embedSleep func(time.Duration) // test-only override for retry sleep; unused in production
@@ -887,8 +889,10 @@ func TestRelationshipID_Deterministic(t *testing.T) {
 	if id1 != id2 {
 		t.Errorf("relationshipID should be deterministic regardless of order: %q vs %q", id1, id2)
 	}
-	if id1 != "a:b:mention" {
-		t.Errorf("expected \"a:b:mention\", got %q", id1)
+
+	// Verify UUID format
+	if _, err := uuid.Parse(id1); err != nil {
+		t.Errorf("relationshipID should return valid UUID, got %q: %v", id1, err)
 	}
 }
 
