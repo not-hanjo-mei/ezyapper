@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -132,11 +133,94 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 	memories := []*memory.Record{}
 	if b.cfg().Memory.Retrieval.TopK > 0 {
 		query, _ := memory.BuildSearchQuery(m.Content, recentMessages, b.cfg().Discord.OwnBotID)
-		memories, err = b.memoryStore.Search(ctx, m.Author.ID, query, nil)
-		if err != nil {
-			logger.Warnf("[processing] Failed to search memories: %v", err)
-		} else if len(memories) > 0 {
-			logger.Debugf("[memory] search found %d memories for user=%s query=%q", len(memories), m.Author.ID, m.Content)
+
+		var wg sync.WaitGroup
+		var userMemories, mentionedMemories, channelMemories []*memory.Record
+
+		// 1. User memories (always)
+		wg.Go(func() {
+			mems, searchErr := b.memoryStore.Search(ctx, m.Author.ID, query, nil)
+			if searchErr != nil {
+				logger.Warnf("[processing] Failed to search user memories: %v", searchErr)
+			}
+			userMemories = mems
+		})
+
+		// 2. Mentioned memories (if mentions exist)
+		if len(m.Mentions) > 0 {
+			wg.Go(func() {
+				maxMentioned := b.cfg().Memory.Retrieval.MaxMentionedMemories
+				if maxMentioned <= 0 {
+					maxMentioned = b.cfg().Memory.Retrieval.TopK
+				}
+				opts := &memory.SearchOptions{TopK: maxMentioned}
+				for _, mention := range m.Mentions {
+					if mention.ID == m.Author.ID {
+						continue
+					}
+					mems, searchErr := b.memoryStore.SearchByMentionedUser(ctx, m.Author.ID, mention.ID, opts)
+					if searchErr != nil {
+						logger.Warnf("[processing] Failed to search mentioned user memories for %s: %v", mention.ID, searchErr)
+						continue
+					}
+					mentionedMemories = append(mentionedMemories, mems...)
+				}
+			})
+		}
+
+		// 3. Channel memories (if enabled in config)
+		if b.cfg().Memory.Retrieval.IncludeChannelMemories {
+			wg.Go(func() {
+				maxChannel := b.cfg().Memory.Retrieval.MaxChannelMemories
+				if maxChannel <= 0 {
+					maxChannel = b.cfg().Memory.Retrieval.TopK
+				}
+				opts := &memory.SearchOptions{TopK: maxChannel}
+				mems, searchErr := b.memoryStore.SearchByChannel(ctx, m.ChannelID, opts)
+				if searchErr != nil {
+					logger.Warnf("[processing] Failed to search channel memories: %v", searchErr)
+				}
+				channelMemories = mems
+			})
+		}
+
+		wg.Wait()
+
+		// Merge all three result sets
+		memories = make([]*memory.Record, 0, len(userMemories)+len(mentionedMemories)+len(channelMemories))
+		memories = append(memories, userMemories...)
+		memories = append(memories, mentionedMemories...)
+		memories = append(memories, channelMemories...)
+
+		// Deduplicate by memory ID
+		if len(memories) > 1 {
+			seen := make(map[string]bool, len(memories))
+			deduped := make([]*memory.Record, 0, len(memories))
+			for _, mem := range memories {
+				if mem.ID == "" || seen[mem.ID] {
+					continue
+				}
+				seen[mem.ID] = true
+				deduped = append(deduped, mem)
+			}
+			memories = deduped
+		}
+
+		// Apply PostProcessResults after merging ALL result sets
+		if len(memories) > 0 {
+			multiplier := b.cfg().Memory.MemoryStrengthMultiplier
+			mws := memory.ScoringWeights{
+				Importance: b.cfg().Memory.Scoring.ImportanceWeight,
+				Recency:    b.cfg().Memory.Scoring.RecencyWeight,
+				Access:     b.cfg().Memory.Scoring.AccessWeight,
+				Confidence: b.cfg().Memory.Scoring.ConfidenceWeight,
+			}
+			memories = memory.PostProcessResults(memories, multiplier, time.Now(), mws)
+		}
+
+		if len(memories) > 0 {
+			logger.Debugf("[memory] parallel search: user=%d mentioned=%d channel=%d deduped=%d query=%q",
+				len(userMemories), len(mentionedMemories), len(channelMemories), len(memories), m.Content)
 		}
 	}
 
@@ -161,11 +245,9 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 
 	s.ChannelTyping(m.ChannelID)
 	typingCtx, cancelTyping := context.WithCancel(ctx)
-	b.wg.Add(1)
-	go func() {
-		defer b.wg.Done()
+	b.wg.Go(func() {
 		maintainTyping(typingCtx, s, m.ChannelID, b.cfg().Discord.TypingIndicatorIntervalSec)
-	}()
+	})
 	defer cancelTyping()
 
 	replyToUsername, replyToContent := extractReplyInfo(m)

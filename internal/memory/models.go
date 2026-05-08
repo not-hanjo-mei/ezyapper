@@ -23,12 +23,14 @@ const (
 
 // Record represents a stored memory in the vector database.
 type Record struct {
-	ID         string `json:"id"`
-	UserID     string `json:"user_id"`
-	GuildID    string `json:"guild_id,omitempty"`
-	ChannelID  string `json:"channel_id,omitempty"`
-	MemoryType Type   `json:"memory_type"`
-	Content    string `json:"content"`
+	ID                  string   `json:"id"`
+	UserID              string   `json:"user_id"`
+	GuildID             string   `json:"guild_id,omitempty"`
+	ChannelID           string   `json:"channel_id,omitempty"`
+	MentionedUserIDs    []string `json:"mentioned_user_ids,omitempty"`
+	MentionedChannelIDs []string `json:"mentioned_channel_ids,omitempty"`
+	MemoryType          Type     `json:"memory_type"`
+	Content             string   `json:"content"`
 
 	// Vector embedding (size must match the configured embedding model)
 	Embedding  []float32 `json:"embedding"`
@@ -63,10 +65,13 @@ type Profile struct {
 
 // SearchOptions defines options for memory search.
 type SearchOptions struct {
-	TopK        int
-	MinScore    float64    // Minimum similarity score (0.0-1.0)
-	MemoryTypes []string   // Filter by memory types
-	TimeRange   *TimeRange // Filter by time range
+	TopK                int
+	MinScore            float64    // Minimum similarity score (0.0-1.0)
+	MemoryTypes         []string   // Filter by memory types
+	MentionedUserIDs    []string   // Filter by mentioned users
+	MentionedChannelIDs []string   // Filter by mentioned channels
+	ChannelID           string     // Filter by channel
+	TimeRange           *TimeRange // Filter by time range
 }
 
 // TimeRange defines a time range for filtering
@@ -81,6 +86,9 @@ type Extract struct {
 	Type       string   `json:"type"`
 	Confidence float64  `json:"confidence"`
 	Keywords   []string `json:"keywords"`
+
+	MentionedUserIDs    []string `json:"mentioned_user_ids,omitempty"`
+	MentionedChannelIDs []string `json:"mentioned_channel_ids,omitempty"`
 
 	ImportanceScore *float64          `json:"importance_score,omitempty"`
 	ProfileUpdates  *ProfileUpdateSet `json:"profile_updates,omitempty"`
@@ -102,8 +110,9 @@ type ProfileUpdateSet struct {
 
 // ScoringConfig holds config for memory scoring and decay.
 type ScoringConfig struct {
-	Weights    ScoringWeights
-	DecayRates map[Type]float64
+	Weights                  ScoringWeights
+	DecayRates               map[Type]float64
+	MemoryStrengthMultiplier float64
 }
 
 // ScoringWeights holds weights for compositing scores.
@@ -122,4 +131,26 @@ type GlobalStats struct {
 	TotalUsers       int64     `json:"total_users"`
 	TotalMemories    int64     `json:"total_memories"`
 	LastConsolidated time.Time `json:"last_consolidated"`
+}
+
+// RelationshipType represents the type of relationship between two users
+type RelationshipType string
+
+const (
+	RelMention  RelationshipType = "mention"
+	RelReply    RelationshipType = "reply"
+	RelReaction RelationshipType = "reaction"
+)
+
+// Relationship represents a relationship between two users.
+type Relationship struct {
+	ID                string           `json:"id"`
+	UserA             string           `json:"user_a"`
+	UserB             string           `json:"user_b"`
+	Type              RelationshipType `json:"type"`
+	InteractionCount  int              `json:"interaction_count"`
+	LastInteractionAt time.Time        `json:"last_interaction_at"`
+	ChannelIDs        []string         `json:"channel_ids"`
+	Weight            float64          `json:"weight"`
+	Embedding         []float32        `json:"embedding,omitempty"`
 }

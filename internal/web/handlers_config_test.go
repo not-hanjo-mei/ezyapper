@@ -90,6 +90,7 @@ memory_pipeline:
       episode: 0.05
       interest: 0.02
       summary: 0.005
+    memory_strength_multiplier: 1.0
     scoring:
       importance_weight: 0.4
       recency_weight: 0.3

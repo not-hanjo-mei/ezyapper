@@ -59,6 +59,12 @@ func (m *mockMemoryStore) GetMemory(ctx context.Context, memoryID string) (*memo
 }
 func (m *mockMemoryStore) DeleteMemory(ctx context.Context, memoryID string) error { return nil }
 func (m *mockMemoryStore) DeleteUserData(ctx context.Context, userID string) error { return nil }
+func (m *mockMemoryStore) SearchByMentionedUser(ctx context.Context, userID string, mentionedUserID string, opts *memory.SearchOptions) ([]*memory.Record, error) {
+	return nil, nil
+}
+func (m *mockMemoryStore) SearchByChannel(ctx context.Context, channelID string, opts *memory.SearchOptions) ([]*memory.Record, error) {
+	return nil, nil
+}
 func (m *mockMemoryStore) GetStats(ctx context.Context) (*memory.GlobalStats, error) {
 	if m.getStatsErr != nil {
 		return nil, m.getStatsErr

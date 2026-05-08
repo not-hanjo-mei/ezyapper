@@ -77,6 +77,7 @@ func TestCosineSimilarity_NearUnit(t *testing.T) {
 type mockMaintenanceStore struct {
 	mu        sync.Mutex
 	points    []*scrollPoint
+	relPoints []*scrollRelationshipPoint
 	deleted   []string
 	scrollErr error
 	deleteErr error
@@ -89,7 +90,24 @@ func (m *mockMaintenanceStore) ScrollMemories(ctx context.Context, limit uint32)
 	return m.points, nil
 }
 
+func (m *mockMaintenanceStore) ScrollRelationships(ctx context.Context, limit uint32) ([]*scrollRelationshipPoint, error) {
+	if m.scrollErr != nil {
+		return nil, m.scrollErr
+	}
+	return m.relPoints, nil
+}
+
 func (m *mockMaintenanceStore) DeletePoint(ctx context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	m.deleted = append(m.deleted, id)
+	return nil
+}
+
+func (m *mockMaintenanceStore) DeleteRelationshipPoint(ctx context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.deleteErr != nil {
@@ -128,12 +146,13 @@ func makePayloadWithExpires(expiresAt time.Time) map[string]*qdrant.Value {
 func TestMaintenanceWorker_StartStop(t *testing.T) {
 	store := &mockMaintenanceStore{}
 	config := &ServiceConfig{
-		MaintenanceIntervalSec: 3600,
-		MergeCronHourUTC:       3,
-		SummarizeCronDay:       0,
-		MergeCosineThreshold:   0.9,
-		PruneDecayThreshold:    0.1,
-		PruneAgeDays:           90,
+		MaintenanceIntervalSec:   3600,
+		MergeCronHourUTC:         3,
+		SummarizeCronDay:         0,
+		MergeCosineThreshold:     0.9,
+		PruneDecayThreshold:      0.1,
+		PruneAgeDays:             90,
+		RelationshipPruneAgeDays: 90,
 		Scoring: ScoringConfig{
 			Weights: ScoringWeights{
 				Importance: 0.4,
@@ -147,6 +166,7 @@ func TestMaintenanceWorker_StartStop(t *testing.T) {
 				TypeInterest: 0.05,
 				TypeSummary:  0.005,
 			},
+			MemoryStrengthMultiplier: 1.0,
 		},
 	}
 
@@ -169,12 +189,13 @@ func TestMaintenanceWorker_StartStop(t *testing.T) {
 func TestMaintenanceWorker_StopIdempotent(t *testing.T) {
 	store := &mockMaintenanceStore{}
 	config := &ServiceConfig{
-		MaintenanceIntervalSec: 3600,
-		MergeCronHourUTC:       3,
-		SummarizeCronDay:       0,
-		MergeCosineThreshold:   0.9,
-		PruneDecayThreshold:    0.1,
-		PruneAgeDays:           90,
+		MaintenanceIntervalSec:   3600,
+		MergeCronHourUTC:         3,
+		SummarizeCronDay:         0,
+		MergeCosineThreshold:     0.9,
+		PruneDecayThreshold:      0.1,
+		PruneAgeDays:             90,
+		RelationshipPruneAgeDays: 90,
 		Scoring: ScoringConfig{
 			Weights: ScoringWeights{
 				Importance: 0.4,
@@ -185,6 +206,7 @@ func TestMaintenanceWorker_StopIdempotent(t *testing.T) {
 			DecayRates: map[Type]float64{
 				TypeFact: 0.01,
 			},
+			MemoryStrengthMultiplier: 1.0,
 		},
 	}
 
@@ -197,12 +219,13 @@ func TestMaintenanceWorker_StopIdempotent(t *testing.T) {
 func TestMaintenanceWorker_ContextCancellation(t *testing.T) {
 	store := &mockMaintenanceStore{}
 	config := &ServiceConfig{
-		MaintenanceIntervalSec: 3600,
-		MergeCronHourUTC:       3,
-		SummarizeCronDay:       0,
-		MergeCosineThreshold:   0.9,
-		PruneDecayThreshold:    0.1,
-		PruneAgeDays:           90,
+		MaintenanceIntervalSec:   3600,
+		MergeCronHourUTC:         3,
+		SummarizeCronDay:         0,
+		MergeCosineThreshold:     0.9,
+		PruneDecayThreshold:      0.1,
+		PruneAgeDays:             90,
+		RelationshipPruneAgeDays: 90,
 		Scoring: ScoringConfig{
 			Weights: ScoringWeights{
 				Importance: 0.4,
@@ -213,6 +236,7 @@ func TestMaintenanceWorker_ContextCancellation(t *testing.T) {
 			DecayRates: map[Type]float64{
 				TypeFact: 0.01,
 			},
+			MemoryStrengthMultiplier: 1.0,
 		},
 	}
 
@@ -237,6 +261,7 @@ func TestMergeDuplicates_EmptyStore(t *testing.T) {
 			DecayRates: map[Type]float64{
 				TypeFact: 0.01,
 			},
+			MemoryStrengthMultiplier: 1.0,
 		},
 	}
 	w := &MaintenanceWorker{store: store, config: config}
@@ -269,6 +294,7 @@ func TestMergeDuplicates_NoSimilarPairs(t *testing.T) {
 			DecayRates: map[Type]float64{
 				TypeFact: 0.01,
 			},
+			MemoryStrengthMultiplier: 1.0,
 		},
 	}
 	w := &MaintenanceWorker{store: store, config: config}
@@ -301,6 +327,7 @@ func TestMergeDuplicates_HighSimilarity(t *testing.T) {
 			DecayRates: map[Type]float64{
 				TypeFact: 0.01,
 			},
+			MemoryStrengthMultiplier: 1.0,
 		},
 	}
 	w := &MaintenanceWorker{store: store, config: config}
@@ -333,6 +360,7 @@ func TestMergeDuplicates_DifferentUsers(t *testing.T) {
 			DecayRates: map[Type]float64{
 				TypeFact: 0.01,
 			},
+			MemoryStrengthMultiplier: 1.0,
 		},
 	}
 	w := &MaintenanceWorker{store: store, config: config}
@@ -366,6 +394,7 @@ func TestMergeDuplicates_DifferentTypes(t *testing.T) {
 				TypeFact:    0.01,
 				TypeEpisode: 0.02,
 			},
+			MemoryStrengthMultiplier: 1.0,
 		},
 	}
 	w := &MaintenanceWorker{store: store, config: config}
@@ -385,8 +414,9 @@ func TestMergeDuplicates_ScrollError(t *testing.T) {
 	config := &ServiceConfig{
 		MergeCosineThreshold: 0.9,
 		Scoring: ScoringConfig{
-			Weights:    ScoringWeights{},
-			DecayRates: map[Type]float64{},
+			Weights:                  ScoringWeights{},
+			DecayRates:               map[Type]float64{},
+			MemoryStrengthMultiplier: 1.0,
 		},
 	}
 	w := &MaintenanceWorker{store: store, config: config}
@@ -408,13 +438,15 @@ func TestSummarizeAndPrune_LowDecayScore(t *testing.T) {
 		},
 	}
 	config := &ServiceConfig{
-		PruneDecayThreshold: 0.1,
-		PruneAgeDays:        90,
+		PruneDecayThreshold:      0.1,
+		PruneAgeDays:             90,
+		RelationshipPruneAgeDays: 90,
 		Scoring: ScoringConfig{
 			Weights: ScoringWeights{},
 			DecayRates: map[Type]float64{
 				TypeFact: 0.01,
 			},
+			MemoryStrengthMultiplier: 1.0,
 		},
 	}
 	w := &MaintenanceWorker{store: store, config: config}
@@ -439,13 +471,15 @@ func TestSummarizeAndPrune_OldZeroAccess(t *testing.T) {
 		},
 	}
 	config := &ServiceConfig{
-		PruneDecayThreshold: 0.01,
-		PruneAgeDays:        90,
+		PruneDecayThreshold:      0.01,
+		PruneAgeDays:             90,
+		RelationshipPruneAgeDays: 90,
 		Scoring: ScoringConfig{
 			Weights: ScoringWeights{},
 			DecayRates: map[Type]float64{
 				TypeFact: 0.001,
 			},
+			MemoryStrengthMultiplier: 1.0,
 		},
 	}
 	w := &MaintenanceWorker{store: store, config: config}
@@ -469,13 +503,15 @@ func TestSummarizeAndPrune_Healthy(t *testing.T) {
 		},
 	}
 	config := &ServiceConfig{
-		PruneDecayThreshold: 0.1,
-		PruneAgeDays:        90,
+		PruneDecayThreshold:      0.1,
+		PruneAgeDays:             90,
+		RelationshipPruneAgeDays: 90,
 		Scoring: ScoringConfig{
 			Weights: ScoringWeights{},
 			DecayRates: map[Type]float64{
 				TypeFact: 0.01,
 			},
+			MemoryStrengthMultiplier: 1.0,
 		},
 	}
 	w := &MaintenanceWorker{store: store, config: config}
@@ -500,8 +536,9 @@ func TestPruneExpired_Expired(t *testing.T) {
 	}
 	config := &ServiceConfig{
 		Scoring: ScoringConfig{
-			Weights:    ScoringWeights{},
-			DecayRates: map[Type]float64{},
+			Weights:                  ScoringWeights{},
+			DecayRates:               map[Type]float64{},
+			MemoryStrengthMultiplier: 1.0,
 		},
 	}
 	w := &MaintenanceWorker{store: store, config: config}
@@ -526,8 +563,9 @@ func TestPruneExpired_NotExpired(t *testing.T) {
 	}
 	config := &ServiceConfig{
 		Scoring: ScoringConfig{
-			Weights:    ScoringWeights{},
-			DecayRates: map[Type]float64{},
+			Weights:                  ScoringWeights{},
+			DecayRates:               map[Type]float64{},
+			MemoryStrengthMultiplier: 1.0,
 		},
 	}
 	w := &MaintenanceWorker{store: store, config: config}
@@ -552,8 +590,9 @@ func TestPruneExpired_NoExpiresAt(t *testing.T) {
 	}
 	config := &ServiceConfig{
 		Scoring: ScoringConfig{
-			Weights:    ScoringWeights{},
-			DecayRates: map[Type]float64{},
+			Weights:                  ScoringWeights{},
+			DecayRates:               map[Type]float64{},
+			MemoryStrengthMultiplier: 1.0,
 		},
 	}
 	w := &MaintenanceWorker{store: store, config: config}
@@ -569,12 +608,13 @@ func TestPruneExpired_NoExpiresAt(t *testing.T) {
 func TestRunScheduled_DispatchesCorrectJob(t *testing.T) {
 	store := &mockMaintenanceStore{}
 	config := &ServiceConfig{
-		MaintenanceIntervalSec: 60,
-		MergeCronHourUTC:       2,
-		SummarizeCronDay:       1, // Monday
-		MergeCosineThreshold:   0.9,
-		PruneDecayThreshold:    0.1,
-		PruneAgeDays:           90,
+		MaintenanceIntervalSec:   60,
+		MergeCronHourUTC:         2,
+		SummarizeCronDay:         1, // Monday
+		MergeCosineThreshold:     0.9,
+		PruneDecayThreshold:      0.1,
+		PruneAgeDays:             90,
+		RelationshipPruneAgeDays: 90,
 		Scoring: ScoringConfig{
 			Weights: ScoringWeights{
 				Importance: 0.4,
@@ -585,6 +625,7 @@ func TestRunScheduled_DispatchesCorrectJob(t *testing.T) {
 			DecayRates: map[Type]float64{
 				TypeFact: 0.01,
 			},
+			MemoryStrengthMultiplier: 1.0,
 		},
 	}
 	w := &MaintenanceWorker{store: store, config: config}

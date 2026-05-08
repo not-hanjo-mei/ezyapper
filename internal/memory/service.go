@@ -36,6 +36,12 @@ type MemoryStore interface {
 	// DeleteUserData deletes all data for a user
 	DeleteUserData(ctx context.Context, userID string) error
 
+	// SearchByMentionedUser searches for memories that mention a specific user.
+	SearchByMentionedUser(ctx context.Context, userID string, mentionedUserID string, opts *SearchOptions) ([]*Record, error)
+
+	// SearchByChannel searches for memories in a specific channel across all users.
+	SearchByChannel(ctx context.Context, channelID string, opts *SearchOptions) ([]*Record, error)
+
 	// GetStats retrieves global statistics
 	GetStats(ctx context.Context) (*GlobalStats, error)
 }
@@ -58,12 +64,22 @@ type ConsolidationManager interface {
 	ConsolidateChannel(ctx context.Context, channelID string, messages []*DiscordMessage) error
 }
 
+// RelationshipStore groups user relationship operations.
+type RelationshipStore interface {
+	// GetRelationships retrieves all relationships involving the given user, optionally filtered by type.
+	GetRelationships(ctx context.Context, userID string, relType RelationshipType) ([]*Relationship, error)
+
+	// GetRelationshipBetween retrieves the relationship between two specific users, optionally filtered by type.
+	GetRelationshipBetween(ctx context.Context, userA, userB string, relType RelationshipType) (*Relationship, error)
+}
+
 // Service defines the composite interface for long-term memory operations.
-// It embeds MemoryStore, ProfileStore, and ConsolidationManager for consumers
+// It embeds MemoryStore, ProfileStore, ConsolidationManager, and RelationshipStore for consumers
 // that need the full set of memory capabilities.
 type Service interface {
 	MemoryStore
 	ProfileStore
+	RelationshipStore
 	ConsolidationManager
 
 	// IncrementMessageCount increments the message counter for consolidation triggering
@@ -134,6 +150,7 @@ type ServiceConfig struct {
 	MergeCosineThreshold         float64
 	PruneDecayThreshold          float64
 	PruneAgeDays                 int
+	RelationshipPruneAgeDays     int
 	MaxMaintenanceLLMCallsPerDay int
 
 	// Entropy
@@ -239,8 +256,8 @@ func (s *MemoryService) Search(ctx context.Context, userID string, query string,
 	}
 
 	// Post-process: sort by decayed score, assign tiers, enforce type diversity
-	decayRate := DecayRateForType(TypeFact, s.config.Scoring.DecayRates)
-	memories = PostProcessResults(memories, decayRate, time.Now(), s.config.Scoring.Weights)
+	multiplier := s.config.Scoring.MemoryStrengthMultiplier
+	memories = PostProcessResults(memories, multiplier, time.Now(), s.config.Scoring.Weights)
 
 	s.enqueueAccessIDs(memories)
 
@@ -288,6 +305,67 @@ func (s *MemoryService) filterByKeywords(memories []*Record, keywords []string) 
 		}
 	}
 	return filtered
+}
+
+func (s *MemoryService) SearchByMentionedUser(ctx context.Context, userID string, mentionedUserID string, opts *SearchOptions) ([]*Record, error) {
+	if opts == nil {
+		opts = &SearchOptions{
+			TopK:     s.config.TopK,
+			MinScore: s.config.MinScore,
+		}
+	}
+	opts.MentionedUserIDs = []string{mentionedUserID}
+
+	logger.Debugf("[memory] searching by mentioned user userID=%s mentionedUserID=%s topK=%d", userID, mentionedUserID, opts.TopK)
+
+	// Generate embedding from a constructed query for semantic ranking
+	embedding, err := s.embedder.Embed(ctx, "memories mentioning user")
+	if err != nil {
+		return nil, fmt.Errorf("embed query for SearchByMentionedUser userID=%s: %w", userID, err)
+	}
+
+	memories, err := s.qdrant.SearchMemories(ctx, userID, embedding, opts)
+	if err != nil {
+		return nil, fmt.Errorf("search by mentioned user userID=%s: %w", userID, err)
+	}
+
+	multiplier := s.config.Scoring.MemoryStrengthMultiplier
+	memories = PostProcessResults(memories, multiplier, time.Now(), s.config.Scoring.Weights)
+
+	s.enqueueAccessIDs(memories)
+
+	logger.Debugf("[memory] found %d memories mentioning user=%s for userID=%s", len(memories), mentionedUserID, userID)
+	return memories, nil
+}
+
+func (s *MemoryService) SearchByChannel(ctx context.Context, channelID string, opts *SearchOptions) ([]*Record, error) {
+	if opts == nil {
+		opts = &SearchOptions{
+			TopK:     s.config.TopK,
+			MinScore: s.config.MinScore,
+		}
+	}
+	opts.ChannelID = channelID
+
+	logger.Debugf("[memory] searching by channel channelID=%s topK=%d", channelID, opts.TopK)
+
+	embedding, err := s.embedder.Embed(ctx, "channel discussions")
+	if err != nil {
+		return nil, fmt.Errorf("embed query for SearchByChannel channelID=%s: %w", channelID, err)
+	}
+
+	memories, err := s.qdrant.SearchMemoriesByChannel(ctx, channelID, embedding, opts)
+	if err != nil {
+		return nil, fmt.Errorf("search by channel channelID=%s: %w", channelID, err)
+	}
+
+	multiplier := s.config.Scoring.MemoryStrengthMultiplier
+	memories = PostProcessResults(memories, multiplier, time.Now(), s.config.Scoring.Weights)
+
+	s.enqueueAccessIDs(memories)
+
+	logger.Debugf("[memory] found %d memories for channelID=%s", len(memories), channelID)
+	return memories, nil
 }
 
 func (s *MemoryService) GetMemories(ctx context.Context, userID string, limit int) ([]*Record, error) {
@@ -343,6 +421,29 @@ func (s *MemoryService) UpdateProfile(ctx context.Context, p *Profile) error {
 	return nil
 }
 
+func (s *MemoryService) GetRelationships(ctx context.Context, userID string, relType RelationshipType) ([]*Relationship, error) {
+	logger.Debugf("[memory] getting relationships for userID=%s type=%s", userID, relType)
+	rels, err := s.qdrant.GetRelationships(ctx, userID, relType)
+	if err != nil {
+		return nil, fmt.Errorf("get relationships for userID=%s: %w", userID, err)
+	}
+	logger.Debugf("[memory] retrieved %d relationships for userID=%s", len(rels), userID)
+	return rels, nil
+}
+
+func (s *MemoryService) GetRelationshipBetween(ctx context.Context, userA, userB string, relType RelationshipType) (*Relationship, error) {
+	logger.Debugf("[memory] getting relationship between user_a=%s user_b=%s type=%s", userA, userB, relType)
+	rels, err := s.qdrant.GetRelationshipBetween(ctx, userA, userB, relType)
+	if err != nil {
+		return nil, fmt.Errorf("get relationship between user_a=%s user_b=%s: %w", userA, userB, err)
+	}
+	if len(rels) == 0 {
+		return nil, nil
+	}
+	logger.Debugf("[memory] retrieved relationship id=%s between user_a=%s user_b=%s", rels[0].ID, userA, userB)
+	return rels[0], nil
+}
+
 func (s *MemoryService) DeleteMemory(ctx context.Context, memoryID string) error {
 	logger.Warnf("[memory] deleting memoryID=%s", memoryID)
 	if err := s.qdrant.DeleteMemory(ctx, memoryID); err != nil {
@@ -369,6 +470,8 @@ func (s *MemoryService) DeleteUserData(ctx context.Context, userID string) error
 	s.counterMu.Lock()
 	delete(s.messageCounters, userID)
 	s.counterMu.Unlock()
+
+	s.qdrant.RemoveUserFromMentions(ctx, userID)
 
 	logger.Infof("[memory] successfully deleted all data for userID=%s", userID)
 	return nil

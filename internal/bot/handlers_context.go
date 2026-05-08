@@ -62,14 +62,11 @@ func (b *Bot) buildDynamicContext(authorName string, profile *memory.Profile, me
 
 	// Add relevant memories.
 	if len(memories) > 0 {
-		decayRates := map[memory.Type]float64{
-			memory.TypeFact:     b.cfg().Memory.DecayRates.Fact,
-			memory.TypeEpisode:  b.cfg().Memory.DecayRates.Episode,
-			memory.TypeInterest: b.cfg().Memory.DecayRates.Interest,
-			memory.TypeSummary:  b.cfg().Memory.DecayRates.Summary,
-		}
-		decayRate := memory.DecayRateForType(memory.TypeFact, decayRates)
-		formatted := memory.FormatMemoriesForContext(memories, decayRate, time.Now())
+		cfg := b.cfg().Memory
+		multiplier := cfg.MemoryStrengthMultiplier
+		maxMentioned := cfg.Retrieval.MaxMentionedMemories
+		maxChannel := cfg.Retrieval.MaxChannelMemories
+		formatted := memory.FormatMemoriesForContext(memories, multiplier, time.Now(), maxMentioned, maxChannel)
 		if formatted != "" {
 			context.WriteString("\n")
 			context.WriteString(formatted)
@@ -93,7 +90,7 @@ func (b *Bot) addGenerationFailureReaction(s *discordgo.Session, m *discordgo.Me
 		return
 	}
 
-	const timeoutReaction = "馃拃"
+	const timeoutReaction = "棣冩媰"
 	if err := s.MessageReactionAdd(m.ChannelID, m.ID, timeoutReaction); err != nil {
 		logger.Warnf("[context] Failed to add generation timeout reaction: %v", err)
 	}

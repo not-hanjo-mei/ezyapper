@@ -48,8 +48,9 @@ func (m *retryableEmbedder) Stop() {}
 
 // mockQdrantStore implements qdrantStore for consolidation tests.
 type mockQdrantStore struct {
-	memories map[string]*Record
-	profiles map[string]*Profile
+	memories      map[string]*Record
+	profiles      map[string]*Profile
+	relationships map[string]*Relationship
 	// upsertMemoryErr forces UpsertMemory to fail after retry exhaustion
 	upsertMemoryErr error
 	// upsertProfileErr forces UpsertProfile to fail
@@ -58,8 +59,9 @@ type mockQdrantStore struct {
 
 func newMockQdrantStore() *mockQdrantStore {
 	return &mockQdrantStore{
-		memories: make(map[string]*Record),
-		profiles: make(map[string]*Profile),
+		memories:      make(map[string]*Record),
+		profiles:      make(map[string]*Profile),
+		relationships: make(map[string]*Relationship),
 	}
 }
 
@@ -147,6 +149,19 @@ func (m *mockQdrantStore) ListMemoriesByType(ctx context.Context, userID string,
 		}
 	}
 	return result, nil
+}
+
+func (m *mockQdrantStore) UpsertRelationship(ctx context.Context, rel *Relationship) error {
+	m.relationships[rel.ID] = rel
+	return nil
+}
+
+func (m *mockQdrantStore) GetRelationshipBetween(ctx context.Context, userA, userB string, relType RelationshipType) ([]*Relationship, error) {
+	relID := relationshipID(userA, userB, relType)
+	if rel, ok := m.relationships[relID]; ok {
+		return []*Relationship{rel}, nil
+	}
+	return nil, nil
 }
 
 // TestEmbedWithRetry_Success verifies embedWithRetry retries on failure then succeeds.
@@ -603,7 +618,7 @@ func TestStoreMemories_ImportanceAwareDedup(t *testing.T) {
 		},
 	}
 
-	stored, err := c.storeMemories(ctx, "user-1", extracts, "chan-1", "guild-1")
+	stored, err := c.storeMemories(ctx, "user-1", extracts, "chan-1", "guild-1", nil, nil)
 	if err != nil {
 		t.Fatalf("storeMemories failed: %v", err)
 	}
@@ -647,7 +662,7 @@ func TestStoreMemories_HighImportanceOverwrites(t *testing.T) {
 		},
 	}
 
-	stored, err := c.storeMemories(ctx, "user-1", extracts, "chan-1", "guild-1")
+	stored, err := c.storeMemories(ctx, "user-1", extracts, "chan-1", "guild-1", nil, nil)
 	if err != nil {
 		t.Fatalf("storeMemories failed: %v", err)
 	}
@@ -686,7 +701,7 @@ func TestStoreMemories_TierAssignment(t *testing.T) {
 		},
 	}
 
-	stored, err := c.storeMemories(ctx, "user-1", extracts, "chan-1", "guild-1")
+	stored, err := c.storeMemories(ctx, "user-1", extracts, "chan-1", "guild-1", nil, nil)
 	if err != nil {
 		t.Fatalf("storeMemories failed: %v", err)
 	}
@@ -701,6 +716,358 @@ func TestStoreMemories_TierAssignment(t *testing.T) {
 		if m.ImportanceScore != highImp {
 			t.Errorf("expected ImportanceScore=%.2f, got %.2f", highImp, m.ImportanceScore)
 		}
+	}
+}
+
+func TestExtractMentions_Empty(t *testing.T) {
+	userIDs, channelIDs := extractMentions(nil)
+	if len(userIDs) != 0 {
+		t.Errorf("expected 0 user IDs for nil messages, got %v", userIDs)
+	}
+	if len(channelIDs) != 0 {
+		t.Errorf("expected 0 channel IDs for nil messages, got %v", channelIDs)
+	}
+
+	userIDs, channelIDs = extractMentions([]*DiscordMessage{})
+	if len(userIDs) != 0 {
+		t.Errorf("expected 0 user IDs for empty messages, got %v", userIDs)
+	}
+	if len(channelIDs) != 0 {
+		t.Errorf("expected 0 channel IDs for empty messages, got %v", channelIDs)
+	}
+}
+
+func TestExtractMentions_SingleUserMention(t *testing.T) {
+	messages := []*DiscordMessage{
+		{Content: "hello <@123>"},
+	}
+	userIDs, channelIDs := extractMentions(messages)
+
+	if len(userIDs) != 1 || userIDs[0] != "123" {
+		t.Errorf("expected [\"123\"], got %v", userIDs)
+	}
+	if len(channelIDs) != 0 {
+		t.Errorf("expected no channel IDs, got %v", channelIDs)
+	}
+}
+
+func TestExtractMentions_MultipleUserMentions(t *testing.T) {
+	messages := []*DiscordMessage{
+		{Content: "hello <@123> and <@456>"},
+	}
+	userIDs, channelIDs := extractMentions(messages)
+
+	if len(userIDs) != 2 {
+		t.Errorf("expected 2 user IDs, got %d: %v", len(userIDs), userIDs)
+	}
+	if len(channelIDs) != 0 {
+		t.Errorf("expected no channel IDs, got %v", channelIDs)
+	}
+	found := make(map[string]bool)
+	for _, id := range userIDs {
+		found[id] = true
+	}
+	if !found["123"] || !found["456"] {
+		t.Errorf("expected [\"123\", \"456\"], got %v", userIDs)
+	}
+}
+
+func TestExtractMentions_ChannelMention(t *testing.T) {
+	messages := []*DiscordMessage{
+		{Content: "check out <#789>"},
+	}
+	userIDs, channelIDs := extractMentions(messages)
+
+	if len(channelIDs) != 1 || channelIDs[0] != "789" {
+		t.Errorf("expected [\"789\"], got %v", channelIDs)
+	}
+	if len(userIDs) != 0 {
+		t.Errorf("expected no user IDs, got %v", userIDs)
+	}
+}
+
+func TestExtractMentions_MixedMentions(t *testing.T) {
+	messages := []*DiscordMessage{
+		{Content: "<@111> told me about <#222> and <@333> also mentioned <#444>"},
+	}
+	userIDs, channelIDs := extractMentions(messages)
+
+	if len(userIDs) != 2 {
+		t.Errorf("expected 2 user IDs, got %d: %v", len(userIDs), userIDs)
+	}
+	if len(channelIDs) != 2 {
+		t.Errorf("expected 2 channel IDs, got %d: %v", len(channelIDs), channelIDs)
+	}
+}
+
+func TestExtractMentions_DuplicateFiltering(t *testing.T) {
+	messages := []*DiscordMessage{
+		{Content: "hey <@123> and again <@123>"},
+	}
+	userIDs, _ := extractMentions(messages)
+
+	if len(userIDs) != 1 {
+		t.Errorf("expected 1 unique user ID after dedup, got %d: %v", len(userIDs), userIDs)
+	}
+}
+
+func TestExtractMentions_AcrossMessages(t *testing.T) {
+	messages := []*DiscordMessage{
+		{Content: "hello <@123>"},
+		{Content: "hi <@456>"},
+		{Content: "yo <#789>"},
+	}
+	userIDs, channelIDs := extractMentions(messages)
+
+	if len(userIDs) != 2 {
+		t.Errorf("expected 2 user IDs across messages, got %d: %v", len(userIDs), userIDs)
+	}
+	if len(channelIDs) != 1 {
+		t.Errorf("expected 1 channel ID, got %d: %v", len(channelIDs), channelIDs)
+	}
+}
+
+func TestExtractMentions_ExclamationVariant(t *testing.T) {
+	messages := []*DiscordMessage{
+		{Content: "hello <@!123>"},
+	}
+	userIDs, _ := extractMentions(messages)
+
+	if len(userIDs) != 1 || userIDs[0] != "123" {
+		t.Errorf("expected [\"123\"] for <@!123> variant, got %v", userIDs)
+	}
+}
+
+func TestExtractMentions_200Mentions(t *testing.T) {
+	var parts []string
+	for i := range 200 {
+		parts = append(parts, fmt.Sprintf("<@%d>", 1000+i))
+	}
+	content := "many mentions:"
+	for _, p := range parts {
+		content += " " + p
+	}
+
+	messages := []*DiscordMessage{{Content: content}}
+	userIDs, _ := extractMentions(messages)
+
+	if len(userIDs) != 200 {
+		t.Errorf("expected 200 mention IDs, got %d", len(userIDs))
+	}
+}
+
+func TestExtractUserMentions_Empty(t *testing.T) {
+	result := extractUserMentions("")
+	if len(result) != 0 {
+		t.Errorf("expected nil for empty string, got %v", result)
+	}
+
+	result = extractUserMentions("no mentions here")
+	if len(result) != 0 {
+		t.Errorf("expected nil for no-mention string, got %v", result)
+	}
+}
+
+func TestExtractChannelMentions_Empty(t *testing.T) {
+	result := extractChannelMentions("")
+	if len(result) != 0 {
+		t.Errorf("expected nil for empty string, got %v", result)
+	}
+
+	result = extractChannelMentions("no channel mentions here")
+	if len(result) != 0 {
+		t.Errorf("expected nil for no-mention string, got %v", result)
+	}
+}
+
+func TestRelationshipID_Deterministic(t *testing.T) {
+	id1 := relationshipID("a", "b", RelMention)
+	id2 := relationshipID("b", "a", RelMention)
+
+	if id1 != id2 {
+		t.Errorf("relationshipID should be deterministic regardless of order: %q vs %q", id1, id2)
+	}
+	if id1 != "a:b:mention" {
+		t.Errorf("expected \"a:b:mention\", got %q", id1)
+	}
+}
+
+func TestRelationshipID_DifferentTypes(t *testing.T) {
+	id1 := relationshipID("a", "b", RelMention)
+	id2 := relationshipID("a", "b", RelReply)
+
+	if id1 == id2 {
+		t.Errorf("different relationship types should produce different IDs, got %q for both", id1)
+	}
+}
+
+func TestUpdateRelationships_SelfMentionSkipped(t *testing.T) {
+	ctx := context.Background()
+	qdrant := newMockQdrantStore()
+
+	c := &Consolidator{
+		qdrant:   qdrant,
+		ownBotID: "bot-1",
+	}
+
+	messages := []*DiscordMessage{
+		{
+			AuthorID:  "111",
+			ChannelID: "chan-1",
+			Content:   "hey <@111>",
+		},
+	}
+
+	if err := c.updateRelationships(ctx, messages); err != nil {
+		t.Fatalf("updateRelationships failed: %v", err)
+	}
+
+	if len(qdrant.relationships) != 0 {
+		t.Errorf("expected no relationships for self-mention, got %d", len(qdrant.relationships))
+	}
+}
+
+func TestUpdateRelationships_OwnBotSkipped(t *testing.T) {
+	ctx := context.Background()
+	qdrant := newMockQdrantStore()
+
+	c := &Consolidator{
+		qdrant:   qdrant,
+		ownBotID: "bot-1",
+	}
+
+	messages := []*DiscordMessage{
+		{
+			AuthorID:  "bot-1",
+			ChannelID: "chan-1",
+			Content:   "I <@222> think so",
+		},
+	}
+
+	if err := c.updateRelationships(ctx, messages); err != nil {
+		t.Fatalf("updateRelationships failed: %v", err)
+	}
+
+	if len(qdrant.relationships) != 0 {
+		t.Errorf("expected no relationships for own bot, got %d", len(qdrant.relationships))
+	}
+}
+
+func TestUpdateRelationships_CreatesRelationship(t *testing.T) {
+	ctx := context.Background()
+	qdrant := newMockQdrantStore()
+
+	c := &Consolidator{
+		qdrant:   qdrant,
+		ownBotID: "bot-1",
+	}
+
+	messages := []*DiscordMessage{
+		{
+			AuthorID:  "333",
+			ChannelID: "chan-1",
+			Content:   "hey <@444>",
+		},
+	}
+
+	if err := c.updateRelationships(ctx, messages); err != nil {
+		t.Fatalf("updateRelationships failed: %v", err)
+	}
+
+	relID := relationshipID("333", "444", RelMention)
+	rel, ok := qdrant.relationships[relID]
+	if !ok {
+		t.Fatalf("expected relationship %q to be created, got keys: %v", relID, qdrant.relationships)
+	}
+	if rel.InteractionCount != 1 {
+		t.Errorf("expected InteractionCount=1, got %d", rel.InteractionCount)
+	}
+	if rel.Weight != 1.0 {
+		t.Errorf("expected Weight=1.0, got %.1f", rel.Weight)
+	}
+}
+
+func TestUpdateRelationships_IncrementsExisting(t *testing.T) {
+	ctx := context.Background()
+	qdrant := newMockQdrantStore()
+
+	relID := relationshipID("555", "666", RelMention)
+	qdrant.relationships[relID] = &Relationship{
+		ID:                relID,
+		UserA:             "555",
+		UserB:             "666",
+		Type:              RelMention,
+		InteractionCount:  3,
+		LastInteractionAt: time.Now().Add(-1 * time.Hour),
+		ChannelIDs:        []string{"chan-1"},
+		Weight:            3.0,
+	}
+
+	c := &Consolidator{
+		qdrant:   qdrant,
+		ownBotID: "bot-1",
+	}
+
+	messages := []*DiscordMessage{
+		{
+			AuthorID:  "555",
+			ChannelID: "chan-1",
+			Content:   "hey <@666>",
+		},
+	}
+
+	if err := c.updateRelationships(ctx, messages); err != nil {
+		t.Fatalf("updateRelationships failed: %v", err)
+	}
+
+	rel, ok := qdrant.relationships[relID]
+	if !ok {
+		t.Fatal("relationship should still exist")
+	}
+	if rel.InteractionCount != 4 {
+		t.Errorf("expected InteractionCount=4, got %d", rel.InteractionCount)
+	}
+	if rel.Weight != 4.0 {
+		t.Errorf("expected Weight=4.0, got %.1f", rel.Weight)
+	}
+}
+
+func TestUpdateRelationships_DeletedUser(t *testing.T) {
+	ctx := context.Background()
+	qdrant := newMockQdrantStore()
+
+	c := &Consolidator{
+		qdrant:   qdrant,
+		ownBotID: "bot-1",
+	}
+
+	messages := []*DiscordMessage{
+		{
+			AuthorID:  "777",
+			ChannelID: "chan-1",
+			Content:   "hey <@888>",
+		},
+	}
+
+	if err := c.updateRelationships(ctx, messages); err != nil {
+		t.Fatalf("updateRelationships failed: %v", err)
+	}
+
+	relID := relationshipID("777", "888", RelMention)
+	if _, ok := qdrant.relationships[relID]; !ok {
+		t.Errorf("deleted user mentions should still be tracked for record, missing relationship %q", relID)
+	}
+}
+
+func BenchmarkExtractMentions(b *testing.B) {
+	messages := make([]*DiscordMessage, 100)
+	for i := range messages {
+		messages[i] = &DiscordMessage{
+			Content: fmt.Sprintf("message %d with <@%d> and <#%d>", i, 100+i, 200+i),
+		}
+	}
+	for b.Loop() {
+		extractMentions(messages)
 	}
 }
 

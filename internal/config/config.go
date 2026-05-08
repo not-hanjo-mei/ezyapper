@@ -141,12 +141,12 @@ type RateLimitConfig struct {
 type OtherBotPolicy string
 
 const (
-	// OtherBotIgnore — skip entirely: no response, no memory extraction, no search enrichment.
+	// OtherBotIgnore - skip entirely: no response, no memory extraction, no search enrichment.
 	OtherBotIgnore OtherBotPolicy = "ignore"
-	// OtherBotContextOnly — include in memory pipeline (search enrichment + consolidation),
+	// OtherBotContextOnly - include in memory pipeline (search enrichment + consolidation),
 	// but do NOT trigger AI responses. Prompt controls extraction level.
 	OtherBotContextOnly OtherBotPolicy = "context_only"
-	// OtherBotFull — treat other bots like human users: respond AND include in memory pipeline.
+	// OtherBotFull - treat other bots like human users: respond AND include in memory pipeline.
 	OtherBotFull OtherBotPolicy = "full"
 )
 
@@ -198,16 +198,24 @@ type EmbeddingConfig struct {
 	ExtraParams map[string]any `mapstructure:"extra_params" yaml:"extra_params"`
 }
 
+// LongTermMemoryConfig controls long-term memory features.
+type LongTermMemoryConfig struct {
+	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
+}
+
 type MemoryConfig struct {
-	ConsolidationInterval int                 `mapstructure:"consolidation_interval" yaml:"consolidation_interval"`
-	MaxBufferSize         int                 `mapstructure:"max_buffer_size" yaml:"max_buffer_size"`
-	ShortTermLimit        int                 `mapstructure:"short_term_limit" yaml:"short_term_limit"`
-	MaxPaginatedLimit     int                 `mapstructure:"max_paginated_limit" yaml:"max_paginated_limit"`
-	RetryBaseDelayMs      int                 `mapstructure:"retry_base_delay_ms" yaml:"retry_base_delay_ms"`
-	RetryMaxDelayMs       int                 `mapstructure:"retry_max_delay_ms" yaml:"retry_max_delay_ms"`
-	MaxRetries            int                 `mapstructure:"max_retries" yaml:"max_retries"`
-	Retrieval             RetrievalConfig     `mapstructure:"retrieval" yaml:"retrieval"`
-	Consolidation         ConsolidationConfig `mapstructure:"consolidation" yaml:"consolidation"`
+	ConsolidationInterval      int                  `mapstructure:"consolidation_interval" yaml:"consolidation_interval"`
+	MaxBufferSize              int                  `mapstructure:"max_buffer_size" yaml:"max_buffer_size"`
+	ShortTermLimit             int                  `mapstructure:"short_term_limit" yaml:"short_term_limit"`
+	MaxPaginatedLimit          int                  `mapstructure:"max_paginated_limit" yaml:"max_paginated_limit"`
+	RetryBaseDelayMs           int                  `mapstructure:"retry_base_delay_ms" yaml:"retry_base_delay_ms"`
+	RetryMaxDelayMs            int                  `mapstructure:"retry_max_delay_ms" yaml:"retry_max_delay_ms"`
+	MaxRetries                 int                  `mapstructure:"max_retries" yaml:"max_retries"`
+	Retrieval                  RetrievalConfig      `mapstructure:"retrieval" yaml:"retrieval"`
+	Consolidation              ConsolidationConfig  `mapstructure:"consolidation" yaml:"consolidation"`
+	LongTermMemory             LongTermMemoryConfig `mapstructure:"long_term_memory" yaml:"long_term_memory"`
+	MaxMentionedUsersPerMemory int                  `mapstructure:"max_mentioned_users_per_memory" yaml:"max_mentioned_users_per_memory"`
+	MemoryStrengthMultiplier   float64              `mapstructure:"memory_strength_multiplier" yaml:"memory_strength_multiplier"`
 
 	// Maintenance
 	MaintenanceIntervalSec       int     `mapstructure:"maintenance_interval_sec" yaml:"maintenance_interval_sec"`
@@ -216,6 +224,7 @@ type MemoryConfig struct {
 	MergeCosineThreshold         float64 `mapstructure:"merge_cosine_threshold" yaml:"merge_cosine_threshold"`
 	PruneDecayThreshold          float64 `mapstructure:"prune_decay_threshold" yaml:"prune_decay_threshold"`
 	PruneAgeDays                 int     `mapstructure:"prune_age_days" yaml:"prune_age_days"`
+	RelationshipPruneAgeDays     int     `mapstructure:"relationship_prune_age_days" yaml:"relationship_prune_age_days"`
 	MaxMaintenanceLLMCallsPerDay int     `mapstructure:"max_maintenance_llm_calls_per_day" yaml:"max_maintenance_llm_calls_per_day"`
 
 	// Entropy gate
@@ -256,8 +265,11 @@ type ConsolidationConfig struct {
 }
 
 type RetrievalConfig struct {
-	TopK     int     `mapstructure:"top_k" yaml:"top_k"`
-	MinScore float64 `mapstructure:"min_score" yaml:"min_score"`
+	TopK                   int     `mapstructure:"top_k" yaml:"top_k"`
+	MinScore               float64 `mapstructure:"min_score" yaml:"min_score"`
+	IncludeChannelMemories bool    `mapstructure:"include_channel_memories" yaml:"include_channel_memories"`
+	MaxMentionedMemories   int     `mapstructure:"max_mentioned_memories" yaml:"max_mentioned_memories"`
+	MaxChannelMemories     int     `mapstructure:"max_channel_memories" yaml:"max_channel_memories"`
 }
 
 type DecayRatesConfig struct {
@@ -441,7 +453,7 @@ func validateAI(cfg *Config, errs *[]string) {
 	requirePositive(cfg.AI.MaxToolIterations, "core.ai.max_tool_iterations", errs)
 	requirePositive(cfg.AI.MaxImageBytes, "core.ai.max_image_bytes", errs)
 	if !cfg.AI.VisionBase64 {
-		fmt.Fprintf(os.Stderr, "WARNING: core.ai.vision_base64 is false — images will be sent as URLs (may not work with local endpoints)\n")
+		fmt.Fprintf(os.Stderr, "WARNING: core.ai.vision_base64 is false - images will be sent as URLs (may not work with local endpoints)\n")
 	}
 }
 
@@ -495,7 +507,7 @@ func validateDiscord(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Discord.ImageCacheTTLMin, "core.discord.image_cache_ttl_min", errs)
 	requirePositive(cfg.Discord.ImageCacheMaxEntries, "core.discord.image_cache_max_entries", errs)
 	if cfg.Discord.OtherBotPolicy != OtherBotFull {
-		fmt.Fprintf(os.Stderr, "WARNING: core.discord.other_bot_policy=%q — bot will not respond to other bots\n", cfg.Discord.OtherBotPolicy)
+		fmt.Fprintf(os.Stderr, "WARNING: core.discord.other_bot_policy=%q - bot will not respond to other bots\n", cfg.Discord.OtherBotPolicy)
 	}
 	validPolicies := map[OtherBotPolicy]bool{
 		OtherBotIgnore:      true,
@@ -564,6 +576,7 @@ func validateMemory(cfg *Config, errs *[]string) {
 		*errs = append(*errs, "memory_pipeline.memory.prune_decay_threshold must be between 0 and 1")
 	}
 	requirePositive(cfg.Memory.PruneAgeDays, "memory_pipeline.memory.prune_age_days", errs)
+	requirePositive(cfg.Memory.RelationshipPruneAgeDays, "memory_pipeline.memory.relationship_prune_age_days", errs)
 	if cfg.Memory.MaxMaintenanceLLMCallsPerDay < 0 {
 		*errs = append(*errs, "memory_pipeline.memory.max_maintenance_llm_calls_per_day must be greater than or equal to 0")
 	}
@@ -599,6 +612,18 @@ func validateMemory(cfg *Config, errs *[]string) {
 	}
 	requirePositive(cfg.Memory.RRFK, "memory_pipeline.memory.rrf_k", errs)
 	requirePositive(cfg.Memory.ContextMaxMemories, "memory_pipeline.memory.context_max_memories", errs)
+	if cfg.Memory.Retrieval.MaxMentionedMemories < 0 {
+		*errs = append(*errs, "memory_pipeline.memory.retrieval.max_mentioned_memories must be >= 0")
+	}
+	if cfg.Memory.Retrieval.MaxChannelMemories < 0 {
+		*errs = append(*errs, "memory_pipeline.memory.retrieval.max_channel_memories must be >= 0")
+	}
+	if cfg.Memory.MemoryStrengthMultiplier <= 0 || cfg.Memory.MemoryStrengthMultiplier > 100 {
+		*errs = append(*errs, "memory_pipeline.memory.memory_strength_multiplier must be > 0 and <= 100")
+	}
+	if cfg.Memory.MaxMentionedUsersPerMemory < 0 {
+		*errs = append(*errs, "memory_pipeline.memory.max_mentioned_users_per_memory must be >= 0")
+	}
 }
 
 func validateRateLimit(cfg *Config, errs *[]string) {
@@ -639,7 +664,7 @@ func validatePlugins(cfg *Config, errs *[]string) {
 	}
 	requireNonEmpty(cfg.Plugins.PluginsDir, "operations.plugins.plugins_dir", errs)
 	if cfg.Plugins.DefaultToolTimeoutMs == 0 {
-		fmt.Fprintf(os.Stderr, "[config][WARNING] operations.plugins.default_tool_timeout_ms is 0 — tool execution will fail unless per-tool timeouts are set in plugin config\n")
+		fmt.Fprintf(os.Stderr, "[config][WARNING] operations.plugins.default_tool_timeout_ms is 0 - tool execution will fail unless per-tool timeouts are set in plugin config\n")
 	}
 	requirePositive(cfg.Plugins.StartupTimeoutSec, "operations.plugins.startup_timeout_sec", errs)
 	requirePositive(cfg.Plugins.RPCTimeoutSec, "operations.plugins.rpc_timeout_sec", errs)

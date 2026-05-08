@@ -46,6 +46,12 @@ func (m *testMemStore) DeleteMemory(ctx context.Context, memoryID string) error 
 	return m.deleteErr
 }
 func (m *testMemStore) DeleteUserData(ctx context.Context, userID string) error { return nil }
+func (m *testMemStore) SearchByMentionedUser(ctx context.Context, userID string, mentionedUserID string, opts *memory.SearchOptions) ([]*memory.Record, error) {
+	return nil, nil
+}
+func (m *testMemStore) SearchByChannel(ctx context.Context, channelID string, opts *memory.SearchOptions) ([]*memory.Record, error) {
+	return nil, nil
+}
 func (m *testMemStore) GetStats(ctx context.Context) (*memory.GlobalStats, error) {
 	return &memory.GlobalStats{}, nil
 }

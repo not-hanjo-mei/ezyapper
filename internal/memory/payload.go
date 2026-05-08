@@ -8,7 +8,7 @@ import (
 	"github.com/qdrant/go-client/qdrant"
 )
 
-const payloadSchemaVersion = 3
+const payloadSchemaVersion = 4
 
 func (qc *QdrantClient) memoryToPayload(memory *Record) (map[string]*qdrant.Value, error) {
 	payload := make(map[string]*qdrant.Value)
@@ -29,6 +29,21 @@ func (qc *QdrantClient) memoryToPayload(memory *Record) (map[string]*qdrant.Valu
 		keywordValues = append(keywordValues, &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: kw}})
 	}
 	payload["keywords"] = &qdrant.Value{Kind: &qdrant.Value_ListValue{ListValue: &qdrant.ListValue{Values: keywordValues}}}
+
+	if len(memory.MentionedUserIDs) > 0 {
+		vals := make([]*qdrant.Value, 0, len(memory.MentionedUserIDs))
+		for _, uid := range memory.MentionedUserIDs {
+			vals = append(vals, &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: uid}})
+		}
+		payload["mentioned_user_ids"] = &qdrant.Value{Kind: &qdrant.Value_ListValue{ListValue: &qdrant.ListValue{Values: vals}}}
+	}
+	if len(memory.MentionedChannelIDs) > 0 {
+		vals := make([]*qdrant.Value, 0, len(memory.MentionedChannelIDs))
+		for _, cid := range memory.MentionedChannelIDs {
+			vals = append(vals, &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: cid}})
+		}
+		payload["mentioned_channel_ids"] = &qdrant.Value{Kind: &qdrant.Value_ListValue{ListValue: &qdrant.ListValue{Values: vals}}}
+	}
 
 	payload["importance_score"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: memory.ImportanceScore}}
 	payload["access_count"] = &qdrant.Value{Kind: &qdrant.Value_IntegerValue{IntegerValue: int64(memory.AccessCount)}}
@@ -83,6 +98,25 @@ func (qc *QdrantClient) payloadToMemory(payload map[string]*qdrant.Value, id str
 	}
 	for _, kw := range keywords {
 		memory.Keywords = append(memory.Keywords, kw.GetStringValue())
+	}
+
+	if v, ok := payload["mentioned_user_ids"]; ok && v != nil {
+		list := v.GetListValue()
+		if list != nil {
+			memory.MentionedUserIDs = make([]string, 0, len(list.GetValues()))
+			for _, val := range list.GetValues() {
+				memory.MentionedUserIDs = append(memory.MentionedUserIDs, val.GetStringValue())
+			}
+		}
+	}
+	if v, ok := payload["mentioned_channel_ids"]; ok && v != nil {
+		list := v.GetListValue()
+		if list != nil {
+			memory.MentionedChannelIDs = make([]string, 0, len(list.GetValues()))
+			for _, val := range list.GetValues() {
+				memory.MentionedChannelIDs = append(memory.MentionedChannelIDs, val.GetStringValue())
+			}
+		}
 	}
 
 	if v, ok := payload["importance_score"]; ok && v != nil {
@@ -226,6 +260,74 @@ func (qc *QdrantClient) payloadToProfile(payload map[string]*qdrant.Value, userI
 	}
 
 	return profile, nil
+}
+
+func (qc *QdrantClient) relationshipToPayload(rel *Relationship) (map[string]*qdrant.Value, error) {
+	payload := make(map[string]*qdrant.Value)
+	payload["schema_version"] = &qdrant.Value{Kind: &qdrant.Value_IntegerValue{IntegerValue: payloadSchemaVersion}}
+
+	payload["user_a"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: rel.UserA}}
+	payload["user_b"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: rel.UserB}}
+	payload["type"] = &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: string(rel.Type)}}
+	payload["interaction_count"] = &qdrant.Value{Kind: &qdrant.Value_IntegerValue{IntegerValue: int64(rel.InteractionCount)}}
+	payload["last_interaction_at"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: float64(rel.LastInteractionAt.UnixMilli()) / 1000.0}}
+	payload["weight"] = &qdrant.Value{Kind: &qdrant.Value_DoubleValue{DoubleValue: rel.Weight}}
+
+	if len(rel.ChannelIDs) > 0 {
+		vals := make([]*qdrant.Value, 0, len(rel.ChannelIDs))
+		for _, cid := range rel.ChannelIDs {
+			vals = append(vals, &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: cid}})
+		}
+		payload["channel_ids"] = &qdrant.Value{Kind: &qdrant.Value_ListValue{ListValue: &qdrant.ListValue{Values: vals}}}
+	}
+
+	return payload, nil
+}
+
+func (qc *QdrantClient) payloadToRelationship(payload map[string]*qdrant.Value, id string) (*Relationship, error) {
+	if err := validatePayloadSchema(payload); err != nil {
+		return nil, fmt.Errorf("invalid relationship payload schema: %w", err)
+	}
+
+	rel := &Relationship{ID: id}
+
+	var err error
+	if rel.UserA, err = getRequiredString(payload, "user_a"); err != nil {
+		return nil, err
+	}
+	if rel.UserB, err = getRequiredString(payload, "user_b"); err != nil {
+		return nil, err
+	}
+	relType, err := getRequiredString(payload, "type")
+	if err != nil {
+		return nil, err
+	}
+	rel.Type = RelationshipType(relType)
+	interactionCount, err := getRequiredInt(payload, "interaction_count")
+	if err != nil {
+		return nil, err
+	}
+	rel.InteractionCount = int(interactionCount)
+	lastInteractionAt, err := getRequiredDouble(payload, "last_interaction_at")
+	if err != nil {
+		return nil, err
+	}
+	rel.LastInteractionAt = time.UnixMilli(int64(lastInteractionAt * 1000))
+	if rel.Weight, err = getRequiredDouble(payload, "weight"); err != nil {
+		return nil, err
+	}
+
+	if v, ok := payload["channel_ids"]; ok && v != nil {
+		list := v.GetListValue()
+		if list != nil {
+			rel.ChannelIDs = make([]string, 0, len(list.GetValues()))
+			for _, val := range list.GetValues() {
+				rel.ChannelIDs = append(rel.ChannelIDs, val.GetStringValue())
+			}
+		}
+	}
+
+	return rel, nil
 }
 
 func validatePayloadSchema(payload map[string]*qdrant.Value) error {

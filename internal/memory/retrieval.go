@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"ezyapper/internal/logger"
+
 	"github.com/qdrant/go-client/qdrant"
 )
 
@@ -114,13 +115,13 @@ func (qc *QdrantClient) SearchHybrid(ctx context.Context, userID string, embeddi
 }
 
 // PostProcessResults sorts by decayed score, applies type diversity, and assigns tiers.
-func PostProcessResults(records []*Record, decayRate float64, now time.Time, weights ScoringWeights) []*Record {
+func PostProcessResults(records []*Record, multiplier float64, now time.Time, weights ScoringWeights) []*Record {
 	if len(records) == 0 {
 		return records
 	}
 
 	// Sort by decayed score descending
-	SortByDecayedScore(records, decayRate, now)
+	SortByDecayedScore(records, multiplier, now)
 
 	// Type diversity: keep at most 5 per type, ensure at least 1 of each if available
 	typeCounts := make(map[Type]int)
@@ -145,7 +146,7 @@ func PostProcessResults(records []*Record, decayRate float64, now time.Time, wei
 
 	// Assign tiers
 	for _, r := range diverse {
-		score := CompositeScore(r, weights, decayRate, now)
+		score := CompositeScore(r, weights, multiplier, now)
 		r.DecayCategory = ClassifyTier(score)
 	}
 
@@ -159,7 +160,7 @@ func stripDiscordMentions(s string) string {
 }
 
 // BuildSearchQuery constructs a search query from user message + recent messages.
-// Pure algorithm — NO LLM call. ownBotID skips only the bot's own messages, not other bots.
+// Pure algorithm - NO LLM call. ownBotID skips only the bot's own messages, not other bots.
 func BuildSearchQuery(userMessage string, recentMessages []*DiscordMessage, ownBotID string) (string, []string) {
 	// Extract keywords from recent messages (non-self-bot, non-duplicate)
 	seen := make(map[string]struct{})

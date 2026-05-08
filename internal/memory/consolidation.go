@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,12 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 )
 
+// Package-level compiled regexes for Discord mention extraction.
+var (
+	userMentionRe    = regexp.MustCompile(`<@!?(\d+)>`)
+	channelMentionRe = regexp.MustCompile(`<#(\d+)>`)
+)
+
 // qdrantStore is the subset of QdrantClient methods used by Consolidator.
 type qdrantStore interface {
 	UpsertMemory(ctx context.Context, memory *Record) error
@@ -25,6 +32,75 @@ type qdrantStore interface {
 	GetMemoriesByUser(ctx context.Context, userID string, limit int) ([]*Record, error)
 	SearchMemories(ctx context.Context, userID string, embedding []float32, opts *SearchOptions) ([]*Record, error)
 	ListMemoriesByType(ctx context.Context, userID string, memoryType string) ([]*Record, error)
+	UpsertRelationship(ctx context.Context, rel *Relationship) error
+	GetRelationshipBetween(ctx context.Context, userA, userB string, relType RelationshipType) ([]*Relationship, error)
+}
+
+// extractUserMentions extracts Discord user mention IDs from content.
+func extractUserMentions(content string) []string {
+	matches := userMentionRe.FindAllStringSubmatch(content, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(matches))
+	result := make([]string, 0, len(matches))
+	for _, m := range matches {
+		id := m[1]
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			result = append(result, id)
+		}
+	}
+	return result
+}
+
+// extractChannelMentions extracts Discord channel mention IDs from content.
+func extractChannelMentions(content string) []string {
+	matches := channelMentionRe.FindAllStringSubmatch(content, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(matches))
+	result := make([]string, 0, len(matches))
+	for _, m := range matches {
+		id := m[1]
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			result = append(result, id)
+		}
+	}
+	return result
+}
+
+// extractMentions extracts all mentioned user IDs and channel IDs from a batch of messages.
+func extractMentions(messages []*DiscordMessage) (userIDs, channelIDs []string) {
+	userSeen := make(map[string]struct{})
+	channelSeen := make(map[string]struct{})
+	for _, msg := range messages {
+		for _, uid := range extractUserMentions(msg.Content) {
+			userSeen[uid] = struct{}{}
+		}
+		for _, cid := range extractChannelMentions(msg.Content) {
+			channelSeen[cid] = struct{}{}
+		}
+	}
+	userIDs = make([]string, 0, len(userSeen))
+	for uid := range userSeen {
+		userIDs = append(userIDs, uid)
+	}
+	channelIDs = make([]string, 0, len(channelSeen))
+	for cid := range channelSeen {
+		channelIDs = append(channelIDs, cid)
+	}
+	return
+}
+
+// relationshipID builds a deterministic relationship ID from two user IDs and a type.
+func relationshipID(userA, userB string, relType RelationshipType) string {
+	if userA > userB {
+		userA, userB = userB, userA
+	}
+	return fmt.Sprintf("%s:%s:%s", userA, userB, relType)
 }
 
 // aiChatCompleter is the subset of ai.Client methods used by Consolidator.
@@ -222,7 +298,9 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 		guildID = messages[0].GuildID
 	}
 
-	stored, err := c.storeMemories(ctx, userID, extracted, channelID, guildID)
+	mentionedUserIDs, mentionedChannelIDs := extractMentions(messages)
+
+	stored, err := c.storeMemories(ctx, userID, extracted, channelID, guildID, mentionedUserIDs, mentionedChannelIDs)
 	if err != nil {
 		if stored == 0 {
 			return fmt.Errorf("failed to store memories for user=%s: %w", userID, err)
@@ -242,6 +320,11 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 	logger.Infof("[consolidation] updated profile for user=%s before=[%s] after=[%s]",
 		userID, profileBefore, profileAfter)
 
+	// Track relationships from mentions
+	if err := c.updateRelationships(ctx, messages); err != nil {
+		logger.Warnf("[consolidation] failed to update relationships for user=%s: %v", userID, err)
+	}
+
 	c.setLastConsolidatedAt(time.Now())
 
 	elapsed := time.Since(start)
@@ -254,7 +337,7 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 // performs evolutionary deduplication (reusing IDs of similar existing memories),
 // and upserts into Qdrant. Returns the number successfully stored.
 // channelID and guildID are used to scope memories for retrieval filtering.
-func (c *Consolidator) storeMemories(ctx context.Context, userID string, extracts []Extract, channelID, guildID string) (int, error) {
+func (c *Consolidator) storeMemories(ctx context.Context, userID string, extracts []Extract, channelID, guildID string, mentionedUserIDs, mentionedChannelIDs []string) (int, error) {
 	var stored int
 	errs := make([]error, 0, len(extracts))
 	for i, extract := range extracts {
@@ -276,14 +359,16 @@ func (c *Consolidator) storeMemories(ctx context.Context, userID string, extract
 		}
 
 		memory := &Record{
-			UserID:     userID,
-			GuildID:    guildID,
-			ChannelID:  channelID,
-			MemoryType: Type(extract.Type),
-			Content:    content,
-			Keywords:   extract.Keywords,
-			Confidence: extract.Confidence,
-			Embedding:  embedding,
+			UserID:              userID,
+			GuildID:             guildID,
+			ChannelID:           channelID,
+			MentionedUserIDs:    mentionedUserIDs,
+			MentionedChannelIDs: mentionedChannelIDs,
+			MemoryType:          Type(extract.Type),
+			Content:             content,
+			Keywords:            extract.Keywords,
+			Confidence:          extract.Confidence,
+			Embedding:           embedding,
 		}
 
 		// Type-aware dedup
@@ -510,6 +595,8 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 		userMsgCount[msg.AuthorID]++
 	}
 
+	mentionedUserIDs, mentionedChannelIDs := extractMentions(messages)
+
 	var totalStored int
 	allErrs := make([]error, 0, len(batchExtracts))
 	for _, userExtract := range batchExtracts {
@@ -539,7 +626,7 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 		if len(messages) > 0 {
 			guildID = messages[0].GuildID
 		}
-		stored, err := c.storeMemories(ctx, userID, extracts, channelID, guildID)
+		stored, err := c.storeMemories(ctx, userID, extracts, channelID, guildID, mentionedUserIDs, mentionedChannelIDs)
 		if err != nil {
 			if stored == 0 {
 				allErrs = append(allErrs, fmt.Errorf("user=%s: %w", userID, err))
@@ -557,6 +644,11 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 		logger.Infof("[consolidation] stored %d memories for user=%s (message_count=%d)", stored, userID, profile.MessageCount)
 	}
 
+	// Track relationships from mentions across all messages in the channel
+	if err := c.updateRelationships(ctx, messages); err != nil {
+		logger.Warnf("[consolidation] failed to update relationships for channel=%s: %v", channelID, err)
+	}
+
 	c.setLastConsolidatedAt(time.Now())
 
 	elapsed := time.Since(start)
@@ -565,6 +657,82 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 
 	if len(allErrs) > 0 {
 		return fmt.Errorf("batch consolidation partial failures: %w", errors.Join(allErrs...))
+	}
+	return nil
+}
+
+// updateRelationships extracts mentions from messages and creates or increments
+// mention-type relationships between users. Skips self-mentions and own-bot messages.
+func (c *Consolidator) updateRelationships(ctx context.Context, messages []*DiscordMessage) error {
+	for _, msg := range messages {
+		if msg.AuthorID == c.ownBotID {
+			continue
+		}
+
+		mentioned := extractUserMentions(msg.Content)
+		if len(mentioned) == 0 {
+			continue
+		}
+
+		channelIDs := make([]string, 0, 1)
+		if msg.ChannelID != "" {
+			channelIDs = append(channelIDs, msg.ChannelID)
+		}
+
+		for _, mentionedID := range mentioned {
+			if mentionedID == msg.AuthorID {
+				continue
+			}
+
+			relID := relationshipID(msg.AuthorID, mentionedID, RelMention)
+			existing, err := c.qdrant.GetRelationshipBetween(ctx, msg.AuthorID, mentionedID, RelMention)
+			if err != nil {
+				logger.Warnf("[consolidation] failed to query relationship between %s and %s: %v",
+					msg.AuthorID, mentionedID, err)
+				continue
+			}
+
+			if len(existing) > 0 {
+				rel := existing[0]
+				rel.InteractionCount++
+				rel.LastInteractionAt = time.Now()
+				rel.Weight = float64(rel.InteractionCount)
+
+				chSeen := make(map[string]struct{}, len(rel.ChannelIDs)+len(channelIDs))
+				for _, ch := range rel.ChannelIDs {
+					chSeen[ch] = struct{}{}
+				}
+				for _, ch := range channelIDs {
+					if _, ok := chSeen[ch]; !ok {
+						chSeen[ch] = struct{}{}
+						rel.ChannelIDs = append(rel.ChannelIDs, ch)
+					}
+				}
+
+				if err := c.qdrant.UpsertRelationship(ctx, rel); err != nil {
+					logger.Warnf("[consolidation] failed to update relationship id=%s: %v", rel.ID, err)
+				}
+			} else {
+				rel := &Relationship{
+					ID:                relID,
+					UserA:             msg.AuthorID,
+					UserB:             mentionedID,
+					Type:              RelMention,
+					InteractionCount:  1,
+					LastInteractionAt: time.Now(),
+					ChannelIDs:        channelIDs,
+					Weight:            1.0,
+				}
+				// Ensure UserA <= UserB for consistency
+				if rel.UserA > rel.UserB {
+					rel.UserA, rel.UserB = rel.UserB, rel.UserA
+				}
+				if err := c.qdrant.UpsertRelationship(ctx, rel); err != nil {
+					logger.Warnf("[consolidation] failed to create relationship between %s and %s: %v",
+						msg.AuthorID, mentionedID, err)
+				}
+			}
+		}
 	}
 	return nil
 }

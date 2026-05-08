@@ -47,6 +47,22 @@ func (s *NoopService) DeleteMemory(ctx context.Context, memoryID string) error {
 
 func (s *NoopService) DeleteUserData(ctx context.Context, userID string) error { return nil }
 
+func (s *NoopService) SearchByMentionedUser(ctx context.Context, userID string, mentionedUserID string, opts *SearchOptions) ([]*Record, error) {
+	return []*Record{}, nil
+}
+
+func (s *NoopService) SearchByChannel(ctx context.Context, channelID string, opts *SearchOptions) ([]*Record, error) {
+	return []*Record{}, nil
+}
+
+func (s *NoopService) GetRelationships(ctx context.Context, userID string, relType RelationshipType) ([]*Relationship, error) {
+	return []*Relationship{}, nil
+}
+
+func (s *NoopService) GetRelationshipBetween(ctx context.Context, userA, userB string, relType RelationshipType) (*Relationship, error) {
+	return nil, nil
+}
+
 func (s *NoopService) ConsolidateWithMessages(ctx context.Context, userID string, messages []*DiscordMessage) error {
 	return nil
 }

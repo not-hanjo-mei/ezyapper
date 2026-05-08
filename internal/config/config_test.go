@@ -371,13 +371,19 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 			MaxPaginatedLimit:     100,
 
 			Retrieval: RetrievalConfig{
-				TopK:     5,
-				MinScore: 0.75,
+				TopK:                   5,
+				MinScore:               0.75,
+				IncludeChannelMemories: true,
+				MaxMentionedMemories:   3,
+				MaxChannelMemories:     5,
 			},
 			Consolidation: ConsolidationConfig{
 				Enabled:           true,
 				MemorySearchLimit: 20,
 			},
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant: QdrantConfig{
 			Host:       "localhost",
@@ -458,13 +464,19 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 			MaxPaginatedLimit:     100,
 
 			Retrieval: RetrievalConfig{
-				TopK:     5,
-				MinScore: 0.75,
+				TopK:                   5,
+				MinScore:               0.75,
+				IncludeChannelMemories: true,
+				MaxMentionedMemories:   3,
+				MaxChannelMemories:     5,
 			},
 			Consolidation: ConsolidationConfig{
 				Enabled:           true,
 				MemorySearchLimit: 20,
 			},
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant: QdrantConfig{
 			Host:       "localhost",
@@ -570,13 +582,19 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 			MaxPaginatedLimit:     100,
 
 			Retrieval: RetrievalConfig{
-				TopK:     5,
-				MinScore: 0.75,
+				TopK:                   5,
+				MinScore:               0.75,
+				IncludeChannelMemories: true,
+				MaxMentionedMemories:   3,
+				MaxChannelMemories:     5,
 			},
 			Consolidation: ConsolidationConfig{
 				Enabled:           true,
 				MemorySearchLimit: 20,
 			},
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant: QdrantConfig{
 			Host:       "localhost",
@@ -664,13 +682,19 @@ func TestValidate_MissingVisionMaxImages(t *testing.T) {
 			MaxPaginatedLimit:     100,
 
 			Retrieval: RetrievalConfig{
-				TopK:     5,
-				MinScore: 0.75,
+				TopK:                   5,
+				MinScore:               0.75,
+				IncludeChannelMemories: true,
+				MaxMentionedMemories:   3,
+				MaxChannelMemories:     5,
 			},
 			Consolidation: ConsolidationConfig{
 				Enabled:           true,
 				MemorySearchLimit: 20,
 			},
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant: QdrantConfig{
 			Host:       "localhost",
@@ -759,13 +783,19 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 			MaxPaginatedLimit:     100,
 
 			Retrieval: RetrievalConfig{
-				TopK:     5,
-				MinScore: 0.75,
+				TopK:                   5,
+				MinScore:               0.75,
+				IncludeChannelMemories: true,
+				MaxMentionedMemories:   3,
+				MaxChannelMemories:     5,
 			},
 			Consolidation: ConsolidationConfig{
 				Enabled:           true,
 				MemorySearchLimit: 20,
 			},
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant: QdrantConfig{
 			Host:       "localhost",
@@ -861,8 +891,11 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			RetryMaxDelayMs:  30000,
 			MaxRetries:       3,
 			Retrieval: RetrievalConfig{
-				TopK:     0,
-				MinScore: 0.75,
+				TopK:                   0,
+				MinScore:               0.75,
+				IncludeChannelMemories: true,
+				MaxMentionedMemories:   3,
+				MaxChannelMemories:     5,
 			},
 			Consolidation: ConsolidationConfig{
 				Enabled:           false,
@@ -875,6 +908,7 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			MergeCosineThreshold:         0.85,
 			PruneDecayThreshold:          0.1,
 			PruneAgeDays:                 90,
+			RelationshipPruneAgeDays:     90,
 			MaxMaintenanceLLMCallsPerDay: 50,
 			EntropyMinContentLength:      10,
 			EntropyMinUniqueWordRatio:    0.15,
@@ -890,8 +924,11 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 				AccessWeight:     0.2,
 				ConfidenceWeight: 0.1,
 			},
-			RRFK:               60,
-			ContextMaxMemories: 20,
+			RRFK:                       60,
+			ContextMaxMemories:         20,
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant: QdrantConfig{
 			Host:       "localhost",
@@ -955,7 +992,7 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 			RetryBaseDelayMs:             1000,
 			RetryMaxDelayMs:              30000,
 			MaxRetries:                   3,
-			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5},
+			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
 			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			MaintenanceIntervalSec:       3600,
 			MergeCronHourUTC:             3,
@@ -963,6 +1000,7 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 			MergeCosineThreshold:         0.85,
 			PruneDecayThreshold:          0.1,
 			PruneAgeDays:                 90,
+			RelationshipPruneAgeDays:     90,
 			MaxMaintenanceLLMCallsPerDay: 50,
 			EntropyMinContentLength:      10,
 			EntropyMinUniqueWordRatio:    0.15,
@@ -978,8 +1016,11 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 				AccessWeight:     0.2,
 				ConfidenceWeight: 0.1,
 			},
-			RRFK:               60,
-			ContextMaxMemories: 20,
+			RRFK:                       60,
+			ContextMaxMemories:         20,
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant:     QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:        WebConfig{Enabled: false},
@@ -1011,7 +1052,7 @@ func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 			RetryBaseDelayMs:             1000,
 			RetryMaxDelayMs:              30000,
 			MaxRetries:                   3,
-			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5},
+			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
 			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			MaintenanceIntervalSec:       3600,
 			MergeCronHourUTC:             3,
@@ -1019,6 +1060,7 @@ func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 			MergeCosineThreshold:         0.85,
 			PruneDecayThreshold:          0.1,
 			PruneAgeDays:                 90,
+			RelationshipPruneAgeDays:     90,
 			MaxMaintenanceLLMCallsPerDay: 50,
 			EntropyMinContentLength:      10,
 			EntropyMinUniqueWordRatio:    0.15,
@@ -1034,8 +1076,11 @@ func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 				AccessWeight:     0.2,
 				ConfidenceWeight: 0.1,
 			},
-			RRFK:               60,
-			ContextMaxMemories: 20,
+			RRFK:                       60,
+			ContextMaxMemories:         20,
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant:     QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:        WebConfig{Enabled: false},
@@ -1064,7 +1109,7 @@ func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5},
+			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
 			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			MaintenanceIntervalSec:       3600,
 			MergeCronHourUTC:             3,
@@ -1072,6 +1117,7 @@ func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 			MergeCosineThreshold:         0.85,
 			PruneDecayThreshold:          0.1,
 			PruneAgeDays:                 90,
+			RelationshipPruneAgeDays:     90,
 			MaxMaintenanceLLMCallsPerDay: 50,
 			EntropyMinContentLength:      10,
 			EntropyMinUniqueWordRatio:    0.15,
@@ -1087,8 +1133,11 @@ func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 				AccessWeight:     0.2,
 				ConfidenceWeight: 0.1,
 			},
-			RRFK:               60,
-			ContextMaxMemories: 20,
+			RRFK:                       60,
+			ContextMaxMemories:         20,
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:     WebConfig{Enabled: false},
@@ -1127,7 +1176,7 @@ func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *test
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5},
+			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
 			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			MaintenanceIntervalSec:       3600,
 			MergeCronHourUTC:             3,
@@ -1135,6 +1184,7 @@ func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *test
 			MergeCosineThreshold:         0.85,
 			PruneDecayThreshold:          0.1,
 			PruneAgeDays:                 90,
+			RelationshipPruneAgeDays:     90,
 			MaxMaintenanceLLMCallsPerDay: 50,
 			EntropyMinContentLength:      10,
 			EntropyMinUniqueWordRatio:    0.15,
@@ -1150,8 +1200,11 @@ func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *test
 				AccessWeight:     0.2,
 				ConfidenceWeight: 0.1,
 			},
-			RRFK:               60,
-			ContextMaxMemories: 20,
+			RRFK:                       60,
+			ContextMaxMemories:         20,
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant:     QdrantConfig{},
 		Web:        WebConfig{Enabled: false},
@@ -1180,8 +1233,11 @@ func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:     RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			Retrieval:                  RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Consolidation:              ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant:     QdrantConfig{},
 		Web:        WebConfig{Enabled: false},
@@ -1216,8 +1272,11 @@ func TestValidate_MemoryEnabled_MissingRetryBaseDelay(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:     RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			Retrieval:                  RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Consolidation:              ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant:     QdrantConfig{Host: "localhost", Port: 6333, VectorSize: 1536},
 		Web:        WebConfig{Enabled: false},
@@ -1250,8 +1309,11 @@ func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:     RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			Retrieval:                  RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Consolidation:              ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant:     QdrantConfig{Host: "localhost", Port: 6334, VectorSize: 3072},
 		Web:        WebConfig{Enabled: false},
@@ -1283,8 +1345,11 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:     RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			Retrieval:                  RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Consolidation:              ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant:     QdrantConfig{},
 		Web:        WebConfig{Enabled: false},
@@ -1378,6 +1443,7 @@ memory_pipeline:
     merge_cosine_threshold: 0.85
     prune_decay_threshold: 0.1
     prune_age_days: 90
+    relationship_prune_age_days: 90
     max_maintenance_llm_calls_per_day: 50
     entropy_min_content_length: 10
     entropy_min_unique_word_ratio: 0.15
@@ -1393,6 +1459,10 @@ memory_pipeline:
       confidence_weight: 0.1
     rrf_k: 60
     context_max_memories: 20
+    long_term_memory:
+      enabled: true
+    max_mentioned_users_per_memory: 3
+    memory_strength_multiplier: 1.0
   qdrant:
     host: "localhost"
     port: 6334
@@ -1516,6 +1586,7 @@ memory_pipeline:
     merge_cosine_threshold: 0.85
     prune_decay_threshold: 0.1
     prune_age_days: 90
+    relationship_prune_age_days: 90
     max_maintenance_llm_calls_per_day: 50
     entropy_min_content_length: 10
     entropy_min_unique_word_ratio: 0.15
@@ -1531,6 +1602,10 @@ memory_pipeline:
       confidence_weight: 0.1
     rrf_k: 60
     context_max_memories: 20
+    long_term_memory:
+      enabled: true
+    max_mentioned_users_per_memory: 3
+    memory_strength_multiplier: 1.0
   qdrant:
     host: "localhost"
     port: 6334
@@ -1721,7 +1796,7 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5},
+			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
 			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			MaintenanceIntervalSec:       3600,
 			MergeCronHourUTC:             3,
@@ -1729,6 +1804,7 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 			MergeCosineThreshold:         0.85,
 			PruneDecayThreshold:          0.1,
 			PruneAgeDays:                 90,
+			RelationshipPruneAgeDays:     90,
 			MaxMaintenanceLLMCallsPerDay: 50,
 			EntropyMinContentLength:      10,
 			EntropyMinUniqueWordRatio:    0.15,
@@ -1744,8 +1820,11 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 				AccessWeight:     0.2,
 				ConfidenceWeight: 0.1,
 			},
-			RRFK:               60,
-			ContextMaxMemories: 20,
+			RRFK:                       60,
+			ContextMaxMemories:         20,
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant:     QdrantConfig{},
 		Web:        WebConfig{Enabled: false},
@@ -1786,8 +1865,11 @@ func TestValidate_ConsolidationEnabled_RequiresOwnBotID(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:     RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: true, SystemPrompt: "sp", MemorySearchLimit: 20},
+			Retrieval:                  RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Consolidation:              ConsolidationConfig{Enabled: true, SystemPrompt: "sp", MemorySearchLimit: 20},
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant:     QdrantConfig{Host: "localhost", Port: 6333, VectorSize: 1536},
 		Web:        WebConfig{Enabled: false},
@@ -1820,7 +1902,7 @@ func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5},
+			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
 			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			MaintenanceIntervalSec:       3600,
 			MergeCronHourUTC:             3,
@@ -1828,6 +1910,7 @@ func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 			MergeCosineThreshold:         0.85,
 			PruneDecayThreshold:          0.1,
 			PruneAgeDays:                 90,
+			RelationshipPruneAgeDays:     90,
 			MaxMaintenanceLLMCallsPerDay: 50,
 			EntropyMinContentLength:      10,
 			EntropyMinUniqueWordRatio:    0.15,
@@ -1843,8 +1926,11 @@ func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 				AccessWeight:     0.2,
 				ConfidenceWeight: 0.1,
 			},
-			RRFK:               60,
-			ContextMaxMemories: 20,
+			RRFK:                       60,
+			ContextMaxMemories:         20,
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant:     QdrantConfig{},
 		Web:        WebConfig{Enabled: false},
@@ -1874,8 +1960,11 @@ func TestValidateAI_MissingHTTPTimeoutSec(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:     RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			Retrieval:                  RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Consolidation:              ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant:     QdrantConfig{},
 		Web:        WebConfig{Enabled: false},
@@ -1909,8 +1998,11 @@ func TestValidateAI_MissingMaxToolIterations(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:     RetrievalConfig{TopK: 0, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			Retrieval:                  RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Consolidation:              ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant:     QdrantConfig{},
 		Web:        WebConfig{Enabled: false},
@@ -1943,8 +2035,11 @@ func TestValidate_VisionMaxTokensNegative(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:     RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			Retrieval:                  RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Consolidation:              ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant:     QdrantConfig{Host: "localhost", Port: 6333, VectorSize: 1536},
 		Web:        WebConfig{Enabled: false},
@@ -1977,8 +2072,11 @@ func TestValidate_EmbeddingTimeoutZero(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:     RetrievalConfig{TopK: 1, MinScore: 0.5},
-			Consolidation: ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			Retrieval:                  RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Consolidation:              ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant:     QdrantConfig{Host: "localhost", Port: 6333, VectorSize: 1536},
 		Web:        WebConfig{Enabled: false},
@@ -2010,7 +2108,7 @@ func TestValidate_OtherBotPolicy_Missing(t *testing.T) {
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
-			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5},
+			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
 			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{},
@@ -2043,7 +2141,7 @@ func TestValidate_OtherBotPolicy_Invalid(t *testing.T) {
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
-			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5},
+			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
 			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{},
@@ -2311,7 +2409,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsNegative(t *testing.T) {
 			RetryBaseDelayMs:      1000,
 			RetryMaxDelayMs:       30000,
 			MaxRetries:            3,
-			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5},
+			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
 			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
@@ -2357,7 +2455,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
 			RetryBaseDelayMs:             1000,
 			RetryMaxDelayMs:              30000,
 			MaxRetries:                   3,
-			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5},
+			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
 			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			MaintenanceIntervalSec:       3600,
 			MergeCronHourUTC:             3,
@@ -2365,6 +2463,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
 			MergeCosineThreshold:         0.85,
 			PruneDecayThreshold:          0.1,
 			PruneAgeDays:                 90,
+			RelationshipPruneAgeDays:     90,
 			MaxMaintenanceLLMCallsPerDay: 50,
 			EntropyMinContentLength:      10,
 			EntropyMinUniqueWordRatio:    0.15,
@@ -2380,8 +2479,11 @@ func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
 				AccessWeight:     0.2,
 				ConfidenceWeight: 0.1,
 			},
-			RRFK:               60,
-			ContextMaxMemories: 20,
+			RRFK:                       60,
+			ContextMaxMemories:         20,
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
 		Web:     WebConfig{Enabled: false},

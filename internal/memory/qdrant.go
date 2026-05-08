@@ -43,8 +43,9 @@ type QdrantClient struct {
 }
 
 const (
-	CollectionMemories = "memories"
-	CollectionProfiles = "profiles"
+	CollectionMemories      = "memories"
+	CollectionProfiles      = "profiles"
+	CollectionRelationships = "relationships"
 )
 
 var ErrProfileNotFound = errors.New("profile not found")
@@ -133,6 +134,11 @@ func (qc *QdrantClient) initializeCollections(ctx context.Context) error {
 		return fmt.Errorf("failed to create profiles collection: %w", err)
 	}
 
+	// Create relationships collection
+	if err := qc.createCollectionIfNotExists(ctx, CollectionRelationships); err != nil {
+		return fmt.Errorf("failed to create relationships collection: %w", err)
+	}
+
 	return nil
 }
 
@@ -187,41 +193,45 @@ func (qc *QdrantClient) createCollectionIfNotExists(ctx context.Context, name st
 
 // createPayloadIndexes creates indexes for payload fields used in filtering
 func (qc *QdrantClient) createPayloadIndexes(ctx context.Context, collectionName string) error {
-	if collectionName != CollectionMemories {
+	switch collectionName {
+	case CollectionMemories:
+		return qc.createMemoriesPayloadIndexes(ctx, collectionName)
+	case CollectionRelationships:
+		return qc.createRelationshipsPayloadIndexes(ctx, collectionName)
+	default:
 		return nil
 	}
+}
 
-	_, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+func (qc *QdrantClient) createMemoriesPayloadIndexes(ctx context.Context, collectionName string) error {
+	if _, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
 		CollectionName: collectionName,
 		FieldName:      "user_id",
 		FieldType:      qdrant.FieldType_FieldTypeKeyword.Enum(),
 		FieldIndexParams: qdrant.NewPayloadIndexParamsKeyword(&qdrant.KeywordIndexParams{
 			IsTenant: qdrant.PtrOf(true),
 		}),
-	})
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("failed to create user_id index: %w", err)
 	}
 
-	_, err = qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+	if _, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
 		CollectionName: collectionName,
 		FieldName:      "memory_type",
 		FieldType:      qdrant.FieldType_FieldTypeKeyword.Enum(),
-	})
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("failed to create memory_type index: %w", err)
 	}
 
-	_, err = qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+	if _, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
 		CollectionName: collectionName,
 		FieldName:      "created_at",
 		FieldType:      qdrant.FieldType_FieldTypeDatetime.Enum(),
-	})
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("failed to create created_at index: %w", err)
 	}
 
-	_, err = qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+	if _, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
 		CollectionName: collectionName,
 		FieldName:      "content",
 		FieldType:      qdrant.FieldType_FieldTypeText.Enum(),
@@ -229,9 +239,69 @@ func (qc *QdrantClient) createPayloadIndexes(ctx context.Context, collectionName
 			Tokenizer: qdrant.TokenizerType_Word,
 			Lowercase: qdrant.PtrOf(true),
 		}),
-	})
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("failed to create content index: %w", err)
+	}
+
+	if _, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+		CollectionName: collectionName,
+		FieldName:      "mentioned_user_ids",
+		FieldType:      qdrant.FieldType_FieldTypeKeyword.Enum(),
+	}); err != nil {
+		return fmt.Errorf("failed to create mentioned_user_ids index: %w", err)
+	}
+
+	if _, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+		CollectionName: collectionName,
+		FieldName:      "mentioned_channel_ids",
+		FieldType:      qdrant.FieldType_FieldTypeKeyword.Enum(),
+	}); err != nil {
+		return fmt.Errorf("failed to create mentioned_channel_ids index: %w", err)
+	}
+
+	if _, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+		CollectionName: collectionName,
+		FieldName:      "channel_id",
+		FieldType:      qdrant.FieldType_FieldTypeKeyword.Enum(),
+	}); err != nil {
+		return fmt.Errorf("failed to create channel_id index: %w", err)
+	}
+
+	logger.Infof("[qdrant] Created payload indexes for collection: %s", collectionName)
+	return nil
+}
+
+func (qc *QdrantClient) createRelationshipsPayloadIndexes(ctx context.Context, collectionName string) error {
+	if _, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+		CollectionName: collectionName,
+		FieldName:      "user_a",
+		FieldType:      qdrant.FieldType_FieldTypeKeyword.Enum(),
+	}); err != nil {
+		return fmt.Errorf("failed to create user_a index: %w", err)
+	}
+
+	if _, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+		CollectionName: collectionName,
+		FieldName:      "user_b",
+		FieldType:      qdrant.FieldType_FieldTypeKeyword.Enum(),
+	}); err != nil {
+		return fmt.Errorf("failed to create user_b index: %w", err)
+	}
+
+	if _, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+		CollectionName: collectionName,
+		FieldName:      "type",
+		FieldType:      qdrant.FieldType_FieldTypeKeyword.Enum(),
+	}); err != nil {
+		return fmt.Errorf("failed to create type index: %w", err)
+	}
+
+	if _, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
+		CollectionName: collectionName,
+		FieldName:      "weight",
+		FieldType:      qdrant.FieldType_FieldTypeFloat.Enum(),
+	}); err != nil {
+		return fmt.Errorf("failed to create weight index: %w", err)
 	}
 
 	logger.Infof("[qdrant] Created payload indexes for collection: %s", collectionName)
@@ -389,6 +459,11 @@ func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embed
 		},
 	}
 
+	// Add channel ID filter if specified
+	if opts.ChannelID != "" {
+		filter.Must = append(filter.Must, qdrant.NewMatch("channel_id", opts.ChannelID))
+	}
+
 	// Add memory type filter if specified
 	if len(opts.MemoryTypes) > 0 {
 		conditions := []*qdrant.Condition{}
@@ -396,6 +471,20 @@ func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embed
 			conditions = append(conditions, qdrant.NewMatch("memory_type", mt))
 		}
 		filter.Should = conditions
+	}
+
+	// Add mentioned user filter if specified
+	if len(opts.MentionedUserIDs) > 0 {
+		filter.Must = append(filter.Must, qdrant.NewMatchKeywords(
+			"mentioned_user_ids", opts.MentionedUserIDs...,
+		))
+	}
+
+	// Add mentioned channel filter if specified
+	if len(opts.MentionedChannelIDs) > 0 {
+		filter.Must = append(filter.Must, qdrant.NewMatchKeywords(
+			"mentioned_channel_ids", opts.MentionedChannelIDs...,
+		))
 	}
 
 	results, err := qc.client.Query(ctx, &qdrant.QueryPoints{
@@ -414,6 +503,66 @@ func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embed
 	logger.Debugf("[qdrant] got %d results, min_score=%.4f", len(results), opts.MinScore)
 	for i, result := range results {
 		logger.Debugf("[qdrant] result %d: score=%.4f", i+1, result.Score)
+		if result.Score < float32(opts.MinScore) {
+			continue
+		}
+		memory, err := qc.payloadToMemory(result.Payload, result.Id.GetUuid())
+		if err != nil {
+			logger.Warnf("[qdrant] Failed to convert payload to memory (id=%s): %v", result.Id.GetUuid(), err)
+			errs = append(errs, fmt.Errorf("convert payload %s: %w", result.Id.GetUuid(), err))
+			continue
+		}
+		logger.Debugf("[qdrant] result %d: score=%.4f type=%s content=%q", i+1, result.Score, memory.MemoryType, memory.Content)
+		memories = append(memories, memory)
+	}
+
+	if len(errs) > 0 {
+		logger.Warnf("[qdrant] %d payloads failed to convert", len(errs))
+	}
+
+	return memories, nil
+}
+
+// SearchMemoriesByChannel searches for memories in a specific channel using semantic similarity.
+// Only filters by channel_id (no user_id restriction), allowing cross-user memory retrieval.
+func (qc *QdrantClient) SearchMemoriesByChannel(ctx context.Context, channelID string, embedding []float32, opts *SearchOptions) ([]*Record, error) {
+	if channelID == "" {
+		return nil, fmt.Errorf("channel ID is required")
+	}
+	if opts == nil {
+		return nil, fmt.Errorf("search options are required")
+	}
+
+	limit := uint64(opts.TopK)
+
+	filter := &qdrant.Filter{
+		Must: []*qdrant.Condition{
+			qdrant.NewMatch("channel_id", channelID),
+		},
+	}
+
+	if len(opts.MemoryTypes) > 0 {
+		conditions := []*qdrant.Condition{}
+		for _, mt := range opts.MemoryTypes {
+			conditions = append(conditions, qdrant.NewMatch("memory_type", mt))
+		}
+		filter.Should = conditions
+	}
+
+	results, err := qc.client.Query(ctx, &qdrant.QueryPoints{
+		CollectionName: CollectionMemories,
+		Query:          qdrant.NewQuery(embedding...),
+		Filter:         filter,
+		Limit:          &limit,
+		WithPayload:    qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to search memories by channel: %w", err)
+	}
+
+	memories := []*Record{}
+	errs := []error{}
+	for i, result := range results {
 		if result.Score < float32(opts.MinScore) {
 			continue
 		}
@@ -541,6 +690,29 @@ func (qc *QdrantClient) ScrollMemories(ctx context.Context, limit uint32) ([]*sc
 	return points, nil
 }
 
+// ScrollRelationships scrolls all relationship points with payload, limited to `limit` points.
+func (qc *QdrantClient) ScrollRelationships(ctx context.Context, limit uint32) ([]*scrollRelationshipPoint, error) {
+	limitPtr := limit
+	results, err := qc.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: CollectionRelationships,
+		Limit:          &limitPtr,
+		WithPayload:    qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scroll relationships: %w", err)
+	}
+
+	points := make([]*scrollRelationshipPoint, 0, len(results))
+	for _, pt := range results {
+		sp := &scrollRelationshipPoint{
+			ID:      pt.Id.GetUuid(),
+			Payload: pt.Payload,
+		}
+		points = append(points, sp)
+	}
+	return points, nil
+}
+
 // DeletePoint deletes a single point by ID from the memories collection.
 func (qc *QdrantClient) DeletePoint(ctx context.Context, id string) error {
 	_, err := qc.client.Delete(ctx, &qdrant.DeletePoints{
@@ -549,6 +721,18 @@ func (qc *QdrantClient) DeletePoint(ctx context.Context, id string) error {
 	})
 	if err != nil {
 		return fmt.Errorf("delete point %s: %w", id, err)
+	}
+	return nil
+}
+
+// DeleteRelationshipPoint deletes a single point by ID from the relationships collection.
+func (qc *QdrantClient) DeleteRelationshipPoint(ctx context.Context, id string) error {
+	_, err := qc.client.Delete(ctx, &qdrant.DeletePoints{
+		CollectionName: CollectionRelationships,
+		Points:         qdrant.NewPointsSelector(qdrant.NewID(id)),
+	})
+	if err != nil {
+		return fmt.Errorf("delete relationship point %s: %w", id, err)
 	}
 	return nil
 }
@@ -737,6 +921,241 @@ func (qc *QdrantClient) DeleteProfile(ctx context.Context, userID string) error 
 
 	logger.Infof("[qdrant] successfully deleted profile for userID=%s", userID)
 	return nil
+}
+
+// UpsertRelationship stores or updates a relationship record.
+// If rel.ID is empty, a new UUID is generated. Uses retry with backoff for transient failures.
+func (qc *QdrantClient) UpsertRelationship(ctx context.Context, rel *Relationship) error {
+	if rel.ID == "" {
+		rel.ID = uuid.New().String()
+	}
+
+	logger.Debugf("[qdrant] upserting relationship user_a=%s user_b=%s type=%s",
+		rel.UserA, rel.UserB, rel.Type)
+
+	payload, err := qc.relationshipToPayload(rel)
+	if err != nil {
+		return fmt.Errorf("failed to prepare relationship payload: %w", err)
+	}
+
+	relID := rel.ID
+	vectors := qdrant.NewVectors(make([]float32, qc.vectorSize)...)
+
+	_, err = retry.Retry(ctx, qc.maxRetries, func(ctx context.Context) (*qdrant.UpdateResult, error) {
+		return qc.client.Upsert(ctx, &qdrant.UpsertPoints{
+			CollectionName: CollectionRelationships,
+			Points: []*qdrant.PointStruct{
+				{
+					Id:      qdrant.NewID(relID),
+					Vectors: vectors,
+					Payload: payload,
+				},
+			},
+		})
+	}, retry.WithErrorClassifier(isRetryableGrpc), retry.WithBaseDelay(qc.baseBackoff), retry.WithMaxDelay(qc.maxBackoff))
+	if err != nil {
+		return fmt.Errorf("upsert relationship for user_a=%s user_b=%s: %w", rel.UserA, rel.UserB, err)
+	}
+
+	logger.Debugf("[qdrant] successfully stored relationship id=%s", relID)
+	return nil
+}
+
+// GetRelationships retrieves all relationships involving the given user.
+// Optionally filters by relationship type.
+func (qc *QdrantClient) GetRelationships(ctx context.Context, userID string, relType RelationshipType) ([]*Relationship, error) {
+	logger.Debugf("[qdrant] getting relationships for userID=%s type=%s", userID, relType)
+
+	if relType != "" {
+		// Must match: (user_a = userID OR user_b = userID) AND type = relType
+		filter := &qdrant.Filter{
+			Must: []*qdrant.Condition{
+				qdrant.NewFilterAsCondition(&qdrant.Filter{
+					Should: []*qdrant.Condition{
+						qdrant.NewMatch("user_a", userID),
+						qdrant.NewMatch("user_b", userID),
+					},
+				}),
+				qdrant.NewMatch("type", string(relType)),
+			},
+		}
+
+		return qc.scrollRelationships(ctx, filter, userID)
+	}
+
+	// Should with user_a OR user_b — acts as OR when Must is empty
+	filter := &qdrant.Filter{
+		Should: []*qdrant.Condition{
+			qdrant.NewMatch("user_a", userID),
+			qdrant.NewMatch("user_b", userID),
+		},
+	}
+
+	return qc.scrollRelationships(ctx, filter, userID)
+}
+
+// scrollRelationships executes a scroll query and converts results to Relationship records.
+func (qc *QdrantClient) scrollRelationships(ctx context.Context, filter *qdrant.Filter, userID string) ([]*Relationship, error) {
+	results, err := qc.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: CollectionRelationships,
+		Filter:         filter,
+		WithPayload:    qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get relationships for userID=%s: %w", userID, err)
+	}
+
+	relationships := []*Relationship{}
+	for _, point := range results {
+		rel, err := qc.payloadToRelationship(point.Payload, point.Id.GetUuid())
+		if err != nil {
+			logger.Warnf("[qdrant] failed to convert payload to relationship: %v", err)
+			continue
+		}
+		relationships = append(relationships, rel)
+	}
+
+	logger.Debugf("[qdrant] retrieved %d relationships for userID=%s", len(relationships), userID)
+	return relationships, nil
+}
+
+// GetRelationshipBetween retrieves relationships between two specific users.
+// Optionally filters by relationship type.
+func (qc *QdrantClient) GetRelationshipBetween(ctx context.Context, userA, userB string, relType RelationshipType) ([]*Relationship, error) {
+	logger.Debugf("[qdrant] getting relationship between user_a=%s user_b=%s type=%s", userA, userB, relType)
+
+	// (user_a = A AND user_b = B) OR (user_a = B AND user_b = A)
+	userFilter := &qdrant.Filter{
+		Should: []*qdrant.Condition{
+			qdrant.NewFilterAsCondition(&qdrant.Filter{
+				Must: []*qdrant.Condition{
+					qdrant.NewMatch("user_a", userA),
+					qdrant.NewMatch("user_b", userB),
+				},
+			}),
+			qdrant.NewFilterAsCondition(&qdrant.Filter{
+				Must: []*qdrant.Condition{
+					qdrant.NewMatch("user_a", userB),
+					qdrant.NewMatch("user_b", userA),
+				},
+			}),
+		},
+	}
+
+	var filter *qdrant.Filter
+	if relType != "" {
+		filter = &qdrant.Filter{
+			Must: []*qdrant.Condition{
+				qdrant.NewFilterAsCondition(userFilter),
+				qdrant.NewMatch("type", string(relType)),
+			},
+		}
+	} else {
+		filter = userFilter
+	}
+
+	results, err := qc.client.Scroll(ctx, &qdrant.ScrollPoints{
+		CollectionName: CollectionRelationships,
+		Filter:         filter,
+		WithPayload:    qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get relationship between user_a=%s user_b=%s: %w", userA, userB, err)
+	}
+
+	relationships := []*Relationship{}
+	for _, point := range results {
+		rel, err := qc.payloadToRelationship(point.Payload, point.Id.GetUuid())
+		if err != nil {
+			logger.Warnf("[qdrant] failed to convert payload to relationship: %v", err)
+			continue
+		}
+		relationships = append(relationships, rel)
+	}
+
+	logger.Debugf("[qdrant] retrieved %d relationships between user_a=%s user_b=%s", len(relationships), userA, userB)
+	return relationships, nil
+}
+
+// RemoveUserFromMentions finds all memory records where mentioned_user_ids
+// contains userID and removes it from the array. Logs a warning on failure
+// but does not return an error to avoid blocking other operations.
+func (qc *QdrantClient) RemoveUserFromMentions(ctx context.Context, userID string) {
+	logger.Debugf("[qdrant] removing userID=%s from mentioned_user_ids", userID)
+
+	filter := &qdrant.Filter{
+		Must: []*qdrant.Condition{
+			qdrant.NewMatch("mentioned_user_ids", userID),
+		},
+	}
+
+	var offset *qdrant.PointId
+	pageLimit := uint32(100)
+
+	var totalRemoved, totalFailed int
+	for {
+		scrollResult, err := qc.client.Scroll(ctx, &qdrant.ScrollPoints{
+			CollectionName: CollectionMemories,
+			Filter:         filter,
+			Offset:         offset,
+			Limit:          &pageLimit,
+			WithPayload:    qdrant.NewWithPayload(true),
+		})
+		if err != nil {
+			logger.Warnf("[qdrant] failed to scroll memories for mention removal: %v", err)
+			return
+		}
+
+		if len(scrollResult) == 0 {
+			break
+		}
+
+		for _, point := range scrollResult {
+			memory, err := qc.payloadToMemory(point.Payload, point.Id.GetUuid())
+			if err != nil {
+				logger.Warnf("[qdrant] failed to convert payload for mention removal (id=%s): %v", point.Id.GetUuid(), err)
+				totalFailed++
+				continue
+			}
+
+			newMentions := make([]string, 0, len(memory.MentionedUserIDs))
+			for _, uid := range memory.MentionedUserIDs {
+				if uid != userID {
+					newMentions = append(newMentions, uid)
+				}
+			}
+
+			vals := make([]*qdrant.Value, 0, len(newMentions))
+			for _, uid := range newMentions {
+				vals = append(vals, &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: uid}})
+			}
+
+			updatedPayload := map[string]*qdrant.Value{
+				"mentioned_user_ids": {Kind: &qdrant.Value_ListValue{ListValue: &qdrant.ListValue{Values: vals}}},
+			}
+
+			_, err = qc.client.OverwritePayload(ctx, &qdrant.SetPayloadPoints{
+				CollectionName: CollectionMemories,
+				Payload:        updatedPayload,
+				PointsSelector: qdrant.NewPointsSelector(point.Id),
+			})
+			if err != nil {
+				logger.Warnf("[qdrant] failed to update mentions for memoryID=%s: %v", point.Id.GetUuid(), err)
+				totalFailed++
+				continue
+			}
+			totalRemoved++
+		}
+
+		if scrollResult[len(scrollResult)-1].Id == nil {
+			break
+		}
+		offset = scrollResult[len(scrollResult)-1].Id
+	}
+
+	if totalRemoved > 0 || totalFailed > 0 {
+		logger.Infof("[qdrant] mention removal complete: %d updated, %d failed", totalRemoved, totalFailed)
+	}
 }
 
 func computeBM25SparseVector(content string, keywords []string) ([]uint32, []float32) {

@@ -9,19 +9,30 @@ import (
 
 // FormatMemoriesForContext formats memories for LLM context with scores and recency markers.
 // Sorts by type priority (facts first) then by decayed score within each type.
-func FormatMemoriesForContext(memories []*Record, decayRate float64, now time.Time) string {
+// Memories are classified into four XML blocks:
+//  1. <key_facts> — TypeFact with ImportanceScore >= 0.5
+//  2. <recent_memories> — all remaining (not facts, mentioned, or channel)
+//  3. <mentioned_memories> — memories with MentionedUserIDs (capped by maxMentionedMemories)
+//  4. <channel_memories> — memories with MentionedChannelIDs (capped by maxChannelMemories)
+func FormatMemoriesForContext(memories []*Record, multiplier float64, now time.Time, maxMentionedMemories int, maxChannelMemories int) string {
 	if len(memories) == 0 {
 		return ""
 	}
 
-	// Separate key facts from other memories
 	facts := make([]*Record, 0)
+	mentioned := make([]*Record, 0)
+	channel := make([]*Record, 0)
 	others := make([]*Record, 0)
 
 	for _, m := range memories {
-		if m.MemoryType == TypeFact && m.ImportanceScore >= 0.5 {
+		switch {
+		case m.MemoryType == TypeFact && m.ImportanceScore >= 0.5:
 			facts = append(facts, m)
-		} else {
+		case len(m.MentionedUserIDs) > 0:
+			mentioned = append(mentioned, m)
+		case len(m.MentionedChannelIDs) > 0:
+			channel = append(channel, m)
+		default:
 			others = append(others, m)
 		}
 	}
@@ -31,7 +42,7 @@ func FormatMemoriesForContext(memories []*Record, decayRate float64, now time.Ti
 	// Key facts section
 	if len(facts) > 0 {
 		b.WriteString("<key_facts>\n")
-		SortByDecayedScore(facts, decayRate, now)
+		SortByDecayedScore(facts, multiplier, now)
 		for _, m := range facts {
 			fmt.Fprintf(&b, "[fact | score=%.1f | %s] %s\n",
 				m.ImportanceScore,
@@ -44,7 +55,7 @@ func FormatMemoriesForContext(memories []*Record, decayRate float64, now time.Ti
 	// Recent/other memories section
 	allSorted := make([]*Record, len(others))
 	copy(allSorted, others)
-	SortByDecayedScore(allSorted, decayRate, now)
+	SortByDecayedScore(allSorted, multiplier, now)
 	sortByTypeThenScore(allSorted)
 
 	if len(allSorted) > 0 {
@@ -61,6 +72,80 @@ func FormatMemoriesForContext(memories []*Record, decayRate float64, now time.Ti
 		}
 		b.WriteString("</recent_memories>")
 	}
+
+	mentionedBlock := formatMentionedMemories(mentioned, multiplier, now, maxMentionedMemories)
+	if mentionedBlock != "" {
+		needsSep := b.Len() > 0
+		if needsSep {
+			b.WriteString("\n\n")
+		}
+		b.WriteString(mentionedBlock)
+	}
+
+	channelBlock := formatChannelMemories(channel, multiplier, now, maxChannelMemories)
+	if channelBlock != "" {
+		needsSep := b.Len() > 0
+		if needsSep {
+			b.WriteString("\n\n")
+		}
+		b.WriteString(channelBlock)
+	}
+
+	return b.String()
+}
+
+// formatMentionedMemories formats memories with MentionedUserIDs into an XML block.
+// Capped by maxItems (0 means skip entirely).
+func formatMentionedMemories(memories []*Record, multiplier float64, now time.Time, maxItems int) string {
+	if len(memories) == 0 || maxItems == 0 {
+		return ""
+	}
+
+	SortByDecayedScore(memories, multiplier, now)
+
+	var b strings.Builder
+	b.WriteString("<mentioned_memories>\n")
+
+	limit := maxItems
+	if limit > len(memories) {
+		limit = len(memories)
+	}
+	for _, m := range memories[:limit] {
+		fmt.Fprintf(&b, "[%s | %s | %s] %s\n",
+			m.MemoryType,
+			m.DecayCategory,
+			formatTimeAgo(m.CreatedAt, now),
+			m.Content)
+	}
+	b.WriteString("</mentioned_memories>")
+
+	return b.String()
+}
+
+// formatChannelMemories formats memories with MentionedChannelIDs into an XML block.
+// Capped by maxItems (0 means skip entirely).
+func formatChannelMemories(memories []*Record, multiplier float64, now time.Time, maxItems int) string {
+	if len(memories) == 0 || maxItems == 0 {
+		return ""
+	}
+
+	SortByDecayedScore(memories, multiplier, now)
+
+	var b strings.Builder
+	b.WriteString("<channel_memories>\n")
+
+	limit := maxItems
+	if limit > len(memories) {
+		limit = len(memories)
+	}
+	for _, m := range memories[:limit] {
+		fmt.Fprintf(&b, "[%s | %s | %s] %s\n",
+			m.MemoryType,
+			m.DecayCategory,
+			formatTimeAgo(m.CreatedAt, now),
+			m.Content)
+	}
+	b.WriteString("</channel_memories>")
 
 	return b.String()
 }

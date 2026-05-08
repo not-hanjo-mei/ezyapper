@@ -15,7 +15,9 @@ import (
 // maintenanceStore is the subset of QdrantClient methods used by MaintenanceWorker.
 type maintenanceStore interface {
 	ScrollMemories(ctx context.Context, limit uint32) ([]*scrollPoint, error)
+	ScrollRelationships(ctx context.Context, limit uint32) ([]*scrollRelationshipPoint, error)
 	DeletePoint(ctx context.Context, id string) error
+	DeleteRelationshipPoint(ctx context.Context, id string) error
 }
 
 // scrollPoint is the result type for a single memory point from Scroll.
@@ -23,6 +25,12 @@ type scrollPoint struct {
 	ID        string
 	Payload   map[string]*qdrantValue
 	Embedding []float32
+}
+
+// scrollRelationshipPoint is the result type for a single relationship point from Scroll.
+type scrollRelationshipPoint struct {
+	ID      string
+	Payload map[string]*qdrantValue
 }
 
 // qdrantValue is an alias for the qdrant Value type used in payload maps.
@@ -97,11 +105,15 @@ func (w *MaintenanceWorker) runScheduled(ctx context.Context, now time.Time) {
 		if err := w.pruneExpired(ctx); err != nil {
 			logger.Warnf("[maintenance] expired prune failed: %v", err)
 		}
+
+		if err := w.pruneStaleRelationships(ctx, time.Now()); err != nil {
+			logger.Warnf("[maintenance] stale relationship prune failed: %v", err)
+		}
 	}
 }
 
 // mergeDuplicates finds memories with high cosine similarity within the same
-// user+type group and keeps only the higher-scored one. Pure algorithm — no LLM call.
+// user+type group and keeps only the higher-scored one. Pure algorithm - no LLM call.
 func (w *MaintenanceWorker) mergeDuplicates(ctx context.Context) error {
 	start := time.Now()
 	logger.Info("[maintenance] starting duplicate merge scan")
@@ -176,10 +188,10 @@ func (w *MaintenanceWorker) mergeDuplicates(ctx context.Context) error {
 
 				sim := cosineSimilarity(a.Embedding, b.Embedding)
 				if sim >= float32(w.config.MergeCosineThreshold) {
-					drA := DecayRateForType(a.MemoryType, w.config.Scoring.DecayRates)
-					drB := DecayRateForType(b.MemoryType, w.config.Scoring.DecayRates)
-					scoreA := CompositeScore(a, w.config.Scoring.Weights, drA, now)
-					scoreB := CompositeScore(b, w.config.Scoring.Weights, drB, now)
+					mult := w.config.Scoring.MemoryStrengthMultiplier
+					// drB removed — using unified mult
+					scoreA := CompositeScore(a, w.config.Scoring.Weights, mult, now)
+					scoreB := CompositeScore(b, w.config.Scoring.Weights, mult, now)
 
 					var toDelete string
 					if scoreA >= scoreB {
@@ -210,7 +222,7 @@ func (w *MaintenanceWorker) mergeDuplicates(ctx context.Context) error {
 }
 
 // summarizeAndPrune removes memories with decay scores below threshold
-// or very old memories with zero access. Pure algorithm — no LLM call.
+// or very old memories with zero access. Pure algorithm - no LLM call.
 func (w *MaintenanceWorker) summarizeAndPrune(ctx context.Context) error {
 	start := time.Now()
 	logger.Info("[maintenance] starting summarize/prune scan")
@@ -267,8 +279,8 @@ func (w *MaintenanceWorker) summarizeAndPrune(ctx context.Context) error {
 			ImportanceScore: importanceScore,
 		}
 
-		decayRate := DecayRateForType(rec.MemoryType, w.config.Scoring.DecayRates)
-		score := DecayedScore(rec, decayRate, now)
+		mult := w.config.Scoring.MemoryStrengthMultiplier
+		score := DecayedScore(rec, mult, now)
 		age := now.Sub(rec.CreatedAt)
 
 		if score < w.config.PruneDecayThreshold ||
@@ -324,6 +336,48 @@ func (w *MaintenanceWorker) pruneExpired(ctx context.Context) error {
 
 	if pruned > 0 {
 		logger.Infof("[maintenance] expired prune: removed=%d", pruned)
+	}
+	return nil
+}
+
+// pruneStaleRelationships removes relationship records whose last_interaction_at
+// timestamp is older than RelationshipPruneAgeDays days. Uses the configured
+// monthly cadence (same as pruneExpired). Scrolls in batches of 500.
+func (w *MaintenanceWorker) pruneStaleRelationships(ctx context.Context, now time.Time) error {
+	points, err := w.store.ScrollRelationships(ctx, 500)
+	if err != nil {
+		return fmt.Errorf("scroll relationships: %w", err)
+	}
+
+	pruned := 0
+	maxAge := float64(w.config.RelationshipPruneAgeDays) * 24.0 // hours
+
+	for _, pt := range points {
+		if pt.ID == "" {
+			continue
+		}
+
+		var lastInteractionAt time.Time
+		if v, ok := pt.Payload["last_interaction_at"]; ok && v != nil {
+			ts := v.GetDoubleValue()
+			if ts > 0 {
+				lastInteractionAt = time.UnixMilli(int64(ts * 1000))
+			}
+		}
+
+		if !lastInteractionAt.IsZero() && now.Sub(lastInteractionAt).Hours() > maxAge {
+			if err := w.store.DeleteRelationshipPoint(ctx, pt.ID); err != nil {
+				logger.Warnf("[maintenance] failed to delete stale relationship %s: %v", pt.ID, err)
+			} else {
+				pruned++
+			}
+		}
+	}
+
+	if pruned > 0 {
+		logger.Infof("[maintenance] stale relationship prune: removed=%d", pruned)
+	} else {
+		logger.Debugf("[maintenance] stale relationship prune: nothing to prune")
 	}
 	return nil
 }
