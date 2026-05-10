@@ -1326,7 +1326,6 @@ memory_pipeline:
     prune_age_days: 90
     relationship_prune_age_days: 90
     max_maintenance_llm_calls_per_day: 50
-    entropy_min_content_length: 10
     entropy_min_unique_word_ratio: 0.15
     decay_rates:
       fact: 0.01
@@ -1469,7 +1468,6 @@ memory_pipeline:
     prune_age_days: 90
     relationship_prune_age_days: 90
     max_maintenance_llm_calls_per_day: 50
-    entropy_min_content_length: 10
     entropy_min_unique_word_ratio: 0.15
     decay_rates:
       fact: 0.01

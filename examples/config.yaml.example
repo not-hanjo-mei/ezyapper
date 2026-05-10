@@ -286,9 +286,6 @@ memory_pipeline:
       # How many existing memories to search for deduplication/similarity.
       memory_search_limit: 20
 
-      # Size of the internal worker queue for consolidation jobs.
-      worker_queue_size: 10
-
       # ── Optional: extra parameters ──
       ## extra_params: {}
 
