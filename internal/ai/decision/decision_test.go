@@ -17,10 +17,11 @@ func TestMain(m *testing.M) {
 
 func TestNewDecisionServiceRequiresExplicitCredentials(t *testing.T) {
 	cfg := &config.DecisionConfig{
-		APIKey:         "decision-key",
-		APIBaseURL:     "https://example.com/v1",
-		Timeout:        1,
-		HTTPTimeoutSec: 60,
+		LLMConfig: config.LLMConfig{
+			APIKey:     "decision-key",
+			APIBaseURL: "https://example.com/v1",
+			Timeout:    60,
+		},
 	}
 
 	svc, err := NewDecisionService(cfg)
@@ -37,7 +38,7 @@ func TestNewDecisionServiceRequiresExplicitCredentials(t *testing.T) {
 }
 
 func TestNewDecisionServiceRequiresCredentials(t *testing.T) {
-	cfg := &config.DecisionConfig{APIBaseURL: "https://example.com/v1"}
+	cfg := &config.DecisionConfig{LLMConfig: config.LLMConfig{APIBaseURL: "https://example.com/v1"}}
 
 	_, err := NewDecisionService(cfg)
 	if err == nil {
@@ -49,7 +50,7 @@ func TestNewDecisionServiceRequiresCredentials(t *testing.T) {
 }
 
 func TestNewDecisionServiceRequiresBaseURL(t *testing.T) {
-	cfg := &config.DecisionConfig{APIKey: "decision-key"}
+	cfg := &config.DecisionConfig{LLMConfig: config.LLMConfig{APIKey: "decision-key"}}
 
 	_, err := NewDecisionService(cfg)
 	if err == nil {

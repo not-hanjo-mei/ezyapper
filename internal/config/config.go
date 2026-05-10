@@ -33,103 +33,29 @@ type Config struct {
 
 const currentConfigSchemaVersion = 4
 
-type fileConfig struct {
-	SchemaVersion int                 `mapstructure:"schema_version" yaml:"schema_version"`
-	Core          coreSection         `mapstructure:"core" yaml:"core"`
-	MemoryPipe    memoryPipelineGroup `mapstructure:"memory_pipeline" yaml:"memory_pipeline"`
-	Access        accessControlGroup  `mapstructure:"access_control" yaml:"access_control"`
-	Operations    operationsGroup     `mapstructure:"operations" yaml:"operations"`
-}
-
-type coreSection struct {
-	Discord  DiscordConfig  `mapstructure:"discord" yaml:"discord"`
-	AI       AIConfig       `mapstructure:"ai" yaml:"ai"`
-	Decision DecisionConfig `mapstructure:"decision" yaml:"decision"`
-}
-
-type memoryPipelineGroup struct {
-	Embedding EmbeddingConfig `mapstructure:"embedding" yaml:"embedding"`
-	Memory    MemoryConfig    `mapstructure:"memory" yaml:"memory"`
-	Qdrant    QdrantConfig    `mapstructure:"qdrant" yaml:"qdrant"`
-}
-
-type accessControlGroup struct {
-	Blacklist BlacklistConfig `mapstructure:"blacklist" yaml:"blacklist"`
-	Whitelist WhitelistConfig `mapstructure:"whitelist" yaml:"whitelist"`
-}
-
-type operationsGroup struct {
-	Web     WebConfig        `mapstructure:"web" yaml:"web"`
-	Logging LoggingConfig    `mapstructure:"logging" yaml:"logging"`
-	Plugins PluginsConfig    `mapstructure:"plugins" yaml:"plugins"`
-	MCP     MCPConfig        `mapstructure:"mcp" yaml:"mcp"`
-	Ops     OperationsConfig `mapstructure:"runtime" yaml:"runtime"`
-}
-
 // OperationsConfig holds operational runtime settings.
 type OperationsConfig struct {
 	ShutdownTimeoutSec int `mapstructure:"shutdown_timeout_sec" yaml:"shutdown_timeout_sec"`
 	CleanupIntervalMin int `mapstructure:"cleanup_interval_min" yaml:"cleanup_interval_min"`
 }
 
-func (f fileConfig) toRuntimeConfig() Config {
-	return Config{
-		Discord:    f.Core.Discord,
-		AI:         f.Core.AI,
-		Decision:   f.Core.Decision,
-		Embedding:  f.MemoryPipe.Embedding,
-		Memory:     f.MemoryPipe.Memory,
-		Qdrant:     f.MemoryPipe.Qdrant,
-		Blacklist:  f.Access.Blacklist,
-		Whitelist:  f.Access.Whitelist,
-		Web:        f.Operations.Web,
-		Logging:    f.Operations.Logging,
-		Plugins:    f.Operations.Plugins,
-		MCP:        f.Operations.MCP,
-		Operations: f.Operations.Ops,
-	}
-}
-
-func toFileConfig(cfg *Config) fileConfig {
-	return fileConfig{
-		SchemaVersion: currentConfigSchemaVersion,
-		Core: coreSection{
-			Discord:  cfg.Discord,
-			AI:       cfg.AI,
-			Decision: cfg.Decision,
-		},
-		MemoryPipe: memoryPipelineGroup{
-			Embedding: cfg.Embedding,
-			Memory:    cfg.Memory,
-			Qdrant:    cfg.Qdrant,
-		},
-		Access: accessControlGroup{
-			Blacklist: cfg.Blacklist,
-			Whitelist: cfg.Whitelist,
-		},
-		Operations: operationsGroup{
-			Web:     cfg.Web,
-			Logging: cfg.Logging,
-			Plugins: cfg.Plugins,
-			MCP:     cfg.MCP,
-			Ops:     cfg.Operations,
-		},
-	}
+// LLMConfig is the shared LLM client configuration embedded by all LLM-using configs.
+type LLMConfig struct {
+	APIBaseURL  string         `mapstructure:"api_base_url" yaml:"api_base_url"`
+	APIKey      string         `mapstructure:"api_key" yaml:"api_key"`
+	Model       string         `mapstructure:"model" yaml:"model"`
+	MaxTokens   int            `mapstructure:"max_tokens" yaml:"max_tokens"`
+	Temperature float32        `mapstructure:"temperature" yaml:"temperature"`
+	RetryCount  int            `mapstructure:"retry_count" yaml:"retry_count"`
+	Timeout     int            `mapstructure:"timeout" yaml:"timeout"`
+	ExtraParams map[string]any `mapstructure:"extra_params" yaml:"extra_params"`
 }
 
 // DecisionConfig holds LLM-based reply decision settings
 type DecisionConfig struct {
-	Enabled        bool           `mapstructure:"enabled" yaml:"enabled"`
-	Model          string         `mapstructure:"model" yaml:"model"`
-	APIBaseURL     string         `mapstructure:"api_base_url" yaml:"api_base_url"`
-	APIKey         string         `mapstructure:"api_key" yaml:"api_key"`
-	MaxTokens      int            `mapstructure:"max_tokens" yaml:"max_tokens"`
-	Temperature    float32        `mapstructure:"temperature" yaml:"temperature"`
-	RetryCount     int            `mapstructure:"retry_count" yaml:"retry_count"`
-	Timeout        int            `mapstructure:"timeout" yaml:"timeout"`
-	SystemPrompt   string         `mapstructure:"system_prompt" yaml:"system_prompt"`
-	ExtraParams    map[string]any `mapstructure:"extra_params" yaml:"extra_params"`
-	HTTPTimeoutSec int            `mapstructure:"http_timeout_sec" yaml:"http_timeout_sec"`
+	LLMConfig    `mapstructure:",squash"`
+	Enabled      bool   `mapstructure:"enabled" yaml:"enabled"`
+	SystemPrompt string `mapstructure:"system_prompt" yaml:"system_prompt"`
 }
 
 // RateLimitConfig holds per-user rate limiting window settings.
@@ -170,32 +96,17 @@ type DiscordConfig struct {
 
 // AIConfig holds AI/LLM settings for chat
 type AIConfig struct {
-	APIBaseURL              string         `mapstructure:"api_base_url" yaml:"api_base_url"`
-	APIKey                  string         `mapstructure:"api_key" yaml:"api_key"`
-	Model                   string         `mapstructure:"model" yaml:"model"`
-	VisionModel             string         `mapstructure:"vision_model" yaml:"vision_model"`
-	VisionBase64            bool           `mapstructure:"vision_base64" yaml:"vision_base64"`
-	Vision                  VisionConfig   `mapstructure:"vision" yaml:"vision"`
-	MaxTokens               int            `mapstructure:"max_tokens" yaml:"max_tokens"`
-	Temperature             float32        `mapstructure:"temperature" yaml:"temperature"`
-	RetryCount              int            `mapstructure:"retry_count" yaml:"retry_count"`
-	Timeout                 int            `mapstructure:"timeout" yaml:"timeout"`
-	SystemPrompt            string         `mapstructure:"system_prompt" yaml:"system_prompt"`
-	ExtraParams             map[string]any `mapstructure:"extra_params" yaml:"extra_params"`
-	HTTPTimeoutSec          int            `mapstructure:"http_timeout_sec" yaml:"http_timeout_sec"`
-	MaxToolIterations       int            `mapstructure:"max_tool_iterations" yaml:"max_tool_iterations"`
-	MaxImageBytes           int            `mapstructure:"max_image_bytes" yaml:"max_image_bytes"`
-	RequireImageContentType bool           `mapstructure:"require_image_content_type" yaml:"require_image_content_type"`
+	LLMConfig               `mapstructure:",squash"`
+	Vision                  VisionConfig `mapstructure:"vision" yaml:"vision"`
+	SystemPrompt            string       `mapstructure:"system_prompt" yaml:"system_prompt"`
+	MaxToolIterations       int          `mapstructure:"max_tool_iterations" yaml:"max_tool_iterations"`
+	MaxImageBytes           int          `mapstructure:"max_image_bytes" yaml:"max_image_bytes"`
+	RequireImageContentType bool         `mapstructure:"require_image_content_type" yaml:"require_image_content_type"`
 }
 
 // EmbeddingConfig holds settings for embedding generation
 type EmbeddingConfig struct {
-	APIBaseURL  string         `mapstructure:"api_base_url" yaml:"api_base_url"`
-	APIKey      string         `mapstructure:"api_key" yaml:"api_key"`
-	Model       string         `mapstructure:"model" yaml:"model"`
-	RetryCount  int            `mapstructure:"retry_count" yaml:"retry_count"`
-	Timeout     int            `mapstructure:"timeout" yaml:"timeout"`
-	ExtraParams map[string]any `mapstructure:"extra_params" yaml:"extra_params"`
+	LLMConfig `mapstructure:",squash"`
 }
 
 // LongTermMemoryConfig controls long-term memory features.
@@ -207,9 +118,6 @@ type MemoryConfig struct {
 	ConsolidationInterval      int                  `mapstructure:"consolidation_interval" yaml:"consolidation_interval"`
 	ShortTermLimit             int                  `mapstructure:"short_term_limit" yaml:"short_term_limit"`
 	MaxPaginatedLimit          int                  `mapstructure:"max_paginated_limit" yaml:"max_paginated_limit"`
-	RetryBaseDelayMs           int                  `mapstructure:"retry_base_delay_ms" yaml:"retry_base_delay_ms"`
-	RetryMaxDelayMs            int                  `mapstructure:"retry_max_delay_ms" yaml:"retry_max_delay_ms"`
-	MaxRetries                 int                  `mapstructure:"max_retries" yaml:"max_retries"`
 	Retrieval                  RetrievalConfig      `mapstructure:"retrieval" yaml:"retrieval"`
 	Consolidation              ConsolidationConfig  `mapstructure:"consolidation" yaml:"consolidation"`
 	LongTermMemory             LongTermMemoryConfig `mapstructure:"long_term_memory" yaml:"long_term_memory"`
@@ -240,25 +148,11 @@ type MemoryConfig struct {
 }
 
 type ConsolidationConfig struct {
-	Enabled           bool           `mapstructure:"enabled" yaml:"enabled"`
-	Model             string         `mapstructure:"model" yaml:"model"`
-	APIBaseURL        string         `mapstructure:"api_base_url" yaml:"api_base_url"`
-	APIKey            string         `mapstructure:"api_key" yaml:"api_key"`
-	MaxTokens         int            `mapstructure:"max_tokens" yaml:"max_tokens"`
-	Temperature       float32        `mapstructure:"temperature" yaml:"temperature"`
-	RetryCount        int            `mapstructure:"retry_count" yaml:"retry_count"`
-	Timeout           int            `mapstructure:"timeout" yaml:"timeout"`
-	VisionModel       string         `mapstructure:"vision_model" yaml:"vision_model"`
-	VisionBase64      bool           `mapstructure:"vision_base64" yaml:"vision_base64"`
-	VisionAPIBaseURL  string         `mapstructure:"vision_api_base_url" yaml:"vision_api_base_url"`
-	VisionAPIKey      string         `mapstructure:"vision_api_key" yaml:"vision_api_key"`
-	VisionMaxTokens   int            `mapstructure:"vision_max_tokens" yaml:"vision_max_tokens"`
-	VisionTemperature float32        `mapstructure:"vision_temperature" yaml:"vision_temperature"`
-	VisionRetryCount  int            `mapstructure:"vision_retry_count" yaml:"vision_retry_count"`
-	VisionTimeout     int            `mapstructure:"vision_timeout" yaml:"vision_timeout"`
-	SystemPrompt      string         `mapstructure:"system_prompt" yaml:"system_prompt"`
-	ExtraParams       map[string]any `mapstructure:"extra_params" yaml:"extra_params"`
-	MemorySearchLimit int            `mapstructure:"memory_search_limit" yaml:"memory_search_limit"`
+	LLMConfig         `mapstructure:",squash"`
+	Enabled           bool         `mapstructure:"enabled" yaml:"enabled"`
+	Vision            VisionConfig `mapstructure:"vision" yaml:"vision"`
+	SystemPrompt      string       `mapstructure:"system_prompt" yaml:"system_prompt"`
+	MemorySearchLimit int          `mapstructure:"memory_search_limit" yaml:"memory_search_limit"`
 }
 
 type RetrievalConfig struct {
@@ -307,10 +201,13 @@ type LoggingConfig struct {
 }
 
 type QdrantConfig struct {
-	Host       string `mapstructure:"host" yaml:"host"`
-	Port       int    `mapstructure:"port" yaml:"port"`
-	APIKey     string `mapstructure:"api_key" yaml:"api_key"`
-	VectorSize int    `mapstructure:"vector_size" yaml:"vector_size"`
+	Host             string `mapstructure:"host" yaml:"host"`
+	Port             int    `mapstructure:"port" yaml:"port"`
+	APIKey           string `mapstructure:"api_key" yaml:"api_key"`
+	VectorSize       int    `mapstructure:"vector_size" yaml:"vector_size"`
+	RetryBaseDelayMs int    `mapstructure:"retry_base_delay_ms" yaml:"retry_base_delay_ms"`
+	RetryMaxDelayMs  int    `mapstructure:"retry_max_delay_ms" yaml:"retry_max_delay_ms"`
+	MaxRetries       int    `mapstructure:"max_retries" yaml:"max_retries"`
 }
 
 type BlacklistConfig struct {
@@ -362,16 +259,12 @@ const (
 
 // VisionConfig holds vision processing settings
 type VisionConfig struct {
+	LLMConfig         `mapstructure:",squash"`
 	Mode              VisionMode `mapstructure:"mode" yaml:"mode"`
 	DescriptionPrompt string     `mapstructure:"description_prompt" yaml:"description_prompt"`
-
-	APIBaseURL  string         `mapstructure:"api_base_url" yaml:"api_base_url"`
-	APIKey      string         `mapstructure:"api_key" yaml:"api_key"`
-	MaxTokens   int            `mapstructure:"max_tokens" yaml:"max_tokens"`
-	Temperature float32        `mapstructure:"temperature" yaml:"temperature"`
-	RetryCount  int            `mapstructure:"retry_count" yaml:"retry_count"`
-	Timeout     int            `mapstructure:"timeout" yaml:"timeout"`
-	ExtraParams map[string]any `mapstructure:"extra_params" yaml:"extra_params"`
+	Model             string     `mapstructure:"model" yaml:"model"`
+	Base64            bool       `mapstructure:"base64" yaml:"base64"`
+	MaxImages         int        `mapstructure:"max_images" yaml:"max_images"`
 }
 
 func Load(configPath string) (*Config, error) {
@@ -399,16 +292,53 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	var parsed fileConfig
-	if err := v.Unmarshal(&parsed); err != nil {
+	var raw struct {
+		SchemaVersion int `mapstructure:"schema_version"`
+		Core          struct {
+			Discord  DiscordConfig  `mapstructure:"discord"`
+			AI       AIConfig       `mapstructure:"ai"`
+			Decision DecisionConfig `mapstructure:"decision"`
+		} `mapstructure:"core"`
+		MemoryPipe struct {
+			Embedding EmbeddingConfig `mapstructure:"embedding"`
+			Memory    MemoryConfig    `mapstructure:"memory"`
+			Qdrant    QdrantConfig    `mapstructure:"qdrant"`
+		} `mapstructure:"memory_pipeline"`
+		Access struct {
+			Blacklist BlacklistConfig `mapstructure:"blacklist"`
+			Whitelist WhitelistConfig `mapstructure:"whitelist"`
+		} `mapstructure:"access_control"`
+		Operations struct {
+			Web     WebConfig        `mapstructure:"web"`
+			Logging LoggingConfig    `mapstructure:"logging"`
+			Plugins PluginsConfig    `mapstructure:"plugins"`
+			MCP     MCPConfig        `mapstructure:"mcp"`
+			Runtime OperationsConfig `mapstructure:"runtime"`
+		} `mapstructure:"operations"`
+	}
+	if err := v.Unmarshal(&raw); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	if parsed.SchemaVersion != currentConfigSchemaVersion {
-		return nil, fmt.Errorf("unsupported config schema_version %d: expected %d", parsed.SchemaVersion, currentConfigSchemaVersion)
+	if raw.SchemaVersion != currentConfigSchemaVersion {
+		return nil, fmt.Errorf("unsupported config schema_version %d: expected %d", raw.SchemaVersion, currentConfigSchemaVersion)
 	}
 
-	cfg := parsed.toRuntimeConfig()
+	cfg := Config{
+		Discord:    raw.Core.Discord,
+		AI:         raw.Core.AI,
+		Decision:   raw.Core.Decision,
+		Embedding:  raw.MemoryPipe.Embedding,
+		Memory:     raw.MemoryPipe.Memory,
+		Qdrant:     raw.MemoryPipe.Qdrant,
+		Blacklist:  raw.Access.Blacklist,
+		Whitelist:  raw.Access.Whitelist,
+		Web:        raw.Operations.Web,
+		Logging:    raw.Operations.Logging,
+		Plugins:    raw.Operations.Plugins,
+		MCP:        raw.Operations.MCP,
+		Operations: raw.Operations.Runtime,
+	}
 
 	if err := validate(&cfg); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
@@ -445,12 +375,10 @@ func validateAI(cfg *Config, errs *[]string) {
 	}
 	requireNonEmpty(cfg.AI.SystemPrompt, "core.ai.system_prompt", errs)
 	requirePositive(cfg.AI.RetryCount, "core.ai.retry_count", errs)
-	requirePositive(cfg.AI.Timeout, "core.ai.timeout", errs)
-	requirePositive(cfg.AI.HTTPTimeoutSec, "core.ai.http_timeout_sec", errs)
 	requirePositive(cfg.AI.MaxToolIterations, "core.ai.max_tool_iterations", errs)
 	requirePositive(cfg.AI.MaxImageBytes, "core.ai.max_image_bytes", errs)
-	if !cfg.AI.VisionBase64 {
-		fmt.Fprintf(os.Stderr, "WARNING: core.ai.vision_base64 is false - images will be sent as URLs (may not work with local endpoints)\n")
+	if !cfg.AI.Vision.Base64 {
+		fmt.Fprintf(os.Stderr, "WARNING: core.ai.vision.base64 is false - images will be sent as URLs (may not work with local endpoints)\n")
 	}
 }
 
@@ -464,8 +392,8 @@ func validateVision(cfg *Config, errs *[]string) {
 	if !validVisionModes[cfg.AI.Vision.Mode] {
 		*errs = append(*errs, "core.ai.vision.mode must be one of: text_only, hybrid, multimodal")
 	}
-	if cfg.AI.Vision.Mode != VisionModeTextOnly && cfg.AI.VisionModel == "" {
-		*errs = append(*errs, "core.ai.vision_model is required when vision.mode is not text_only")
+	if cfg.AI.Vision.Mode != VisionModeTextOnly && cfg.AI.Vision.Model == "" {
+		*errs = append(*errs, "core.ai.vision.model is required when vision.mode is not text_only")
 	}
 	if cfg.AI.Vision.Mode == VisionModeHybrid && cfg.AI.Vision.DescriptionPrompt == "" {
 		*errs = append(*errs, "core.ai.vision.description_prompt is required when vision.mode is hybrid")
@@ -512,6 +440,12 @@ func validateDiscord(cfg *Config, errs *[]string) {
 	} else if !validPolicies[cfg.Discord.OtherBotPolicy] {
 		*errs = append(*errs, "core.discord.other_bot_policy must be one of: ignore, context_only, full")
 	}
+	if cfg.Memory.Retrieval.TopK > 0 && cfg.Discord.OwnBotID == "" {
+		*errs = append(*errs, "core.discord.own_bot_id is required when memory retrieval is enabled")
+	}
+	if cfg.Memory.Consolidation.Enabled && cfg.Discord.OwnBotID == "" {
+		*errs = append(*errs, "core.discord.own_bot_id is required when consolidation is enabled")
+	}
 }
 
 func validateQdrant(cfg *Config, errs *[]string) {
@@ -535,9 +469,9 @@ func validateQdrant(cfg *Config, errs *[]string) {
 	if expectedVectorSize > 0 && cfg.Qdrant.VectorSize > 0 && cfg.Qdrant.VectorSize != expectedVectorSize {
 		*errs = append(*errs, fmt.Sprintf("memory_pipeline.qdrant.vector_size (%d) must match memory_pipeline.embedding.model %q size (%d)", cfg.Qdrant.VectorSize, cfg.Embedding.Model, expectedVectorSize))
 	}
-	requirePositive(cfg.Memory.RetryBaseDelayMs, "memory_pipeline.memory.retry_base_delay_ms", errs)
-	requirePositive(cfg.Memory.RetryMaxDelayMs, "memory_pipeline.memory.retry_max_delay_ms", errs)
-	requirePositive(cfg.Memory.MaxRetries, "memory_pipeline.memory.max_retries", errs)
+	requirePositive(cfg.Qdrant.RetryBaseDelayMs, "memory_pipeline.qdrant.retry_base_delay_ms", errs)
+	requirePositive(cfg.Qdrant.RetryMaxDelayMs, "memory_pipeline.qdrant.retry_max_delay_ms", errs)
+	requirePositive(cfg.Qdrant.MaxRetries, "memory_pipeline.qdrant.max_retries", errs)
 }
 
 func validateMemory(cfg *Config, errs *[]string) {
@@ -697,12 +631,15 @@ func validateConsolidation(cfg *Config, errs *[]string) {
 	if !cfg.Memory.Consolidation.Enabled {
 		return
 	}
-	if cfg.Discord.OwnBotID == "" {
-		*errs = append(*errs, "core.discord.own_bot_id is required when consolidation is enabled")
+	if cfg.Memory.Consolidation.Model == "" && cfg.AI.Model == "" {
+		*errs = append(*errs, "memory_pipeline.memory.consolidation.model is required when consolidation is enabled (or set core.ai.model)")
 	}
-	requireNonEmpty(cfg.Memory.Consolidation.Model, "memory_pipeline.memory.consolidation.model", errs)
-	requireNonEmpty(cfg.Memory.Consolidation.APIBaseURL, "memory_pipeline.memory.consolidation.api_base_url", errs)
-	requireNonEmpty(cfg.Memory.Consolidation.APIKey, "memory_pipeline.memory.consolidation.api_key", errs)
+	if cfg.Memory.Consolidation.APIBaseURL == "" && cfg.AI.APIBaseURL == "" {
+		*errs = append(*errs, "memory_pipeline.memory.consolidation.api_base_url is required when consolidation is enabled (or set core.ai.api_base_url)")
+	}
+	if cfg.Memory.Consolidation.APIKey == "" && cfg.AI.APIKey == "" {
+		*errs = append(*errs, "memory_pipeline.memory.consolidation.api_key is required when consolidation is enabled (or set core.ai.api_key)")
+	}
 	requirePositive(cfg.Memory.Consolidation.MaxTokens, "memory_pipeline.memory.consolidation.max_tokens", errs)
 	if cfg.Memory.Consolidation.Temperature < 0 || cfg.Memory.Consolidation.Temperature > 2 {
 		*errs = append(*errs, "memory_pipeline.memory.consolidation.temperature must be between 0 and 2")
@@ -734,7 +671,6 @@ func validateDecision(cfg *Config, errs *[]string) {
 	if cfg.Decision.RetryCount < 0 {
 		*errs = append(*errs, "core.decision.retry_count must be greater than or equal to 0")
 	}
-	requirePositive(cfg.Decision.HTTPTimeoutSec, "core.decision.http_timeout_sec", errs)
 }
 
 func validateSystem(cfg *Config, errs *[]string) {
@@ -823,7 +759,70 @@ func (c *Config) Save() error {
 		return fmt.Errorf("config path not set")
 	}
 
-	fileData := toFileConfig(c)
+	fileData := struct {
+		SchemaVersion int `yaml:"schema_version"`
+		Core          struct {
+			Discord  DiscordConfig  `yaml:"discord"`
+			AI       AIConfig       `yaml:"ai"`
+			Decision DecisionConfig `yaml:"decision"`
+		} `yaml:"core"`
+		MemoryPipe struct {
+			Embedding EmbeddingConfig `yaml:"embedding"`
+			Memory    MemoryConfig    `yaml:"memory"`
+			Qdrant    QdrantConfig    `yaml:"qdrant"`
+		} `yaml:"memory_pipeline"`
+		Access struct {
+			Blacklist BlacklistConfig `yaml:"blacklist"`
+			Whitelist WhitelistConfig `yaml:"whitelist"`
+		} `yaml:"access_control"`
+		Operations struct {
+			Web     WebConfig        `yaml:"web"`
+			Logging LoggingConfig    `yaml:"logging"`
+			Plugins PluginsConfig    `yaml:"plugins"`
+			MCP     MCPConfig        `yaml:"mcp"`
+			Runtime OperationsConfig `yaml:"runtime"`
+		} `yaml:"operations"`
+	}{
+		SchemaVersion: currentConfigSchemaVersion,
+		Core: struct {
+			Discord  DiscordConfig  `yaml:"discord"`
+			AI       AIConfig       `yaml:"ai"`
+			Decision DecisionConfig `yaml:"decision"`
+		}{
+			Discord:  c.Discord,
+			AI:       c.AI,
+			Decision: c.Decision,
+		},
+		MemoryPipe: struct {
+			Embedding EmbeddingConfig `yaml:"embedding"`
+			Memory    MemoryConfig    `yaml:"memory"`
+			Qdrant    QdrantConfig    `yaml:"qdrant"`
+		}{
+			Embedding: c.Embedding,
+			Memory:    c.Memory,
+			Qdrant:    c.Qdrant,
+		},
+		Access: struct {
+			Blacklist BlacklistConfig `yaml:"blacklist"`
+			Whitelist WhitelistConfig `yaml:"whitelist"`
+		}{
+			Blacklist: c.Blacklist,
+			Whitelist: c.Whitelist,
+		},
+		Operations: struct {
+			Web     WebConfig        `yaml:"web"`
+			Logging LoggingConfig    `yaml:"logging"`
+			Plugins PluginsConfig    `yaml:"plugins"`
+			MCP     MCPConfig        `yaml:"mcp"`
+			Runtime OperationsConfig `yaml:"runtime"`
+		}{
+			Web:     c.Web,
+			Logging: c.Logging,
+			Plugins: c.Plugins,
+			MCP:     c.MCP,
+			Runtime: c.Operations,
+		},
+	}
 	data, err := yaml.Marshal(fileData)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)

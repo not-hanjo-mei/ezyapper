@@ -79,7 +79,7 @@ func isRetryableGrpc(err error) bool {
 }
 
 // NewQdrantClient creates a new Qdrant client using configuration from config package.
-func NewQdrantClient(ctx context.Context, cfg *config.QdrantConfig, retryMaxRetries, retryBaseDelayMs, retryMaxDelayMs int) (*QdrantClient, error) {
+func NewQdrantClient(ctx context.Context, cfg *config.QdrantConfig) (*QdrantClient, error) {
 	qdrantCfg := &qdrant.Config{
 		Host: cfg.Host,
 		Port: cfg.Port,
@@ -101,9 +101,9 @@ func NewQdrantClient(ctx context.Context, cfg *config.QdrantConfig, retryMaxRetr
 		host:        cfg.Host,
 		port:        cfg.Port,
 		vectorSize:  cfg.VectorSize,
-		maxRetries:  retryMaxRetries,
-		baseBackoff: time.Duration(retryBaseDelayMs) * time.Millisecond,
-		maxBackoff:  time.Duration(retryMaxDelayMs) * time.Millisecond,
+		maxRetries:  cfg.MaxRetries,
+		baseBackoff: time.Duration(cfg.RetryBaseDelayMs) * time.Millisecond,
+		maxBackoff:  time.Duration(cfg.RetryMaxDelayMs) * time.Millisecond,
 	}
 
 	// Initialize collections

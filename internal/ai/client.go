@@ -32,7 +32,7 @@ type Client struct {
 
 // NewClient creates a new AI client
 func NewClient(cfg *config.AIConfig, toolRegistry *tools.ToolRegistry) *Client {
-	httpTimeout := time.Duration(cfg.HTTPTimeoutSec) * time.Second
+	httpTimeout := time.Duration(cfg.Timeout) * time.Second
 	httpClient := &http.Client{Timeout: httpTimeout}
 
 	// Create OpenAI config with custom base URL
@@ -67,7 +67,7 @@ type ChatCompletionResponse struct {
 
 // processMessages converts image URLs to base64 if VisionBase64 is enabled
 func (c *Client) processMessages(ctx context.Context, messages []openai.ChatCompletionMessage) ([]openai.ChatCompletionMessage, error) {
-	if !c.config.VisionBase64 {
+	if !c.config.Vision.Base64 {
 		return messages, nil
 	}
 
@@ -102,17 +102,6 @@ func (c *Client) processMessages(ctx context.Context, messages []openai.ChatComp
 	}
 
 	return processed, nil
-}
-
-func (c *Client) requestTimeout() time.Duration {
-	if c.config != nil && c.config.Timeout > 0 {
-		return time.Duration(c.config.Timeout) * time.Second
-	}
-	if c.httpClient != nil && c.httpClient.Timeout > 0 {
-		return c.httpClient.Timeout
-	}
-	logger.Warnf("[ai] requestTimeout: no timeout configured, this should not happen (check config validation)")
-	panic("no timeout configured — validation should have caught this")
 }
 
 // visionMaxTokens returns the vision-specific MaxTokens, falling back to AI config.
@@ -159,7 +148,7 @@ func IsTimeoutLikeError(err error) bool {
 // CreateChatCompletionWithRetry sends a chat completion request with automatic retry on failures.
 func (c *Client) CreateChatCompletionWithRetry(ctx context.Context, req openai.ChatCompletionRequest, operation string) (openai.ChatCompletionResponse, error) {
 	return retry.Retry(ctx, c.config.RetryCount, func(ctx context.Context) (openai.ChatCompletionResponse, error) {
-		attemptCtx, cancel := context.WithTimeout(ctx, c.requestTimeout())
+		attemptCtx, cancel := context.WithTimeout(ctx, time.Duration(c.config.Timeout)*time.Second)
 		defer cancel()
 		logger.Debugf("[ai] calling %s API...", operation)
 		resp, err := c.client.CreateChatCompletion(attemptCtx, req)
@@ -176,7 +165,7 @@ func (c *Client) CreateChatCompletionWithRetry(ctx context.Context, req openai.C
 
 func (c *Client) createEmbeddingWithRetry(ctx context.Context, req openai.EmbeddingRequest, operation string) (openai.EmbeddingResponse, error) {
 	return retry.Retry(ctx, c.config.RetryCount, func(ctx context.Context) (openai.EmbeddingResponse, error) {
-		attemptCtx, cancel := context.WithTimeout(ctx, c.requestTimeout())
+		attemptCtx, cancel := context.WithTimeout(ctx, time.Duration(c.config.Timeout)*time.Second)
 		defer cancel()
 		logger.Debugf("[ai] calling %s API...", operation)
 		resp, err := c.client.CreateEmbeddings(attemptCtx, req)
@@ -203,7 +192,7 @@ func (c *Client) buildVisionParts(ctx context.Context, textPrompt string, imageU
 
 	for _, url := range imageURLs {
 		finalURL := url
-		if !strings.HasPrefix(url, "data:image") && c.config.VisionBase64 {
+		if !strings.HasPrefix(url, "data:image") && c.config.Vision.Base64 {
 			base64Data, err := c.downloadImageToBase64(ctx, url)
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert image to base64: %w", err)
@@ -450,8 +439,8 @@ func (c *Client) fetchImageAsDataURL(ctx context.Context, url string, opts image
 	httpClient := c.httpClient
 	if httpClient == nil {
 		timeout := 30 * time.Second
-		if c.config != nil && c.config.HTTPTimeoutSec > 0 {
-			timeout = time.Duration(c.config.HTTPTimeoutSec) * time.Second
+		if c.config != nil && c.config.Timeout > 0 {
+			timeout = time.Duration(c.config.Timeout) * time.Second
 		}
 		logger.Warnf("[ai] fetchImageAsDataURL: httpClient is nil, this should not happen (check NewClient initialization)")
 		httpClient = &http.Client{Timeout: timeout}
@@ -571,7 +560,7 @@ func (c *Client) CreateVisionCompletion(ctx context.Context, systemPrompt, textP
 
 	// Make API call with vision model and retry logic
 	visionReq := openai.ChatCompletionRequest{
-		Model:       c.config.VisionModel,
+		Model:       c.config.Vision.Model,
 		Messages:    messages,
 		MaxTokens:   c.visionMaxTokens(),
 		Temperature: c.visionTemperature(),
@@ -740,7 +729,7 @@ func (c *Client) CreateVisionCompletionWithTools(ctx context.Context, systemProm
 
 	// Make initial request with tools and retry logic
 	chatReq := openai.ChatCompletionRequest{
-		Model:       c.config.VisionModel,
+		Model:       c.config.Vision.Model,
 		Messages:    messages,
 		MaxTokens:   c.visionMaxTokens(),
 		Temperature: c.visionTemperature(),

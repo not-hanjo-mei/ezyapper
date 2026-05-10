@@ -231,8 +231,10 @@ func TestShouldEnrichRecentHistoricalImages_WithContent(t *testing.T) {
 func TestHandleTextOnlyMode_NoContext(t *testing.T) {
 	cfg := &config.Config{
 		AI: config.AIConfig{
+			LLMConfig: config.LLMConfig{
+				Model: "gpt-4",
+			},
 			Vision: config.VisionConfig{Mode: config.VisionModeTextOnly},
-			Model:  "gpt-4",
 		},
 		Discord: config.DiscordConfig{
 			OtherBotPolicy:  config.OtherBotIgnore,
@@ -242,8 +244,10 @@ func TestHandleTextOnlyMode_NoContext(t *testing.T) {
 			CooldownSeconds: 5,
 		},
 		Embedding: config.EmbeddingConfig{
-			Model:  "embed",
-			APIKey: "key",
+			LLMConfig: config.LLMConfig{
+				Model:  "embed",
+				APIKey: "key",
+			},
 		},
 		Qdrant: config.QdrantConfig{Host: "localhost", Port: 6334},
 	}
@@ -270,8 +274,10 @@ func TestHandleTextOnlyMode_NoContext(t *testing.T) {
 func TestGenerateResponse_UnknownVisionMode(t *testing.T) {
 	cfg := &config.Config{
 		AI: config.AIConfig{
+			LLMConfig: config.LLMConfig{
+				Model: "gpt-4",
+			},
 			Vision: config.VisionConfig{Mode: "invalid_mode"},
-			Model:  "gpt-4",
 		},
 		Discord: config.DiscordConfig{
 			OtherBotPolicy:  config.OtherBotIgnore,
@@ -281,8 +287,10 @@ func TestGenerateResponse_UnknownVisionMode(t *testing.T) {
 			CooldownSeconds: 5,
 		},
 		Embedding: config.EmbeddingConfig{
-			Model:  "embed",
-			APIKey: "key",
+			LLMConfig: config.LLMConfig{
+				Model:  "embed",
+				APIKey: "key",
+			},
 		},
 		Qdrant: config.QdrantConfig{Host: "localhost", Port: 6334},
 	}
@@ -310,8 +318,10 @@ func TestGenerateResponse_UnknownVisionMode(t *testing.T) {
 func TestGenerateResponse_ContextCancelled(t *testing.T) {
 	cfg := &config.Config{
 		AI: config.AIConfig{
+			LLMConfig: config.LLMConfig{
+				Model: "gpt-4",
+			},
 			Vision: config.VisionConfig{Mode: config.VisionModeTextOnly},
-			Model:  "gpt-4",
 		},
 		Discord: config.DiscordConfig{
 			OtherBotPolicy:  config.OtherBotIgnore,
@@ -321,8 +331,10 @@ func TestGenerateResponse_ContextCancelled(t *testing.T) {
 			CooldownSeconds: 5,
 		},
 		Embedding: config.EmbeddingConfig{
-			Model:  "embed",
-			APIKey: "key",
+			LLMConfig: config.LLMConfig{
+				Model:  "embed",
+				APIKey: "key",
+			},
 		},
 		Qdrant: config.QdrantConfig{Host: "localhost", Port: 6334},
 	}
@@ -350,9 +362,11 @@ func TestGenerateResponse_ContextCancelled(t *testing.T) {
 func TestFormatSystemPrompt_Basic(t *testing.T) {
 	cfg := &config.Config{
 		AI: config.AIConfig{
+			LLMConfig: config.LLMConfig{
+				Model: "gpt-4",
+			},
 			SystemPrompt: "You are {BotName} in {ServerName}",
 			Vision:       config.VisionConfig{Mode: config.VisionModeTextOnly},
-			Model:        "gpt-4",
 		},
 		Discord: config.DiscordConfig{
 			OtherBotPolicy:  config.OtherBotIgnore,
@@ -362,8 +376,10 @@ func TestFormatSystemPrompt_Basic(t *testing.T) {
 			CooldownSeconds: 5,
 		},
 		Embedding: config.EmbeddingConfig{
-			Model:  "embed",
-			APIKey: "key",
+			LLMConfig: config.LLMConfig{
+				Model:  "embed",
+				APIKey: "key",
+			},
 		},
 		Qdrant: config.QdrantConfig{Host: "localhost", Port: 6334},
 	}
@@ -430,12 +446,16 @@ func TestLongResponseChunking_Basic(t *testing.T) {
 			LongResponseDelayMs: 10,
 		},
 		AI: config.AIConfig{
+			LLMConfig: config.LLMConfig{
+				Model: "gpt-4",
+			},
 			Vision: config.VisionConfig{Mode: config.VisionModeTextOnly},
-			Model:  "gpt-4",
 		},
 		Embedding: config.EmbeddingConfig{
-			Model:  "embed",
-			APIKey: "key",
+			LLMConfig: config.LLMConfig{
+				Model:  "embed",
+				APIKey: "key",
+			},
 		},
 		Qdrant: config.QdrantConfig{Host: "localhost", Port: 6334},
 	}
@@ -553,12 +573,16 @@ func TestRunBeforeSendPluginHooks_NilManager(t *testing.T) {
 			CooldownSeconds: 5,
 		},
 		AI: config.AIConfig{
+			LLMConfig: config.LLMConfig{
+				Model: "gpt-4",
+			},
 			Vision: config.VisionConfig{Mode: config.VisionModeTextOnly},
-			Model:  "gpt-4",
 		},
 		Embedding: config.EmbeddingConfig{
-			Model:  "embed",
-			APIKey: "key",
+			LLMConfig: config.LLMConfig{
+				Model:  "embed",
+				APIKey: "key",
+			},
 		},
 		Qdrant: config.QdrantConfig{Host: "localhost", Port: 6334},
 	}

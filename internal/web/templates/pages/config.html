@@ -28,7 +28,7 @@
 			<div class="md3-card__content">
 				<h3 class="md3-config-section-title">AI Settings</h3>
 				{{template "form_field" (dict "Label" "Model" "Name" "model" "Type" "text" "Value" .Data.AI.Model "Required" true)}}
-				{{template "form_field" (dict "Label" "Vision Model" "Name" "vision_model" "Type" "text" "Value" .Data.AI.VisionModel)}}
+				{{template "form_field" (dict "Label" "Vision Model" "Name" "vision_model" "Type" "text" "Value" .Data.AI.Vision.Model)}}
 				{{template "form_field" (dict "Label" "Max Tokens" "Name" "max_tokens" "Type" "number" "Value" .Data.AI.MaxTokens)}}
 				{{template "form_field" (dict "Label" "Temperature" "Name" "temperature" "Type" "number" "Value" .Data.AI.Temperature "Placeholder" "0.8")}}
 				{{template "form_field" (dict "Label" "System Prompt" "Name" "system_prompt" "Type" "textarea" "Value" .Data.AI.SystemPrompt "Rows" 6)}}

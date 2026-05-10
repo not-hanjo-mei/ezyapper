@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/not-hanjo-mei/ezyapper/main/examples/config.schema.json",
   "title": "EZyapper Configuration",
-  "description": "JSON Schema for config.yaml v3. Mirrors internal/config validation constraints.",
+  "description": "JSON Schema for config.yaml v4. Mirrors internal/config validation constraints (vision nested, timeout rename, qdrant retry, consolidation vision object).",
   "type": "object",
   "required": ["schema_version", "core", "memory_pipeline", "operations"],
   "additionalProperties": false,
@@ -21,7 +21,7 @@
           "properties": {
             "token":                    { "type": "string" },
             "bot_name":                 { "type": "string" },
-            "own_bot_id":               { "type": "string" },
+            "own_bot_id":               { "type": "string", "$comment": "Stays in required even though some conditions (consolidation disabled, top_k=0) don't need it — JSON Schema can't express cross-subtree conditionals. Always provided for safety." },
             "reply_percentage":         { "type": "number", "minimum": 0, "maximum": 1 },
             "cooldown_seconds":         { "type": "integer", "minimum": 1 },
             "max_responses_per_minute": { "type": "integer", "minimum": 1 },
@@ -44,37 +44,16 @@
         },
         "ai": {
           "type": "object",
-          "required": ["api_base_url", "api_key", "model", "max_tokens", "temperature", "retry_count", "timeout", "system_prompt", "vision", "http_timeout_sec", "max_tool_iterations", "max_image_bytes"],
+          "required": ["api_base_url", "api_key", "model", "max_tokens", "temperature", "retry_count", "timeout", "system_prompt", "vision", "max_tool_iterations", "max_image_bytes"],
           "additionalProperties": false,
-          "allOf": [
-            {
-              "if": {
-                "properties": {
-                  "vision": {
-                    "properties": {
-                      "mode": { "not": { "const": "text_only" } }
-                    },
-                    "required": ["mode"]
-                  }
-                },
-                "required": ["vision"]
-              },
-              "then": {
-                "required": ["vision_model"]
-              }
-            }
-          ],
           "properties": {
             "api_base_url":   { "type": "string" },
             "api_key":        { "type": "string" },
             "model":          { "type": "string" },
-            "vision_model":   { "type": "string" },
-            "vision_base64":  { "type": "boolean" },
             "max_tokens":     { "type": "integer", "minimum": 1 },
             "temperature":    { "type": "number", "minimum": 0, "maximum": 2 },
             "retry_count":    { "type": "integer", "minimum": 1 },
             "timeout":        { "type": "integer", "minimum": 1 },
-            "http_timeout_sec":           { "type": "integer", "minimum": 1 },
             "max_tool_iterations":        { "type": "integer", "minimum": 1 },
             "max_image_bytes":            { "type": "integer", "minimum": 1 },
             "require_image_content_type": { "type": "boolean" },
@@ -82,12 +61,34 @@
             "extra_params":   { "type": "object" },
             "vision": {
               "type": "object",
-               "required": ["mode"],
+              "required": ["mode"],
               "additionalProperties": false,
+              "allOf": [
+                {
+                  "if": {
+                    "properties": { "mode": { "not": { "const": "text_only" } } },
+                    "required": ["mode"]
+                  },
+                  "then": {
+                    "required": ["model", "max_tokens", "retry_count", "timeout"]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": { "mode": { "const": "hybrid" } },
+                    "required": ["mode"]
+                  },
+                  "then": {
+                    "required": ["description_prompt"]
+                  }
+                }
+              ],
               "properties": {
                 "mode":               { "type": "string", "enum": ["text_only", "hybrid", "multimodal"] },
+                "model":              { "type": "string" },
+                "base64":             { "type": "boolean" },
+                "max_images":         { "type": "integer", "minimum": 1 },
                 "description_prompt": { "type": "string" },
-
                 "api_base_url":       { "type": "string" },
                 "api_key":            { "type": "string" },
                 "max_tokens":         { "type": "integer", "minimum": 1 },
@@ -106,7 +107,7 @@
             {
               "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
               "then": {
-                "required": ["model", "api_base_url", "api_key", "system_prompt", "max_tokens", "timeout", "http_timeout_sec"]
+                "required": ["model", "api_base_url", "api_key", "system_prompt", "max_tokens", "timeout"]
               }
             }
           ],
@@ -120,7 +121,6 @@
             "temperature":   { "type": "number", "minimum": 0, "maximum": 2 },
             "retry_count":   { "type": "integer", "minimum": 0 },
             "timeout":       { "type": "integer", "minimum": 1 },
-            "http_timeout_sec": { "type": "integer", "minimum": 1 },
             "system_prompt": { "type": "string" },
             "extra_params":  { "type": "object" }
           }
@@ -148,15 +148,12 @@
         },
         "memory": {
           "type": "object",
-          "required": ["consolidation_interval", "short_term_limit", "max_paginated_limit", "retry_base_delay_ms", "retry_max_delay_ms", "max_retries", "retrieval", "consolidation", "maintenance_interval_sec", "merge_cron_hour_utc", "summarize_cron_day", "merge_cosine_threshold", "prune_decay_threshold", "prune_age_days", "max_maintenance_llm_calls_per_day", "entropy_min_unique_word_ratio", "decay_rates", "scoring", "rrf_k", "context_max_memories"],
+          "required": ["consolidation_interval", "short_term_limit", "max_paginated_limit", "retrieval", "consolidation", "maintenance_interval_sec", "merge_cron_hour_utc", "summarize_cron_day", "merge_cosine_threshold", "prune_decay_threshold", "prune_age_days", "max_maintenance_llm_calls_per_day", "entropy_min_unique_word_ratio", "decay_rates", "scoring", "rrf_k", "context_max_memories"],
           "additionalProperties": false,
           "properties": {
             "consolidation_interval": { "type": "integer", "minimum": 1 },
             "short_term_limit":       { "type": "integer", "minimum": 1, "maximum": 500 },
             "max_paginated_limit":    { "type": "integer", "minimum": 1 },
-            "retry_base_delay_ms":    { "type": "integer", "minimum": 1 },
-            "retry_max_delay_ms":     { "type": "integer", "minimum": 1 },
-            "max_retries":            { "type": "integer", "minimum": 1 },
             "retrieval": {
               "type": "object",
               "required": ["top_k", "min_score"],
@@ -177,7 +174,7 @@
                 {
                   "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
                   "then": {
-                    "required": ["model", "api_base_url", "api_key", "max_tokens", "retry_count", "timeout", "system_prompt"]
+                    "required": ["model", "max_tokens", "retry_count", "timeout", "system_prompt"]
                   }
                 }
               ],
@@ -190,14 +187,23 @@
                 "temperature":         { "type": "number", "minimum": 0, "maximum": 2 },
                 "retry_count":         { "type": "integer", "minimum": 0 },
                 "timeout":             { "type": "integer", "minimum": 1 },
-                "vision_model":        { "type": "string" },
-                "vision_base64":       { "type": "boolean" },
-                "vision_api_base_url": { "type": "string" },
-                "vision_api_key":      { "type": "string" },
-                "vision_max_tokens":   { "type": "integer", "minimum": 1 },
-                "vision_temperature":  { "type": "number", "minimum": 0, "maximum": 2 },
-                "vision_retry_count":  { "type": "integer", "minimum": 0 },
-                "vision_timeout":      { "type": "integer", "minimum": 1 },
+                "vision": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "mode":               { "type": "string", "enum": ["text_only", "hybrid", "multimodal"] },
+                    "model":              { "type": "string" },
+                    "base64":             { "type": "boolean" },
+                    "api_base_url":       { "type": "string" },
+                    "api_key":            { "type": "string" },
+                    "max_tokens":         { "type": "integer", "minimum": 1 },
+                    "temperature":        { "type": "number", "minimum": 0, "maximum": 2 },
+                    "retry_count":        { "type": "integer", "minimum": 0 },
+                    "timeout":            { "type": "integer", "minimum": 1 },
+                    "description_prompt": { "type": "string" },
+                    "extra_params":       { "type": "object" }
+                  }
+                },
                 "system_prompt":       { "type": "string" },
                 "extra_params":        { "type": "object" },
                 "memory_search_limit": { "type": "integer", "minimum": 1 }
@@ -249,13 +255,16 @@
          "qdrant": {
           "type": "object",
           "required": ["host", "port", "vector_size"],
-          "additionalProperties": false,
-          "properties": {
-            "host":        { "type": "string" },
-            "port":        { "type": "integer", "minimum": 1, "maximum": 65535 },
-            "api_key":     { "type": "string" },
-            "vector_size": { "type": "integer", "minimum": 1 }
-          }
+           "additionalProperties": false,
+           "properties": {
+             "host":              { "type": "string" },
+             "port":              { "type": "integer", "minimum": 1, "maximum": 65535 },
+             "api_key":           { "type": "string" },
+             "vector_size":       { "type": "integer", "minimum": 1 },
+             "retry_base_delay_ms": { "type": "integer", "minimum": 1 },
+             "retry_max_delay_ms":  { "type": "integer", "minimum": 1 },
+             "max_retries":         { "type": "integer", "minimum": 1 }
+           }
         }
       }
     },
@@ -356,10 +365,19 @@
         "mcp": {
           "type": "object",
           "additionalProperties": false,
+          "allOf": [
+            {
+              "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+              "then": {
+                "required": ["servers"]
+              }
+            }
+          ],
           "properties": {
             "enabled": { "type": "boolean" },
             "servers": {
               "type": "array",
+              "minItems": 1,
               "items": {
                 "type": "object",
                 "required": ["name", "type"],

@@ -33,6 +33,10 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		return
 	}
 
+	sessionCtx, cancel := context.WithTimeout(ctx, calculateSessionTimeout(b.cfg()))
+	defer cancel()
+	ctx = sessionCtx
+
 	if pm != nil {
 		pm.SetPhase(PhaseGenerating)
 	}

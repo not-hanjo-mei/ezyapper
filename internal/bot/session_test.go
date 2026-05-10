@@ -24,8 +24,10 @@ func TestNew(t *testing.T) {
 			CooldownSeconds: 5,
 		},
 		AI: config.AIConfig{
-			APIKey: "test-key",
-			Model:  "gpt-4",
+			LLMConfig: config.LLMConfig{
+				APIKey: "test-key",
+				Model:  "gpt-4",
+			},
 		},
 	}
 

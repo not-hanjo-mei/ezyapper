@@ -17,18 +17,22 @@ func TestMain(m *testing.M) {
 func TestBuildEmbeddingAIConfig_UsesEmbeddingOverrides(t *testing.T) {
 	cfg := &config.Config{
 		AI: config.AIConfig{
-			APIBaseURL:  "https://main.example/v1",
-			APIKey:      "main-key",
-			RetryCount:  3,
-			Timeout:     60,
-			ExtraParams: map[string]interface{}{"source": "main"},
+			LLMConfig: config.LLMConfig{
+				APIBaseURL:  "https://main.example/v1",
+				APIKey:      "main-key",
+				RetryCount:  3,
+				Timeout:     60,
+				ExtraParams: map[string]interface{}{"source": "main"},
+			},
 		},
 		Embedding: config.EmbeddingConfig{
-			APIBaseURL:  "https://embed.example/v1",
-			APIKey:      "embed-key",
-			RetryCount:  1,
-			Timeout:     15,
-			ExtraParams: map[string]interface{}{"source": "embed"},
+			LLMConfig: config.LLMConfig{
+				APIBaseURL:  "https://embed.example/v1",
+				APIKey:      "embed-key",
+				RetryCount:  1,
+				Timeout:     15,
+				ExtraParams: map[string]interface{}{"source": "embed"},
+			},
 		},
 	}
 
@@ -53,15 +57,19 @@ func TestBuildEmbeddingAIConfig_UsesEmbeddingOverrides(t *testing.T) {
 func TestBuildEmbeddingAIConfig_FallsBackToMainAI(t *testing.T) {
 	cfg := &config.Config{
 		AI: config.AIConfig{
-			APIBaseURL:  "https://main.example/v1",
-			APIKey:      "main-key",
-			RetryCount:  3,
-			Timeout:     45,
-			ExtraParams: map[string]interface{}{"source": "main"},
+			LLMConfig: config.LLMConfig{
+				APIBaseURL:  "https://main.example/v1",
+				APIKey:      "main-key",
+				RetryCount:  3,
+				Timeout:     45,
+				ExtraParams: map[string]interface{}{"source": "main"},
+			},
 		},
 		Embedding: config.EmbeddingConfig{
-			RetryCount: 0,
-			Timeout:    0,
+			LLMConfig: config.LLMConfig{
+				RetryCount: 0,
+				Timeout:    0,
+			},
 		},
 	}
 

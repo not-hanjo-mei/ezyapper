@@ -31,11 +31,11 @@ func NewVisionDescriber(client *ai.Client, visionConfig *config.VisionConfig, ai
 
 	return &VisionDescriber{
 		client:            client,
-		visionModel:       aiConfig.VisionModel,
+		visionModel:       aiConfig.Vision.Model,
 		descriptionPrompt: visionConfig.DescriptionPrompt,
 		maxTokens:         maxTokens,
 		temperature:       temperature,
-		visionBase64:      aiConfig.VisionBase64,
+		visionBase64:      aiConfig.Vision.Base64,
 		extraParams:       visionConfig.ExtraParams,
 	}
 }

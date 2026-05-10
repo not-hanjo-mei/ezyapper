@@ -63,7 +63,7 @@ func NewDecisionService(cfg *config.DecisionConfig) (*DecisionService, error) {
 	openaiConfig := openai.DefaultConfig(cfg.APIKey)
 	openaiConfig.BaseURL = cfg.APIBaseURL
 
-	httpTimeout := time.Duration(cfg.HTTPTimeoutSec) * time.Second
+	httpTimeout := time.Duration(cfg.Timeout) * time.Second
 	httpClient := &http.Client{Timeout: httpTimeout}
 	openaiConfig.HTTPClient = httpClient
 

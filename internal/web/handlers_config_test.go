@@ -38,19 +38,19 @@ core:
     api_base_url: "https://api.openai.com"
     api_key: "sk-test"
     model: "gpt-4"
-    vision_model: "gpt-4-vision"
     vision:
       mode: "hybrid"
+      model: "gpt-4-vision"
       description_prompt: "test"
       max_images: 4
       max_tokens: 512
       retry_count: 1
       timeout: 30
+      base64: false
     max_tokens: 1024
     temperature: 0.8
     retry_count: 3
     timeout: 30
-    http_timeout_sec: 30
     max_tool_iterations: 10
     max_image_bytes: 5242880
     system_prompt: "test"
@@ -65,9 +65,6 @@ memory_pipeline:
     consolidation_interval: 10
     short_term_limit: 20
     max_paginated_limit: 100
-    retry_base_delay_ms: 100
-    retry_max_delay_ms: 5000
-    max_retries: 3
     retrieval:
       top_k: 0
       min_score: 0.0
@@ -101,6 +98,9 @@ memory_pipeline:
     host: "localhost"
     port: 6333
     vector_size: 1536
+    retry_base_delay_ms: 100
+    retry_max_delay_ms: 5000
+    max_retries: 3
 access_control:
   blacklist:
   whitelist:

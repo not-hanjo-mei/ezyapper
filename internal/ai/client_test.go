@@ -30,20 +30,9 @@ func TestMain(m *testing.M) {
 // --- Helpers ---
 
 func defaultAIConfig() *config.AIConfig {
-	return &config.AIConfig{
-		APIKey:                  "test-key",
-		APIBaseURL:              "https://api.example.com",
-		Model:                   "gpt-4",
-		VisionModel:             "gpt-4-vision",
-		MaxTokens:               100,
-		Temperature:             0.7,
-		RetryCount:              2,
-		Timeout:                 0,
-		HTTPTimeoutSec:          30,
-		MaxToolIterations:       5,
+	return &config.AIConfig{LLMConfig: config.LLMConfig{APIKey: "test-key", APIBaseURL: "https://api.example.com", Model: "gpt-4", MaxTokens: 100, Temperature: 0.7, RetryCount: 2, Timeout: 30}, Vision: config.VisionConfig{Model: "gpt-4-vision"}, MaxToolIterations: 5,
 		MaxImageBytes:           10485760,
-		RequireImageContentType: true,
-	}
+		RequireImageContentType: true}
 }
 
 func testClient(cfg *config.AIConfig) *Client {
@@ -54,7 +43,7 @@ func testClient(cfg *config.AIConfig) *Client {
 
 func TestNewClient_InitializesFields(t *testing.T) {
 	cfg := defaultAIConfig()
-	cfg.HTTPTimeoutSec = 15
+	cfg.Timeout = 15
 	tr := tools.NewToolRegistry()
 	c := NewClient(cfg, tr)
 
@@ -75,70 +64,13 @@ func TestNewClient_InitializesFields(t *testing.T) {
 	}
 }
 
-func TestNewClient_UsesHTTPTimeoutSec(t *testing.T) {
+func TestNewClient_UsesTimeoutConfig(t *testing.T) {
 	cfg := defaultAIConfig()
-	cfg.HTTPTimeoutSec = 45
+	cfg.Timeout = 45
 	c := NewClient(cfg, tools.NewToolRegistry())
 
 	if c.httpClient.Timeout != 45*time.Second {
 		t.Errorf("expected HTTP timeout 45s, got %v", c.httpClient.Timeout)
-	}
-}
-
-func TestNewClient_HTTPTimeoutSecFromConfig(t *testing.T) {
-	cfg := defaultAIConfig()
-	cfg.HTTPTimeoutSec = 10
-	c := NewClient(cfg, tools.NewToolRegistry())
-
-	if c.httpClient.Timeout != 10*time.Second {
-		t.Errorf("expected HTTP timeout 10s, got %v", c.httpClient.Timeout)
-	}
-}
-
-// --- requestTimeout ---
-
-func TestRequestTimeout_FromConfig(t *testing.T) {
-	cfg := defaultAIConfig()
-	cfg.Timeout = 10
-	c := testClient(cfg)
-	if got := c.requestTimeout(); got != 10*time.Second {
-		t.Errorf("expected 10s, got %v", got)
-	}
-}
-
-func TestRequestTimeout_FallsBackToHTTPClient(t *testing.T) {
-	cfg := defaultAIConfig()
-	cfg.Timeout = 0
-	c := testClient(cfg)
-	// httpClient initialized from HTTPTimeoutSec (30s default)
-	if got := c.requestTimeout(); got != 30*time.Second {
-		t.Errorf("expected 30s from httpClient, got %v", got)
-	}
-}
-
-func TestRequestTimeout_ConfigNil(t *testing.T) {
-	c := &Client{config: nil, httpClient: &http.Client{Timeout: 45 * time.Second}}
-	if got := c.requestTimeout(); got != 45*time.Second {
-		t.Errorf("expected 45s, got %v", got)
-	}
-}
-
-func TestRequestTimeout_BothNil(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("expected panic when both config and httpClient are nil, but no panic occurred")
-		}
-	}()
-	c := &Client{config: nil, httpClient: nil}
-	c.requestTimeout()
-}
-
-func TestRequestTimeout_HTTPClientNilWithConfig(t *testing.T) {
-	cfg := defaultAIConfig()
-	cfg.Timeout = 20
-	c := &Client{config: cfg, httpClient: nil}
-	if got := c.requestTimeout(); got != 20*time.Second {
-		t.Errorf("expected 20s from config, got %v", got)
 	}
 }
 
@@ -516,7 +448,7 @@ func TestApplyExtraParams_Method(t *testing.T) {
 
 func TestProcessMessages_VisionBase64Disabled(t *testing.T) {
 	cfg := defaultAIConfig()
-	cfg.VisionBase64 = false
+	cfg.Vision.Base64 = false
 	c := testClient(cfg)
 
 	messages := []openai.ChatCompletionMessage{
@@ -536,7 +468,7 @@ func TestProcessMessages_VisionBase64Disabled(t *testing.T) {
 
 func TestProcessMessages_VisionBase64Enabled_NoMultiContent(t *testing.T) {
 	cfg := defaultAIConfig()
-	cfg.VisionBase64 = true
+	cfg.Vision.Base64 = true
 	c := testClient(cfg)
 
 	messages := []openai.ChatCompletionMessage{
@@ -554,7 +486,7 @@ func TestProcessMessages_VisionBase64Enabled_NoMultiContent(t *testing.T) {
 
 func TestProcessMessages_VisionBase64Enabled_DataURIAlready(t *testing.T) {
 	cfg := defaultAIConfig()
-	cfg.VisionBase64 = true
+	cfg.Vision.Base64 = true
 	c := testClient(cfg)
 
 	messages := []openai.ChatCompletionMessage{
@@ -591,7 +523,7 @@ func TestProcessMessages_VisionBase64Enabled_ConvertsURL(t *testing.T) {
 	defer server.Close()
 
 	cfg := defaultAIConfig()
-	cfg.VisionBase64 = true
+	cfg.Vision.Base64 = true
 	c := testClient(cfg)
 	// Give the client a fresh httpClient that has a reasonable timeout
 	c.httpClient = server.Client()
@@ -630,7 +562,7 @@ func TestProcessMessages_DownloadError(t *testing.T) {
 	defer server.Close()
 
 	cfg := defaultAIConfig()
-	cfg.VisionBase64 = true
+	cfg.Vision.Base64 = true
 	c := testClient(cfg)
 	c.httpClient = server.Client()
 
@@ -947,7 +879,7 @@ func TestBuildVisionParts_ConvertsURLWhenVisionBase64(t *testing.T) {
 	defer server.Close()
 
 	cfg := defaultAIConfig()
-	cfg.VisionBase64 = true
+	cfg.Vision.Base64 = true
 	c := testClient(cfg)
 	c.httpClient = server.Client()
 
@@ -965,7 +897,7 @@ func TestBuildVisionParts_ConvertsURLWhenVisionBase64(t *testing.T) {
 
 func TestBuildVisionParts_SkipsConversionWhenVisionBase64False(t *testing.T) {
 	cfg := defaultAIConfig()
-	cfg.VisionBase64 = false
+	cfg.Vision.Base64 = false
 	c := testClient(cfg)
 
 	externalURL := "https://example.com/img.png"
@@ -1004,7 +936,7 @@ func TestBuildVisionParts_DownloadError(t *testing.T) {
 	defer server.Close()
 
 	cfg := defaultAIConfig()
-	cfg.VisionBase64 = true
+	cfg.Vision.Base64 = true
 	c := testClient(cfg)
 	c.httpClient = server.Client()
 
@@ -1412,7 +1344,7 @@ func TestCreateVisionCompletion_BuildError(t *testing.T) {
 	defer server.Close()
 
 	cfg := defaultAIConfig()
-	cfg.VisionBase64 = true
+	cfg.Vision.Base64 = true
 	c := testClient(cfg)
 	c.config.APIBaseURL = server.URL
 	c.httpClient = server.Client()
@@ -1508,7 +1440,7 @@ func TestCreateVisionCompletionWithTools_BuildError(t *testing.T) {
 	defer server.Close()
 
 	cfg := defaultAIConfig()
-	cfg.VisionBase64 = true
+	cfg.Vision.Base64 = true
 	c := testClient(cfg)
 	c.config.APIBaseURL = server.URL
 	c.httpClient = server.Client()
@@ -1730,7 +1662,7 @@ func TestApplyExtraParamsToStruct_LogitBiasMap(t *testing.T) {
 
 func TestProcessMessages_VisionBase64False_SkipsURL(t *testing.T) {
 	cfg := defaultAIConfig()
-	cfg.VisionBase64 = false
+	cfg.Vision.Base64 = false
 	c := testClient(cfg)
 
 	extURL := "https://cdn.example.com/image.png"

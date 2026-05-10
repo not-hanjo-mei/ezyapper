@@ -28,7 +28,8 @@ core:
     # NOTE: own_bot_id is unconditionally required in JSON Schema (cross-subtree
     # conditional validation is not expressible in JSON Schema draft 2020-12).
     # Go only requires it when memory consolidation is enabled.
-    # Required when memory consolidation is enabled.
+    # Required when memory retrieval (memory_pipeline.memory.retrieval.top_k > 0)
+    # or memory consolidation (memory_pipeline.memory.consolidation.enabled) is active.
     own_bot_id: "YOUR_BOT_USER_ID"
 
     # Random reply probability when bot is NOT mentioned (0.0-1.0).
@@ -80,16 +81,19 @@ core:
     # Main text model.
     model: "gpt-4o-mini"
 
-    # Model used for multimodal/hybrid vision path.
-    # Required when vision.mode is not text_only.
-    vision_model: "gpt-4o"
-
-    # Whether to fetch images and send them as base64 payloads.
-    # Set false to send images as URLs (may not work with local endpoints).
-    vision_base64: true
-
     # ── Vision processing ──
     vision:
+      # Model used for multimodal/hybrid vision path.
+      # Required when vision.mode is not text_only.
+      model: "gpt-4o"
+
+      # Whether to fetch images and send them as base64 payloads.
+      # Set false to send images as URLs (may not work with local endpoints).
+      base64: true
+
+      # Max images to process per message.
+      max_images: 4
+
       # text_only: ignore images
       # hybrid: describe image -> send text to main model
       # multimodal: send images directly to model
@@ -119,11 +123,9 @@ core:
     # Retries for transient API/network errors.
     retry_count: 3
 
-    # Per-request LLM timeout (seconds).
-    timeout: 180
-
-    # HTTP client timeout for API connections (seconds).
-    http_timeout_sec: 30
+    # timeout controls per-request LLM API call timeout (~30s);
+    # global pipeline timeout is auto-calculated from this value.
+    timeout: 30
 
     # Max tool-calling iterations in a single conversation turn.
     # Guards against infinite tool-call loops.
@@ -172,7 +174,6 @@ core:
     ## temperature: 0.1
     ## retry_count: 3
     ## timeout: 10
-    ## http_timeout_sec: 30
     ## system_prompt: |
     ##   You are a decision classifier for a Discord bot. Decide if the bot should respond.
     ##   Respond ONLY with valid JSON: {"should_respond": true/false, "reason": "...", "confidence": 0.0-1.0}
@@ -209,16 +210,6 @@ memory_pipeline:
 
     # Pagination limit for fetching older messages.
     max_paginated_limit: 100
-
-    # ── Retry settings for Qdrant operations ──
-    # Base delay for exponential backoff (milliseconds).
-    retry_base_delay_ms: 1000
-
-    # Max delay for exponential backoff (milliseconds).
-    retry_max_delay_ms: 30000
-
-    # Max retry attempts for Qdrant operations.
-    max_retries: 3
 
     # ── Long-Term Memory ──
     long_term_memory:
@@ -265,23 +256,26 @@ memory_pipeline:
       enabled: false
 
       # All fields below are required ONLY when enabled: true.
-      ## model: "gpt-4o-mini"
-      ## api_base_url: "https://api.openai.com/v1"      # optional override
-      ## api_key: "YOUR_API_KEY"                        # optional override
+      ## model: "gpt-4o-mini"                         # optional, inherits from core.ai if empty
+      ## api_base_url: "https://api.openai.com/v1"    # optional, inherits from core.ai if empty
+      ## api_key: "YOUR_API_KEY"                      # optional, inherits from core.ai if empty
       ## max_tokens: 4096
       ## temperature: 0.8
       ## retry_count: 5
       ## timeout: 30
 
       # ── Optional: separate vision settings for consolidation ──
-      ## vision_model: "gpt-4o"
-      ## vision_base64: true
-      ## vision_api_base_url: "https://api.openai.com/v1"
-      ## vision_api_key: "YOUR_API_KEY"
-      ## vision_max_tokens: 1024
-      ## vision_temperature: 0.8
-      ## vision_retry_count: 5
-      ## vision_timeout: 30
+      # All fields below inherit from core.ai.vision when left empty.
+      ## vision:
+      ##   model: "gpt-4o"
+      ##   base64: true
+      ##   max_images: 4
+      ##   api_base_url: ""    # optional, inherits from core.ai if empty
+      ##   api_key: ""         # optional, inherits from core.ai if empty
+      ##   max_tokens: 1024
+      ##   temperature: 0.8
+      ##   retry_count: 5
+      ##   timeout: 30
 
       # How many existing memories to search for deduplication/similarity.
       memory_search_limit: 20
@@ -389,6 +383,16 @@ memory_pipeline:
     # text-embedding-3-small / text-embedding-ada-002 -> 1536
     # text-embedding-3-large                         -> 3072
     vector_size: 1536
+
+    # ── Retry settings for Qdrant operations ──
+    # Base delay for exponential backoff (milliseconds).
+    retry_base_delay_ms: 1000
+
+    # Max delay for exponential backoff (milliseconds).
+    retry_max_delay_ms: 30000
+
+    # Max retry attempts for Qdrant operations.
+    max_retries: 3
 
 access_control:
   # ── Blacklist ─────────────────────────────────────────

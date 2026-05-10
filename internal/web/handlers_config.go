@@ -75,7 +75,7 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 				newCfg.AI.Model = v
 			}
 			if v := r.FormValue("vision_model"); v != "" {
-				newCfg.AI.VisionModel = v
+				newCfg.AI.Vision.Model = v
 			}
 			if v := r.FormValue("max_tokens"); v != "" {
 				tok, err := strconv.Atoi(v)

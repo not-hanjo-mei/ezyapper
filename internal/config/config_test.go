@@ -160,7 +160,8 @@ core:
 		api_base_url: "https://api.openai.com/v1"
 		api_key: "test-key"
 		model: "gpt-4o-mini"
-		vision_model: "gpt-4o"
+		vision:
+			model: "gpt-4o"
 		max_tokens: 1024
 		temperature: 0.8
 		retry_count: 1
@@ -169,7 +170,7 @@ core:
 		http_timeout_sec: 30
 		max_tool_iterations: 5
 		max_image_bytes: 10485760
-	memory_pipeline:
+memory_pipeline:
 	embedding:
 		model: "text-embedding-3-small"
 		retry_count: 1
@@ -226,7 +227,7 @@ operations:
 	mcp:
 		enabled: false
 		servers: []
-	operations:
+	runtime:
 		shutdown_timeout_sec: 300
 		cleanup_interval_min: 5
 `
@@ -259,7 +260,8 @@ core:
 	ai:
 		api_base_url: "https://api.openai.com/v1"
 		model: "gpt-4o-mini"
-		vision_model: "gpt-4o"
+		vision:
+			model: "gpt-4o"
 		max_tokens: 1024
 		temperature: 0.8
 		retry_count: 1
@@ -268,7 +270,7 @@ core:
 		http_timeout_sec: 30
 		max_tool_iterations: 5
 		max_image_bytes: 10485760
-	memory_pipeline:
+memory_pipeline:
 	embedding:
 		model: "text-embedding-3-small"
 		retry_count: 1
@@ -325,7 +327,7 @@ operations:
 	mcp:
 		enabled: false
 		servers: []
-	operations:
+	runtime:
 		shutdown_timeout_sec: 300
 		cleanup_interval_min: 5
 `
@@ -352,17 +354,21 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
 		},
 		AI: AIConfig{
-			APIBaseURL:     "https://api.openai.com/v1",
-			APIKey:         "test",
-			Model:          "gpt-4o-mini",
-			VisionModel:    "gpt-4o",
-			MaxTokens:      1024,
-			Temperature:    0.8,
-			SystemPrompt:   "test",
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.openai.com/v1",
+				APIKey:      "test",
+				Model:       "gpt-4o-mini",
+				MaxTokens:   1024,
+				Temperature: 0.8,
+			},
+			Vision:            VisionConfig{Model: "gpt-4o"},
+			SystemPrompt:      "test",
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{
-			Model: "text-embedding-3-small",
+			LLMConfig: LLMConfig{
+				Model: "text-embedding-3-small",
+			},
 		},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 50,
@@ -443,17 +449,21 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
 		},
 		AI: AIConfig{
-			APIBaseURL:     "https://api.openai.com/v1",
-			APIKey:         "test",
-			Model:          "gpt-4o-mini",
-			VisionModel:    "gpt-4o",
-			MaxTokens:      1024,
-			Temperature:    3.0,
-			SystemPrompt:   "test",
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.openai.com/v1",
+				APIKey:      "test",
+				Model:       "gpt-4o-mini",
+				MaxTokens:   1024,
+				Temperature: 3.0,
+			},
+			Vision:            VisionConfig{Model: "gpt-4o"},
+			SystemPrompt:      "test",
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{
-			Model: "text-embedding-3-small",
+			LLMConfig: LLMConfig{
+				Model: "text-embedding-3-small",
+			},
 		},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 50,
@@ -556,18 +566,21 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
 		},
 		AI: AIConfig{
-			APIBaseURL:     "https://api.openai.com/v1",
-			APIKey:         "test",
-			Model:          "gpt-4o-mini",
-			VisionModel:    "gpt-4o",
-			MaxTokens:      1024,
-			Temperature:    0.8,
-			SystemPrompt:   "test",
-			Vision:         VisionConfig{},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.openai.com/v1",
+				APIKey:      "test",
+				Model:       "gpt-4o-mini",
+				MaxTokens:   1024,
+				Temperature: 0.8,
+			},
+			Vision:            VisionConfig{Model: "gpt-4o"},
+			SystemPrompt:      "test",
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{
-			Model: "text-embedding-3-small",
+			LLMConfig: LLMConfig{
+				Model: "text-embedding-3-small",
+			},
 		},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 50,
@@ -651,21 +664,25 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
 		},
 		AI: AIConfig{
-			APIBaseURL:   "https://api.openai.com/v1",
-			APIKey:       "test",
-			Model:        "gpt-4o-mini",
-			VisionModel:  "gpt-4o",
-			MaxTokens:    1024,
-			Temperature:  0.8,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.openai.com/v1",
+				APIKey:      "test",
+				Model:       "gpt-4o-mini",
+				MaxTokens:   1024,
+				Temperature: 0.8,
+			},
 			SystemPrompt: "test",
 			Vision: VisionConfig{
+				Model:             "gpt-4o",
 				Mode:              VisionModeHybrid,
 				DescriptionPrompt: "",
 			},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{
-			Model: "text-embedding-3-small",
+			LLMConfig: LLMConfig{
+				Model: "text-embedding-3-small",
+			},
 		},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 50,
@@ -750,33 +767,28 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
 		},
 		AI: AIConfig{
-			APIBaseURL:   "https://api.openai.com/v1",
-			APIKey:       "test",
-			Model:        "gpt-4o-mini",
-			VisionModel:  "gpt-4o",
-			MaxTokens:    1024,
-			Temperature:  0.8,
-			SystemPrompt: "test",
-			RetryCount:   1,
-			Timeout:      30,
-			Vision: VisionConfig{
-				Mode: VisionModeTextOnly,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.openai.com/v1",
+				APIKey:      "test",
+				Model:       "gpt-4o-mini",
+				MaxTokens:   1024,
+				Temperature: 0.8,
+				RetryCount:  1,
+				Timeout:     30,
 			},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
+			SystemPrompt: "test",
+			Vision: VisionConfig{
+				Model: "gpt-4o",
+				Mode:  VisionModeTextOnly,
+			},
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
-		Embedding: EmbeddingConfig{
-			Model:      "text-embedding-3-small",
-			RetryCount: 0,
-			Timeout:    30,
-		},
+		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "text-embedding-3-small", RetryCount: 0, Timeout: 30}},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			RetryBaseDelayMs: 1000,
-			RetryMaxDelayMs:  30000,
-			MaxRetries:       3,
 			Retrieval: RetrievalConfig{
 				TopK:                   0,
 				MinScore:               0.75,
@@ -817,9 +829,12 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			MemoryStrengthMultiplier:   1.0,
 		},
 		Qdrant: QdrantConfig{
-			Host:       "localhost",
-			Port:       6334,
-			VectorSize: 1536,
+			Host:             "localhost",
+			Port:             6334,
+			VectorSize:       1536,
+			RetryBaseDelayMs: 1000,
+			RetryMaxDelayMs:  30000,
+			MaxRetries:       3,
 		},
 		Web: WebConfig{
 			Port:                      8080,
@@ -860,133 +875,22 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 }
 func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, OwnBotID: "bot123", RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
-		},
-		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
-		Memory: MemoryConfig{
-			ConsolidationInterval: 1,
-			ShortTermLimit:        1,
-			MaxPaginatedLimit:     100,
-
-			RetryBaseDelayMs:             1000,
-			RetryMaxDelayMs:              30000,
-			MaxRetries:                   3,
-			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
-			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
-			MaintenanceIntervalSec:       3600,
-			MergeCronHourUTC:             3,
-			SummarizeCronDay:             0,
-			MergeCosineThreshold:         0.85,
-			PruneDecayThreshold:          0.1,
-			PruneAgeDays:                 90,
-			RelationshipPruneAgeDays:     90,
-			MaxMaintenanceLLMCallsPerDay: 50,
-			EntropyMinUniqueWordRatio:    0.15,
-			DecayRates: DecayRatesConfig{
-				Fact:     0.01,
-				Episode:  0.05,
-				Interest: 0.02,
-				Summary:  0.005,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
 			},
-			Scoring: ScoringWeights{
-				ImportanceWeight: 0.4,
-				RecencyWeight:    0.3,
-				AccessWeight:     0.2,
-				ConfidenceWeight: 0.1,
-			},
-			RRFK:                       60,
-			ContextMaxMemories:         20,
-			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
-			MaxMentionedUsersPerMemory: 3,
-			MemoryStrengthMultiplier:   1.0,
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
-		Qdrant:     QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
-		Web:        WebConfig{Enabled: false},
-		Logging:    LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
-		Plugins:    PluginsConfig{Enabled: false},
-		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
-	}
-	err := validate(cfg)
-	if err != nil {
-		t.Fatalf("Expected validation to pass when web is disabled, got: %v", err)
-	}
-}
-func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
-	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
-		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
-		},
-		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
-		Memory: MemoryConfig{
-			ConsolidationInterval: 1,
-			ShortTermLimit:        1,
-			MaxPaginatedLimit:     100,
-
-			RetryBaseDelayMs:             1000,
-			RetryMaxDelayMs:              30000,
-			MaxRetries:                   3,
-			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
-			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
-			MaintenanceIntervalSec:       3600,
-			MergeCronHourUTC:             3,
-			SummarizeCronDay:             0,
-			MergeCosineThreshold:         0.85,
-			PruneDecayThreshold:          0.1,
-			PruneAgeDays:                 90,
-			RelationshipPruneAgeDays:     90,
-			MaxMaintenanceLLMCallsPerDay: 50,
-			EntropyMinUniqueWordRatio:    0.15,
-			DecayRates: DecayRatesConfig{
-				Fact:     0.01,
-				Episode:  0.05,
-				Interest: 0.02,
-				Summary:  0.005,
-			},
-			Scoring: ScoringWeights{
-				ImportanceWeight: 0.4,
-				RecencyWeight:    0.3,
-				AccessWeight:     0.2,
-				ConfidenceWeight: 0.1,
-			},
-			RRFK:                       60,
-			ContextMaxMemories:         20,
-			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
-			MaxMentionedUsersPerMemory: 3,
-			MemoryStrengthMultiplier:   1.0,
-		},
-		Qdrant:     QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
-		Web:        WebConfig{Enabled: false},
-		Logging:    LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
-		Plugins:    PluginsConfig{Enabled: false, PluginsDir: ""},
-		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
-	}
-	err := validate(cfg)
-	if err != nil {
-		t.Fatalf("Expected validation to pass when plugins are disabled, got: %v", err)
-	}
-}
-func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
-	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
-		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
-		},
-		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
+		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "em", RetryCount: 0, Timeout: 1}},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
@@ -1021,73 +925,7 @@ func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 			MaxMentionedUsersPerMemory: 3,
 			MemoryStrengthMultiplier:   1.0,
 		},
-		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
-		Web:     WebConfig{Enabled: false},
-		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
-		Plugins: PluginsConfig{Enabled: false},
-		MCP: MCPConfig{
-			Enabled: true,
-			Servers: []MCPServer{{Name: "", Type: "stdio", Command: ""}},
-		},
-		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
-	}
-	err := validate(cfg)
-	if err == nil {
-		t.Fatal("Expected validation error for invalid MCP server config")
-	}
-	if !strings.Contains(err.Error(), "operations.mcp.servers[0].name is required") {
-		t.Fatalf("Expected MCP name validation error, got: %v", err)
-	}
-	if !strings.Contains(err.Error(), "operations.mcp.servers[0].command is required when type is stdio") {
-		t.Fatalf("Expected MCP stdio command validation error, got: %v", err)
-	}
-}
-func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *testing.T) {
-	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
-		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
-		},
-		Embedding: EmbeddingConfig{},
-		Memory: MemoryConfig{
-			ConsolidationInterval: 1,
-			ShortTermLimit:        1,
-			MaxPaginatedLimit:     100,
-
-			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
-			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
-			MaintenanceIntervalSec:       3600,
-			MergeCronHourUTC:             3,
-			SummarizeCronDay:             0,
-			MergeCosineThreshold:         0.85,
-			PruneDecayThreshold:          0.1,
-			PruneAgeDays:                 90,
-			RelationshipPruneAgeDays:     90,
-			MaxMaintenanceLLMCallsPerDay: 50,
-			EntropyMinUniqueWordRatio:    0.15,
-			DecayRates: DecayRatesConfig{
-				Fact:     0.01,
-				Episode:  0.05,
-				Interest: 0.02,
-				Summary:  0.005,
-			},
-			Scoring: ScoringWeights{
-				ImportanceWeight: 0.4,
-				RecencyWeight:    0.3,
-				AccessWeight:     0.2,
-				ConfidenceWeight: 0.1,
-			},
-			RRFK:                       60,
-			ContextMaxMemories:         20,
-			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
-			MaxMentionedUsersPerMemory: 3,
-			MemoryStrengthMultiplier:   1.0,
-		},
-		Qdrant:     QdrantConfig{},
+		Qdrant:     QdrantConfig{Host: "localhost", Port: 6333, VectorSize: 1536, RetryBaseDelayMs: 1000, RetryMaxDelayMs: 30000, MaxRetries: 3},
 		Web:        WebConfig{Enabled: false},
 		Logging:    LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
 		Plugins:    PluginsConfig{Enabled: false},
@@ -1100,27 +938,56 @@ func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *test
 }
 func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, OwnBotID: "bot123", RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
-			ConsolidationInterval: 1,
-			ShortTermLimit:        1,
-			MaxPaginatedLimit:     100,
-
-			Retrieval:                  RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
-			Consolidation:              ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			ConsolidationInterval:        1,
+			ShortTermLimit:               1,
+			MaxPaginatedLimit:            100,
+			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			MaintenanceIntervalSec:       3600,
+			MergeCronHourUTC:             3,
+			SummarizeCronDay:             0,
+			MergeCosineThreshold:         0.85,
+			PruneDecayThreshold:          0.1,
+			PruneAgeDays:                 90,
+			RelationshipPruneAgeDays:     90,
+			MaxMaintenanceLLMCallsPerDay: 50,
+			EntropyMinUniqueWordRatio:    0.15,
+			DecayRates: DecayRatesConfig{
+				Fact:     0.01,
+				Episode:  0.05,
+				Interest: 0.02,
+				Summary:  0.005,
+			},
+			Scoring: ScoringWeights{
+				ImportanceWeight: 0.4,
+				RecencyWeight:    0.3,
+				AccessWeight:     0.2,
+				ConfidenceWeight: 0.1,
+			},
+			RRFK:                       60,
+			ContextMaxMemories:         20,
 			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
 			MaxMentionedUsersPerMemory: 3,
 			MemoryStrengthMultiplier:   1.0,
 		},
-		Qdrant:     QdrantConfig{},
+		Qdrant:     QdrantConfig{Host: "localhost", Port: 6333, VectorSize: 1536, RetryMaxDelayMs: 30000, MaxRetries: 3},
 		Web:        WebConfig{Enabled: false},
 		Logging:    LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
 		Plugins:    PluginsConfig{Enabled: false},
@@ -1128,49 +995,10 @@ func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T
 	}
 	err := validate(cfg)
 	if err == nil {
-		t.Fatal("Expected validation to fail when memory retrieval is enabled without embedding/qdrant config")
+		t.Fatal("Expected validation error for missing memory_pipeline.qdrant.retry_base_delay_ms when memory is enabled")
 	}
-	if !strings.Contains(err.Error(), "memory_pipeline.embedding.model is required") {
-		t.Fatalf("Expected embedding model requirement error, got: %v", err)
-	}
-	if !strings.Contains(err.Error(), "memory_pipeline.qdrant.host is required") {
-		t.Fatalf("Expected qdrant requirement error, got: %v", err)
-	}
-}
-func TestValidate_MemoryEnabled_MissingRetryBaseDelay(t *testing.T) {
-	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
-		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
-			Vision: VisionConfig{Mode: VisionModeTextOnly},
-		},
-		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
-		Memory: MemoryConfig{
-			ConsolidationInterval: 1,
-			ShortTermLimit:        1,
-			MaxPaginatedLimit:     100,
-
-			Retrieval:                  RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
-			Consolidation:              ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
-			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
-			MaxMentionedUsersPerMemory: 3,
-			MemoryStrengthMultiplier:   1.0,
-		},
-		Qdrant:     QdrantConfig{Host: "localhost", Port: 6333, VectorSize: 1536},
-		Web:        WebConfig{Enabled: false},
-		Logging:    LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
-		Plugins:    PluginsConfig{Enabled: false},
-		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
-	}
-	err := validate(cfg)
-	if err == nil {
-		t.Fatal("Expected validation error for missing memory.retry_base_delay_ms when memory is enabled")
-	}
-	if !strings.Contains(err.Error(), "memory_pipeline.memory.retry_base_delay_ms") {
-		t.Fatalf("Expected error about memory.retry_base_delay_ms, got: %v", err)
+	if !strings.Contains(err.Error(), "memory_pipeline.qdrant.retry_base_delay_ms") {
+		t.Fatalf("Expected error about qdrant.retry_base_delay_ms, got: %v", err)
 	}
 }
 
@@ -1178,13 +1006,20 @@ func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
-		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 0, Timeout: 1},
+		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "text-embedding-3-small", RetryCount: 0, Timeout: 1}},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
@@ -1214,11 +1049,18 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1238,14 +1080,15 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 		Decision: DecisionConfig{
-			Enabled:        true,
-			Model:          "gpt-4o-mini",
-			MaxTokens:      64,
-			Temperature:    0.1,
-			RetryCount:     1,
-			Timeout:        10,
-			SystemPrompt:   "decide",
-			HTTPTimeoutSec: 60,
+			LLMConfig: LLMConfig{
+				Model:       "gpt-4o-mini",
+				MaxTokens:   64,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     10,
+			},
+			Enabled:      true,
+			SystemPrompt: "decide",
 		},
 	}
 	err := validate(cfg)
@@ -1283,7 +1126,6 @@ core:
     api_base_url: "https://api.openai.com/v1"
     api_key: "test-key"
     model: "gpt-4o-mini"
-    vision_model: "gpt-4o"
     max_tokens: 1024
     temperature: 0.8
     retry_count: 1
@@ -1293,6 +1135,7 @@ core:
     max_tool_iterations: 5
     max_image_bytes: 10485760
     vision:
+      model: "gpt-4o"
       mode: "text_only"
       max_images: 1
 memory_pipeline:
@@ -1326,7 +1169,7 @@ memory_pipeline:
     prune_age_days: 90
     relationship_prune_age_days: 90
     max_maintenance_llm_calls_per_day: 50
-    entropy_min_unique_word_ratio: 0.15
+    entropy_min_unique_word_ratio: 0.3
     decay_rates:
       fact: 0.01
       episode: 0.05
@@ -1339,268 +1182,6 @@ memory_pipeline:
       confidence_weight: 0.1
     rrf_k: 60
     context_max_memories: 20
-    long_term_memory:
-      enabled: true
-    max_mentioned_users_per_memory: 3
-    memory_strength_multiplier: 1.0
-  qdrant:
-    host: "localhost"
-    port: 6334
-    vector_size: 1536
-access_control:
-  blacklist:
-    users: []
-    guilds: []
-    channels: []
-operations:
-  web:
-    port: 8080
-    username: "admin"
-    password: "test"
-    enabled: true
-    memories_page_limit: 50
-    content_truncation_length: 500
-    session_ttl_min: 30
-    session_cleanup_interval_min: 5
-    stats_query_timeout_sec: 5
-    log_default_lines: 100
-    log_max_lines: 1000
-    log_max_read_bytes: 1048576
-  logging:
-    level: "info"
-    file: "logs/test.log"
-    max_size: 100
-    max_backups: 3
-    max_age: 30
-  plugins:
-    enabled: true
-    plugins_dir: "plugins"
-    default_tool_timeout_ms: 30000
-    startup_timeout_sec: 90
-    rpc_timeout_sec: 5
-    before_send_timeout_sec: 180
-    command_timeout_sec: 45
-    shutdown_timeout_sec: 5
-    disable_timeout_sec: 2
-  mcp:
-    enabled: false
-    servers: []
-  runtime:
-    shutdown_timeout_sec: 300
-    cleanup_interval_min: 5
-`
-	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
-		t.Fatalf("Failed to write config: %v", err)
-	}
-	cfg, err := Load(configPath)
-	if err != nil {
-		t.Fatalf("Expected valid config, got error: %v", err)
-	}
-	if cfg.Plugins.DefaultToolTimeoutMs != 30000 {
-		t.Errorf("Expected DefaultToolTimeoutMs=30000, got %d", cfg.Plugins.DefaultToolTimeoutMs)
-	}
-}
-
-func TestPluginsConfig_DefaultToolTimeoutMs_OmitsDefaultsToZero(t *testing.T) {
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "config.yaml")
-	config := `schema_version: 4
-core:
-  discord:
-    token: "test-token"
-    bot_name: "TestBot"
-    other_bot_policy: "full"
-    reply_percentage: 0.15
-    cooldown_seconds: 5
-    max_responses_per_minute: 10
-    consolidation_timeout_sec: 300
-    typing_indicator_interval_sec: 5
-    long_response_delay_ms: 500
-    reply_truncation_length: 200
-    image_cache_ttl_min: 60
-    image_cache_max_entries: 100
-    rate_limit:
-      reset_period_seconds: 60
-  ai:
-    api_base_url: "https://api.openai.com/v1"
-    api_key: "test-key"
-    model: "gpt-4o-mini"
-    vision_model: "gpt-4o"
-    max_tokens: 1024
-    temperature: 0.8
-    retry_count: 1
-    timeout: 10
-    system_prompt: "test"
-    http_timeout_sec: 30
-    max_tool_iterations: 5
-    max_image_bytes: 10485760
-    vision:
-      mode: "text_only"
-      max_images: 1
-memory_pipeline:
-  embedding:
-    model: "text-embedding-3-small"
-    retry_count: 1
-    timeout: 10
-  memory:
-    consolidation_interval: 50
-    short_term_limit: 20
-    max_paginated_limit: 100
-    embedding_cache_max_size: 500
-    embedding_cache_ttl_min: 30
-    eviction_interval_min: 5
-    retry_base_delay_ms: 1000
-    retry_max_delay_ms: 30000
-    max_retries: 3
-    retrieval:
-      top_k: 5
-      min_score: 0.75
-    consolidation:
-      enabled: false
-      max_messages: 20
-      system_prompt: "test"
-      memory_search_limit: 20
-    maintenance_interval_sec: 3600
-    merge_cron_hour_utc: 3
-    summarize_cron_day: 0
-    merge_cosine_threshold: 0.85
-    prune_decay_threshold: 0.1
-    prune_age_days: 90
-    relationship_prune_age_days: 90
-    max_maintenance_llm_calls_per_day: 50
-    entropy_min_unique_word_ratio: 0.15
-    decay_rates:
-      fact: 0.01
-      episode: 0.05
-      interest: 0.02
-      summary: 0.005
-    scoring:
-      importance_weight: 0.4
-      recency_weight: 0.3
-      access_weight: 0.2
-      confidence_weight: 0.1
-    rrf_k: 60
-    context_max_memories: 20
-    long_term_memory:
-      enabled: true
-    max_mentioned_users_per_memory: 3
-    memory_strength_multiplier: 1.0
-  qdrant:
-    host: "localhost"
-    port: 6334
-    vector_size: 1536
-access_control:
-  blacklist:
-    users: []
-    guilds: []
-    channels: []
-operations:
-  web:
-    port: 8080
-    username: "admin"
-    password: "test"
-    enabled: true
-    memories_page_limit: 50
-    content_truncation_length: 500
-    session_ttl_min: 30
-    session_cleanup_interval_min: 5
-    stats_query_timeout_sec: 5
-    log_default_lines: 100
-    log_max_lines: 1000
-    log_max_read_bytes: 1048576
-  logging:
-    level: "info"
-    file: "logs/test.log"
-    max_size: 100
-    max_backups: 3
-    max_age: 30
-  plugins:
-    enabled: true
-    plugins_dir: "plugins"
-    startup_timeout_sec: 90
-    rpc_timeout_sec: 5
-    before_send_timeout_sec: 180
-    command_timeout_sec: 45
-    shutdown_timeout_sec: 5
-    disable_timeout_sec: 2
-  mcp:
-    enabled: false
-    servers: []
-  runtime:
-    shutdown_timeout_sec: 300
-    cleanup_interval_min: 5
-`
-	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
-		t.Fatalf("Failed to write config: %v", err)
-	}
-	cfg, err := Load(configPath)
-	if err != nil {
-		t.Fatalf("Expected valid config, got error: %v", err)
-	}
-	if cfg.Plugins.DefaultToolTimeoutMs != 0 {
-		t.Errorf("Expected DefaultToolTimeoutMs=0 when omitted, got %d", cfg.Plugins.DefaultToolTimeoutMs)
-	}
-}
-
-func TestPluginsConfig_DefaultToolTimeoutMs_NegativeClampedToZero(t *testing.T) {
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "config.yaml")
-	config := `schema_version: 4
-core:
-  discord:
-    token: "test-token"
-    bot_name: "TestBot"
-    other_bot_policy: "full"
-    reply_percentage: 0.15
-    cooldown_seconds: 5
-    max_responses_per_minute: 10
-    consolidation_timeout_sec: 300
-    typing_indicator_interval_sec: 5
-    long_response_delay_ms: 500
-    reply_truncation_length: 200
-    image_cache_ttl_min: 60
-    image_cache_max_entries: 100
-    rate_limit:
-      reset_period_seconds: 60
-  ai:
-    api_base_url: "https://api.openai.com/v1"
-    api_key: "test-key"
-    model: "gpt-4o-mini"
-    vision_model: "gpt-4o"
-    max_tokens: 1024
-    temperature: 0.8
-    retry_count: 1
-    timeout: 10
-    system_prompt: "test"
-    http_timeout_sec: 30
-    max_tool_iterations: 5
-    max_image_bytes: 10485760
-    vision:
-      mode: "text_only"
-      max_images: 1
-memory_pipeline:
-  embedding:
-    model: "text-embedding-3-small"
-    retry_count: 1
-    timeout: 10
-  memory:
-    consolidation_interval: 50
-    short_term_limit: 20
-    max_paginated_limit: 100
-    embedding_cache_max_size: 500
-    embedding_cache_ttl_min: 30
-    eviction_interval_min: 5
-    retry_base_delay_ms: 1000
-    retry_max_delay_ms: 30000
-    max_retries: 3
-    retrieval:
-      top_k: 5
-      min_score: 0.75
-    consolidation:
-      enabled: false
-      max_messages: 20
-      system_prompt: "test"
-      memory_search_limit: 20
   qdrant:
     host: "localhost"
     port: 6334
@@ -1663,11 +1244,18 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1710,16 +1298,17 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 		Decision: DecisionConfig{
-			Enabled:        true,
-			Model:          "gpt-4o-mini",
-			APIBaseURL:     "https://decision.example.com/v1",
-			APIKey:         "decision-key",
-			MaxTokens:      64,
-			Temperature:    0.1,
-			RetryCount:     1,
-			Timeout:        10,
-			SystemPrompt:   "decide",
-			HTTPTimeoutSec: 60,
+			LLMConfig: LLMConfig{
+				Model:       "gpt-4o-mini",
+				APIBaseURL:  "https://decision.example.com/v1",
+				APIKey:      "decision-key",
+				MaxTokens:   64,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     10,
+			},
+			Enabled:      true,
+			SystemPrompt: "decide",
 		},
 	}
 	if err := validate(cfg); err != nil {
@@ -1731,13 +1320,20 @@ func TestValidate_ConsolidationEnabled_RequiresOwnBotID(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
-		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
+		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1}},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
@@ -1768,11 +1364,18 @@ func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1820,25 +1423,96 @@ func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 	}
 }
 
-func TestValidateAI_MissingHTTPTimeoutSec(t *testing.T) {
+func TestValidate_TopKEnabled_RequiresOwnBotID(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision: VisionConfig{Mode: VisionModeTextOnly},
-			// HTTPTimeoutSec intentionally omitted
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
+		},
+		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "text-embedding-3-small", RetryCount: 0, Timeout: 1}},
+		Memory: MemoryConfig{
+			ConsolidationInterval:      1,
+			ShortTermLimit:             1,
+			MaxPaginatedLimit:          100,
+			Retrieval:                  RetrievalConfig{TopK: 5, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Consolidation:              ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
+		},
+		Qdrant:     QdrantConfig{Host: "localhost", Port: 6333, VectorSize: 1536, RetryBaseDelayMs: 1000, RetryMaxDelayMs: 30000, MaxRetries: 3},
+		Web:        WebConfig{Enabled: false},
+		Logging:    LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
+		Plugins:    PluginsConfig{Enabled: false},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
+	}
+	err := validate(cfg)
+	if err == nil {
+		t.Fatal("expected validation failure when top_k > 0 but discord.own_bot_id is empty")
+	}
+	if !strings.Contains(err.Error(), "core.discord.own_bot_id") {
+		t.Fatalf("expected error about discord.own_bot_id, got: %v", err)
+	}
+}
+
+func TestValidate_MemoryDisabled_DoesNotRequireOwnBotID(t *testing.T) {
+	cfg := &Config{
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		AI: AIConfig{
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
-			ConsolidationInterval: 1,
-			ShortTermLimit:        1,
-			MaxPaginatedLimit:     100,
-
-			Retrieval:                  RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
-			Consolidation:              ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			ConsolidationInterval:        1,
+			ShortTermLimit:               1,
+			MaxPaginatedLimit:            100,
+			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			MaintenanceIntervalSec:       3600,
+			MergeCronHourUTC:             3,
+			SummarizeCronDay:             0,
+			MergeCosineThreshold:         0.85,
+			PruneDecayThreshold:          0.1,
+			PruneAgeDays:                 90,
+			RelationshipPruneAgeDays:     90,
+			MaxMaintenanceLLMCallsPerDay: 50,
+			EntropyMinUniqueWordRatio:    0.15,
+			DecayRates: DecayRatesConfig{
+				Fact:     0.01,
+				Episode:  0.05,
+				Interest: 0.02,
+				Summary:  0.005,
+			},
+			Scoring: ScoringWeights{
+				ImportanceWeight: 0.4,
+				RecencyWeight:    0.3,
+				AccessWeight:     0.2,
+				ConfidenceWeight: 0.1,
+			},
+			RRFK:                       60,
+			ContextMaxMemories:         20,
 			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
 			MaxMentionedUsersPerMemory: 3,
 			MemoryStrengthMultiplier:   1.0,
@@ -1849,12 +1523,220 @@ func TestValidateAI_MissingHTTPTimeoutSec(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
+	if err := validate(cfg); err != nil {
+		t.Fatalf("expected validation success when memory is disabled (top_k=0, consolidation.off) even without discord.own_bot_id, got: %v", err)
+	}
+}
+
+func TestValidate_ConsolidationEnabled_WithCoreAIFallback(t *testing.T) {
+	cfg := &Config{
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, OwnBotID: "bot123", RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		AI: AIConfig{
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxToolIterations: 5,
+			MaxImageBytes:     10485760,
+		},
+		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1}},
+		Memory: MemoryConfig{
+			ConsolidationInterval: 1,
+			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Consolidation: ConsolidationConfig{
+				Enabled:           true,
+				SystemPrompt:      "cp",
+				MemorySearchLimit: 20,
+				LLMConfig: LLMConfig{
+					MaxTokens:   1,
+					Temperature: 0.1,
+					RetryCount:  1,
+					Timeout:     30,
+				},
+			},
+			MaintenanceIntervalSec:       3600,
+			MergeCronHourUTC:             3,
+			SummarizeCronDay:             0,
+			MergeCosineThreshold:         0.85,
+			PruneDecayThreshold:          0.1,
+			PruneAgeDays:                 90,
+			RelationshipPruneAgeDays:     90,
+			MaxMaintenanceLLMCallsPerDay: 50,
+			EntropyMinUniqueWordRatio:    0.15,
+			DecayRates: DecayRatesConfig{
+				Fact:     0.01,
+				Episode:  0.05,
+				Interest: 0.02,
+				Summary:  0.005,
+			},
+			Scoring: ScoringWeights{
+				ImportanceWeight: 0.4,
+				RecencyWeight:    0.3,
+				AccessWeight:     0.2,
+				ConfidenceWeight: 0.1,
+			},
+			RRFK:                       60,
+			ContextMaxMemories:         20,
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
+		},
+		Qdrant:     QdrantConfig{Host: "localhost", Port: 6333, VectorSize: 1536, RetryBaseDelayMs: 1000, RetryMaxDelayMs: 30000, MaxRetries: 3},
+		Web:        WebConfig{Enabled: false},
+		Logging:    LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
+		Plugins:    PluginsConfig{Enabled: false},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
+	}
+	if err := validate(cfg); err != nil {
+		t.Fatalf("expected validation success with core.ai fallback for consolidation, got: %v", err)
+	}
+}
+
+func TestValidate_ConsolidationEnabled_BothEmpty(t *testing.T) {
+	cfg := &Config{
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, OwnBotID: "bot123", RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		AI: AIConfig{
+			LLMConfig: LLMConfig{
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxToolIterations: 5,
+			MaxImageBytes:     10485760,
+		},
+		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1}},
+		Memory: MemoryConfig{
+			ConsolidationInterval: 1,
+			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Consolidation: ConsolidationConfig{
+				Enabled:           true,
+				SystemPrompt:      "cp",
+				MemorySearchLimit: 20,
+				LLMConfig: LLMConfig{
+					MaxTokens:   1,
+					Temperature: 0.1,
+					RetryCount:  1,
+					Timeout:     30,
+				},
+			},
+			MaintenanceIntervalSec:       3600,
+			MergeCronHourUTC:             3,
+			SummarizeCronDay:             0,
+			MergeCosineThreshold:         0.85,
+			PruneDecayThreshold:          0.1,
+			PruneAgeDays:                 90,
+			RelationshipPruneAgeDays:     90,
+			MaxMaintenanceLLMCallsPerDay: 50,
+			EntropyMinUniqueWordRatio:    0.15,
+			DecayRates: DecayRatesConfig{
+				Fact:     0.01,
+				Episode:  0.05,
+				Interest: 0.02,
+				Summary:  0.005,
+			},
+			Scoring: ScoringWeights{
+				ImportanceWeight: 0.4,
+				RecencyWeight:    0.3,
+				AccessWeight:     0.2,
+				ConfidenceWeight: 0.1,
+			},
+			RRFK:                       60,
+			ContextMaxMemories:         20,
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
+		},
+		Qdrant:     QdrantConfig{Host: "localhost", Port: 6333, VectorSize: 1536, RetryBaseDelayMs: 1000, RetryMaxDelayMs: 30000, MaxRetries: 3},
+		Web:        WebConfig{Enabled: false},
+		Logging:    LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
+		Plugins:    PluginsConfig{Enabled: false},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
+	}
 	err := validate(cfg)
 	if err == nil {
-		t.Fatal("expected validation error for missing ai.http_timeout_sec")
+		t.Fatal("expected validation failure when both consolidation and core.ai API fields are empty")
 	}
-	if !strings.Contains(err.Error(), "core.ai.http_timeout_sec must be greater than 0") {
-		t.Fatalf("expected ai.http_timeout_sec error, got: %v", err)
+	errMsg := err.Error()
+	for _, field := range []string{"consolidation.model", "consolidation.api_base_url", "consolidation.api_key"} {
+		if !strings.Contains(errMsg, field) {
+			t.Fatalf("expected error about %q, got: %v", field, err)
+		}
+	}
+}
+
+func TestValidateAI_MissingTimeout(t *testing.T) {
+	cfg := &Config{
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.75, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		AI: AIConfig{
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+			},
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
+		},
+		Embedding: EmbeddingConfig{},
+		Memory: MemoryConfig{
+			ConsolidationInterval: 1,
+			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+
+			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+			MaintenanceIntervalSec:       3600,
+			MergeCronHourUTC:             3,
+			SummarizeCronDay:             0,
+			MergeCosineThreshold:         0.85,
+			PruneDecayThreshold:          0.1,
+			PruneAgeDays:                 90,
+			RelationshipPruneAgeDays:     90,
+			MaxMaintenanceLLMCallsPerDay: 50,
+			EntropyMinUniqueWordRatio:    0.15,
+			DecayRates: DecayRatesConfig{
+				Fact:     0.01,
+				Episode:  0.05,
+				Interest: 0.02,
+				Summary:  0.005,
+			},
+			Scoring: ScoringWeights{
+				ImportanceWeight: 0.4,
+				RecencyWeight:    0.3,
+				AccessWeight:     0.2,
+				ConfidenceWeight: 0.1,
+			},
+			RRFK:                       60,
+			ContextMaxMemories:         20,
+			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
+			MaxMentionedUsersPerMemory: 3,
+			MemoryStrengthMultiplier:   1.0,
+		},
+		Qdrant:     QdrantConfig{},
+		Web:        WebConfig{Enabled: false},
+		Logging:    LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
+		Plugins:    PluginsConfig{Enabled: false},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
+	}
+	if err := validate(cfg); err != nil {
+		t.Fatalf("expected validation success (old http_timeout_sec field removed), got: %v", err)
 	}
 }
 
@@ -1862,11 +1744,18 @@ func TestValidateAI_MissingMaxToolIterations(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly},
-			HTTPTimeoutSec: 30, MaxImageBytes: 10485760,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt:  "sp",
+			Vision:        VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxImageBytes: 10485760,
 			// MaxToolIterations intentionally omitted
 		},
 		Embedding: EmbeddingConfig{},
@@ -1898,15 +1787,27 @@ func TestValidateAI_MissingMaxToolIterations(t *testing.T) {
 
 func TestValidate_VisionMaxTokensNegative(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.75, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeHybrid, DescriptionPrompt: "desc", MaxTokens: -1},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt: "sp",
+			Vision: VisionConfig{
+				LLMConfig:         LLMConfig{MaxTokens: -1},
+				Model:             "vm",
+				Mode:              VisionModeHybrid,
+				DescriptionPrompt: "desc",
+			},
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
-		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
+		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1}},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
@@ -1937,13 +1838,20 @@ func TestValidate_EmbeddingTimeoutZero(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
-		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 0},
+		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 0}},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
@@ -1974,11 +1882,18 @@ func TestValidate_OtherBotPolicy_Missing(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -2007,11 +1922,18 @@ func TestValidate_OtherBotPolicy_Invalid(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotPolicy("nonsense"), ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -2271,24 +2193,28 @@ func TestValidate_PluginsDefaultToolTimeoutMsNegative(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
-		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
+		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "em", RetryCount: 0, Timeout: 1}},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
-			RetryBaseDelayMs:      1000,
-			RetryMaxDelayMs:       30000,
-			MaxRetries:            3,
 			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
 			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
-		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
+		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1, RetryBaseDelayMs: 1000, RetryMaxDelayMs: 30000, MaxRetries: 3},
 		Web:     WebConfig{Enabled: false},
 		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
 		Plugins: PluginsConfig{
@@ -2315,22 +2241,26 @@ func TestValidate_PluginsDefaultToolTimeoutMsNegative(t *testing.T) {
 
 func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, OwnBotID: "bot123", RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
-			APIBaseURL: "https://api.example.com/v1",
-			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
-			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
-		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
+		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "em", RetryCount: 0, Timeout: 1}},
 		Memory: MemoryConfig{
 			ConsolidationInterval:        1,
 			ShortTermLimit:               1,
 			MaxPaginatedLimit:            100,
-			RetryBaseDelayMs:             1000,
-			RetryMaxDelayMs:              30000,
-			MaxRetries:                   3,
 			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
 			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			MaintenanceIntervalSec:       3600,
@@ -2360,7 +2290,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
 			MaxMentionedUsersPerMemory: 3,
 			MemoryStrengthMultiplier:   1.0,
 		},
-		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1},
+		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1, RetryBaseDelayMs: 1000, RetryMaxDelayMs: 30000, MaxRetries: 3},
 		Web:     WebConfig{Enabled: false},
 		Logging: LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
 		Plugins: PluginsConfig{

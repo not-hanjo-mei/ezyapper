@@ -170,15 +170,16 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 	embedderClient := ai.NewClient(embeddingAIConfig, tools.NewToolRegistry())
 
 	consolidationConfig := &config.AIConfig{
-		APIBaseURL:     cfg.AI.APIBaseURL,
-		APIKey:         cfg.AI.APIKey,
-		Model:          cfg.AI.Model,
-		VisionModel:    cfg.AI.VisionModel,
-		Timeout:        cfg.AI.Timeout,
-		HTTPTimeoutSec: cfg.AI.HTTPTimeoutSec,
-		RetryCount:     cfg.AI.RetryCount,
-		MaxTokens:      cfg.AI.MaxTokens,
-		Temperature:    cfg.AI.Temperature,
+		LLMConfig: config.LLMConfig{
+			APIBaseURL:  cfg.AI.APIBaseURL,
+			APIKey:      cfg.AI.APIKey,
+			Model:       cfg.AI.Model,
+			Timeout:     cfg.AI.Timeout,
+			RetryCount:  cfg.AI.RetryCount,
+			MaxTokens:   cfg.AI.MaxTokens,
+			Temperature: cfg.AI.Temperature,
+		},
+		Vision: cfg.AI.Vision,
 	}
 	if cfg.Memory.Consolidation.APIBaseURL != "" {
 		consolidationConfig.APIBaseURL = cfg.Memory.Consolidation.APIBaseURL
@@ -214,7 +215,7 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 		return nil, fmt.Errorf("failed to create embedder: %w", err)
 	}
 
-	qdrantClient, err := memory.NewQdrantClient(context.Background(), &cfg.Qdrant, cfg.Memory.MaxRetries, cfg.Memory.RetryBaseDelayMs, cfg.Memory.RetryMaxDelayMs)
+	qdrantClient, err := memory.NewQdrantClient(context.Background(), &cfg.Qdrant)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create qdrant client: %w", err)
 	}
@@ -229,9 +230,6 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 		OtherBotPolicy:        cfg.Discord.OtherBotPolicy,
 		MemorySearchLimit:     cfg.Memory.Consolidation.MemorySearchLimit,
 		MaxPaginatedLimit:     cfg.Memory.MaxPaginatedLimit,
-		RetryMaxRetries:       cfg.Memory.MaxRetries,
-		RetryBaseDelayMs:      cfg.Memory.RetryBaseDelayMs,
-		RetryMaxDelayMs:       cfg.Memory.RetryMaxDelayMs,
 
 		MaintenanceIntervalSec:       cfg.Memory.MaintenanceIntervalSec,
 		MergeCronHourUTC:             cfg.Memory.MergeCronHourUTC,
@@ -261,7 +259,7 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 		},
 	}
 
-	return memory.NewService(memoryCfg, qdrantClient, embedder, consolidationAIClient, visionDescriber)
+	return memory.NewService(memoryCfg, &cfg.Qdrant, qdrantClient, embedder, consolidationAIClient, visionDescriber)
 }
 
 func buildEmbeddingAIConfig(cfg *config.Config) *config.AIConfig {
@@ -304,30 +302,30 @@ func buildConsolidationVisionConfig(cfg *config.Config, baseConfig *config.AICon
 	visionConfig := cfg.AI.Vision
 	visionAIConfig := *baseConfig
 
-	if cfg.Memory.Consolidation.VisionModel != "" {
-		visionAIConfig.VisionModel = cfg.Memory.Consolidation.VisionModel
+	if cfg.Memory.Consolidation.Vision.Model != "" {
+		visionAIConfig.Vision.Model = cfg.Memory.Consolidation.Vision.Model
 	}
-	if cfg.Memory.Consolidation.VisionAPIBaseURL != "" {
-		visionAIConfig.APIBaseURL = cfg.Memory.Consolidation.VisionAPIBaseURL
+	if cfg.Memory.Consolidation.Vision.APIBaseURL != "" {
+		visionAIConfig.APIBaseURL = cfg.Memory.Consolidation.Vision.APIBaseURL
 	}
-	if cfg.Memory.Consolidation.VisionAPIKey != "" {
-		visionAIConfig.APIKey = cfg.Memory.Consolidation.VisionAPIKey
+	if cfg.Memory.Consolidation.Vision.APIKey != "" {
+		visionAIConfig.APIKey = cfg.Memory.Consolidation.Vision.APIKey
 	}
-	if cfg.Memory.Consolidation.VisionMaxTokens > 0 {
-		visionAIConfig.MaxTokens = cfg.Memory.Consolidation.VisionMaxTokens
+	if cfg.Memory.Consolidation.Vision.MaxTokens > 0 {
+		visionAIConfig.MaxTokens = cfg.Memory.Consolidation.Vision.MaxTokens
 	}
-	if cfg.Memory.Consolidation.VisionTemperature > 0 {
-		visionAIConfig.Temperature = cfg.Memory.Consolidation.VisionTemperature
+	if cfg.Memory.Consolidation.Vision.Temperature > 0 {
+		visionAIConfig.Temperature = cfg.Memory.Consolidation.Vision.Temperature
 	}
-	if cfg.Memory.Consolidation.VisionRetryCount > 0 {
-		visionAIConfig.RetryCount = cfg.Memory.Consolidation.VisionRetryCount
+	if cfg.Memory.Consolidation.Vision.RetryCount > 0 {
+		visionAIConfig.RetryCount = cfg.Memory.Consolidation.Vision.RetryCount
 	}
-	if cfg.Memory.Consolidation.VisionTimeout > 0 {
-		visionAIConfig.Timeout = cfg.Memory.Consolidation.VisionTimeout
+	if cfg.Memory.Consolidation.Vision.Timeout > 0 {
+		visionAIConfig.Timeout = cfg.Memory.Consolidation.Vision.Timeout
 	}
 
 	// VisionBase64 is a boolean override that is always applied (not zero-dependent)
-	visionAIConfig.VisionBase64 = cfg.Memory.Consolidation.VisionBase64
+	visionAIConfig.Vision.Base64 = cfg.Memory.Consolidation.Vision.Base64
 
 	// Copy extra params from consolidation vision config (if any specific ones are set)
 	// Note: VisionConfig.ExtraParams is applied in VisionDescriber, not here

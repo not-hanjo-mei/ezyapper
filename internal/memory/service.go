@@ -139,9 +139,6 @@ type ServiceConfig struct {
 	OwnBotID              string
 	MemorySearchLimit     int
 	MaxPaginatedLimit     int
-	RetryMaxRetries       int
-	RetryBaseDelayMs      int
-	RetryMaxDelayMs       int
 
 	// Maintenance
 	MaintenanceIntervalSec       int
@@ -173,7 +170,7 @@ type Embedder interface {
 	Stop()
 }
 
-func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedder, aiClient aiChatCompleter, vd visionDescriber) (*MemoryService, error) {
+func NewService(cfg *ServiceConfig, qdrantCfg *config.QdrantConfig, qdrantClient *QdrantClient, embedder Embedder, aiClient aiChatCompleter, vd visionDescriber) (*MemoryService, error) {
 	if qdrantClient == nil {
 		return nil, fmt.Errorf("qdrant client is required")
 	}
@@ -213,7 +210,7 @@ func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedde
 		done:                  make(chan struct{}),
 	}
 
-	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, vd, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit, cfg.OtherBotPolicy, cfg.EntropyMinUniqueWordRatio, cfg.RetryMaxRetries, cfg.RetryBaseDelayMs, cfg.RetryMaxDelayMs)
+	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, vd, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit, cfg.OtherBotPolicy, cfg.EntropyMinUniqueWordRatio, qdrantCfg.MaxRetries, qdrantCfg.RetryBaseDelayMs, qdrantCfg.RetryMaxDelayMs)
 
 	service.startAccessWorker()
 
