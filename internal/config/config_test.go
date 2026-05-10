@@ -2383,3 +2383,16 @@ func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
 		t.Fatalf("expected validation to pass with positive default_tool_timeout_ms, got: %v", err)
 	}
 }
+
+func TestMemoryConfig_MaxBufferSize_NotExist(t *testing.T) {
+	mcType := reflect.TypeOf(MemoryConfig{})
+	for i := range mcType.NumField() {
+		f := mcType.Field(i)
+		yamlTag := f.Tag.Get("yaml")
+		mapTag := f.Tag.Get("mapstructure")
+		if yamlTag == "max_buffer_size" || mapTag == "max_buffer_size" {
+			t.Fatalf("MemoryConfig field %q still has max_buffer_size tag (yaml=%q, mapstructure=%q)",
+				f.Name, yamlTag, mapTag)
+		}
+	}
+}

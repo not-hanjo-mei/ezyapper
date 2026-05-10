@@ -837,11 +837,7 @@ func (b *Bot) addMessageToChannelBuffer(channelID string, msg *types.DiscordMess
 	b.channelMessageBuffer[channelID] = append(b.channelMessageBuffer[channelID], msg)
 	logger.Debugf("[channel_buffer] added message for channel=%s, buffer_size=%d", channelID, len(b.channelMessageBuffer[channelID]))
 
-	maxBuffer := b.cfg().Memory.MaxBufferSize
-	if maxBuffer <= 0 {
-		maxBuffer = b.cfg().Memory.ConsolidationInterval * 2
-		logger.Warnf("[channel_buffer] memory.max_buffer_size is 0, falling back to consolidation_interval*2=%d — set max_buffer_size explicitly", maxBuffer)
-	}
+	maxBuffer := b.cfg().Memory.ConsolidationInterval * 2
 	if len(b.channelMessageBuffer[channelID]) > maxBuffer {
 		b.channelMessageBuffer[channelID] = b.channelMessageBuffer[channelID][len(b.channelMessageBuffer[channelID])-maxBuffer:]
 		logger.Warnf("[channel_buffer] truncated buffer for channel=%s to %d messages", channelID, maxBuffer)
