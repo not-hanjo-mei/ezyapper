@@ -155,7 +155,6 @@ type ServiceConfig struct {
 
 	// Entropy
 	OtherBotPolicy            config.OtherBotPolicy
-	EntropyMinContentLength   int
 	EntropyMinUniqueWordRatio float64
 
 	// Scoring
@@ -214,7 +213,7 @@ func NewService(cfg *ServiceConfig, qdrantClient *QdrantClient, embedder Embedde
 		done:                  make(chan struct{}),
 	}
 
-	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, vd, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit, cfg.OtherBotPolicy, cfg.EntropyMinContentLength, cfg.EntropyMinUniqueWordRatio, cfg.RetryMaxRetries, cfg.RetryBaseDelayMs, cfg.RetryMaxDelayMs)
+	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, vd, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit, cfg.OtherBotPolicy, cfg.EntropyMinUniqueWordRatio, cfg.RetryMaxRetries, cfg.RetryBaseDelayMs, cfg.RetryMaxDelayMs)
 
 	service.startAccessWorker()
 

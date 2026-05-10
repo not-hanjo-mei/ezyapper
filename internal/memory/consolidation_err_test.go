@@ -33,6 +33,7 @@ func TestAnalyzeConversation_AIError(t *testing.T) {
 	c := &Consolidator{
 		aiClient: mock,
 		prompt:   "test prompt",
+		maxMessages: 100,
 	}
 	ctx := context.Background()
 	_, err := c.analyzeConversation(ctx, "some conversation", []string{"user-1"})
@@ -55,6 +56,7 @@ func TestAnalyzeConversationBatch_AIError(t *testing.T) {
 	c := &Consolidator{
 		aiClient: mock,
 		prompt:   "test prompt",
+		maxMessages: 100,
 	}
 	ctx := context.Background()
 	_, err := c.analyzeConversationBatch(ctx, "some conversation", []string{"user-1"})
@@ -68,7 +70,7 @@ func TestAnalyzeConversationBatch_AIError(t *testing.T) {
 
 // TestAnalyzeConversation_ValidJSON_EmptyExtracts verifies that a valid
 // empty JSON array "[]" from the LLM returns (nil extracts, nil error).
-// This is NOT an error — the LLM found no memories to extract.
+// This is NOT an error �?the LLM found no memories to extract.
 func TestAnalyzeConversation_ValidJSON_EmptyExtracts(t *testing.T) {
 	mock := &mockAIClient{
 		createChatCompletionFn: func(ctx context.Context, req ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error) {
@@ -78,6 +80,7 @@ func TestAnalyzeConversation_ValidJSON_EmptyExtracts(t *testing.T) {
 	c := &Consolidator{
 		aiClient: mock,
 		prompt:   "test prompt",
+		maxMessages: 100,
 	}
 	ctx := context.Background()
 	extracts, err := c.analyzeConversation(ctx, "some conversation", []string{"user-1"})

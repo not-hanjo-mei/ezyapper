@@ -16,7 +16,7 @@
       "properties": {
         "discord": {
           "type": "object",
-          "required": ["token", "bot_name", "own_bot_id", "reply_percentage", "cooldown_seconds", "max_responses_per_minute", "rate_limit", "consolidation_timeout_sec", "typing_indicator_interval_sec", "long_response_delay_ms", "reply_truncation_length", "image_cache_ttl_min", "image_cache_max_entries"],
+          "required": ["token", "bot_name", "own_bot_id", "reply_percentage", "cooldown_seconds", "max_responses_per_minute", "rate_limit", "consolidation_timeout_sec", "typing_indicator_interval_sec", "long_response_delay_ms", "image_cache_ttl_min", "image_cache_max_entries"],
           "additionalProperties": false,
           "properties": {
             "token":                    { "type": "string" },
@@ -37,7 +37,7 @@
             "consolidation_timeout_sec":     { "type": "integer", "minimum": 1 },
             "typing_indicator_interval_sec": { "type": "integer", "minimum": 1 },
             "long_response_delay_ms":        { "type": "integer", "minimum": 1 },
-            "reply_truncation_length":       { "type": "integer", "minimum": 1 },
+
             "image_cache_ttl_min":           { "type": "integer", "minimum": 1 },
             "image_cache_max_entries":       { "type": "integer", "minimum": 1 }
           }
@@ -64,12 +64,12 @@
             "extra_params":   { "type": "object" },
             "vision": {
               "type": "object",
-              "required": ["mode", "max_images"],
+               "required": ["mode"],
               "additionalProperties": false,
               "properties": {
                 "mode":               { "type": "string", "enum": ["text_only", "hybrid", "multimodal"] },
                 "description_prompt": { "type": "string" },
-                "max_images":         { "type": "integer", "minimum": 1 },
+
                 "api_base_url":       { "type": "string" },
                 "api_key":            { "type": "string" },
                 "max_tokens":         { "type": "integer", "minimum": 1 },
@@ -122,7 +122,7 @@
         },
         "memory": {
           "type": "object",
-          "required": ["consolidation_interval", "short_term_limit", "max_paginated_limit", "retry_base_delay_ms", "retry_max_delay_ms", "max_retries", "retrieval", "consolidation", "maintenance_interval_sec", "merge_cron_hour_utc", "summarize_cron_day", "merge_cosine_threshold", "prune_decay_threshold", "prune_age_days", "max_maintenance_llm_calls_per_day", "entropy_min_content_length", "entropy_min_unique_word_ratio", "decay_rates", "scoring", "rrf_k", "context_max_memories"],
+          "required": ["consolidation_interval", "short_term_limit", "max_paginated_limit", "retry_base_delay_ms", "retry_max_delay_ms", "max_retries", "retrieval", "consolidation", "maintenance_interval_sec", "merge_cron_hour_utc", "summarize_cron_day", "merge_cosine_threshold", "prune_decay_threshold", "prune_age_days", "max_maintenance_llm_calls_per_day", "entropy_min_unique_word_ratio", "decay_rates", "scoring", "rrf_k", "context_max_memories"],
           "additionalProperties": false,
           "properties": {
             "consolidation_interval": { "type": "integer", "minimum": 1 },
@@ -183,7 +183,6 @@
              "prune_age_days": { "type": "integer", "minimum": 1 },
              "max_maintenance_llm_calls_per_day": { "type": "integer", "minimum": 0 },
 
-             "entropy_min_content_length": { "type": "integer", "minimum": 0 },
              "entropy_min_unique_word_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
              "decay_rates": {
                "type": "object",
@@ -262,7 +261,7 @@
             {
               "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
               "then": {
-                "required": ["port", "username", "password", "memories_page_limit", "content_truncation_length", "session_ttl_min", "session_cleanup_interval_min", "stats_query_timeout_sec", "log_default_lines", "log_max_lines", "log_max_read_bytes"]
+                "required": ["port", "username", "password", "memories_page_limit", "session_ttl_min", "session_cleanup_interval_min", "stats_query_timeout_sec", "log_default_lines", "log_max_lines", "log_max_read_bytes"]
               }
             }
           ],
@@ -272,7 +271,7 @@
             "password": { "type": "string" },
             "enabled":  { "type": "boolean" },
             "memories_page_limit":          { "type": "integer", "minimum": 1 },
-            "content_truncation_length":    { "type": "integer", "minimum": 1 },
+
             "session_ttl_min":              { "type": "integer", "minimum": 1 },
             "session_cleanup_interval_min": { "type": "integer", "minimum": 1 },
             "stats_query_timeout_sec":      { "type": "integer", "minimum": 1 },

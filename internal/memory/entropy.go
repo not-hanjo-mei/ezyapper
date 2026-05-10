@@ -9,7 +9,6 @@ import (
 // EntropyGateConfig holds thresholds for the entropy gate.
 type EntropyGateConfig struct {
 	OtherBotPolicy     config.OtherBotPolicy
-	MinContentLength   int
 	MinUniqueWordRatio float64
 }
 
@@ -25,9 +24,6 @@ func PassesEntropyGate(msg *DiscordMessage, cfg EntropyGateConfig) bool {
 	}
 
 	content := strings.TrimSpace(msg.Content)
-	if len(content) < cfg.MinContentLength {
-		return false
-	}
 
 	// Check if purely emoji/reaction
 	if isPurelyEmoji(content) {

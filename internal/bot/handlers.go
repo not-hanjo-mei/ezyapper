@@ -4,7 +4,6 @@ package bot
 import (
 	"context"
 	"time"
-	"unicode/utf8"
 
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
@@ -89,20 +88,13 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 
 	// Create DiscordMessage early so bot's own messages also enter channel buffer.
 	// Use FromDiscordgo for canonical field population (DisplayName, ImageURLs, etc.).
-	// ReplyTo fields from FromDiscordgo are overridden below with config-based truncation.
 	msg := types.FromDiscordgo(m)
 
 	if m.MessageReference != nil {
 		msg.ReplyToID = m.MessageReference.MessageID
 		if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
 			msg.ReplyToUsername = m.ReferencedMessage.Author.Username
-			content := m.ReferencedMessage.Content
-			if utf8.RuneCountInString(content) > b.cfg().Discord.ReplyTruncationLength {
-				logger.Warnf("[bot] reply content truncated from %d to %d chars", utf8.RuneCountInString(content), b.cfg().Discord.ReplyTruncationLength)
-				runes := []rune(content)
-				content = string(runes[:b.cfg().Discord.ReplyTruncationLength])
-			}
-			msg.ReplyToContent = content
+			msg.ReplyToContent = m.ReferencedMessage.Content
 		} else {
 			msg.ReplyToUsername = "(deleted message)"
 		}
@@ -111,6 +103,15 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 	// Always add to channel buffer for complete conversation context in consolidation
 	// This ensures bot's own messages are included in batch consolidation
 	b.addMessageToChannelBuffer(m.ChannelID, &msg)
+
+	// Increment channel message counter on every message the bot sees (including its own).
+	// Triggers consolidation when total messages reach the configured interval threshold.
+	count, err := b.consolidation.IncrementChannelMessageCount(ctx, m.ChannelID)
+	if err != nil {
+		logger.Warnf("[message] Failed to increment channel message count: %v", err)
+	} else {
+		b.triggerChannelConsolidation(ctx, m.ChannelID, count)
+	}
 
 	// Run plugin OnMessage hooks
 	if b.pluginManager != nil {

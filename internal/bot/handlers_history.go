@@ -178,21 +178,12 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 			}
 
 			if haveCachedDescriptions {
-				maxImages := b.cfg().AI.Vision.MaxImages
-				truncated := false
 				var sb strings.Builder
 				sb.WriteString(content)
-				for j, desc := range descriptions {
-					if j < maxImages || maxImages == 0 {
-						fmt.Fprintf(&sb, "\n[Image %d: %s]", j+1, desc)
-					} else {
-						truncated = true
-					}
+				for idx, desc := range descriptions {
+					fmt.Fprintf(&sb, "\n[Image %d: %s]", idx+1, desc)
 				}
 				content = sb.String()
-				if truncated {
-					logger.Warnf("[history] historical image descriptions truncated for message %s: %d descriptions but max_images=%d", msg.ID, len(descriptions), maxImages)
-				}
 			}
 		}
 

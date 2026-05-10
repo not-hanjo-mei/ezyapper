@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"ezyapper/internal/logger"
 	"ezyapper/internal/types"
 
 	"github.com/bwmarrin/discordgo"
@@ -14,13 +13,12 @@ const discordAPIMaxLimit = 100
 
 // DiscordMessageFetcher implements memory.MessageFetcher using the Discord session.
 type DiscordMessageFetcher struct {
-	session               *discordgo.Session
-	replyTruncationLength int
+	session *discordgo.Session
 }
 
 // NewDiscordMessageFetcher creates a new Discord-backed message fetcher.
-func NewDiscordMessageFetcher(session *discordgo.Session, replyTruncationLength int) *DiscordMessageFetcher {
-	return &DiscordMessageFetcher{session: session, replyTruncationLength: replyTruncationLength}
+func NewDiscordMessageFetcher(session *discordgo.Session) *DiscordMessageFetcher {
+	return &DiscordMessageFetcher{session: session}
 }
 
 // FetchMessages implements memory.MessageFetcher by paginating the Discord API
@@ -95,16 +93,7 @@ func (f *DiscordMessageFetcher) convertMessage(msg *discordgo.Message) types.Dis
 		d.ReplyToID = msg.MessageReference.MessageID
 		if msg.ReferencedMessage != nil && msg.ReferencedMessage.Author != nil {
 			d.ReplyToUsername = msg.ReferencedMessage.Author.Username
-			content := msg.ReferencedMessage.Content
-			if len(content) > f.replyTruncationLength {
-				logger.Warnf("[fetcher] reply content truncated from %d to %d chars", len(content), f.replyTruncationLength)
-				// Use rune-based truncation to avoid splitting multi-byte UTF-8 characters
-				runes := []rune(content)
-				if len(runes) > f.replyTruncationLength {
-					content = string(runes[:f.replyTruncationLength])
-				}
-			}
-			d.ReplyToContent = content
+			d.ReplyToContent = msg.ReferencedMessage.Content
 		} else {
 			d.ReplyToUsername = "(deleted message)"
 		}

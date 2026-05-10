@@ -1,4 +1,4 @@
-package memory
+﻿package memory
 
 import (
 	"context"
@@ -199,7 +199,7 @@ func TestEmbedWithRetry_Exhausted(t *testing.T) {
 	embedSleep = func(d time.Duration) {}
 
 	ctx := context.Background()
-	// Always fails — 1 initial + 3 retries = 4 attempts
+	// Always fails 鈥?1 initial + 3 retries = 4 attempts
 	emb := newRetryableEmbedder(999)
 
 	c := &Consolidator{
@@ -418,7 +418,7 @@ func TestProfileMemoryCount_Consistent(t *testing.T) {
 
 // TestPassesEntropyGate_NilMessage verifies nil messages are rejected.
 func TestPassesEntropyGate_NilMessage(t *testing.T) {
-	cfg := EntropyGateConfig{MinContentLength: 10, MinUniqueWordRatio: 0.15}
+	cfg := EntropyGateConfig{MinUniqueWordRatio: 0.15}
 	if PassesEntropyGate(nil, cfg) {
 		t.Error("expected false for nil message")
 	}
@@ -426,7 +426,7 @@ func TestPassesEntropyGate_NilMessage(t *testing.T) {
 
 // TestPassesEntropyGate_BotMessage verifies bot messages are rejected when OtherBotPolicy is ignore.
 func TestPassesEntropyGate_BotMessage(t *testing.T) {
-	cfg := EntropyGateConfig{OtherBotPolicy: config.OtherBotIgnore, MinContentLength: 10, MinUniqueWordRatio: 0.15}
+	cfg := EntropyGateConfig{OtherBotPolicy: config.OtherBotIgnore, MinUniqueWordRatio: 0.15}
 	msg := &DiscordMessage{IsBot: true, Content: "hello world from bot"}
 	if PassesEntropyGate(msg, cfg) {
 		t.Error("expected false for bot message when OtherBotPolicy is ignore")
@@ -435,25 +435,16 @@ func TestPassesEntropyGate_BotMessage(t *testing.T) {
 
 // TestPassesEntropyGate_BotMessage_Allowed verifies bot messages pass when OtherBotPolicy is context_only or full.
 func TestPassesEntropyGate_BotMessage_Allowed(t *testing.T) {
-	cfg := EntropyGateConfig{OtherBotPolicy: config.OtherBotContextOnly, MinContentLength: 10, MinUniqueWordRatio: 0.15}
+	cfg := EntropyGateConfig{OtherBotPolicy: config.OtherBotContextOnly, MinUniqueWordRatio: 0.15}
 	msg := &DiscordMessage{IsBot: true, Content: "hello world from bot"}
 	if !PassesEntropyGate(msg, cfg) {
 		t.Error("expected true for bot message when OtherBotPolicy is context_only")
 	}
 }
 
-// TestPassesEntropyGate_TooShort verifies messages below min length are rejected.
-func TestPassesEntropyGate_TooShort(t *testing.T) {
-	cfg := EntropyGateConfig{MinContentLength: 20, MinUniqueWordRatio: 0.15}
-	msg := &DiscordMessage{Content: "hi"}
-	if PassesEntropyGate(msg, cfg) {
-		t.Error("expected false for too-short message")
-	}
-}
-
 // TestPassesEntropyGate_PureEmoji verifies purely emoji messages are rejected.
 func TestPassesEntropyGate_PureEmoji(t *testing.T) {
-	cfg := EntropyGateConfig{MinContentLength: 1, MinUniqueWordRatio: 0.15}
+	cfg := EntropyGateConfig{MinUniqueWordRatio: 0.15}
 	msg := &DiscordMessage{Content: "😀🎉👍"}
 	if PassesEntropyGate(msg, cfg) {
 		t.Error("expected false for purely emoji message")
@@ -462,9 +453,9 @@ func TestPassesEntropyGate_PureEmoji(t *testing.T) {
 
 // TestPassesEntropyGate_LowUniqueRatio verifies repetitive messages are rejected.
 func TestPassesEntropyGate_LowUniqueRatio(t *testing.T) {
-	cfg := EntropyGateConfig{MinContentLength: 5, MinUniqueWordRatio: 0.5}
+	cfg := EntropyGateConfig{MinUniqueWordRatio: 0.5}
 	msg := &DiscordMessage{Content: "hello hello hello hello world"}
-	// 5 words, 2 unique → ratio=0.4 < 0.5 → rejected
+	// 5 words, 2 unique 鈫?ratio=0.4 < 0.5 鈫?rejected
 	if PassesEntropyGate(msg, cfg) {
 		t.Error("expected false for low unique word ratio")
 	}
@@ -472,7 +463,7 @@ func TestPassesEntropyGate_LowUniqueRatio(t *testing.T) {
 
 // TestPassesEntropyGate_ValidMessage verifies a normal message passes.
 func TestPassesEntropyGate_ValidMessage(t *testing.T) {
-	cfg := EntropyGateConfig{MinContentLength: 5, MinUniqueWordRatio: 0.15}
+	cfg := EntropyGateConfig{MinUniqueWordRatio: 0.15}
 	msg := &DiscordMessage{Content: "hello world, how are you today?"}
 	if !PassesEntropyGate(msg, cfg) {
 		t.Error("expected true for valid message with diverse words")
@@ -1085,16 +1076,14 @@ func TestEntropyGate_IntegrationWithProcessWithMessages(t *testing.T) {
 	}
 	qdrant := newMockQdrantStore()
 	c := &Consolidator{
-		qdrant:               qdrant,
-		aiClient:             mock,
-		prompt:               "test prompt",
-		maxMessages:          100,
-		entropyMinContentLen: 10,
-		entropyMinWordRatio:  0.15,
+		qdrant:              qdrant,
+		aiClient:            mock,
+		prompt:              "test prompt",
+		entropyMinWordRatio: 0.15,
 	}
 	ctx := context.Background()
 
-	// All messages too short — should return nil early
+	// All messages too short 鈥?should return nil early
 	messages := []*DiscordMessage{
 		{AuthorID: "user-1", Username: "test", Content: "hi", Timestamp: time.Now()},
 		{AuthorID: "user-1", Username: "test", Content: "ok", Timestamp: time.Now()},

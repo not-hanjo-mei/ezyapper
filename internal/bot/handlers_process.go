@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"ezyapper/internal/ai"
 	"ezyapper/internal/config"
@@ -75,11 +74,6 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 			if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
 				msg.ReplyToUsername = m.ReferencedMessage.Author.Username
 				content := m.ReferencedMessage.Content
-				if utf8.RuneCountInString(content) > b.cfg().Discord.ReplyTruncationLength {
-					logger.Warnf("[processing] reply content truncated from %d to %d chars", utf8.RuneCountInString(content), b.cfg().Discord.ReplyTruncationLength)
-					runes := []rune(content)
-					content = string(runes[:b.cfg().Discord.ReplyTruncationLength])
-				}
 				msg.ReplyToContent = content
 			} else {
 				msg.ReplyToUsername = "(deleted message)"
@@ -251,11 +245,6 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 	defer cancelTyping()
 
 	replyToUsername, replyToContent := extractReplyInfo(m)
-	if utf8.RuneCountInString(replyToContent) > b.cfg().Discord.ReplyTruncationLength {
-		logger.Warnf("[processing] reply content truncated from %d to %d chars", utf8.RuneCountInString(replyToContent), b.cfg().Discord.ReplyTruncationLength)
-		runes := []rune(replyToContent)
-		replyToContent = string(runes[:b.cfg().Discord.ReplyTruncationLength])
-	}
 
 	mc := ModeContext{
 		AIClient:        ai.NewClient(&b.cfg().AI, b.toolRegistry),
@@ -321,13 +310,6 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 	}
 
 	b.SetCooldown(m.Author.ID, time.Duration(b.cfg().Discord.CooldownSeconds)*time.Second)
-
-	count, err := b.consolidation.IncrementChannelMessageCount(ctx, m.ChannelID)
-	if err != nil {
-		logger.Warnf("[processing] Failed to increment channel message count: %v", err)
-	} else {
-		b.triggerChannelConsolidation(ctx, m.ChannelID, count)
-	}
 }
 
 func recoverHandler() {

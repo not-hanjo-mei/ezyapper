@@ -241,7 +241,6 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 		PruneAgeDays:                 cfg.Memory.PruneAgeDays,
 		RelationshipPruneAgeDays:     cfg.Memory.RelationshipPruneAgeDays,
 		MaxMaintenanceLLMCallsPerDay: cfg.Memory.MaxMaintenanceLLMCallsPerDay,
-		EntropyMinContentLength:      cfg.Memory.EntropyMinContentLength,
 		EntropyMinUniqueWordRatio:    cfg.Memory.EntropyMinUniqueWordRatio,
 		RRFK:                         cfg.Memory.RRFK,
 		ContextMaxMemories:           cfg.Memory.ContextMaxMemories,

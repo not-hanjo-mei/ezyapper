@@ -198,10 +198,6 @@ func BuildSearchQuery(userMessage string, recentMessages []*DiscordMessage, ownB
 	// Build query: "Recent context: kw1, kw2, ... Current: userMessage"
 	var query strings.Builder
 	if len(keywords) > 0 {
-		// Limit keywords
-		if len(keywords) > 10 {
-			keywords = keywords[:10]
-		}
 		query.WriteString("Recent context: ")
 		query.WriteString(strings.Join(keywords, ", "))
 		query.WriteString(". ")

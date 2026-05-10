@@ -4,9 +4,6 @@ package types
 import (
 	"strings"
 	"time"
-	"unicode/utf8"
-
-	"ezyapper/internal/logger"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -60,11 +57,6 @@ func FromDiscordgo(m *discordgo.MessageCreate) DiscordMessage {
 		if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
 			msg.ReplyToUsername = m.ReferencedMessage.Author.Username
 			content := m.ReferencedMessage.Content
-			if utf8.RuneCountInString(content) > 100 {
-				logger.Warnf("[types] reply content truncated from %d to 100 chars", utf8.RuneCountInString(content))
-				runes := []rune(content)
-				content = string(runes[:100])
-			}
 			msg.ReplyToContent = content
 		} else {
 			msg.ReplyToUsername = "(deleted message)"

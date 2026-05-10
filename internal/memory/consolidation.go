@@ -98,7 +98,7 @@ func extractMentions(messages []*DiscordMessage) (userIDs, channelIDs []string) 
 
 // relationshipID builds a deterministic UUID from two user IDs and a type.
 // Uses UUID v5 (SHA-1) to generate a valid RFC 4122 UUID that Qdrant accepts,
-// while remaining deterministic (same inputs → same UUID).
+// while remaining deterministic (same inputs 鈫?same UUID).
 func relationshipID(userA, userB string, relType RelationshipType) string {
 	if userA > userB {
 		userA, userB = userB, userA
@@ -128,9 +128,8 @@ type Consolidator struct {
 	prompt               string
 	ownBotID             string // Bot's own ID to distinguish from other bots
 	memorySearchLimit    int
-	otherBotPolicy       config.OtherBotPolicy
-	entropyMinContentLen int
-	entropyMinWordRatio  float64
+	otherBotPolicy      config.OtherBotPolicy
+	entropyMinWordRatio float64
 	retryMaxRetries      int
 	retryBaseDelay       time.Duration
 	retryMaxDelay        time.Duration
@@ -161,20 +160,19 @@ func (c *Consolidator) embedWithRetry(ctx context.Context, text string) ([]float
 }
 
 // NewConsolidator creates a new consolidator with the given Qdrant client, embedder, and AI configuration.
-func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient aiChatCompleter, visionDescriber visionDescriber, cfg *config.ConsolidationConfig, ownBotID string, consolidationInterval int, memorySearchLimit int, otherBotPolicy config.OtherBotPolicy, entropyMinContentLen int, entropyMinWordRatio float64, retryMaxRetries int, retryBaseDelayMs int, retryMaxDelayMs int) *Consolidator {
+func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient aiChatCompleter, visionDescriber visionDescriber, cfg *config.ConsolidationConfig, ownBotID string, consolidationInterval int, memorySearchLimit int, otherBotPolicy config.OtherBotPolicy, entropyMinWordRatio float64, retryMaxRetries int, retryBaseDelayMs int, retryMaxDelayMs int) *Consolidator {
 	return &Consolidator{
 		qdrant:               qdrant,
 		embedder:             embedder,
 		aiClient:             aiClient,
 		visionDescriber:      visionDescriber,
-		maxMessages:          consolidationInterval,
 		model:                cfg.Model,
+		maxMessages:          consolidationInterval,
 		prompt:               cfg.SystemPrompt,
 		ownBotID:             ownBotID,
 		memorySearchLimit:    memorySearchLimit,
-		otherBotPolicy:       otherBotPolicy,
-		entropyMinContentLen: entropyMinContentLen,
-		entropyMinWordRatio:  entropyMinWordRatio,
+		otherBotPolicy:      otherBotPolicy,
+		entropyMinWordRatio: entropyMinWordRatio,
 		retryMaxRetries:      retryMaxRetries,
 		retryBaseDelay:       time.Duration(retryBaseDelayMs) * time.Millisecond,
 		retryMaxDelay:        time.Duration(retryMaxDelayMs) * time.Millisecond,
@@ -190,9 +188,9 @@ func (c *Consolidator) buildConversationText(ctx context.Context, messages []*Di
 		timeStr := msg.Timestamp.UTC().Format(time.RFC3339)
 		var botMarker string
 		if msg.AuthorID == c.ownBotID {
-			botMarker = ",BOT=SELF" // BOT=SELF tag — always present, prompt controls behavior
+			botMarker = ",BOT=SELF" // BOT=SELF tag 鈥?always present, prompt controls behavior
 		} else if msg.IsBot {
-			botMarker = ",BOT=OTHERS" // BOT=OTHERS tag — always present, prompt controls behavior
+			botMarker = ",BOT=OTHERS" // BOT=OTHERS tag 鈥?always present, prompt controls behavior
 		}
 		fmt.Fprintf(&conversation, `"%s"{UserID=%s,Time=%s%s}: "%s"`+"\n", msg.Username, msg.AuthorID, timeStr, botMarker, msg.Content)
 
@@ -247,11 +245,10 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 		messages = messages[:c.maxMessages]
 	}
 
-	// Apply entropy gate — filter noise messages
+	// Apply entropy gate 鈥?filter noise messages
 	filtered := make([]*DiscordMessage, 0, len(messages))
 	entropyCfg := EntropyGateConfig{
 		OtherBotPolicy:     c.otherBotPolicy,
-		MinContentLength:   c.entropyMinContentLen,
 		MinUniqueWordRatio: c.entropyMinWordRatio,
 	}
 	for _, msg := range messages {
@@ -559,11 +556,10 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 		messages = messages[:c.maxMessages]
 	}
 
-	// Apply entropy gate — filter noise messages
+	// Apply entropy gate 鈥?filter noise messages
 	filtered := make([]*DiscordMessage, 0, len(messages))
 	entropyCfg := EntropyGateConfig{
 		OtherBotPolicy:     c.otherBotPolicy,
-		MinContentLength:   c.entropyMinContentLen,
 		MinUniqueWordRatio: c.entropyMinWordRatio,
 	}
 	for _, msg := range messages {
@@ -945,7 +941,7 @@ func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []
 	}
 
 	for _, extract := range extracts {
-		// Structured profile updates (from LLM output) — supports ALL languages
+		// Structured profile updates (from LLM output) 鈥?supports ALL languages
 		if extract.ProfileUpdates != nil {
 			for _, t := range extract.ProfileUpdates.Traits {
 				if !containsFold(profile.Traits, t) {

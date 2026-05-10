@@ -103,15 +103,6 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 			if v := r.FormValue("vision_description_prompt"); v != "" {
 				newCfg.AI.Vision.DescriptionPrompt = v
 			}
-			if v := r.FormValue("vision_max_images"); v != "" {
-				max, err := strconv.Atoi(v)
-				if err != nil {
-					parseErrs = append(parseErrs, "vision_max_images must be a whole number")
-				} else {
-					newCfg.AI.Vision.MaxImages = max
-				}
-			}
-
 			if v := r.FormValue("consolidation_interval"); v != "" {
 				val, err := strconv.Atoi(v)
 				if err != nil {

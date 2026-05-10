@@ -347,7 +347,6 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 			ConsolidationTimeoutSec:    300,
 			TypingIndicatorIntervalSec: 5,
 			LongResponseDelayMs:        500,
-			ReplyTruncationLength:      200,
 			ImageCacheTTLMin:           60,
 			ImageCacheMaxEntries:       100,
 			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
@@ -396,7 +395,6 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 			Password:                  "test",
 			Enabled:                   true,
 			MemoriesPageLimit:         50,
-			ContentTruncationLength:   500,
 			SessionTTLMin:             30,
 			SessionCleanupIntervalMin: 5,
 			StatsQueryTimeoutSec:      5,
@@ -440,7 +438,6 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 			ConsolidationTimeoutSec:    300,
 			TypingIndicatorIntervalSec: 5,
 			LongResponseDelayMs:        500,
-			ReplyTruncationLength:      200,
 			ImageCacheTTLMin:           60,
 			ImageCacheMaxEntries:       100,
 			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
@@ -489,7 +486,6 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 			Password:                  "test",
 			Enabled:                   true,
 			MemoriesPageLimit:         50,
-			ContentTruncationLength:   500,
 			SessionTTLMin:             30,
 			SessionCleanupIntervalMin: 5,
 			StatsQueryTimeoutSec:      5,
@@ -555,7 +551,6 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 			ConsolidationTimeoutSec:    300,
 			TypingIndicatorIntervalSec: 5,
 			LongResponseDelayMs:        500,
-			ReplyTruncationLength:      200,
 			ImageCacheTTLMin:           60,
 			ImageCacheMaxEntries:       100,
 			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
@@ -569,7 +564,6 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 			Temperature:  0.8,
 			SystemPrompt: "test",
 			Vision: VisionConfig{
-				MaxImages: 4,
 			},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
@@ -607,7 +601,6 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 			Password:                  "test",
 			Enabled:                   true,
 			MemoriesPageLimit:         50,
-			ContentTruncationLength:   500,
 			SessionTTLMin:             30,
 			SessionCleanupIntervalMin: 5,
 			StatsQueryTimeoutSec:      5,
@@ -642,106 +635,6 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 		t.Errorf("Expected error about vision.mode, got: %v", err)
 	}
 }
-func TestValidate_MissingVisionMaxImages(t *testing.T) {
-	cfg := &Config{
-		Discord: DiscordConfig{
-			Token:                      "test",
-			BotName:                    "TestBot",
-			OtherBotPolicy:             OtherBotFull,
-			ReplyPercentage:            0.15,
-			CooldownSeconds:            5,
-			MaxResponsesPerMin:         10,
-			ConsolidationTimeoutSec:    300,
-			TypingIndicatorIntervalSec: 5,
-			LongResponseDelayMs:        500,
-			ReplyTruncationLength:      200,
-			ImageCacheTTLMin:           60,
-			ImageCacheMaxEntries:       100,
-			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
-		},
-		AI: AIConfig{
-			APIBaseURL:   "https://api.openai.com/v1",
-			APIKey:       "test",
-			Model:        "gpt-4o-mini",
-			VisionModel:  "gpt-4o",
-			MaxTokens:    1024,
-			Temperature:  0.8,
-			SystemPrompt: "test",
-			Vision: VisionConfig{
-				Mode:      VisionModeMultimodal,
-				MaxImages: 0,
-			},
-			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
-		},
-		Embedding: EmbeddingConfig{
-			Model: "text-embedding-3-small",
-		},
-		Memory: MemoryConfig{
-			ConsolidationInterval: 50,
-			ShortTermLimit:        20,
-			MaxPaginatedLimit:     100,
-
-			Retrieval: RetrievalConfig{
-				TopK:                   5,
-				MinScore:               0.75,
-				IncludeChannelMemories: true,
-				MaxMentionedMemories:   3,
-				MaxChannelMemories:     5,
-			},
-			Consolidation: ConsolidationConfig{
-				Enabled:           true,
-				MemorySearchLimit: 20,
-			},
-			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
-			MaxMentionedUsersPerMemory: 3,
-			MemoryStrengthMultiplier:   1.0,
-		},
-		Qdrant: QdrantConfig{
-			Host:       "localhost",
-			Port:       6334,
-			VectorSize: 1536,
-		},
-		Web: WebConfig{
-			Port:                      8080,
-			Username:                  "admin",
-			Password:                  "test",
-			Enabled:                   true,
-			MemoriesPageLimit:         50,
-			ContentTruncationLength:   500,
-			SessionTTLMin:             30,
-			SessionCleanupIntervalMin: 5,
-			StatsQueryTimeoutSec:      5,
-			LogDefaultLines:           100,
-			LogMaxLines:               1000,
-			LogMaxReadBytes:           1048576,
-		},
-		Logging: LoggingConfig{
-			Level:      "info",
-			File:       "logs/test.log",
-			MaxSize:    100,
-			MaxBackups: 3,
-			MaxAge:     30,
-		},
-		Plugins: PluginsConfig{
-			Enabled:              true,
-			PluginsDir:           "plugins",
-			StartupTimeoutSec:    90,
-			RPCTimeoutSec:        5,
-			BeforeSendTimeoutSec: 180,
-			CommandTimeoutSec:    45,
-			ShutdownTimeoutSec:   5,
-			DisableTimeoutSec:    2,
-		},
-		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
-	}
-	err := validate(cfg)
-	if err == nil {
-		t.Error("Expected error for vision.max_images = 0, got nil")
-	}
-	if !strings.Contains(err.Error(), "core.ai.vision.max_images") {
-		t.Errorf("Expected error about vision.max_images, got: %v", err)
-	}
-}
 func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{
@@ -754,7 +647,6 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 			ConsolidationTimeoutSec:    300,
 			TypingIndicatorIntervalSec: 5,
 			LongResponseDelayMs:        500,
-			ReplyTruncationLength:      200,
 			ImageCacheTTLMin:           60,
 			ImageCacheMaxEntries:       100,
 			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
@@ -769,7 +661,6 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 			SystemPrompt: "test",
 			Vision: VisionConfig{
 				Mode:              VisionModeHybrid,
-				MaxImages:         4,
 				DescriptionPrompt: "",
 			},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
@@ -808,7 +699,6 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 			Password:                  "test",
 			Enabled:                   true,
 			MemoriesPageLimit:         50,
-			ContentTruncationLength:   500,
 			SessionTTLMin:             30,
 			SessionCleanupIntervalMin: 5,
 			StatsQueryTimeoutSec:      5,
@@ -856,7 +746,6 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			ConsolidationTimeoutSec:    300,
 			TypingIndicatorIntervalSec: 5,
 			LongResponseDelayMs:        500,
-			ReplyTruncationLength:      200,
 			ImageCacheTTLMin:           60,
 			ImageCacheMaxEntries:       100,
 			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
@@ -873,7 +762,6 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			Timeout:      30,
 			Vision: VisionConfig{
 				Mode:      VisionModeTextOnly,
-				MaxImages: 1,
 			},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
@@ -910,7 +798,6 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			PruneAgeDays:                 90,
 			RelationshipPruneAgeDays:     90,
 			MaxMaintenanceLLMCallsPerDay: 50,
-			EntropyMinContentLength:      10,
 			EntropyMinUniqueWordRatio:    0.15,
 			DecayRates: DecayRatesConfig{
 				Fact:     0.01,
@@ -941,7 +828,6 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			Password:                  "test",
 			Enabled:                   true,
 			MemoriesPageLimit:         50,
-			ContentTruncationLength:   500,
 			SessionTTLMin:             30,
 			SessionCleanupIntervalMin: 5,
 			StatsQueryTimeoutSec:      5,
@@ -975,12 +861,12 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 }
 func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
@@ -1002,7 +888,6 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 			PruneAgeDays:                 90,
 			RelationshipPruneAgeDays:     90,
 			MaxMaintenanceLLMCallsPerDay: 50,
-			EntropyMinContentLength:      10,
 			EntropyMinUniqueWordRatio:    0.15,
 			DecayRates: DecayRatesConfig{
 				Fact:     0.01,
@@ -1035,12 +920,12 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 }
 func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
@@ -1062,7 +947,6 @@ func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 			PruneAgeDays:                 90,
 			RelationshipPruneAgeDays:     90,
 			MaxMaintenanceLLMCallsPerDay: 50,
-			EntropyMinContentLength:      10,
 			EntropyMinUniqueWordRatio:    0.15,
 			DecayRates: DecayRatesConfig{
 				Fact:     0.01,
@@ -1095,12 +979,12 @@ func TestValidate_PluginsDisabled_DoesNotRequirePluginsDir(t *testing.T) {
 }
 func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
@@ -1119,7 +1003,6 @@ func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 			PruneAgeDays:                 90,
 			RelationshipPruneAgeDays:     90,
 			MaxMaintenanceLLMCallsPerDay: 50,
-			EntropyMinContentLength:      10,
 			EntropyMinUniqueWordRatio:    0.15,
 			DecayRates: DecayRatesConfig{
 				Fact:     0.01,
@@ -1162,12 +1045,12 @@ func TestValidate_MCPEnabled_RequiresValidServerConfig(t *testing.T) {
 }
 func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
@@ -1186,7 +1069,6 @@ func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *test
 			PruneAgeDays:                 90,
 			RelationshipPruneAgeDays:     90,
 			MaxMaintenanceLLMCallsPerDay: 50,
-			EntropyMinContentLength:      10,
 			EntropyMinUniqueWordRatio:    0.15,
 			DecayRates: DecayRatesConfig{
 				Fact:     0.01,
@@ -1219,12 +1101,12 @@ func TestValidate_MemoryFeaturesDisabled_DoesNotRequireEmbeddingOrQdrant(t *test
 }
 func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
@@ -1258,13 +1140,13 @@ func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T
 }
 func TestValidate_MemoryEnabled_MissingRetryBaseDelay(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
-			Vision: VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision: VisionConfig{Mode: VisionModeTextOnly},
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
 		Memory: MemoryConfig{
@@ -1295,12 +1177,12 @@ func TestValidate_MemoryEnabled_MissingRetryBaseDelay(t *testing.T) {
 
 func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 0, Timeout: 1},
@@ -1331,12 +1213,12 @@ func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 }
 func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
@@ -1782,12 +1664,12 @@ operations:
 
 func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
@@ -1806,7 +1688,6 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 			PruneAgeDays:                 90,
 			RelationshipPruneAgeDays:     90,
 			MaxMaintenanceLLMCallsPerDay: 50,
-			EntropyMinContentLength:      10,
 			EntropyMinUniqueWordRatio:    0.15,
 			DecayRates: DecayRatesConfig{
 				Fact:     0.01,
@@ -1851,12 +1732,12 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 
 func TestValidate_ConsolidationEnabled_RequiresOwnBotID(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
@@ -1888,12 +1769,12 @@ func TestValidate_ConsolidationEnabled_RequiresOwnBotID(t *testing.T) {
 
 func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
@@ -1912,7 +1793,6 @@ func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 			PruneAgeDays:                 90,
 			RelationshipPruneAgeDays:     90,
 			MaxMaintenanceLLMCallsPerDay: 50,
-			EntropyMinContentLength:      10,
 			EntropyMinUniqueWordRatio:    0.15,
 			DecayRates: DecayRatesConfig{
 				Fact:     0.01,
@@ -1945,12 +1825,12 @@ func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 
 func TestValidateAI_MissingHTTPTimeoutSec(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision: VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision: VisionConfig{Mode: VisionModeTextOnly},
 			// HTTPTimeoutSec intentionally omitted
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
@@ -1983,12 +1863,12 @@ func TestValidateAI_MissingHTTPTimeoutSec(t *testing.T) {
 
 func TestValidateAI_MissingMaxToolIterations(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly},
 			HTTPTimeoutSec: 30, MaxImageBytes: 10485760,
 			// MaxToolIterations intentionally omitted
 		},
@@ -2021,12 +1901,12 @@ func TestValidateAI_MissingMaxToolIterations(t *testing.T) {
 
 func TestValidate_VisionMaxTokensNegative(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeHybrid, MaxImages: 1, DescriptionPrompt: "desc", MaxTokens: -1},
+			Vision:         VisionConfig{Mode: VisionModeHybrid, DescriptionPrompt: "desc", MaxTokens: -1},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
@@ -2058,12 +1938,12 @@ func TestValidate_VisionMaxTokensNegative(t *testing.T) {
 
 func TestValidate_EmbeddingTimeoutZero(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 0},
@@ -2095,12 +1975,12 @@ func TestValidate_EmbeddingTimeoutZero(t *testing.T) {
 
 func TestValidate_OtherBotPolicy_Missing(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
@@ -2128,12 +2008,12 @@ func TestValidate_OtherBotPolicy_Missing(t *testing.T) {
 
 func TestValidate_OtherBotPolicy_Invalid(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotPolicy("nonsense"), ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotPolicy("nonsense"), ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
@@ -2222,7 +2102,6 @@ func TestConfigSchema_HasRequiredWebFields(t *testing.T) {
 		t.Errorf("Required field %q not found in operations.web.allOf[0].then.required array", name)
 	}
 
-	checkField("content_truncation_length")
 	checkField("stats_query_timeout_sec")
 }
 
@@ -2393,12 +2272,12 @@ func TestPluginManifestSchema_RejectsInvalid(t *testing.T) {
 
 func TestValidate_PluginsDefaultToolTimeoutMsNegative(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
@@ -2439,12 +2318,12 @@ func TestValidate_PluginsDefaultToolTimeoutMsNegative(t *testing.T) {
 
 func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
 	cfg := &Config{
-		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ReplyTruncationLength: 200, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
 			APIBaseURL: "https://api.example.com/v1",
 			APIKey:     "k", Model: "m", VisionModel: "vm", MaxTokens: 1, Temperature: 0.1,
 			SystemPrompt: "sp", RetryCount: 1, Timeout: 1,
-			Vision:         VisionConfig{Mode: VisionModeTextOnly, MaxImages: 1},
+			Vision:         VisionConfig{Mode: VisionModeTextOnly},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
@@ -2465,7 +2344,6 @@ func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
 			PruneAgeDays:                 90,
 			RelationshipPruneAgeDays:     90,
 			MaxMaintenanceLLMCallsPerDay: 50,
-			EntropyMinContentLength:      10,
 			EntropyMinUniqueWordRatio:    0.15,
 			DecayRates: DecayRatesConfig{
 				Fact:     0.01,

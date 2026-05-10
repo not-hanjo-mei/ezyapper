@@ -58,9 +58,6 @@ core:
     # Delay before sending a response flagged as "long" (milliseconds).
     long_response_delay_ms: 500
 
-    # Character limit for reply truncation (Discord max: 2000).
-    reply_truncation_length: 2000
-
     # TTL for cached Discord image data (minutes).
     image_cache_ttl_min: 60
 
@@ -98,10 +95,6 @@ core:
       # Prompt used to describe images in "hybrid" mode.
       # Required when mode is "hybrid".
       # description_prompt: "Describe this image in 1-2 sentences. Be compact but informative."
-
-      # Max images consumed from one incoming message.
-      # Required when mode is not text_only.
-      max_images: 1
 
       # ── Optional: separate vision endpoint ──
       # Leave empty to inherit from ai.api_base_url / ai.api_key above.
@@ -361,8 +354,6 @@ memory_pipeline:
     max_maintenance_llm_calls_per_day: 10
 
     # ── Entropy Gate ──
-    # Minimum content length for messages to pass the entropy gate.
-    entropy_min_content_length: 20
     entropy_min_unique_word_ratio: 0.2
 
     # ── Decay Rates (lower = decays slower) ──
@@ -426,7 +417,6 @@ operations:
     ## username: "admin"
     ## password: "CHANGE_ME"
     ## memories_page_limit: 50
-    ## content_truncation_length: 500
     ## session_ttl_min: 30
     ## session_cleanup_interval_min: 5
     ## stats_query_timeout_sec: 5

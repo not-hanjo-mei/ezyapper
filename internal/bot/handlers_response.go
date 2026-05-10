@@ -228,14 +228,8 @@ func (b *Bot) handleHybridMode(ctx context.Context, mc ModeContext, req ai.ChatC
 	}
 
 	// Add image descriptions to current message content
-	maxImages := b.cfg().AI.Vision.MaxImages
 	for i, desc := range descriptions {
-		if i < maxImages {
-			fmt.Fprintf(&currentMsgContent, " [Image %d: %s]", i+1, desc)
-		}
-	}
-	if len(descriptions) > maxImages {
-		logger.Warnf("[hybrid] image descriptions truncated: %d descriptions but max_images=%d (config AI.Vision.MaxImages)", len(descriptions), maxImages)
+		fmt.Fprintf(&currentMsgContent, " [Image %d: %s]", i+1, desc)
 	}
 
 	fullContent.WriteString(formatMessageXML(mc.DisplayName, mc.Username, mc.UserID, currentMsgContent.String(), time.Now(), mc.ReplyToUsername, mc.ReplyToContent))
@@ -246,17 +240,6 @@ func (b *Bot) handleHybridMode(ctx context.Context, mc ModeContext, req ai.ChatC
 
 // handleMultimodalMode handles multimodal mode (single model for vision + tools)
 func (b *Bot) handleMultimodalMode(ctx context.Context, mc ModeContext, req ai.ChatCompletionRequest, imageURLs []string) (string, error) {
-	maxImages := b.cfg().AI.Vision.MaxImages
-	if maxImages == 0 {
-		maxImages = len(imageURLs)
-	}
-
-	imagesToProcess := imageURLs
-	if len(imageURLs) > maxImages {
-		imagesToProcess = imageURLs[:maxImages]
-		logger.Warnf("[response] Limiting images to %d (received %d)", maxImages, len(imageURLs))
-	}
-
 	// Wrap user content in XML format for multimodal mode
 	wrappedContent := "<currentMessage>\n" + formatMessageXML(mc.DisplayName, mc.Username, mc.UserID, mc.UserContent, time.Now(), mc.ReplyToUsername, mc.ReplyToContent) + "\n</currentMessage>"
 
@@ -265,7 +248,7 @@ func (b *Bot) handleMultimodalMode(ctx context.Context, mc ModeContext, req ai.C
 		req.SystemPrompt,
 		req.UserContext,
 		wrappedContent,
-		imagesToProcess,
+		imageURLs,
 		req.Messages,
 		b.createToolHandler(),
 	)

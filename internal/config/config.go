@@ -163,7 +163,7 @@ type DiscordConfig struct {
 	ConsolidationTimeoutSec    int             `mapstructure:"consolidation_timeout_sec" yaml:"consolidation_timeout_sec"`
 	TypingIndicatorIntervalSec int             `mapstructure:"typing_indicator_interval_sec" yaml:"typing_indicator_interval_sec"`
 	LongResponseDelayMs        int             `mapstructure:"long_response_delay_ms" yaml:"long_response_delay_ms"`
-	ReplyTruncationLength      int             `mapstructure:"reply_truncation_length" yaml:"reply_truncation_length"`
+
 	ImageCacheTTLMin           int             `mapstructure:"image_cache_ttl_min" yaml:"image_cache_ttl_min"`
 	ImageCacheMaxEntries       int             `mapstructure:"image_cache_max_entries" yaml:"image_cache_max_entries"`
 }
@@ -227,8 +227,7 @@ type MemoryConfig struct {
 	RelationshipPruneAgeDays     int     `mapstructure:"relationship_prune_age_days" yaml:"relationship_prune_age_days"`
 	MaxMaintenanceLLMCallsPerDay int     `mapstructure:"max_maintenance_llm_calls_per_day" yaml:"max_maintenance_llm_calls_per_day"`
 
-	// Entropy gate
-	EntropyMinContentLength   int     `mapstructure:"entropy_min_content_length" yaml:"entropy_min_content_length"`
+
 	EntropyMinUniqueWordRatio float64 `mapstructure:"entropy_min_unique_word_ratio" yaml:"entropy_min_unique_word_ratio"`
 
 	// Decay rates per type
@@ -292,7 +291,7 @@ type WebConfig struct {
 	Password                  string `mapstructure:"password" yaml:"password"`
 	Enabled                   bool   `mapstructure:"enabled" yaml:"enabled"`
 	MemoriesPageLimit         int    `mapstructure:"memories_page_limit" yaml:"memories_page_limit"`
-	ContentTruncationLength   int    `mapstructure:"content_truncation_length" yaml:"content_truncation_length"`
+
 	SessionTTLMin             int    `mapstructure:"session_ttl_min" yaml:"session_ttl_min"`
 	SessionCleanupIntervalMin int    `mapstructure:"session_cleanup_interval_min" yaml:"session_cleanup_interval_min"`
 	StatsQueryTimeoutSec      int    `mapstructure:"stats_query_timeout_sec" yaml:"stats_query_timeout_sec"`
@@ -367,7 +366,7 @@ const (
 type VisionConfig struct {
 	Mode              VisionMode     `mapstructure:"mode" yaml:"mode"`
 	DescriptionPrompt string         `mapstructure:"description_prompt" yaml:"description_prompt"`
-	MaxImages         int            `mapstructure:"max_images" yaml:"max_images"`
+
 	APIBaseURL        string         `mapstructure:"api_base_url" yaml:"api_base_url"`
 	APIKey            string         `mapstructure:"api_key" yaml:"api_key"`
 	MaxTokens         int            `mapstructure:"max_tokens" yaml:"max_tokens"`
@@ -470,9 +469,6 @@ func validateVision(cfg *Config, errs *[]string) {
 	if cfg.AI.Vision.Mode != VisionModeTextOnly && cfg.AI.VisionModel == "" {
 		*errs = append(*errs, "core.ai.vision_model is required when vision.mode is not text_only")
 	}
-	if cfg.AI.Vision.Mode != VisionModeTextOnly && cfg.AI.Vision.MaxImages <= 0 {
-		*errs = append(*errs, "core.ai.vision.max_images must be greater than 0")
-	}
 	if cfg.AI.Vision.Mode == VisionModeHybrid && cfg.AI.Vision.DescriptionPrompt == "" {
 		*errs = append(*errs, "core.ai.vision.description_prompt is required when vision.mode is hybrid")
 	}
@@ -503,7 +499,6 @@ func validateDiscord(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Discord.ConsolidationTimeoutSec, "core.discord.consolidation_timeout_sec", errs)
 	requirePositive(cfg.Discord.TypingIndicatorIntervalSec, "core.discord.typing_indicator_interval_sec", errs)
 	requirePositive(cfg.Discord.LongResponseDelayMs, "core.discord.long_response_delay_ms", errs)
-	requirePositive(cfg.Discord.ReplyTruncationLength, "core.discord.reply_truncation_length", errs)
 	requirePositive(cfg.Discord.ImageCacheTTLMin, "core.discord.image_cache_ttl_min", errs)
 	requirePositive(cfg.Discord.ImageCacheMaxEntries, "core.discord.image_cache_max_entries", errs)
 	if cfg.Discord.OtherBotPolicy != OtherBotFull {
@@ -580,9 +575,6 @@ func validateMemory(cfg *Config, errs *[]string) {
 	if cfg.Memory.MaxMaintenanceLLMCallsPerDay < 0 {
 		*errs = append(*errs, "memory_pipeline.memory.max_maintenance_llm_calls_per_day must be greater than or equal to 0")
 	}
-	if cfg.Memory.EntropyMinContentLength < 0 {
-		*errs = append(*errs, "memory_pipeline.memory.entropy_min_content_length must be greater than or equal to 0")
-	}
 	if cfg.Memory.EntropyMinUniqueWordRatio < 0 || cfg.Memory.EntropyMinUniqueWordRatio > 1 {
 		*errs = append(*errs, "memory_pipeline.memory.entropy_min_unique_word_ratio must be between 0 and 1")
 	}
@@ -646,7 +638,6 @@ func validateWeb(cfg *Config, errs *[]string) {
 		*errs = append(*errs, "operations.web.password is required when web is enabled")
 	}
 	requirePositive(cfg.Web.MemoriesPageLimit, "operations.web.memories_page_limit", errs)
-	requirePositive(cfg.Web.ContentTruncationLength, "operations.web.content_truncation_length", errs)
 	requirePositive(cfg.Web.SessionTTLMin, "operations.web.session_ttl_min", errs)
 	requirePositive(cfg.Web.SessionCleanupIntervalMin, "operations.web.session_cleanup_interval_min", errs)
 	requirePositive(cfg.Web.StatsQueryTimeoutSec, "operations.web.stats_query_timeout_sec", errs)

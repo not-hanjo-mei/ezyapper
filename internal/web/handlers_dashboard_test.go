@@ -23,7 +23,6 @@ func newTestCfgStore() *atomic.Value {
 		LogMaxLines:             5000,
 		LogMaxReadBytes:         1048576,
 		MemoriesPageLimit:       50,
-		ContentTruncationLength: 500,
 	}})
 	return &v
 }

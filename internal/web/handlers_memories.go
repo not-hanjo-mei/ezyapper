@@ -5,7 +5,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-	"unicode"
 
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
@@ -70,7 +69,7 @@ func handleMemoriesGET(w http.ResponseWriter, r *http.Request, cfgStore *atomic.
 		} else {
 			entries = make([]memoryDisplayEntry, 0, len(memories))
 			for _, m := range memories {
-				entries = append(entries, toDisplayEntry(m, cfg.Web.ContentTruncationLength))
+				entries = append(entries, toDisplayEntry(m))
 			}
 		}
 	}
@@ -122,12 +121,8 @@ func handleMemoriesDelete(w http.ResponseWriter, r *http.Request, memStore memor
 	http.Redirect(w, r, "/memories?userID="+userID, http.StatusSeeOther)
 }
 
-func toDisplayEntry(m *memory.Record, truncLen int) memoryDisplayEntry {
+func toDisplayEntry(m *memory.Record) memoryDisplayEntry {
 	content := m.Content
-	if len(content) > truncLen {
-		content = truncateToWord(content, truncLen)
-	}
-
 	createdAt := m.CreatedAt.Format(time.RFC3339)
 
 	return memoryDisplayEntry{
@@ -141,13 +136,4 @@ func toDisplayEntry(m *memory.Record, truncLen int) memoryDisplayEntry {
 	}
 }
 
-func truncateToWord(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	cut := s[:maxLen]
-	if idx := strings.LastIndexFunc(cut, unicode.IsSpace); idx > 0 {
-		cut = cut[:idx]
-	}
-	return cut + "…"
-}
+
