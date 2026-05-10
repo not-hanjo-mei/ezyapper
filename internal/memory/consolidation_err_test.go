@@ -31,8 +31,8 @@ func TestAnalyzeConversation_AIError(t *testing.T) {
 		},
 	}
 	c := &Consolidator{
-		aiClient: mock,
-		prompt:   "test prompt",
+		aiClient:    mock,
+		prompt:      "test prompt",
 		maxMessages: 100,
 	}
 	ctx := context.Background()
@@ -54,8 +54,8 @@ func TestAnalyzeConversationBatch_AIError(t *testing.T) {
 		},
 	}
 	c := &Consolidator{
-		aiClient: mock,
-		prompt:   "test prompt",
+		aiClient:    mock,
+		prompt:      "test prompt",
 		maxMessages: 100,
 	}
 	ctx := context.Background()
@@ -78,8 +78,8 @@ func TestAnalyzeConversation_ValidJSON_EmptyExtracts(t *testing.T) {
 		},
 	}
 	c := &Consolidator{
-		aiClient: mock,
-		prompt:   "test prompt",
+		aiClient:    mock,
+		prompt:      "test prompt",
 		maxMessages: 100,
 	}
 	ctx := context.Background()

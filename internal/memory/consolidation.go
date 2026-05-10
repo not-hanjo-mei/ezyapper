@@ -119,20 +119,20 @@ type visionDescriber interface {
 
 // Consolidator extracts and stores memories from conversation context using LLM analysis.
 type Consolidator struct {
-	qdrant               qdrantStore
-	embedder             Embedder
-	aiClient             aiChatCompleter
-	visionDescriber      visionDescriber
-	maxMessages          int
-	model                string
-	prompt               string
-	ownBotID             string // Bot's own ID to distinguish from other bots
-	memorySearchLimit    int
+	qdrant              qdrantStore
+	embedder            Embedder
+	aiClient            aiChatCompleter
+	visionDescriber     visionDescriber
+	maxMessages         int
+	model               string
+	prompt              string
+	ownBotID            string // Bot's own ID to distinguish from other bots
+	memorySearchLimit   int
 	otherBotPolicy      config.OtherBotPolicy
 	entropyMinWordRatio float64
-	retryMaxRetries      int
-	retryBaseDelay       time.Duration
-	retryMaxDelay        time.Duration
+	retryMaxRetries     int
+	retryBaseDelay      time.Duration
+	retryMaxDelay       time.Duration
 
 	lastConsolidatedAt time.Time
 	mu                 sync.RWMutex
@@ -162,20 +162,20 @@ func (c *Consolidator) embedWithRetry(ctx context.Context, text string) ([]float
 // NewConsolidator creates a new consolidator with the given Qdrant client, embedder, and AI configuration.
 func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient aiChatCompleter, visionDescriber visionDescriber, cfg *config.ConsolidationConfig, ownBotID string, consolidationInterval int, memorySearchLimit int, otherBotPolicy config.OtherBotPolicy, entropyMinWordRatio float64, retryMaxRetries int, retryBaseDelayMs int, retryMaxDelayMs int) *Consolidator {
 	return &Consolidator{
-		qdrant:               qdrant,
-		embedder:             embedder,
-		aiClient:             aiClient,
-		visionDescriber:      visionDescriber,
-		model:                cfg.Model,
-		maxMessages:          consolidationInterval,
-		prompt:               cfg.SystemPrompt,
-		ownBotID:             ownBotID,
-		memorySearchLimit:    memorySearchLimit,
+		qdrant:              qdrant,
+		embedder:            embedder,
+		aiClient:            aiClient,
+		visionDescriber:     visionDescriber,
+		model:               cfg.Model,
+		maxMessages:         consolidationInterval,
+		prompt:              cfg.SystemPrompt,
+		ownBotID:            ownBotID,
+		memorySearchLimit:   memorySearchLimit,
 		otherBotPolicy:      otherBotPolicy,
 		entropyMinWordRatio: entropyMinWordRatio,
-		retryMaxRetries:      retryMaxRetries,
-		retryBaseDelay:       time.Duration(retryBaseDelayMs) * time.Millisecond,
-		retryMaxDelay:        time.Duration(retryMaxDelayMs) * time.Millisecond,
+		retryMaxRetries:     retryMaxRetries,
+		retryBaseDelay:      time.Duration(retryBaseDelayMs) * time.Millisecond,
+		retryMaxDelay:       time.Duration(retryMaxDelayMs) * time.Millisecond,
 	}
 }
 

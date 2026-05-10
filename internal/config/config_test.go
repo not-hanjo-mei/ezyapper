@@ -556,15 +556,14 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
 		},
 		AI: AIConfig{
-			APIBaseURL:   "https://api.openai.com/v1",
-			APIKey:       "test",
-			Model:        "gpt-4o-mini",
-			VisionModel:  "gpt-4o",
-			MaxTokens:    1024,
-			Temperature:  0.8,
-			SystemPrompt: "test",
-			Vision: VisionConfig{
-			},
+			APIBaseURL:     "https://api.openai.com/v1",
+			APIKey:         "test",
+			Model:          "gpt-4o-mini",
+			VisionModel:    "gpt-4o",
+			MaxTokens:      1024,
+			Temperature:    0.8,
+			SystemPrompt:   "test",
+			Vision:         VisionConfig{},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{
@@ -761,7 +760,7 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			RetryCount:   1,
 			Timeout:      30,
 			Vision: VisionConfig{
-				Mode:      VisionModeTextOnly,
+				Mode: VisionModeTextOnly,
 			},
 			HTTPTimeoutSec: 30, MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},

@@ -18,11 +18,11 @@ import (
 func newTestCfgStore() *atomic.Value {
 	var v atomic.Value
 	v.Store(&config.Config{Web: config.WebConfig{
-		StatsQueryTimeoutSec:    5,
-		LogDefaultLines:         200,
-		LogMaxLines:             5000,
-		LogMaxReadBytes:         1048576,
-		MemoriesPageLimit:       50,
+		StatsQueryTimeoutSec: 5,
+		LogDefaultLines:      200,
+		LogMaxLines:          5000,
+		LogMaxReadBytes:      1048576,
+		MemoriesPageLimit:    50,
 	}})
 	return &v
 }

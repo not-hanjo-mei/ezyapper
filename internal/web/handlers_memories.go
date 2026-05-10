@@ -135,5 +135,3 @@ func toDisplayEntry(m *memory.Record) memoryDisplayEntry {
 		CreatedAt:  createdAt,
 	}
 }
-
-
