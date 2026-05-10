@@ -75,7 +75,6 @@ memory_pipeline:
     consolidation:
       enabled: false
       memory_search_limit: 20
-      worker_queue_size: 10
     maintenance_interval_sec: 3600
     merge_cron_hour_utc: 3
     summarize_cron_day: 0
@@ -84,7 +83,6 @@ memory_pipeline:
     prune_age_days: 90
     relationship_prune_age_days: 90
     max_maintenance_llm_calls_per_day: 50
-    entropy_min_content_length: 10
     entropy_min_unique_word_ratio: 0.15
     decay_rates:
       fact: 0.01
