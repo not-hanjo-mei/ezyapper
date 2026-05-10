@@ -16,7 +16,7 @@
       "properties": {
         "discord": {
           "type": "object",
-          "required": ["token", "bot_name", "own_bot_id", "reply_percentage", "cooldown_seconds", "max_responses_per_minute", "rate_limit", "consolidation_timeout_sec", "typing_indicator_interval_sec", "long_response_delay_ms", "image_cache_ttl_min", "image_cache_max_entries"],
+          "required": ["token", "bot_name", "own_bot_id", "reply_percentage", "cooldown_seconds", "max_responses_per_minute", "rate_limit", "consolidation_timeout_sec", "typing_indicator_interval_sec", "long_response_delay_ms", "image_cache_ttl_min", "image_cache_max_entries", "other_bot_policy"],
           "additionalProperties": false,
           "properties": {
             "token":                    { "type": "string" },
@@ -142,13 +142,13 @@
             },
             "consolidation": {
               "type": "object",
-              "required": ["enabled"],
+              "required": ["enabled", "memory_search_limit"],
               "additionalProperties": false,
               "allOf": [
                 {
                   "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
                   "then": {
-                    "required": ["memory_search_limit", "worker_queue_size"]
+                    "required": ["model", "api_base_url", "api_key", "max_tokens", "retry_count", "timeout", "system_prompt"]
                   }
                 }
               ],
@@ -171,8 +171,7 @@
                 "vision_timeout":      { "type": "integer", "minimum": 1 },
                 "system_prompt":       { "type": "string" },
                 "extra_params":        { "type": "object" },
-                "memory_search_limit": { "type": "integer", "minimum": 1 },
-                "worker_queue_size":   { "type": "integer", "minimum": 1 }
+                "memory_search_limit": { "type": "integer", "minimum": 1 }
               }
              },
              "maintenance_interval_sec": { "type": "integer", "minimum": 1 },

@@ -25,6 +25,9 @@ core:
     bot_name: "EZyapper"
 
     # Bot user ID. Used to identify self-messages.
+    # NOTE: own_bot_id is unconditionally required in JSON Schema (cross-subtree
+    # conditional validation is not expressible in JSON Schema draft 2020-12).
+    # Go only requires it when memory consolidation is enabled.
     # Required when memory consolidation is enabled.
     own_bot_id: "YOUR_BOT_USER_ID"
 
