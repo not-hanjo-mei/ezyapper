@@ -285,7 +285,7 @@ func TestShutdown_WaitsForTrackedGoroutines(t *testing.T) {
 	})
 }
 
-func TestAddMessageToChannelBuffer_MaxBufferSize(t *testing.T) {
+func TestAddMessageToChannelBuffer_BufferLimit(t *testing.T) {
 	newMsg := func(id string) *types.DiscordMessage {
 		return &types.DiscordMessage{
 			ID:        id,
@@ -294,12 +294,11 @@ func TestAddMessageToChannelBuffer_MaxBufferSize(t *testing.T) {
 		}
 	}
 
-	t.Run("max_buffer_size_0_falls_back_to_consolidation_interval_times_2", func(t *testing.T) {
+	t.Run("consolidation_interval_determines_limit", func(t *testing.T) {
 		var cfgStore atomic.Value
 		cfgStore.Store(&config.Config{
 			Memory: config.MemoryConfig{
-				ConsolidationInterval: 5,
-				MaxBufferSize:         0,
+				ConsolidationInterval: 2,
 			},
 		})
 
@@ -308,35 +307,7 @@ func TestAddMessageToChannelBuffer_MaxBufferSize(t *testing.T) {
 			channelMessageBuffer: make(map[string][]*types.DiscordMessage),
 		}
 
-		// Add 11 messages — buffer should truncate to 10 (5 * 2)
-		for i := 0; i < 11; i++ {
-			b.addMessageToChannelBuffer("ch-test", newMsg("msg-"+string(rune('a'+i))))
-		}
-
-		b.channelBufferMu.RLock()
-		size := len(b.channelMessageBuffer["ch-test"])
-		b.channelBufferMu.RUnlock()
-
-		if size != 10 {
-			t.Errorf("expected buffer size 10 (ConsolidationInterval*2 fallback), got %d", size)
-		}
-	})
-
-	t.Run("max_buffer_size_overrides_fallback", func(t *testing.T) {
-		var cfgStore atomic.Value
-		cfgStore.Store(&config.Config{
-			Memory: config.MemoryConfig{
-				ConsolidationInterval: 5,
-				MaxBufferSize:         3,
-			},
-		})
-
-		b := &Bot{
-			configStore:          &cfgStore,
-			channelMessageBuffer: make(map[string][]*types.DiscordMessage),
-		}
-
-		// Add 5 messages — buffer should truncate to 3 (MaxBufferSize)
+		// Add 5 messages — buffer should truncate to 4 (ConsolidationInterval * 2)
 		for i := 0; i < 5; i++ {
 			b.addMessageToChannelBuffer("ch-test", newMsg("msg-"+string(rune('a'+i))))
 		}
@@ -345,17 +316,16 @@ func TestAddMessageToChannelBuffer_MaxBufferSize(t *testing.T) {
 		size := len(b.channelMessageBuffer["ch-test"])
 		b.channelBufferMu.RUnlock()
 
-		if size != 3 {
-			t.Errorf("expected buffer size 3 (MaxBufferSize override), got %d", size)
+		if size != 4 {
+			t.Errorf("expected buffer size 4 (ConsolidationInterval*2 = 4), got %d", size)
 		}
 	})
 
-	t.Run("buffer_below_max_not_truncated", func(t *testing.T) {
+	t.Run("buffer_below_limit_not_truncated", func(t *testing.T) {
 		var cfgStore atomic.Value
 		cfgStore.Store(&config.Config{
 			Memory: config.MemoryConfig{
-				ConsolidationInterval: 5,
-				MaxBufferSize:         10,
+				ConsolidationInterval: 6,
 			},
 		})
 
@@ -364,7 +334,7 @@ func TestAddMessageToChannelBuffer_MaxBufferSize(t *testing.T) {
 			channelMessageBuffer: make(map[string][]*types.DiscordMessage),
 		}
 
-		// Add 3 messages — buffer should NOT truncate (below MaxBufferSize)
+		// Add 3 messages — buffer should NOT truncate (below limit of 12)
 		for i := 0; i < 3; i++ {
 			b.addMessageToChannelBuffer("ch-test", newMsg("msg-"+string(rune('a'+i))))
 		}
@@ -383,7 +353,6 @@ func TestAddMessageToChannelBuffer_MaxBufferSize(t *testing.T) {
 		cfgStore.Store(&config.Config{
 			Memory: config.MemoryConfig{
 				ConsolidationInterval: 5,
-				MaxBufferSize:         3,
 			},
 		})
 
