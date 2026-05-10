@@ -188,9 +188,9 @@ func (c *Consolidator) buildConversationText(ctx context.Context, messages []*Di
 		timeStr := msg.Timestamp.UTC().Format(time.RFC3339)
 		var botMarker string
 		if msg.AuthorID == c.ownBotID {
-			botMarker = ",BOT=SELF" // BOT=SELF tag 鈥?always present, prompt controls behavior
+			botMarker = ",BOT=SELF" // BOT=SELF tag - always present, prompt controls behavior
 		} else if msg.IsBot {
-			botMarker = ",BOT=OTHERS" // BOT=OTHERS tag 鈥?always present, prompt controls behavior
+			botMarker = ",BOT=OTHERS" // BOT=OTHERS tag - always present, prompt controls behavior
 		}
 		fmt.Fprintf(&conversation, `"%s"{UserID=%s,Time=%s%s}: "%s"`+"\n", msg.Username, msg.AuthorID, timeStr, botMarker, msg.Content)
 
@@ -245,7 +245,7 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 		messages = messages[:c.maxMessages]
 	}
 
-	// Apply entropy gate 鈥?filter noise messages
+	// Apply entropy gate - filter noise messages
 	filtered := make([]*DiscordMessage, 0, len(messages))
 	entropyCfg := EntropyGateConfig{
 		OtherBotPolicy:     c.otherBotPolicy,
@@ -556,7 +556,7 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 		messages = messages[:c.maxMessages]
 	}
 
-	// Apply entropy gate 鈥?filter noise messages
+	// Apply entropy gate - filter noise messages
 	filtered := make([]*DiscordMessage, 0, len(messages))
 	entropyCfg := EntropyGateConfig{
 		OtherBotPolicy:     c.otherBotPolicy,
@@ -941,7 +941,7 @@ func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []
 	}
 
 	for _, extract := range extracts {
-		// Structured profile updates (from LLM output) 鈥?supports ALL languages
+		// Structured profile updates (from LLM output) - supports ALL languages
 		if extract.ProfileUpdates != nil {
 			for _, t := range extract.ProfileUpdates.Traits {
 				if !containsFold(profile.Traits, t) {

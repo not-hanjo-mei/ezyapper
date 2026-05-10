@@ -199,7 +199,7 @@ func TestEmbedWithRetry_Exhausted(t *testing.T) {
 	embedSleep = func(d time.Duration) {}
 
 	ctx := context.Background()
-	// Always fails 鈥?1 initial + 3 retries = 4 attempts
+	// Always fails - 1 initial + 3 retries = 4 attempts
 	emb := newRetryableEmbedder(999)
 
 	c := &Consolidator{
@@ -1083,7 +1083,7 @@ func TestEntropyGate_IntegrationWithProcessWithMessages(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	// All messages too short 鈥?should return nil early
+	// All messages too short - should return nil early
 	messages := []*DiscordMessage{
 		{AuthorID: "user-1", Username: "test", Content: "hi", Timestamp: time.Now()},
 		{AuthorID: "user-1", Username: "test", Content: "ok", Timestamp: time.Now()},
