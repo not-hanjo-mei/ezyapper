@@ -44,8 +44,26 @@
         },
         "ai": {
           "type": "object",
-          "required": ["api_base_url", "api_key", "model", "vision_model", "max_tokens", "temperature", "retry_count", "timeout", "system_prompt", "vision", "http_timeout_sec", "max_tool_iterations", "max_image_bytes"],
+          "required": ["api_base_url", "api_key", "model", "max_tokens", "temperature", "retry_count", "timeout", "system_prompt", "vision", "http_timeout_sec", "max_tool_iterations", "max_image_bytes"],
           "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "vision": {
+                    "properties": {
+                      "mode": { "not": { "const": "text_only" } }
+                    },
+                    "required": ["mode"]
+                  }
+                },
+                "required": ["vision"]
+              },
+              "then": {
+                "required": ["vision_model"]
+              }
+            }
+          ],
           "properties": {
             "api_base_url":   { "type": "string" },
             "api_key":        { "type": "string" },
@@ -84,6 +102,14 @@
         "decision": {
           "type": "object",
           "required": ["enabled"],
+          "allOf": [
+            {
+              "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+              "then": {
+                "required": ["model", "api_base_url", "api_key", "system_prompt", "max_tokens", "timeout", "http_timeout_sec"]
+              }
+            }
+          ],
           "additionalProperties": false,
           "properties": {
             "enabled":       { "type": "boolean" },
@@ -137,8 +163,11 @@
               "additionalProperties": false,
               "properties": {
                 "top_k":    { "type": "integer", "minimum": 0 },
-                "min_score": { "type": "number", "minimum": 0, "maximum": 1 }
-              }
+                 "min_score": { "type": "number", "minimum": 0, "maximum": 1 },
+                 "include_channel_memories": { "type": "boolean" },
+                 "max_mentioned_memories": { "type": "integer", "minimum": 0 },
+                 "max_channel_memories": { "type": "integer", "minimum": 0 }
+               }
             },
             "consolidation": {
               "type": "object",
@@ -174,7 +203,16 @@
                 "memory_search_limit": { "type": "integer", "minimum": 1 }
               }
              },
-             "maintenance_interval_sec": { "type": "integer", "minimum": 1 },
+              "long_term_memory": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["enabled"],
+                "properties": { "enabled": { "type": "boolean" } }
+              },
+              "max_mentioned_users_per_memory": { "type": "integer", "minimum": 0 },
+              "memory_strength_multiplier": { "type": "number", "exclusiveMinimum": 0, "maximum": 100 },
+              "relationship_prune_age_days": { "type": "integer", "minimum": 1 },
+              "maintenance_interval_sec": { "type": "integer", "minimum": 1 },
              "merge_cron_hour_utc": { "type": "integer", "minimum": 0, "maximum": 23 },
              "summarize_cron_day": { "type": "integer", "minimum": 0, "maximum": 6 },
              "merge_cosine_threshold": { "type": "number", "minimum": 0, "maximum": 1 },
