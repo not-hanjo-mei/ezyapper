@@ -372,10 +372,9 @@ func (qc *QdrantClient) IncrementAccessCount(ctx context.Context, memoryIDs []st
 		pointIDs[i] = qdrant.NewID(id)
 	}
 
-	// Build payload: updated_at is common; access_count differs per point.
-	// SetPayload applies the same payload to all selected points, so we use
-	// SetPayload once with updated_at, then OverwritePayload per-point for
-	// access_count to handle different values.
+	// Build payload: updated_at is common across all points; access_count
+	// differs per point. Both use SetPayload (merge semantics) to avoid
+	// wiping existing payload fields.
 	commonPayload := map[string]*qdrant.Value{
 		"updated_at": {Kind: &qdrant.Value_DoubleValue{DoubleValue: now}},
 	}
@@ -397,13 +396,13 @@ func (qc *QdrantClient) IncrementAccessCount(ctx context.Context, memoryIDs []st
 		perPointPayload := map[string]*qdrant.Value{
 			"access_count": {Kind: &qdrant.Value_IntegerValue{IntegerValue: int64(inc)}},
 		}
-		_, err := qc.client.OverwritePayload(ctx, &qdrant.SetPayloadPoints{
+		_, err := qc.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
 			CollectionName: CollectionMemories,
 			Payload:        perPointPayload,
 			PointsSelector: qdrant.NewPointsSelector(qdrant.NewID(id)),
 		})
 		if err != nil {
-			logger.Warnf("[qdrant] failed to overwrite access_count for memoryID=%s: %v", id, err)
+			logger.Warnf("[qdrant] failed to set access_count for memoryID=%s: %v", id, err)
 		}
 	}
 
@@ -688,6 +687,98 @@ func (qc *QdrantClient) ScrollMemories(ctx context.Context, limit uint32) ([]*sc
 		points = append(points, sp)
 	}
 	return points, nil
+}
+
+// DetectDamagedMemories scans memory points for payload damage.
+// A point is damaged when its payload is empty or missing the schema_version key.
+// Returns the list of damaged memory UUIDs.
+func (qc *QdrantClient) DetectDamagedMemories(ctx context.Context, limit uint32) ([]string, error) {
+	points, err := qc.ScrollMemories(ctx, limit)
+	if err != nil {
+		return nil, fmt.Errorf("detect damaged memories: %w", err)
+	}
+
+	damaged := detectDamagedPoints(points)
+	logger.Infof("[qdrant] detect damaged memories: scanned %d, found %d damaged", len(points), len(damaged))
+	return damaged, nil
+}
+
+// detectDamagedPoints checks each scrollPoint and returns UUIDs of points
+// whose payload is empty or missing schema_version.
+func detectDamagedPoints(points []*scrollPoint) []string {
+	var damaged []string
+	for _, pt := range points {
+		if len(pt.Payload) == 0 {
+			damaged = append(damaged, pt.ID)
+			continue
+		}
+		if _, ok := pt.Payload["schema_version"]; !ok {
+			damaged = append(damaged, pt.ID)
+		}
+	}
+	return damaged
+}
+
+// repairOrDeleteDamagedPoints deletes damaged points and returns counts + affected user IDs.
+// It iterates point payloads, deletes those detected as damaged, extracts user_id
+// from raw payload, and accumulates unique user IDs.
+func repairOrDeleteDamagedPoints(ctx context.Context, points []*scrollPoint, deleteFn func(ctx context.Context, id string) error) (deleted int, userIDs []string) {
+	damaged := detectDamagedPoints(points)
+	if len(damaged) == 0 {
+		return 0, nil
+	}
+
+	damagedSet := make(map[string]bool, len(damaged))
+	for _, id := range damaged {
+		damagedSet[id] = true
+	}
+
+	seenUsers := make(map[string]struct{})
+
+	for _, pt := range points {
+		if !damagedSet[pt.ID] {
+			continue
+		}
+
+		// Extract user_id from raw payload before deletion.
+		uid := ""
+		if v, ok := pt.Payload["user_id"]; ok && v != nil {
+			uid = v.GetStringValue()
+		}
+
+		if err := deleteFn(ctx, pt.ID); err != nil {
+			logger.Errorf("[qdrant] repair: failed to delete damaged memoryID=%s: %v", pt.ID, err)
+			continue
+		}
+
+		deleted++
+
+		if uid != "" {
+			if _, exists := seenUsers[uid]; !exists {
+				seenUsers[uid] = struct{}{}
+				userIDs = append(userIDs, uid)
+			}
+			logger.Infof("[qdrant] repair: deleted damaged memoryID=%s userID=%s", pt.ID, uid)
+		} else {
+			logger.Infof("[qdrant] repair: deleted damaged memoryID=%s (no user_id)", pt.ID)
+		}
+	}
+
+	return deleted, userIDs
+}
+
+// RepairOrDeleteDamagedMemories scans memory points for payload damage,
+// deletes damaged points, and returns the count of deleted points plus
+// the deduplicated list of affected user IDs.
+func (qc *QdrantClient) RepairOrDeleteDamagedMemories(ctx context.Context, limit uint32) (deleted int, userIDs []string, err error) {
+	points, err := qc.ScrollMemories(ctx, limit)
+	if err != nil {
+		return 0, nil, fmt.Errorf("repair damaged memories: %w", err)
+	}
+
+	deleted, userIDs = repairOrDeleteDamagedPoints(ctx, points, qc.DeletePoint)
+	logger.Infof("[qdrant] repair: scanned %d points, deleted %d damaged, affected %d users", len(points), deleted, len(userIDs))
+	return deleted, userIDs, nil
 }
 
 // ScrollRelationships scrolls all relationship points with payload, limited to `limit` points.
@@ -1134,7 +1225,7 @@ func (qc *QdrantClient) RemoveUserFromMentions(ctx context.Context, userID strin
 				"mentioned_user_ids": {Kind: &qdrant.Value_ListValue{ListValue: &qdrant.ListValue{Values: vals}}},
 			}
 
-			_, err = qc.client.OverwritePayload(ctx, &qdrant.SetPayloadPoints{
+			_, err = qc.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
 				CollectionName: CollectionMemories,
 				Payload:        updatedPayload,
 				PointsSelector: qdrant.NewPointsSelector(point.Id),
