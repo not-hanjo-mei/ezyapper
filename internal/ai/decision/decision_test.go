@@ -65,11 +65,11 @@ func TestDecisionParseResponse(t *testing.T) {
 	d := &DecisionService{}
 
 	result, err := d.parseResponse("prefix {\"should_respond\":true,\"reason\":\"mention\",\"confidence\":1.5} suffix")
-	if err == nil {
-		t.Fatalf("expected error for out-of-range confidence 1.5, got result=%+v", result)
+	if err != nil {
+		t.Fatalf("expected clamped success for out-of-range confidence 1.5, got error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "above 1") {
-		t.Fatalf("expected 'above 1' error, got: %v", err)
+	if result.Confidence != 1.0 {
+		t.Fatalf("expected confidence clamped to 1.0, got %f", result.Confidence)
 	}
 }
 

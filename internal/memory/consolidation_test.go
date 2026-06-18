@@ -17,8 +17,6 @@ import (
 	"github.com/google/uuid"
 )
 
-var embedSleep func(time.Duration) // test-only override for retry sleep; unused in production
-
 func TestMain(m *testing.M) {
 	logger.Init(logger.Config{Level: "info"})
 	os.Exit(m.Run())
@@ -168,9 +166,6 @@ func (m *mockQdrantStore) GetRelationshipBetween(ctx context.Context, userA, use
 
 // TestEmbedWithRetry_Success verifies embedWithRetry retries on failure then succeeds.
 func TestEmbedWithRetry_Success(t *testing.T) {
-	defer func() { embedSleep = nil }()
-	embedSleep = func(d time.Duration) {} // skip real sleep
-
 	ctx := context.Background()
 	emb := newRetryableEmbedder(2) // fails first 2 calls, succeeds on 3rd
 
@@ -195,9 +190,6 @@ func TestEmbedWithRetry_Success(t *testing.T) {
 
 // TestEmbedWithRetry_Exhausted verifies embedWithRetry returns error after all retries fail.
 func TestEmbedWithRetry_Exhausted(t *testing.T) {
-	defer func() { embedSleep = nil }()
-	embedSleep = func(d time.Duration) {}
-
 	ctx := context.Background()
 	// Always fails - 1 initial + 3 retries = 4 attempts
 	emb := newRetryableEmbedder(999)
@@ -220,9 +212,6 @@ func TestEmbedWithRetry_Exhausted(t *testing.T) {
 
 // TestEmbedWithRetry_ContextCancelled verifies context cancellation stops retry loop.
 func TestEmbedWithRetry_ContextCancelled(t *testing.T) {
-	defer func() { embedSleep = nil }()
-	embedSleep = func(d time.Duration) {}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
@@ -242,9 +231,6 @@ func TestEmbedWithRetry_ContextCancelled(t *testing.T) {
 
 // TestEmbedWithRetry_ImmediateSuccess verifies zero retries when first call succeeds.
 func TestEmbedWithRetry_ImmediateSuccess(t *testing.T) {
-	defer func() { embedSleep = nil }()
-	embedSleep = func(d time.Duration) {}
-
 	ctx := context.Background()
 	emb := newRetryableEmbedder(0) // no failures
 
@@ -283,9 +269,6 @@ func (e *selectiveEmbedder) Stop() {}
 // TestProfileMemoryCount_OnlyOnSuccess verifies that when all Qdrant upserts
 // fail, MemoryCount remains unchanged.
 func TestProfileMemoryCount_OnlyOnSuccess(t *testing.T) {
-	defer func() { embedSleep = nil }()
-	embedSleep = func(d time.Duration) {}
-
 	ctx := context.Background()
 	qdrant := newMockQdrantStore()
 	qdrant.upsertMemoryErr = errors.New("qdrant unavailable")
@@ -347,9 +330,6 @@ func TestProfileMemoryCount_OnlyOnSuccess(t *testing.T) {
 // TestProfileMemoryCount_Consistent verifies that partial embedding failure still
 // results in correct MemoryCount: only successfully stored memories are counted.
 func TestProfileMemoryCount_Consistent(t *testing.T) {
-	defer func() { embedSleep = nil }()
-	embedSleep = func(d time.Duration) {}
-
 	ctx := context.Background()
 	qdrant := newMockQdrantStore()
 

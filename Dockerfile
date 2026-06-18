@@ -37,7 +37,7 @@ RUN adduser -D -g '' appuser
 # Copy binary from builder
 COPY --from=builder /build/ezyapper /app/ezyapper
 COPY --from=builder /build/config.yaml /app/config.yaml
-COPY --from=builder /build/web /app/web
+COPY --from=builder /build/internal/web/static /app/web/static
 
 # Create logs directory
 RUN mkdir -p /app/logs && \

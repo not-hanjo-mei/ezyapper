@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -139,6 +140,9 @@ func (l *Logger) Sync() error {
 // Global logger instance
 var globalLogger *Logger
 
+var noopLogger = &Logger{SugaredLogger: zap.NewNop().Sugar()}
+var noopWarnOnce sync.Once
+
 // Init initializes the global logger
 func Init(cfg Config) error {
 	var err error
@@ -147,10 +151,14 @@ func Init(cfg Config) error {
 }
 
 // L returns the global logger. If the logger has not been initialized,
-// the function panics rather than returning nil — there is no silent fallback.
+// returns a no-op logger that silently discards all output rather than
+// panicking — library code should never crash the process.
 func L() *Logger {
 	if globalLogger == nil {
-		panic("logger.L() called before Init() — logger was not initialized")
+		noopWarnOnce.Do(func() {
+			fmt.Fprintln(os.Stderr, "WARNING: logger.L() called before Init() — using no-op logger")
+		})
+		return noopLogger
 	}
 	return globalLogger
 }

@@ -324,7 +324,7 @@ func applyExtraParamsToStruct(req any, extraParams map[string]any, logPrefix str
 	for key, value := range extraParams {
 		fieldIndex := findFieldIndexByJSONTag(reqType, key)
 		if fieldIndex < 0 {
-			logger.Debugf("%s extra param '%s' not found in request struct", logPrefix, key)
+			logger.Warnf("%s extra param '%s' not found in request struct", logPrefix, key)
 			continue
 		}
 
@@ -637,6 +637,22 @@ func (c *Client) runToolLoop(ctx context.Context, initialMessages []openai.ChatC
 	return resp, nil
 }
 
+func (c *Client) executeToolLoop(ctx context.Context, messages []openai.ChatCompletionMessage, initial *toolLoopResponse, request toolLoopRequester, toolHandler ToolHandler, warnLabel string) (*ChatCompletionResponse, error) {
+	final, err := c.runToolLoop(ctx, messages, initial, c.config.MaxToolIterations, toolHandler, request, func(err error) string {
+		return fmt.Sprintf("Error: %v", err)
+	}, warnLabel)
+	if err != nil {
+		return nil, err
+	}
+	return &ChatCompletionResponse{
+		Content:          final.content,
+		ToolCalls:        final.toolCalls,
+		ReasoningContent: final.reasoningContent,
+		FinishReason:     final.finishReason,
+		Usage:            final.usage,
+	}, nil
+}
+
 // CreateChatCompletionWithTools creates a chat completion with tool support
 func (c *Client) CreateChatCompletionWithTools(ctx context.Context, req ChatCompletionRequest, toolHandler ToolHandler) (*ChatCompletionResponse, error) {
 	// Get available tools
@@ -675,20 +691,7 @@ func (c *Client) CreateChatCompletionWithTools(ctx context.Context, req ChatComp
 		}, nil
 	}
 
-	final, err := c.runToolLoop(ctx, req.Messages, initial, c.config.MaxToolIterations, toolHandler, request, func(err error) string {
-		return fmt.Sprintf("Error: %v", err)
-	}, "tool")
-	if err != nil {
-		return nil, err
-	}
-
-	return &ChatCompletionResponse{
-		Content:          final.content,
-		ToolCalls:        final.toolCalls,
-		ReasoningContent: final.reasoningContent,
-		FinishReason:     final.finishReason,
-		Usage:            final.usage,
-	}, nil
+	return c.executeToolLoop(ctx, req.Messages, initial, request, toolHandler, "tool")
 }
 
 // CreateVisionCompletionWithTools creates a chat completion with vision and tool support (multimodal mode)
@@ -772,20 +775,7 @@ func (c *Client) CreateVisionCompletionWithTools(ctx context.Context, systemProm
 		}, nil
 	}
 
-	final, err := c.runToolLoop(ctx, messages, initial, c.config.MaxToolIterations, toolHandler, request, func(err error) string {
-		return fmt.Sprintf("Error: %v", err)
-	}, "vision tool")
-	if err != nil {
-		return nil, err
-	}
-
-	return &ChatCompletionResponse{
-		Content:          final.content,
-		ToolCalls:        final.toolCalls,
-		ReasoningContent: final.reasoningContent,
-		FinishReason:     final.finishReason,
-		Usage:            final.usage,
-	}, nil
+	return c.executeToolLoop(ctx, messages, initial, request, toolHandler, "vision tool")
 }
 
 // ToolHandler is a function that handles tool calls
