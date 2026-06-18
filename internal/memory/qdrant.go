@@ -359,8 +359,9 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error 
 	return nil
 }
 
-// IncrementAccessCount atomically increments the access_count payload field
-// and updates updated_at for the given memory IDs, without touching vectors.
+// IncrementAccessCount sets the access_count payload field to the given
+// absolute values and updates updated_at and last_accessed_at for the given
+// memory IDs, without touching vectors.
 func (qc *QdrantClient) IncrementAccessCount(ctx context.Context, memoryIDs []string, increments map[string]int) error {
 	if len(memoryIDs) == 0 {
 		return nil
@@ -372,11 +373,12 @@ func (qc *QdrantClient) IncrementAccessCount(ctx context.Context, memoryIDs []st
 		pointIDs[i] = qdrant.NewID(id)
 	}
 
-	// Build payload: updated_at is common across all points; access_count
-	// differs per point. Both use SetPayload (merge semantics) to avoid
-	// wiping existing payload fields.
+	// Build payload: updated_at and last_accessed_at are common across all
+	// points; access_count differs per point. All use SetPayload (merge
+	// semantics) to avoid wiping existing payload fields.
 	commonPayload := map[string]*qdrant.Value{
-		"updated_at": {Kind: &qdrant.Value_DoubleValue{DoubleValue: now}},
+		"updated_at":       {Kind: &qdrant.Value_DoubleValue{DoubleValue: now}},
+		"last_accessed_at": {Kind: &qdrant.Value_DoubleValue{DoubleValue: now}},
 	}
 
 	_, err := qc.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
@@ -388,6 +390,7 @@ func (qc *QdrantClient) IncrementAccessCount(ctx context.Context, memoryIDs []st
 		return fmt.Errorf("increment access count: %w", err)
 	}
 
+	var errs []error
 	for _, id := range memoryIDs {
 		inc, ok := increments[id]
 		if !ok {
@@ -403,10 +406,11 @@ func (qc *QdrantClient) IncrementAccessCount(ctx context.Context, memoryIDs []st
 		})
 		if err != nil {
 			logger.Warnf("[qdrant] failed to set access_count for memoryID=%s: %v", id, err)
+			errs = append(errs, fmt.Errorf("set access_count for memoryID=%s: %w", id, err))
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 // GetMemoryPayloads retrieves lightweight payload data for multiple memory IDs.

@@ -170,6 +170,9 @@ type Embedder interface {
 	Stop()
 }
 
+// repairScanLimit caps the one-time startup scan for damaged points.
+const repairScanLimit uint32 = 1000
+
 func NewService(cfg *ServiceConfig, qdrantCfg *config.QdrantConfig, qdrantClient *QdrantClient, embedder Embedder, aiClient aiChatCompleter, vd visionDescriber) (*MemoryService, error) {
 	if qdrantClient == nil {
 		return nil, fmt.Errorf("qdrant client is required")
@@ -213,6 +216,20 @@ func NewService(cfg *ServiceConfig, qdrantCfg *config.QdrantConfig, qdrantClient
 	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, vd, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit, cfg.OtherBotPolicy, cfg.EntropyMinUniqueWordRatio, qdrantCfg.MaxRetries, qdrantCfg.RetryBaseDelayMs, qdrantCfg.RetryMaxDelayMs)
 
 	service.startAccessWorker()
+
+	// Best-effort cleanup of damaged points left by previous OverwritePayload
+	// bug. Skipped when the gRPC client is nil (e.g. in unit tests using a
+	// bare &QdrantClient{}). Failure logs a warning but does not block startup.
+	if qdrantClient.client != nil {
+		repairCtx, repairCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		deleted, userIDs, repairErr := qdrantClient.RepairOrDeleteDamagedMemories(repairCtx, repairScanLimit)
+		repairCancel()
+		if repairErr != nil {
+			logger.Warnf("[memory] startup repair: %v", repairErr)
+		} else if deleted > 0 {
+			logger.Infof("[memory] startup repair: deleted %d damaged points, affected users: %v", deleted, userIDs)
+		}
+	}
 
 	logger.Info("[memory] Memory service initialized")
 	return service, nil
