@@ -42,7 +42,7 @@ go build -o ezyapper ./cmd/bot
 - [Vision Modes](docs/VISION.md) — The difference between the three image-handling modes
 - [Plugins](docs/PLUGINS.md) — Build your own extensions
 - [Prompt Optimization](docs/PROMPT_OPTIMIZATION.md) — Make responses faster and cheaper
-- [API Reference](docs/API.md) — Endpoints for the WebUI
+- [WebUI Reference](docs/API.md) — The optional admin dashboard
 
 ---
 

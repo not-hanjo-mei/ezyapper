@@ -1,733 +1,157 @@
-# API Documentation
+# WebUI Reference
 
-EZyapper provides a RESTful API for management and configuration.
+> [!IMPORTANT]
+> **There is no JSON REST API.** The WebUI is a server-rendered HTML dashboard. Earlier versions of these docs described a `/api/*` JSON surface — that surface never shipped. If you need to manage the bot programmatically, edit `config.yaml` and restart, or use the dashboard's HTML forms.
 
-> [!WARNING]
-> **Temporary WebUI/API Status**
-> API endpoints are served by the Web module and are unavailable when WebUI is disabled.
-> The dashboard currently has known stability issues, so the temporary recommendation is to keep `operations.web.enabled: false` for normal operation and enable it only for targeted debugging.
+EZyapper's WebUI is a small admin dashboard built directly on `net/http`. It's optional, disabled by default, and considered experimental — keep `operations.web.enabled: false` for production unless you explicitly need it.
+
+---
+
+## Enabling the WebUI
+
+```yaml
+operations:
+  web:
+    enabled: true
+    port: 8080
+    username: "admin"
+    password: "CHANGE_ME"
+    memories_page_limit: 50
+    session_ttl_min: 30
+    session_cleanup_interval_min: 5
+    stats_query_timeout_sec: 5
+    log_default_lines: 100
+    log_max_lines: 1000
+    log_max_read_bytes: 1048576
+```
+
+When `enabled: false`, every WebUI field above is skipped during validation, and the HTTP listener never starts. Setting `enabled: true` requires every other field to be present — strict config rules apply here too.
+
+---
 
 ## Authentication
 
-All API endpoints (except `/health`) require HTTP Basic Authentication.
+Basic Auth username + password from `operations.web.*` are the only credentials. There is no user database, no roles, no per-tenant isolation — the whole dashboard is "admin or nothing."
 
-> [!NOTE]
-> **Current API Behavior**
-> - Configuration updates are validated, applied to runtime, and persisted to `config.yaml`.
-> - Plugin `/api/plugins/:name/enable` and `/api/plugins/:name/disable` endpoints invoke `PluginManager` and refresh plugin tools.
-> - Statistics uptime is derived from Web server start time.
-> - List APIs are strict: `/api/blacklist` and `/api/whitelist` accept `{ "type", "id" }` only.
-> - API authentication is admin-level Basic Auth; endpoints are management APIs, not per-user tenant isolation.
+| Mechanism | Detail |
+|-----------|--------|
+| Login form | `GET /login` — renders the form. `POST /login` — validates credentials. |
+| Session cookie | `__Host-session_id`, HttpOnly + Secure + SameSite=Strict, random 32-byte hex ID. |
+| TTL | `session_ttl_min` minutes. Background cleanup runs every `session_cleanup_interval_min`. |
+| Login rate limit | 5 attempts per minute per client IP (sliding window, in-memory). |
+| Credential check | Constant-time comparison via `crypto/subtle`. |
+| Logout | `POST /logout` (CSRF-checked). Deletes session and clears the cookie. |
 
-```bash
-curl -u admin:changeme123 http://localhost:8080/api/config
-```
-
-## Base URL
-
-```
-http://localhost:8080
-```
-
-## Endpoints
-
-### Health Check
-
-Public endpoint for health monitoring.
-
-```
-GET /health
-```
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "timestamp": 1705312800
-}
-```
+Sessions live in memory only — restart the bot and everyone is logged out.
 
 ---
 
-### Configuration
+## CSRF Protection
 
-#### Get Configuration
+State-changing requests (`POST`, `PUT`, `DELETE`) require a CSRF token.
 
-```
-GET /api/config
-```
+- Pattern: Double-Submit Cookie with HMAC-SHA256 signature.
+- Cookie: `csrf_token` — non-HttpOnly so JS-driven forms can read it. `Secure` + `SameSite=Strict`.
+- Form field: `csrf_token` — must match the cookie. Both raw token and HMAC signature are verified.
+- Excluded path: `POST /login` (you can't have a session yet).
+- All HTML pages embed a hidden `csrf_token` input automatically.
 
-**Response:**
-```json
-{
-  "discord": {
-    "bot_name": "EZyapper",
-    "reply_percentage": 0.15,
-    "cooldown_seconds": 5
-  },
-  "ai": {
-    "model": "gpt-4o-mini",
-    "vision_model": "gpt-4o",
-    "max_tokens": 1024,
-    "temperature": 0.8
-  },
-  "memory": {
-    "consolidation_interval": 50,
-    "short_term_limit": 20,
-    "retrieval": {
-      "top_k": 5,
-      "min_score": 0.75
-    }
-  },
-  "web": {
-    "port": 8080
-  }
-}
-```
-
-#### Update Discord Configuration
-
-```
-PUT /api/config/discord
-```
-
-**Request Body:**
-```json
-{
-  "bot_name": "MyBot",
-  "reply_percentage": 0.25,
-  "cooldown_seconds": 3,
-  "max_responses_per_minute": 15
-}
-```
-
-**Response:**
-```json
-{
-  "message": "discord config updated",
-  "config": {
-    "bot_name": "MyBot",
-    "reply_percentage": 0.25,
-    "cooldown_seconds": 3,
-    "max_responses_per_minute": 15
-  }
-}
-```
-
-#### Update AI Configuration
-
-```
-PUT /api/config/ai
-```
-
-**Request Body:**
-```json
-{
-  "model": "gpt-4o",
-  "max_tokens": 2048,
-  "temperature": 0.7,
-  "system_prompt": "You are a helpful assistant."
-}
-```
-
-**Response:**
-```json
-{
-  "message": "ai config updated",
-  "config": {
-    "model": "gpt-4o",
-    "max_tokens": 2048,
-    "temperature": 0.7
-  }
-}
-```
+If a request is rejected for CSRF reasons you'll see a 403 with a brief message.
 
 ---
 
-### Blacklist Management
+## Routes
 
-#### Get Blacklist
+The bot registers exactly these routes (`internal/web/server.go:setupRoutes`). Anything else returns 404.
 
-```
-GET /api/blacklist
-```
+| Path | Methods | Auth | Renders | Notes |
+|------|---------|------|---------|-------|
+| `/static/...` | GET | none | static asset | CSS/JS served from disk (see "Static Assets") |
+| `/login` | GET, POST | none | `login` template | GET shows form. POST authenticates, sets session, redirects to `/`. |
+| `/logout` | POST | session + CSRF | redirect | Clears the session cookie. |
+| `/` | GET | session | `dashboard` template | Stats overview |
+| `/config` | GET, POST | session + CSRF | `config` template | View/update runtime config. POST validates, applies, and persists to `config.yaml`. |
+| `/channels` | GET | session | `channels` template | View blacklist + whitelist |
+| `/channels/blacklist/add` | POST | session + CSRF | redirect | Add an entry to blacklist |
+| `/channels/blacklist/remove` | POST | session + CSRF | redirect | Remove an entry from blacklist |
+| `/channels/whitelist/add` | POST | session + CSRF | redirect | Add an entry to whitelist |
+| `/channels/whitelist/remove` | POST | session + CSRF | redirect | Remove an entry from whitelist |
+| `/memories` | GET | session | `memories` template | List/search a user's memories. Query params: `userID`, `q`. |
+| `/memories/delete` | POST | session + CSRF | redirect | Delete one memory by ID (ownership-verified) |
+| `/profiles` | GET | session | `profiles` template | View/edit a user's profile. Query param: `userID`. |
+| `/profiles/update` | POST | session + CSRF | redirect | Update display name, traits, facts, etc. |
+| `/plugins` | GET | session | `plugins` template | List loaded plugins |
+| `/plugins/toggle` | POST | session + CSRF | redirect | Enable/disable a plugin (refreshes tool registrations) |
+| `/logs` | GET | session | `logs` template | Tail the log file. Query param: `lines`. |
 
-**Response:**
-```json
-{
-  "users": ["123456789", "987654321"],
-  "channels": ["111222333"],
-  "guilds": []
-}
-```
+There is **no** `/health` endpoint — health checks should hit the bot's process directly (e.g., supervisor, container probe, or systemd `MainPID`). The Docker image's `HEALTHCHECK` currently does request `/health` and will fail when the WebUI is disabled; treat the WebUI healthcheck as best-effort, not authoritative.
 
-#### Add to Blacklist
+### Middleware Chain
 
-```
-POST /api/blacklist
-```
+Outer to inner:
 
-**Request Body:**
-```json
-{
-  "type": "user",
-  "id": "123456789012345678"
-}
-```
-
-| Type | Description |
-|------|-------------|
-| `user` | User ID to blacklist |
-| `channel` | Channel ID to blacklist |
-| `guild` | Guild ID to blacklist |
-
-**Response:**
-```json
-{
-  "message": "added to blacklist"
-}
-```
-
-#### Remove from Blacklist
-
-```
-DELETE /api/blacklist/:type/:id
-```
-
-**Example:**
-```
-DELETE /api/blacklist/user/123456789012345678
-```
-
-**Response:**
-```json
-{
-  "message": "removed from blacklist"
-}
-```
+1. **`securityHeaders`** — sets `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `X-XSS-Protection: 1; mode=block`, and a CSP allowing `'self'`, inline styles/scripts, and Google Fonts.
+2. **`CSRFMiddleware`** — issues tokens on safe methods, validates on unsafe ones.
+3. **`SessionMiddleware`** — loads/redirects based on `__Host-session_id`. Excludes `/login`, `/favicon.ico`, and `/static/`.
+4. **Mux** — handler dispatch.
 
 ---
 
-### Whitelist Management
+## Page Data
 
-#### Get Whitelist
+Each HTML template receives a `PageData` envelope:
 
-```
-GET /api/whitelist
-```
-
-**Response:**
-```json
-{
-  "channels": ["123456789", "987654321"]
+```go
+type PageData struct {
+    Title     string
+    ActiveNav string
+    CSRFToken string
+    Flash     *FlashMessage
+    Data      any         // page-specific payload
+    NavItems  []NavItem
 }
 ```
 
-#### Add to Whitelist
+The `Data` field shape depends on the page:
 
-```
-POST /api/whitelist
-```
+| Page | Data type | Key fields |
+|------|-----------|-----------|
+| `dashboard` | `dashboardData` | `TotalMemories`, `TotalUsers`, `Uptime` (seconds since process start) |
+| `config` | `*config.Config` | The full runtime config struct |
+| `channels` | `*channelsPageData` | `Blacklist` + `Whitelist`, each with `Users/Channels/Guilds` resolved to display names |
+| `memories` | `memoriesPageData` | `UserID`, `[]memoryDisplayEntry`, `Count`, `Searched`, `Error` |
+| `profiles` | `profilesPageData` | `UserID`, `*profileDisplayEntry`, `Found`, `Searched`, `EditMode`, `Error` |
+| `plugins` | `pluginsPageData` | `[]plugin.InfoExt` (Name, Version, Author, Description, Priority, Enabled) |
+| `logs` | `map[string]any` | `Lines`, `Content`, `Stats` ("Showing last N of M") |
 
-**Request Body:**
-```json
-{
-  "type": "channel",
-  "id": "123456789012345678"
-}
-```
+### Flash Messages
 
-**Response:**
-```json
-{
-  "message": "added to whitelist"
-}
-```
-
-#### Remove from Whitelist
-
-```
-DELETE /api/whitelist/:type/:id
-```
-
-**Example:**
-```
-DELETE /api/whitelist/channel/123456789012345678
-```
-
-**Response:**
-```json
-{
-  "message": "removed from whitelist"
-}
-```
+Cookie-based, self-expiring (60s TTL). The dashboard sets a flash on form-submit redirects so the next page can render success/error banners. No server-side state.
 
 ---
 
-### Memory Management
+## Static Assets
 
-#### Get User Memories
+CSS and JS are **not embedded** in the binary. They're served from disk by `http.FileServer(http.Dir(staticDir))`.
 
-```
-GET /api/memories/:userID
-```
+`findStaticDir()` probes several candidate paths in order:
 
-**Query Parameters:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `limit` | int | 50 | Number of memories to return |
+1. `./internal/web/static`
+2. `../internal/web/static`
+3. `./web/static`
+4. `./static`
+5. Executable-relative paths (`<exe-dir>/web/static`, etc.)
 
-**Response:**
-```json
-{
-  "user_id": "123456789",
-  "count": 3,
-  "memories": [
-    {
-      "id": "uuid-1",
-      "user_id": "123456789",
-      "memory_type": "fact",
-      "content": "User likes programming in Go",
-      "summary": "User likes Go programming",
-      "keywords": ["programming", "go"],
-      "confidence": 0.9,
-      "created_at": "2024-01-15T10:00:00Z"
-    }
-  ]
-}
-```
+If none exist, `/static/` returns 404. **Make sure your deployment ships the `static/` directory next to the binary** — the Dockerfile copies it to `/app/web/static`.
 
-#### Search Memories
-
-```
-GET /api/memories/:userID/search?q=programming
-```
-
-**Query Parameters:**
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `q` | string | yes | Search query |
-
-**Response:**
-```json
-{
-  "user_id": "123456789",
-  "query": "programming",
-  "count": 2,
-  "memories": [
-    {
-      "id": "uuid-1",
-      "content": "User likes programming in Go",
-      "summary": "User likes Go programming",
-      "confidence": 0.9
-    }
-  ]
-}
-```
-
-#### Delete Memory
-
-```
-DELETE /api/memories/:userID/:memoryID
-```
-
-**Response:**
-```json
-{
-  "message": "memory deleted"
-}
-```
-
-#### Clear All Memories
-
-```
-DELETE /api/memories/:userID
-```
-
-**Response:**
-```json
-{
-  "message": "all user data deleted"
-}
-```
+Templates, on the other hand, **are** embedded via `//go:embed`, so the binary alone is enough to render pages.
 
 ---
 
-### Profile Management
-
-#### Get User Profile
-
-```
-GET /api/profiles/:userID
-```
-
-**Response:**
-```json
-{
-  "user_id": "123456789",
-  "traits": ["friendly", "curious"],
-  "facts": {
-    "location": "San Francisco",
-    "job": "Software Engineer"
-  },
-  "preferences": {
-    "language": "Go",
-    "editor": "VS Code"
-  },
-  "interests": ["programming", "gaming", "music"],
-  "message_count": 150,
-  "memory_count": 12,
-  "first_seen_at": "2024-01-01T00:00:00Z",
-  "last_active_at": "2024-01-15T10:00:00Z"
-}
-```
-
-#### Update Profile
-
-```
-PUT /api/profiles/:userID
-```
-
-**Request Body:**
-```json
-{
-  "traits": ["friendly", "helpful"],
-  "facts": {
-    "location": "New York"
-  },
-  "preferences": {
-    "theme": "dark"
-  },
-  "interests": ["coding", "reading"]
-}
-```
-
-**Response:**
-```json
-{
-  "message": "profile updated",
-  "profile": {
-    "user_id": "123456789",
-    "traits": ["friendly", "helpful"],
-    "facts": {
-      "location": "New York"
-    },
-    "preferences": {
-      "theme": "dark"
-    },
-    "interests": ["coding", "reading"]
-  }
-}
-```
-
-#### Delete Profile
-
-```
-DELETE /api/profiles/:userID
-```
-
-**Response:**
-```json
-{
-  "message": "profile deleted"
-}
-```
-
----
-
-### Consolidation
-
-#### Trigger Consolidation
-
-```
-POST /api/consolidate/:userID
-```
-
-Triggers async memory consolidation for a user.
-
-**Response:**
-```json
-{
-  "message": "consolidation triggered",
-  "user_id": "123456789"
-}
-```
-
----
-
-### Logs
-
-#### Get Logs
-
-```
-GET /api/logs
-```
-
-**Query Parameters:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `lines` | int | 100 | Number of lines to return |
-
-**Response:**
-```json
-{
-  "logs": [
-    "2024-01-15T10:00:00Z INFO Starting EZyapper...",
-    "2024-01-15T10:00:01Z INFO Memory service initialized",
-    "2024-01-15T10:00:02Z INFO Bot is now running"
-  ]
-}
-```
-
----
-
-### Plugins
-
-#### List Plugins
-
-```
-GET /api/plugins
-```
-
-**Response:**
-```json
-{
-  "plugins": [
-    {
-      "name": "anti-spam",
-      "version": "0.0.0",
-      "author": "EZyapper",
-      "description": "Prevents spam messages",
-      "priority": 100,
-      "enabled": true
-    }
-  ]
-}
-```
-
-#### Enable Plugin
-
-```
-POST /api/plugins/:name/enable
-```
-
-**Response:**
-```json
-{
-  "message": "plugin enabled",
-  "name": "anti-spam"
-}
-```
-
-#### Disable Plugin
-
-```
-POST /api/plugins/:name/disable
-```
-
-**Response:**
-```json
-{
-  "message": "plugin disabled",
-  "name": "anti-spam"
-}
-```
-
----
-
-### Statistics
-
-#### Get Statistics
-
-```
-GET /api/stats
-```
-
-**Response:**
-```json
-{
-  "uptime": 86400,
-  "stats": {
-    "total_users": 89,
-    "total_memories": 523,
-    "total_messages": 1523
-  }
-}
-```
-
-#### Get User Statistics
-
-```
-GET /api/stats/:userID
-```
-
-**Response:**
-```json
-{
-  "user_id": "123456789",
-  "message_count": 150,
-  "memory_count": 12,
-  "first_seen_at": "2024-01-01T00:00:00Z",
-  "last_active_at": "2024-01-15T10:00:00Z"
-}
-```
-
----
-
-## Error Responses
-
-All endpoints return consistent error responses:
-
-```json
-{
-  "error": "description of the error"
-}
-```
-
-**HTTP Status Codes:**
-| Code | Description |
-|------|-------------|
-| 200 | Success |
-| 201 | Created |
-| 400 | Bad Request |
-| 401 | Unauthorized |
-| 404 | Not Found |
-| 500 | Internal Server Error |
-
----
-
-## Rate Limiting
-
-Management APIs currently do not emit dedicated HTTP rate-limit headers.
-
----
-
-## Examples
-
-### cURL
-
-```bash
-# Get configuration
-curl -u admin:password http://localhost:8080/api/config
-
-# Update AI settings
-curl -u admin:password \
-  -X PUT \
-  -H "Content-Type: application/json" \
-  -d '{"temperature": 0.9}' \
-  http://localhost:8080/api/config/ai
-
-# Get user memories
-curl -u admin:password \
-  http://localhost:8080/api/memories/123456789
-
-# Search memories
-curl -u admin:password \
-  "http://localhost:8080/api/memories/123456789/search?q=programming"
-
-# Get user profile
-curl -u admin:password \
-  http://localhost:8080/api/profiles/123456789
-
-# Trigger consolidation
-curl -u admin:password \
-  -X POST \
-  http://localhost:8080/api/consolidate/123456789
-
-# Add user to blacklist
-curl -u admin:password \
-  -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"type": "user", "id": "123456789"}' \
-  http://localhost:8080/api/blacklist
-```
-
-### JavaScript
-
-```javascript
-const API = 'http://localhost:8080/api';
-const AUTH = btoa('admin:password');
-
-async function getConfig() {
-  const response = await fetch(`${API}/config`, {
-    headers: {
-      'Authorization': `Basic ${AUTH}`
-    }
-  });
-  return response.json();
-}
-
-async function getMemories(userID) {
-  const response = await fetch(`${API}/memories/${userID}`, {
-    headers: {
-      'Authorization': `Basic ${AUTH}`
-    }
-  });
-  return response.json();
-}
-
-async function searchMemories(userID, query) {
-  const response = await fetch(
-    `${API}/memories/${userID}/search?q=${encodeURIComponent(query)}`,
-    {
-      headers: {
-        'Authorization': `Basic ${AUTH}`
-      }
-    }
-  );
-  return response.json();
-}
-
-async function updateAIConfig(settings) {
-  const response = await fetch(`${API}/config/ai`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Basic ${AUTH}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(settings)
-  });
-  return response.json();
-}
-```
-
-### Python
-
-```python
-import requests
-from requests.auth import HTTPBasicAuth
-
-API = 'http://localhost:8080/api'
-AUTH = HTTPBasicAuth('admin', 'password')
-
-def get_config():
-    response = requests.get(f'{API}/config', auth=AUTH)
-    return response.json()
-
-def get_memories(user_id):
-    response = requests.get(f'{API}/memories/{user_id}', auth=AUTH)
-    return response.json()
-
-def search_memories(user_id, query):
-    response = requests.get(
-        f'{API}/memories/{user_id}/search',
-        params={'q': query},
-        auth=AUTH
-    )
-    return response.json()
-
-def update_ai_config(settings):
-    response = requests.put(
-        f'{API}/config/ai',
-        auth=AUTH,
-        json=settings
-    )
-    return response.json()
-
-def trigger_consolidation(user_id):
-    response = requests.post(
-        f'{API}/consolidate/{user_id}',
-        auth=AUTH
-    )
-    return response.json()
-```
+## Notes for Operators
+
+- **No HTTPS support built in.** Put nginx, Caddy, or similar in front of the WebUI if it's exposed beyond localhost.
+- **No streaming endpoints.** No SSE, no WebSocket, no long-polling. Logs page reads a snapshot — refresh for fresh data.
+- **No metrics endpoint.** Add Prometheus scraping via labels on the container if you want metrics; the bot itself doesn't expose them.
+- **Config persistence:** updates submitted from `/config` are validated, applied to the running process via `atomic.Value`, and written back to the path in `-config`. If the file is read-only (e.g., mounted with `:ro` in Docker Compose), the write fails and the change reverts.
+- **Plugin toggles** call `PluginManager.EnablePlugin/DisablePlugin`, which in turn refreshes the AI tool registry. Toggles are not persisted — they reset on restart.

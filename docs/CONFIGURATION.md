@@ -1,72 +1,405 @@
-# Configuration Guide
+# Configuration
 
-This guide covers all configuration options for EZyapper.
-
-## Configuration File
-
-The primary configuration is in `config.yaml`. You can specify a custom config path with the `-config` flag:
+EZyapper is configured via a single YAML file (default: `config.yaml`). Pass a custom path with `-config`:
 
 ```bash
 ./ezyapper -config /path/to/config.yaml
 ```
 
 > [!CAUTION]
-> **STRICT CONFIGURATION REQUIRED**
-> EZyapper does **NOT** provide default values for configuration fields. Every field in the `config.yaml` example must be explicitly set, or the bot will refuse to start. The startup validation will list ALL missing fields at once.
+> **Strict config — no defaults.** Every required field must be set. Missing one and the bot refuses to start. Validation errors are batched: if you have ten missing fields, you'll see all ten in one go.
 
 > [!IMPORTANT]
-> **NO HOT-RELOAD**
-> Changes to the configuration file require a full bot restart to take effect. WebUI updates are persisted to `config.yaml`, but a restart is still required for settings that cannot be applied at runtime.
+> **No hot-reload.** Config edits require a restart. The WebUI's `/config` page applies updates to the running process and persists them, but anything read once at startup (e.g., the Discord session) won't pick up the change until you restart.
 
 > [!WARNING]
-> **Temporary WebUI Recommendation**
-> The WebUI dashboard currently has known stability issues. Keep it disabled for normal operation and only enable it when you need to troubleshoot dashboard/API behavior.
->
-> In `schema_version: 3` configs, this is `operations.web.enabled: false`.
+> **WebUI is experimental.** Keep `operations.web.enabled: false` for production unless you're explicitly debugging.
 
-## Full Configuration Reference
+---
 
-The v3 config is grouped. For the full reference, see examples/config.yaml.example and examples/config.schema.json.
-
-Top-level shape:
+## Top-level Shape
 
 ```yaml
-schema_version: 3
+schema_version: 4
 
 core:
-  discord: {}
-  ai: {}
-  decision: {}
+  discord: { ... }
+  ai: { ... }
+  decision: { ... }
 
 memory_pipeline:
-  embedding: {}
-  memory: {}
-  qdrant: {}
+  embedding: { ... }
+  memory: { ... }
+  qdrant: { ... }
 
 access_control:
-  blacklist: {}
-  whitelist: {}
+  blacklist: { ... }
+  whitelist: { ... }
 
 operations:
-  web: {}
-  logging: {}
-  plugins: {}
-  mcp: {}
-  runtime: {}
+  web: { ... }
+  logging: { ... }
+  plugins: { ... }
+  mcp: { ... }
+  runtime: { ... }
 ```
 
-## Environment Variables
+`schema_version` must be `4`. Older configs will be rejected at startup; the schema number bumps when fields are reorganized.
 
-All settings can be overridden with environment variables using the `EZYAPPER_` prefix. Convert the config path to uppercase and replace dots with underscores.
+For a complete annotated example, see `examples/config.yaml.example`. For the JSON Schema (editor autocomplete), see `examples/config.schema.json`.
 
-Examples:
-- `core.ai.api_key` -> `EZYAPPER_CORE_AI_API_KEY`
-- `memory_pipeline.memory.short_term_limit` -> `EZYAPPER_MEMORY_PIPELINE_MEMORY_SHORT_TERM_LIMIT`
-- `operations.web.enabled` -> `EZYAPPER_OPERATIONS_WEB_ENABLED`
+---
 
-## AI Provider Configuration
+## Environment Variable Overrides
 
-### OpenAI
+Every field can be overridden by an environment variable. Prefix `EZYAPPER_`, then convert the YAML path to uppercase with dots replaced by underscores.
+
+```
+core.discord.token                            → EZYAPPER_CORE_DISCORD_TOKEN
+core.ai.api_key                               → EZYAPPER_CORE_AI_API_KEY
+core.ai.vision.mode                           → EZYAPPER_CORE_AI_VISION_MODE
+memory_pipeline.embedding.model               → EZYAPPER_MEMORY_PIPELINE_EMBEDDING_MODEL
+memory_pipeline.qdrant.host                   → EZYAPPER_MEMORY_PIPELINE_QDRANT_HOST
+memory_pipeline.memory.retrieval.top_k        → EZYAPPER_MEMORY_PIPELINE_MEMORY_RETRIEVAL_TOP_K
+operations.web.enabled                        → EZYAPPER_OPERATIONS_WEB_ENABLED
+operations.plugins.plugins_dir                → EZYAPPER_OPERATIONS_PLUGINS_PLUGINS_DIR
+```
+
+The full nested path is required — short forms like `EZYAPPER_DISCORD_TOKEN` (without `CORE_`) do **not** map to anything in `schema_version: 4` and are silently ignored.
+
+---
+
+## `core`
+
+### `core.discord`
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `token` | string | Discord bot token. **Always required.** |
+| `bot_name` | string | Display name used in prompts and logs. |
+| `own_bot_id` | string | The bot's user ID. Required when memory retrieval (`top_k > 0`) or consolidation is enabled. |
+| `reply_percentage` | float (0.0–1.0) | Random reply probability when not mentioned. |
+| `cooldown_seconds` | int (>0) | Minimum gap between replies for the same user+channel. |
+| `max_responses_per_minute` | int (>0) | Hard cap across all channels. |
+| `rate_limit.reset_period_seconds` | int (>0) | Sliding window for the per-user rate limit. |
+| `other_bot_policy` | enum | `"ignore"` / `"context_only"` / `"full"` — how to treat messages from other bots. See below. |
+| `consolidation_timeout_sec` | int (>0) | Timeout for consolidation-triggered response generation. |
+| `typing_indicator_interval_sec` | int (>0) | Refresh interval for typing indicator. |
+| `long_response_delay_ms` | int (>0) | Pause before sending a response flagged as "long" (humanizing). |
+| `image_cache_ttl_min` | int (>0) | TTL for cached Discord image data. |
+| `image_cache_max_entries` | int (>0) | Max entries in the in-memory image cache. |
+
+**`other_bot_policy`** controls how the bot treats messages from *other* bots (its own messages are always self-filtered):
+
+- `"ignore"` — skip entirely. No reply, no memory, no enrichment.
+- `"context_only"` — include in memory pipeline (retrieval + consolidation), but never reply.
+- `"full"` — treat other bots like humans. Replies + memory.
+
+Anything other than `"full"` produces a startup warning so you remember why your bot doesn't talk back to bots.
+
+### `core.ai`
+
+The main chat model. All sub-fields here are required.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `api_base_url` | string | OpenAI-compatible endpoint. |
+| `api_key` | string | API key for the provider. |
+| `model` | string | Chat model name. |
+| `max_tokens` | int (>0) | Max tokens in completion. |
+| `temperature` | float (0.0–2.0) | Higher = more creative. |
+| `retry_count` | int (>0) | Retries for transient API errors. |
+| `timeout` | int (>0, seconds) | Per-request timeout. The pipeline timeout is auto-derived from this. |
+| `extra_params` | map | Optional. Forwarded to the API via reflection. Unknown keys log a warning at runtime. |
+| `system_prompt` | string | The system prompt template. Supports `{BotName}`, `{AuthorName}`, `{ServerName}`, `{GuildID}`, `{ChannelID}`. |
+| `max_tool_iterations` | int (>0) | Cap on tool-calling loops per turn. Prevents infinite tool-call cycles. |
+| `max_image_bytes` | int (>0) | Maximum bytes for an image fetched from Discord CDN. |
+| `require_image_content_type` | bool | If true, image responses without a `Content-Type` header are rejected. |
+
+#### `core.ai.vision`
+
+| Field | Type | Required when | Notes |
+|-------|------|---------------|-------|
+| `mode` | enum | always | `"text_only"` / `"hybrid"` / `"multimodal"`. See [VISION.md](VISION.md). |
+| `model` | string | mode ≠ text_only | Vision model. |
+| `description_prompt` | string | mode = hybrid | Prompt fed to the vision model for image descriptions. |
+| `base64` | bool | always | If false, images are sent as URLs (may not work with local endpoints — emits a startup warning). |
+| `max_images` | int (>0) | always | Max images processed per message. |
+| `api_base_url` | string | mode ≠ text_only | Defaults to `core.ai.api_base_url` if empty. |
+| `api_key` | string | mode ≠ text_only | Defaults to `core.ai.api_key` if empty. |
+| `max_tokens` | int (>0) | mode ≠ text_only | Defaults to `core.ai.max_tokens` if empty. |
+| `temperature` | float (0.0–2.0) | mode ≠ text_only | |
+| `retry_count` | int (>0) | mode ≠ text_only | |
+| `timeout` | int (>0) | mode ≠ text_only | |
+| `extra_params` | map | optional | |
+
+The "defaults to `core.ai.X` if empty" pattern means you can leave the fields blank to inherit, or override them per-component to route vision through a different (cheaper) endpoint or model.
+
+### `core.decision`
+
+The optional LLM-based reply classifier. When enabled, every non-trivial message is sent to a (typically small/fast) model that returns `{"should_respond": ..., "reason": ..., "confidence": ...}`. The bot uses this to decide whether to reply.
+
+| Field | Type | Required when | Notes |
+|-------|------|---------------|-------|
+| `enabled` | bool | always | If false, all fields below are skipped. |
+| `model` | string | enabled | Decision model (use a fast one). |
+| `api_base_url` | string | enabled | |
+| `api_key` | string | enabled | |
+| `system_prompt` | string | enabled | Decision instructions. Supports `{BotName}`. Must instruct the model to return strict JSON. |
+| `max_tokens` | int (>0) | enabled | |
+| `temperature` | float (0.0–2.0) | enabled | Low values (0.0–0.3) recommended. |
+| `retry_count` | int (≥0) | enabled | |
+| `timeout` | int (>0) | enabled | Per-request timeout. |
+| `extra_params` | map | optional | |
+
+If the decision LLM fails (timeout, error, invalid JSON), the bot falls back to `core.discord.reply_percentage`. So a decision-service outage doesn't kill the bot — it just makes it less smart about when to chime in.
+
+---
+
+## `memory_pipeline`
+
+The whole memory subsystem can be turned **off** by setting `memory.retrieval.top_k: 0` and `memory.consolidation.enabled: false`. In that case, embedding, qdrant, and consolidation fields are skipped during validation.
+
+### `memory_pipeline.embedding`
+
+Inherits from `core.ai.api_base_url` / `core.ai.api_key` if empty.
+
+| Field | Type | Required when | Notes |
+|-------|------|---------------|-------|
+| `api_base_url` | string | optional | Inherits from `core.ai`. |
+| `api_key` | string | optional | Inherits from `core.ai`. |
+| `model` | string | memory enabled | Embedding model. **The vector size of this model must match `qdrant.vector_size`.** |
+| `retry_count` | int (≥0) | memory enabled | |
+| `timeout` | int (>0) | memory enabled | |
+| `extra_params` | map | optional | |
+
+### `memory_pipeline.memory`
+
+The biggest subsection. Skim it in two passes — first the basics, then the maintenance/scoring tail.
+
+**Core memory behavior**
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `consolidation_interval` | int (>0) | Trigger consolidation every N bot-handled messages. |
+| `short_term_limit` | int (>0) | Recent Discord messages to fetch for short-term context. |
+| `max_paginated_limit` | int (>0) | Max page size when paginating older messages. |
+| `max_mentioned_users_per_memory` | int (≥0) | Cap on mentioned users tracked per memory entry. |
+| `memory_strength_multiplier` | float (>0, ≤100) | Importance scoring multiplier. Presets: `0.0001` extreme, `0.1` goldfish, `1.0` human, `>1.0` elephant. |
+
+**`long_term_memory`**
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `long_term_memory.enabled` | bool | When true, memories are consolidated into long-term storage. |
+
+**`retrieval`**
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `retrieval.top_k` | int (≥0) | Memories returned per query. **`0` disables retrieval.** |
+| `retrieval.min_score` | float (0.0–1.0) | Minimum similarity threshold. |
+| `retrieval.include_channel_memories` | bool | Whether to include channel-scoped memories alongside user memories. |
+| `retrieval.max_mentioned_memories` | int (≥0) | Memories that mention the sender (0 = use top_k). |
+| `retrieval.max_channel_memories` | int (≥0) | Memories scoped to current channel (0 = use top_k). |
+
+**`consolidation`** — same inheritance rules as the vision sub-config.
+
+| Field | Type | Required when | Notes |
+|-------|------|---------------|-------|
+| `consolidation.enabled` | bool | always | Skips remaining fields when false. |
+| `consolidation.model` | string | enabled | Inherits from `core.ai.model` if empty. |
+| `consolidation.api_base_url` | string | enabled | Inherits from `core.ai`. |
+| `consolidation.api_key` | string | enabled | Inherits from `core.ai`. |
+| `consolidation.max_tokens` | int (>0) | enabled | |
+| `consolidation.temperature` | float (0.0–2.0) | enabled | |
+| `consolidation.retry_count` | int (>0) | enabled | |
+| `consolidation.timeout` | int (>0) | enabled | |
+| `consolidation.extra_params` | map | optional | |
+| `consolidation.system_prompt` | string | enabled | The extraction prompt. Templates for each `other_bot_policy` value live in `examples/config.yaml.example` — start from one of those. |
+| `consolidation.memory_search_limit` | int (>0) | always | How many existing memories to load for dedup during consolidation. Validated even when consolidation is disabled. |
+| `consolidation.vision.*` | submap | optional | Mirrors `core.ai.vision.*`. Inherits anything left empty. Use this to route consolidation vision through a cheaper model. |
+
+**Maintenance**
+
+The maintenance worker runs cron-style; these settings shape its behavior.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `maintenance_interval_sec` | int (>0) | Worker tick interval. |
+| `merge_cron_hour_utc` | int (0–23) | Hour to run merge. Pick an off-peak hour. |
+| `summarize_cron_day` | int (0–6) | Day to run summarize (0 = Sunday). |
+| `merge_cosine_threshold` | float (0.0–1.0) | Memories closer than this are candidates for merging. |
+| `prune_decay_threshold` | float (0.0–1.0) | Memories whose decayed score drops below this are eligible for pruning. |
+| `prune_age_days` | int (>0) | Pruning ignores memories newer than this. |
+| `relationship_prune_age_days` | int (>0) | Same idea for the relationship graph. |
+| `max_maintenance_llm_calls_per_day` | int (≥0) | Hard cap on consolidation/summarize LLM calls per day. Keeps the budget under control. |
+| `entropy_min_unique_word_ratio` | float (0.0–1.0) | Entropy gate: messages with too few unique words are filtered before consolidation. |
+
+**Scoring & retrieval tuning**
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `decay_rates.fact` | float (>0) | Lower = decays slower. |
+| `decay_rates.episode` | float (>0) | |
+| `decay_rates.interest` | float (>0) | |
+| `decay_rates.summary` | float (>0) | |
+| `scoring.importance_weight` | float (≥0) | Final-score blending weight. |
+| `scoring.recency_weight` | float (≥0) | |
+| `scoring.access_weight` | float (≥0) | |
+| `scoring.confidence_weight` | float (≥0) | |
+| `rrf_k` | int (>0) | Reciprocal rank fusion constant for hybrid (dense + sparse BM25) search. |
+| `context_max_memories` | int (>0) | Max memories included in the dynamic context per request. |
+
+### `memory_pipeline.qdrant`
+
+| Field | Type | Required when | Notes |
+|-------|------|---------------|-------|
+| `host` | string | memory enabled | Qdrant host. |
+| `port` | int (>0) | memory enabled | gRPC port (default 6334). |
+| `api_key` | string | optional | For Qdrant Cloud or secured instances. |
+| `vector_size` | int (>0) | memory enabled | Vector dimensions. **Must match your embedding model** (cross-checked at startup for known OpenAI models). |
+| `retry_base_delay_ms` | int (>0) | memory enabled | Exponential backoff base. |
+| `retry_max_delay_ms` | int (>0) | memory enabled | Backoff ceiling. |
+| `max_retries` | int (>0) | memory enabled | Retries per Qdrant op. |
+
+#### Vector dimensions cheat sheet
+
+| Model | Size |
+|-------|------|
+| `text-embedding-3-small`, `text-embedding-ada-002` | 1536 |
+| `text-embedding-3-large` | 3072 |
+| MiniLM, M3E variants | 384–1024 |
+| BGE | 1024 |
+
+If you switch embedding models to one with a different dimension, you must delete the existing Qdrant collections — they're created with a fixed size. See "Switching embedding models" at the bottom of this doc.
+
+---
+
+## `access_control`
+
+Blacklist and whitelist are mutually exclusive **per category** — you can't blacklist channels and also whitelist channels in the same config.
+
+### `access_control.blacklist`
+
+```yaml
+access_control:
+  blacklist:
+    users: ["111111111111111111"]
+    guilds: []
+    channels: ["222222222222222222"]
+```
+
+Bot ignores anything matching a blacklist entry. Default mode is "responding everywhere except blacklisted spots."
+
+### `access_control.whitelist`
+
+```yaml
+access_control:
+  whitelist:
+    users: []
+    guilds: []
+    channels: ["333333333333333333"]
+```
+
+When a category has whitelist entries, the bot **only** responds in/from those targets. Empty whitelist = no whitelist applied for that category.
+
+---
+
+## `operations`
+
+### `operations.web`
+
+The optional admin dashboard. Off by default. See [API.md](API.md) for what it actually does.
+
+| Field | Type | Required when | Notes |
+|-------|------|---------------|-------|
+| `enabled` | bool | always | If false, all fields below are skipped. |
+| `port` | int (>0) | enabled | HTTP listener port. |
+| `username` | string | enabled | |
+| `password` | string | enabled | **Don't reuse `changeme123`.** |
+| `memories_page_limit` | int (>0) | enabled | Memories listed per page. |
+| `session_ttl_min` | int (>0) | enabled | Cookie session lifetime. |
+| `session_cleanup_interval_min` | int (>0) | enabled | Background sweep interval. |
+| `stats_query_timeout_sec` | int (>0) | enabled | Dashboard stats query timeout. |
+| `log_default_lines` | int (>0) | enabled | Default `?lines=` value on `/logs`. |
+| `log_max_lines` | int (>0) | enabled | Cap on `?lines=`. |
+| `log_max_read_bytes` | int (>0) | enabled | Cap on bytes read from the log file. |
+
+### `operations.logging`
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `level` | string | One of `debug`/`info`/`warn`/`error`. Validated via `zapcore.ParseLevel`. |
+| `file` | string | Log file path. |
+| `max_size` | int (>0) | Megabytes before rotation. |
+| `max_backups` | int (>0) | Rotated files kept. |
+| `max_age` | int (>0) | Days before rotated logs are deleted. |
+
+### `operations.plugins`
+
+See [PLUGINS.md](PLUGINS.md) for what each timeout actually does.
+
+| Field | Type | Required when | Notes |
+|-------|------|---------------|-------|
+| `enabled` | bool | always | If false, plugin-specific fields are skipped, but `default_tool_timeout_ms` is still validated. |
+| `plugins_dir` | string | enabled | Directory scanned at startup. |
+| `default_tool_timeout_ms` | int (≥0) | always | Fallback per-tool timeout. **0 will cause tool calls to hang** — emits a warning. |
+| `startup_timeout_sec` | int (>0) | enabled | `info` probe timeout. |
+| `rpc_timeout_sec` | int (>0) | enabled | Default JSON-RPC call timeout. |
+| `before_send_timeout_sec` | int (>0) | enabled | `before_send` hook timeout. |
+| `command_timeout_sec` | int (>0) | enabled | Default command-runtime tool timeout. |
+| `shutdown_timeout_sec` | int (>0) | enabled | Graceful shutdown grace period. |
+| `disable_timeout_sec` | int (>0) | enabled | Grace period for runtime disable via WebUI. |
+
+### `operations.mcp`
+
+| Field | Type | Required when | Notes |
+|-------|------|---------------|-------|
+| `enabled` | bool | always | If false, `servers` is not validated. |
+| `servers[]` | list | enabled | At least one entry. |
+
+Each `servers[]` entry:
+
+| Field | Type | Required when | Notes |
+|-------|------|---------------|-------|
+| `name` | string | mcp enabled | Identifier used in logs and tool routing. |
+| `type` | string | mcp enabled | `"stdio"` or `"sse"`. |
+| `command` | string | type=stdio | Executable name or path. |
+| `args` | list | optional | Arguments. |
+| `env` | map | optional | Extra env vars passed to the subprocess (filtered for secrets). |
+| `url` | string | type=sse | Endpoint URL. |
+
+```yaml
+operations:
+  mcp:
+    enabled: true
+    servers:
+      - name: datetime
+        type: stdio
+        command: npx
+        args: ["-y", "@pinkpixel/datetime-mcp"]
+        env:
+          TZ: "UTC"
+      - name: remote-tool
+        type: sse
+        url: "http://localhost:8080/sse"
+```
+
+### `operations.runtime`
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `shutdown_timeout_sec` | int (>0) | Total grace period for graceful shutdown. |
+| `cleanup_interval_min` | int (>0) | Periodic cleanup ticker (rate limiter pruning, image cache eviction, etc.). |
+
+---
+
+## AI Provider Quickstarts
+
+Drop one of these into `core.ai`:
+
+**OpenAI**
 
 ```yaml
 core:
@@ -74,10 +407,12 @@ core:
     api_base_url: "https://api.openai.com/v1"
     api_key: "sk-..."
     model: "gpt-4o-mini"
-    vision_model: "gpt-4o"
+    vision:
+      mode: "multimodal"
+      model: "gpt-4o"
 ```
 
-### DeepSeek
+**DeepSeek**
 
 ```yaml
 core:
@@ -85,10 +420,13 @@ core:
     api_base_url: "https://api.deepseek.com/v1"
     api_key: "sk-..."
     model: "deepseek-chat"
-    vision_model: "deepseek-chat"
+    vision:
+      mode: "text_only"
 ```
 
-### Qwen (Alibaba Cloud)
+DeepSeek doesn't currently ship a vision model on its OpenAI-compatible surface; pair it with `text_only` or wire `core.ai.vision` to a different provider.
+
+**Qwen (Alibaba Cloud)**
 
 ```yaml
 core:
@@ -96,10 +434,12 @@ core:
     api_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
     api_key: "sk-..."
     model: "qwen-plus"
-    vision_model: "qwen-vl-plus"
+    vision:
+      mode: "multimodal"
+      model: "qwen-vl-plus"
 ```
 
-### Azure OpenAI
+**Azure OpenAI**
 
 ```yaml
 core:
@@ -109,7 +449,7 @@ core:
     model: "gpt-4o-mini"
 ```
 
-### Local LLM (LM Studio, Ollama)
+**Local (Ollama / LM Studio)**
 
 ```yaml
 core:
@@ -117,495 +457,137 @@ core:
     api_base_url: "http://localhost:1234/v1"
     api_key: "not-needed"
     model: "local-model"
-```
-
-## Vision Modes
-
-EZyapper supports three vision modes for handling images in Discord messages:
-
-### Mode Comparison
-
-| Mode | Images | Tools | API Calls | Cost | Best For |
-|------|--------|-------|-----------|------|----------|
-| `text_only` | Ignored | Yes | 1 | Lowest | Budget constraints, text-only chats |
-| `hybrid` | Described -> Text | Yes | 2 | Medium | Tool-heavy workflows, budget balance |
-| `multimodal` | Direct | Yes | 1 | Higher | Visual reasoning, image-heavy chats |
-
-### How Each Mode Works
-
-#### text_only (Fastest, Cheapest)
-- **Behavior**: Ignores all images in messages
-- **Flow**: Message text -> Text model + tools -> Response
-- **API Calls**: 1 (text model with tools)
-- **When to use**: Budget constraints, low-latency requirement, text-only discussions
-
-```yaml
-core:
-  ai:
     vision:
       mode: "text_only"
+      base64: false
 ```
 
-#### hybrid (2 API Calls)
-- **Behavior**: Vision model generates text description of images, then text model processes with tools
-- **Flow**: Message + images -> Vision description -> Text model + tools -> Response
-- **API Calls**: 2 (vision model + text model)
-- **When to use**: Need tools with images, want better tool support than pure vision models
+Set `vision.base64: false` when the local endpoint can't fetch URLs from outside its network.
+
+---
+
+## Mixing Endpoints
+
+Each LLM-using component can have its own endpoint, key, and model. Empty fields fall back to `core.ai.*`. So you can run, say, the main chat on Qwen, embeddings on a local model, decisions on a fast cheap model, and consolidation on `gpt-4o-mini`:
 
 ```yaml
 core:
   ai:
-    vision:
-      mode: "hybrid"
-      description_prompt: "Describe this image in detail for context."
-      max_images: 4
+    api_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    api_key: "sk-qwen"
+    model: "qwen-plus"
+  decision:
+    enabled: true
+    api_base_url: "https://api.openai.com/v1"
+    api_key: "sk-openai"
+    model: "gpt-4o-mini"
+
+memory_pipeline:
+  embedding:
+    api_base_url: "http://localhost:8000/v1"
+    api_key: "local"
+    model: "bge-small-en"
+  memory:
+    consolidation:
+      enabled: true
+      api_base_url: "https://api.openai.com/v1"
+      api_key: "sk-openai"
+      model: "gpt-4o-mini"
 ```
 
-#### multimodal (Direct Vision + Tools)
-- **Behavior**: Single vision model handles both images and tools directly
-- **Flow**: Message + images -> Vision model with tools -> Response
-- **API Calls**: 1 (multimodal model)
-- **When to use**: Best visual reasoning, image-heavy workflows, have GPT-4V/Claude-vision
+Just make sure `qdrant.vector_size` matches whatever your embedding model produces.
 
-```yaml
-core:
-  ai:
-    vision:
-      mode: "multimodal"
-      max_images: 4
-```
-
-### Vision Configuration Options
-
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `core.ai.vision.mode` | string | Yes | Vision mode: `text_only`, `hybrid`, `multimodal` |
-| `core.ai.vision.max_images` | int | Yes | Maximum images to process per message (must be > 0) |
-| `core.ai.vision.description_prompt` | string | Yes* | Prompt for hybrid mode descriptions (required only when mode = "hybrid") |
-
-> [!NOTE]
-> **NO DEFAULTS**: All vision configuration options are required. The bot will exit on startup with a validation error if any required value is missing.
-
-### Important Notes
-
-- **Memory is text-only**: Images are never stored in long-term memory, only their text descriptions (in hybrid mode)
-- **Image-aware decisions**: The bot's reply decision system considers whether images are attached when deciding whether to respond
-- **Model compatibility**: Ensure your `vision_model` supports your chosen mode:
-  - `text_only`: Only need `model` (text)
-  - `hybrid`: Need both `vision_model` (for description) and `model` (for text + tools)
-  - `multimodal`: Need `vision_model` that supports tool calling alongside vision
+---
 
 ## System Prompt Variables
 
-The system prompt supports dynamic variables:
+`core.ai.system_prompt` and `core.decision.system_prompt` support these:
 
-| Variable | Description | Example Output |
-|----------|-------------|----------------|
-| `{BotName}` | Bot's display name | "EZyapper" |
-| `{AuthorName}` | Message author's name | "JohnDoe" |
-| `{ServerName}` | Discord server name | "My Server" |
-| `{GuildID}` | Discord guild ID | "123456789012345678" |
-| `{ChannelID}` | Discord channel ID | "876543210987654321" |
+| Variable | Replaced with |
+|----------|---------------|
+| `{BotName}` | `core.discord.bot_name` |
+| `{AuthorName}` | The current message author's display name |
+| `{ServerName}` | The Discord server (guild) name |
+| `{GuildID}` | Guild ID |
+| `{ChannelID}` | Channel ID |
 
-**Note:** For current date/time, use the `get_current_datetime` tool (provided by the `datetime` plugin) instead of a variable. This preserves prompt caching.
+For dates and times, use the `get_current_datetime` tool from the `datetime` plugin instead of templating `{Time}` into the prompt — embedding a timestamp invalidates provider-side prompt caches every minute. See [PROMPT_OPTIMIZATION.md](PROMPT_OPTIMIZATION.md).
 
-## Channel Configuration
+---
 
-### Blacklist vs Whitelist
+## Common Tuning
 
-**Blacklist Mode:**
-- Bot responds in all channels except blacklisted ones
-- Set `access_control.blacklist.channels` with channel IDs to ignore
-- This is the default behavior when no whitelist is configured
-
-**Whitelist Mode:**
-- Bot only responds in whitelisted channels
-- Set `access_control.whitelist.channels` with allowed channel IDs
-
-## Decision Configuration
-
-The decision system uses an LLM to intelligently decide whether the bot should respond to messages that don't mention it. This provides more nuanced behavior than simple probability-based replies.
-
-### Configuration Options
-
-| Option | Description | Required |
-|--------|-------------|----------|
-| `enabled` | Enable LLM-based reply decision | No (default: false) |
-| `model` | Model to use for decisions | Yes (if enabled) |
-| `api_base_url` | API endpoint for decision requests | Yes (if enabled) |
-| `api_key` | API key for decision requests | Yes (if enabled) |
-| `max_tokens` | Max tokens for decision response | Yes (if enabled) |
-| `temperature` | Response randomness (0.0-2.0) | No |
-| `retry_count` | API retry attempts | No |
-| `timeout` | Request timeout (seconds) | Yes (if enabled) |
-| `system_prompt` | System prompt with role and rules | Yes (if enabled) |
-
-### Decision Prompt Structure
-
-The decision system separates **system prompt** and **user prompt** following LLM best practices:
-
-**System Prompt** (`core.decision.system_prompt`):
-- Defines the role (decision classifier)
-- Lists rules for responding vs not responding
-- Specifies output format (JSON with `should_respond`, `reason`, `confidence`)
-- Template variable: `{BotName}`
-
-**User Prompt** (auto-generated):
-- Message content to analyze
-- Attachment info (if images present)
-- Recent conversation context
-- No template variables - built dynamically
-
-This separation improves model performance by keeping instructions in system messages and dynamic data in user messages.
-
-### Example Configuration
-
-```yaml
-core:
-  decision:
-    enabled: true
-    model: "gpt-4o-mini"  # Fast model recommended
-    api_base_url: "https://api.openai.com/v1"
-    api_key: "YOUR_DECISION_API_KEY"
-    max_tokens: 4096
-    temperature: 0.8
-    retry_count: 5
-    timeout: 30
-    system_prompt: |
-      You are a decision classifier for a Discord bot named "{BotName}".
-      Your job is to decide if the bot should respond to the latest message.
-
-    RULES FOR RESPONDING (should_respond: true):
-    1. Bot is directly mentioned (@{BotName} or by name)
-    2. Message is a reply to the bot
-    3. Message is a question that could benefit from bot's knowledge
-    4. Message discusses a topic the bot has expertise in
-    5. User seems to want engagement (asking for opinions, help, or conversation)
-    6. Message is in response to bot's previous message
-    7. User shared an image that the bot should analyze or comment on
-    8. Image contains content relevant to ongoing conversation
-
-    RULES FOR NOT RESPONDING (should_respond: false):
-    1. Casual conversation between other users (bot not involved)
-    2. Message is a simple acknowledgment ("ok", "yeah", "lol")
-    3. Message is a command or discussion for another bot
-    4. Message is too short or unclear to warrant response
-    5. Topic doesn't need bot's input
-
-      Respond ONLY with valid JSON in this exact format:
-      {"should_respond": true/false, "reason": "brief explanation", "confidence": 0.0-1.0}
-```
-
-### Response Format
-
-The LLM must return JSON in this exact format:
-
-```json
-{
-  "should_respond": true,
-  "reason": "User asked a specific question that requires bot expertise",
-  "confidence": 0.95
-}
-```
-
-- `should_respond`: Boolean indicating whether to respond
-- `reason`: Brief explanation of the decision
-- `confidence`: Float between 0.0 and 1.0 indicating certainty
-
-### Image-Aware Decisions
-
-When images are attached to a message, the decision system automatically includes:
-
-1. Image count in user message
-2. Context like: `[User attached 2 image(s) to this message]`
-
-This allows the decision rules to consider visual content when deciding whether to respond.
-
-### Fallback Behavior
-
-If the decision LLM fails (timeout, error, or invalid response):
-1. Bot uses `core.discord.reply_percentage` to randomly decide
-2. Example: `0.15` = 15% chance to respond on fallback
-3. Logged as `llm decision failed, fallback`
-
-This ensures the bot remains responsive even when the decision service encounters problems.
-
-## Memory Settings
-
-### Image Descriptions in Memory
-
-During memory consolidation, images are automatically described using the vision model:
-
-```yaml
-core:
-  ai:
-    vision_model: "gpt-4o"  # Used to describe images during consolidation
-    vision_base64: false    # Set to true if your API requires base64 images
-    vision:
-      description_prompt: "Describe this image in 1-2 sentences."
-```
-
-**How it works:**
-1. When consolidating messages, any attached images are processed
-2. Vision model generates text descriptions
-3. Descriptions are included in the conversation context
-4. LLM extracts memories that may reference image content
-
-**Example:**
-If a user sends a photo of their cat, the memory might be: "User has an orange tabby cat"
-
-### Separate Vision Model for Consolidation
-
-You can use a different (often cheaper) vision model for image description during consolidation:
+### Memory off entirely
 
 ```yaml
 memory_pipeline:
   memory:
+    consolidation_interval: 50
+    short_term_limit: 20
+    max_paginated_limit: 100
+    long_term_memory:
+      enabled: false
+    retrieval:
+      top_k: 0           # ← disables retrieval
+      min_score: 0.0
+      include_channel_memories: false
+      max_mentioned_memories: 0
+      max_channel_memories: 0
     consolidation:
-      vision_model: "gpt-4o-mini"  # Use cheaper model for consolidation
+      enabled: false      # ← disables consolidation
+      memory_search_limit: 1
+    # ... maintenance fields still required for validation but ignored at runtime
 ```
 
-**Use cases:**
-- Use expensive high-quality model (gpt-4o) for real-time chat
-- Use cheaper model (gpt-4o-mini) for background consolidation
-- Reduces costs while maintaining good memory quality
-
-**Note:** If not specified, defaults to `core.ai.vision_model`
-
-### Separate Endpoints and Parameters
-
-You can configure separate API endpoints and parameters for every LLM component:
-
-```yaml
-core:
-  ai:
-    # Main chat configuration
-    api_base_url: "https://api.openai.com/v1"
-    api_key: "sk-..."
-    model: "gpt-4o"
-    max_tokens: 1024
-    temperature: 0.8
-    retry_count: 3
-    timeout: 30
-
-    # Vision-specific endpoint and parameters
-    vision:
-      mode: "multimodal"
-      api_base_url: "https://api.openai.com/v1"  # Optional: separate vision endpoint
-      api_key: "sk-..."                           # Optional: separate vision API key
-      max_tokens: 2048                            # Optional: higher for vision
-      temperature: 0.5                            # Optional: different for vision
-      retry_count: 5                              # Optional: more retries for vision
-      timeout: 60                                 # Optional: longer timeout for vision
-
-# Embedding with separate endpoint
-memory_pipeline:
-  embedding:
-    api_base_url: "https://api.openai.com/v1"  # Optional
-    api_key: "sk-..."                           # Optional
-    model: "text-embedding-3-small"
-    retry_count: 3
-    timeout: 30
-
-  # Memory consolidation with full customization
-  memory:
-    consolidation:
-      # Text model for consolidation analysis
-      model: "gpt-4o-mini"              # Cheaper model for consolidation
-      api_base_url: "https://api.openai.com/v1"
-      api_key: "sk-..."
-      max_tokens: 1024
-      temperature: 0.8
-      retry_count: 3
-      timeout: 30
-
-      # Vision model for image descriptions
-      vision_model: "gpt-4o-mini"       # Cheaper vision model
-      vision_api_base_url: "https://api.openai.com/v1"
-      vision_api_key: "sk-..."
-      vision_max_tokens: 1024
-      vision_temperature: 0.8
-      vision_retry_count: 3
-      vision_timeout: 30
-```
-
-**Fallback Chain:**
-1. If component-specific value is set -> use it
-2. Else if parent config has value -> use it
-3. Else use main AI config value
-
-Example: `memory_pipeline.memory.consolidation.vision_max_tokens` -> `core.ai.vision.max_tokens` -> `core.ai.max_tokens`
-
-### Consolidation Interval
-
-Controls how often memories are processed:
-
-```yaml
-memory_pipeline:
-  memory:
-    consolidation_interval: 50  # Process every 50 messages
-```
-
-**Recommendations:**
-- Active users: 30-50 messages
-- Normal users: 50-100 messages
-- Low activity: 100-200 messages
-
-### Short-term Limit
-
-Controls how many recent Discord messages are fetched:
-
-```yaml
-memory_pipeline:
-  memory:
-    short_term_limit: 20  # Fetch last 20 messages
-```
-
-**Recommendations:**
-- Fast-paced chats: 20-30 messages
-- Normal chats: 15-25 messages
-- Slow chats: 10-20 messages
-
-### Retrieval Settings
-
-Controls memory search behavior:
+### Memory on, conservative retrieval
 
 ```yaml
 memory_pipeline:
   memory:
     retrieval:
-      top_k: 5        # Return top 5 memories
-      min_score: 0.75 # Minimum 75% similarity
+      top_k: 5
+      min_score: 0.75
+      include_channel_memories: true
+      max_mentioned_memories: 3
+      max_channel_memories: 5
 ```
 
-**Tuning:**
-- Increase `top_k` for more context (uses more tokens)
-- Decrease `min_score` for more results (may be less relevant)
-
-## Qdrant Configuration
-
-### Local Development
+### Different consolidation cadence
 
 ```yaml
 memory_pipeline:
-  qdrant:
-    host: "localhost"
-    port: 6334
+  memory:
+    consolidation_interval: 30   # active channels
+    # consolidation_interval: 100  # quieter servers
 ```
 
-### Docker Compose
+---
 
-```yaml
-memory_pipeline:
-  qdrant:
-    host: "qdrant"  # Service name in docker-compose.yml
-    port: 6334
-```
+## Switching Embedding Models
 
-### Remote Qdrant
-
-```yaml
-memory_pipeline:
-  qdrant:
-    host: "your-qdrant-instance.example.com"
-    port: 6334
-```
-
-### Qdrant with Authentication
-
-For Qdrant Cloud or authenticated instances:
-
-```yaml
-memory_pipeline:
-  qdrant:
-    host: "your-cluster.qdrant.io"
-    port: 6334
-    api_key: "your-qdrant-api-key"
-```
-
-Or via environment variable:
-```bash
-export EZYAPPER_MEMORY_PIPELINE_QDRANT_API_KEY="your-qdrant-api-key"
-```
-
-## Logging Levels
-
-| Level | Description |
-|-------|-------------|
-| `debug` | Detailed debugging information |
-| `info` | General operational messages |
-| `warn` | Warning conditions |
-| `error` | Error conditions |
-
-## Security Best Practices
-
-1. **Change the example password:**
-   ```yaml
-   operations:
-     web:
-       password: "your-secure-password"
-   ```
-
-2. **Use environment variables for secrets:**
-   ```bash
-  export EZYAPPER_CORE_DISCORD_TOKEN="your-token"
-  export EZYAPPER_CORE_AI_API_KEY="your-key"
-   ```
-
-3. **Restrict WebUI access:**
-   - Use a reverse proxy with additional authentication
-   - Bind to localhost only if external access not needed
-
-4. **Rotate credentials regularly**
-
-5. **Use read-only config file:**
-   ```bash
-   chmod 400 config.yaml
-   ```
-
-6. **Configure blacklist appropriately:**
-   ```yaml
-   access_control:
-     blacklist:
-       users:
-         - "user_id_to_ignore"
-       channels:
-         - "channel_id_to_ignore"
-       guilds:
-         - "guild_id_to_ignore"
-   ```
-
-## Troubleshooting
-
-### Vector Dimension Errors
-
-**Error:** `Vector dimension error: expected dim: X, got Y`
-
-This happens when you change your embedding model to one with different dimensions.
-
-**Solution:** You must delete existing Qdrant collections before changing embedding models:
+Qdrant collections lock in a vector size at creation. To switch from a 1536-dim model to a 3072-dim one (or vice versa), drop the collections first:
 
 ```bash
-# Delete existing collections
+# Default Qdrant REST port is 6333 (gRPC is 6334)
 curl -X DELETE http://localhost:6333/collections/memories
 curl -X DELETE http://localhost:6333/collections/profiles
+curl -X DELETE http://localhost:6333/collections/relationships
 
-# For authenticated Qdrant:
+# Authenticated:
 curl -X DELETE https://your-cluster.qdrant.io:6333/collections/memories \
-  -H "api-key: your-api-key"
-curl -X DELETE https://your-cluster.qdrant.io:6333/collections/profiles \
   -H "api-key: your-api-key"
 ```
 
-Then restart the bot - it will recreate collections with correct dimensions.
+Then update `embedding.model` and `qdrant.vector_size`, restart the bot. Collections will be recreated automatically.
 
-**Why this happens:**
-- Different embedding models produce vectors of different sizes
-- OpenAI text-embedding-3-small: 1536 dimensions
-- OpenAI text-embedding-3-large: 3072 dimensions  
-- Local models (MiniLM, etc.): 384-1024 dimensions
-- Qdrant collections are created with fixed vector size
-- Once created, the size cannot be changed
+> Heads up: this deletes all stored memories, profiles, and relationships. Snapshot first if you care about that data.
 
-**Prevention:**
-Always set `memory_pipeline.qdrant.vector_size` to match your embedding model BEFORE first run, or delete collections when switching models.
+---
+
+## Security Notes
+
+- **Use environment variables for secrets** in production. Don't commit `config.yaml` with a Discord token in it.
+- **Restrict `config.yaml`** — `chmod 400 config.yaml` if it does end up on disk.
+- **Set a real WebUI password** if you enable the dashboard.
+- **Use a reverse proxy** (nginx, Caddy) with TLS in front of the WebUI — there's no built-in HTTPS.
+- **Blacklist before deploying** — at minimum, add yourself if you're a bot operator who tests in the same channels.

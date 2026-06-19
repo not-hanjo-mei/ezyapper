@@ -9,12 +9,15 @@ services:
     restart: unless-stopped
     
     environment:
-      # Pass EZYAPPER_ prefixed variables directly from .env
-      - EZYAPPER_DISCORD_TOKEN=${EZYAPPER_DISCORD_TOKEN}
-      - EZYAPPER_AI_API_KEY=${EZYAPPER_AI_API_KEY}
-      - EZYAPPER_AI_API_BASE_URL=${EZYAPPER_AI_API_BASE_URL:-https://api.openai.com/v1}
-      - EZYAPPER_WEB_PASSWORD=${EZYAPPER_WEB_PASSWORD:-changeme123}
-      - EZYAPPER_DISCORD_BOT_NAME=${EZYAPPER_DISCORD_BOT_NAME:-EZyapper}
+      # Pass EZYAPPER_ prefixed variables directly from .env.
+      # Keys mirror the YAML config path (dots → underscores).
+      - EZYAPPER_CORE_DISCORD_TOKEN=${EZYAPPER_CORE_DISCORD_TOKEN}
+      - EZYAPPER_CORE_AI_API_KEY=${EZYAPPER_CORE_AI_API_KEY}
+      - EZYAPPER_CORE_AI_API_BASE_URL=${EZYAPPER_CORE_AI_API_BASE_URL:-https://api.openai.com/v1}
+      - EZYAPPER_OPERATIONS_WEB_PASSWORD=${EZYAPPER_OPERATIONS_WEB_PASSWORD:-changeme123}
+      - EZYAPPER_CORE_DISCORD_BOT_NAME=${EZYAPPER_CORE_DISCORD_BOT_NAME:-EZyapper}
+      - EZYAPPER_MEMORY_PIPELINE_QDRANT_HOST=${EZYAPPER_MEMORY_PIPELINE_QDRANT_HOST:-qdrant}
+      - EZYAPPER_MEMORY_PIPELINE_QDRANT_PORT=${EZYAPPER_MEMORY_PIPELINE_QDRANT_PORT:-6334}
       - TZ=${TZ:-UTC}
     
     volumes:
@@ -22,7 +25,7 @@ services:
       - ./config.yaml:/app/config.yaml:ro
     
     ports:
-      - "${EZYAPPER_WEB_PORT:-8080}:8080"
+      - "${EZYAPPER_OPERATIONS_WEB_PORT:-8080}:8080"
     
     depends_on:
       - qdrant

@@ -1,116 +1,148 @@
-# Deployment Guide
+# Deployment
 
-This guide covers various deployment options for EZyapper.
+This guide covers a few common ways to run EZyapper. Pick whichever matches your environment — they're all the same binary underneath.
 
 ## Prerequisites
 
-- Go 1.24+ (for building from source)
-- Discord Bot Token
-- OpenAI-compatible API Key
-- **Qdrant Vector Database** (included in Docker Compose)
+- **Go 1.25+** (only needed if you build from source)
+- **Discord bot token** — from the [Discord Developer Portal](https://discord.com/developers/applications)
+- **OpenAI-compatible API key** (or local LLM endpoint)
+- **Qdrant vector database** — required if you want long-term memory. Bundled in the Docker Compose setup.
+
+---
 
 ## Building from Source
 
-### Standard Build
+### Standard
 
 ```bash
-git clone <repository-url>
+git clone <repo-url>
 cd ezyapper
 go mod download
 go build -o ezyapper ./cmd/bot
 ```
 
-### Optimized Build
+### Stripped binary
 
 ```bash
 go build -ldflags="-s -w" -o ezyapper ./cmd/bot
 ```
 
-| Flag | Description |
-|------|-------------|
+| Flag | Effect |
+|------|--------|
 | `-s` | Strip symbol table |
 | `-w` | Strip DWARF debug info |
 
-### Cross-Compilation
+### Cross-compilation
 
 ```bash
-# Linux AMD64
-GOOS=linux GOARCH=amd64 go build -o ezyapper-linux ./cmd/bot
-
-# Linux ARM64
-GOOS=linux GOARCH=arm64 go build -o ezyapper-arm64 ./cmd/bot
+# Linux
+GOOS=linux GOARCH=amd64 go build -o ezyapper-linux-amd64 ./cmd/bot
+GOOS=linux GOARCH=arm64 go build -o ezyapper-linux-arm64 ./cmd/bot
 
 # Windows
 GOOS=windows GOARCH=amd64 go build -o ezyapper.exe ./cmd/bot
+GOOS=windows GOARCH=arm64 go build -o ezyapper-arm64.exe ./cmd/bot
 
 # macOS
-GOOS=darwin GOARCH=amd64 go build -o ezyapper-macos ./cmd/bot
+GOOS=darwin GOARCH=amd64 go build -o ezyapper-macos-amd64 ./cmd/bot
+GOOS=darwin GOARCH=arm64 go build -o ezyapper-macos-arm64 ./cmd/bot
 ```
 
-## Docker Deployment (Recommended)
+`make build-all` does the three amd64 platforms in one shot. CI builds the full six-platform matrix.
 
-### Using Docker Compose
+### Don't want to compile? Grab a prebuilt binary
 
-Docker Compose includes both the bot and Qdrant vector database.
+GitHub Actions publishes per-platform artifacts on every push. Hit [Actions](https://github.com/not-hanjo-mei/ezyapper/actions), pick the most recent successful **Build** run, and download the artifact for your OS/arch.
 
-1. Create environment file:
+You'll also find prebuilt **plugin binaries** in the same artifacts — Go plugins for six platforms, plus Zig and C command plugins for four. Drop them into `plugins/` if you want a head start.
+
+---
+
+## Docker Compose (Recommended)
+
+The included `docker-compose.yml` runs both the bot and Qdrant.
+
+### 1. Set up your env file
+
 ```bash
-cp .env.example .env
+# macOS/Linux
+cp examples/.env.example .env
+
+# Windows PowerShell
+Copy-Item examples\.env.example .env
 ```
 
-2. Edit `.env`:
+Edit `.env` and fill in at least:
+
 ```env
-EZYAPPER_DISCORD_TOKEN=your_discord_token
-EZYAPPER_AI_API_KEY=your_api_key
-EZYAPPER_AI_API_BASE_URL=https://api.openai.com/v1
-EZYAPPER_WEB_PASSWORD=secure_password
-EZYAPPER_QDRANT_HOST=qdrant
+EZYAPPER_CORE_DISCORD_TOKEN=your_discord_token
+EZYAPPER_CORE_AI_API_KEY=your_api_key
+EZYAPPER_CORE_AI_API_BASE_URL=https://api.openai.com/v1
+EZYAPPER_OPERATIONS_WEB_PASSWORD=replace_me
+EZYAPPER_MEMORY_PIPELINE_QDRANT_HOST=qdrant
 ```
 
-3. Start:
+> Env-var keys mirror the YAML path with dots replaced by underscores. See [CONFIGURATION.md](CONFIGURATION.md#environment-variable-overrides) for the full mapping.
+
+### 2. Drop in a `config.yaml`
+
 ```bash
-docker-compose up -d
+cp examples/config.yaml.example config.yaml
 ```
 
-4. View logs:
+The compose file mounts `./config.yaml` read-only into the container. Anything in `.env` overrides the file.
+
+### 3. Up and running
+
 ```bash
-docker-compose logs -f
+docker compose up -d
+docker compose logs -f
 ```
 
-5. Stop:
-```bash
-docker-compose down
+Stop with `docker compose down`. Volumes (`ezyapper-logs`, `qdrant_storage`) survive a `down`; add `-v` if you want to wipe them.
+
+### Qdrant network exposure
+
+By default the compose file does **not** expose Qdrant ports to the host. The bot reaches it via the internal `bot-network` bridge. If you need to query Qdrant from your machine for debugging, add a port mapping yourself:
+
+```yaml
+  qdrant:
+    image: qdrant/qdrant:v1.17.0
+    ports:
+      - "6333:6333"   # REST
+      - "6334:6334"   # gRPC
 ```
 
-### Manual Docker Build
+---
+
+## Manual Docker
+
+Build and run without compose:
 
 ```bash
 docker build -t ezyapper .
+
 docker run -d \
   --name ezyapper \
-  -e EZYAPPER_DISCORD_TOKEN=your_token \
-  -e EZYAPPER_AI_API_KEY=your_key \
-  -e EZYAPPER_QDRANT_HOST=your_qdrant_host \
+  -e EZYAPPER_CORE_DISCORD_TOKEN=your_token \
+  -e EZYAPPER_CORE_AI_API_KEY=your_key \
+  -e EZYAPPER_CORE_AI_API_BASE_URL=https://api.openai.com/v1 \
+  -e EZYAPPER_MEMORY_PIPELINE_QDRANT_HOST=your_qdrant_host \
+  -v $(pwd)/config.yaml:/app/config.yaml:ro \
   -p 8080:8080 \
   ezyapper
 ```
 
-### Docker Configuration
+The image:
 
-| Environment Variable | Description |
-|---------------------|-------------|
-| `EZYAPPER_DISCORD_TOKEN` | Discord bot token |
-| `EZYAPPER_AI_API_KEY` | AI API key |
-| `EZYAPPER_AI_API_BASE_URL` | AI API endpoint |
-| `EZYAPPER_WEB_PASSWORD` | WebUI password |
-| `EZYAPPER_QDRANT_HOST` | Qdrant host (use "qdrant" for Docker Compose) |
-| `EZYAPPER_QDRANT_PORT` | Qdrant port (example: 6334) |
-| `EZYAPPER_QDRANT_API_KEY` | Qdrant API key (optional, for authenticated instances) |
-| `TZ` | Timezone (e.g., `America/New_York`) |
+- Base: `golang:1.25-alpine` (build) → `alpine:3.19` (runtime)
+- Runs as non-root `appuser`
+- Healthcheck: `wget /health` against the WebUI. **Note:** `/health` only responds when `operations.web.enabled: true`. If the WebUI is off, the healthcheck will mark the container unhealthy — switch to a different probe (e.g., `pgrep ezyapper`) or accept that signal.
 
-## Systemd Service (Linux)
+---
 
-### Create Service File
+## Systemd (Linux)
 
 `/etc/systemd/system/ezyapper.service`:
 
@@ -131,10 +163,10 @@ RestartSec=10
 StartLimitBurst=5
 StartLimitInterval=60
 
-Environment=EZYAPPER_DISCORD_TOKEN=your_token
-Environment=EZYAPPER_AI_API_KEY=your_key
-Environment=EZYAPPER_QDRANT_HOST=localhost
-Environment=EZYAPPER_QDRANT_PORT=6334
+Environment=EZYAPPER_CORE_DISCORD_TOKEN=your_token
+Environment=EZYAPPER_CORE_AI_API_KEY=your_key
+Environment=EZYAPPER_MEMORY_PIPELINE_QDRANT_HOST=localhost
+Environment=EZYAPPER_MEMORY_PIPELINE_QDRANT_PORT=6334
 
 StandardOutput=journal
 StandardError=journal
@@ -144,54 +176,30 @@ SyslogIdentifier=ezyapper
 WantedBy=multi-user.target
 ```
 
-### Setup User and Directories
+Setup:
 
 ```bash
 sudo useradd -r -s /bin/false ezyapper
 sudo mkdir -p /opt/ezyapper
 sudo chown ezyapper:ezyapper /opt/ezyapper
 sudo chmod 750 /opt/ezyapper
-```
 
-### Install and Start
-
-```bash
 sudo cp ezyapper /opt/ezyapper/
 sudo cp config.yaml /opt/ezyapper/
 sudo chown ezyapper:ezyapper /opt/ezyapper/*
 
 sudo systemctl daemon-reload
-sudo systemctl enable ezyapper
-sudo systemctl start ezyapper
-```
-
-### Manage Service
-
-```bash
-sudo systemctl status ezyapper
-sudo systemctl restart ezyapper
-sudo systemctl stop ezyapper
+sudo systemctl enable --now ezyapper
 sudo journalctl -u ezyapper -f
 ```
 
+---
+
 ## Qdrant Setup
 
-### Docker (Recommended)
+The bot expects Qdrant on **gRPC port 6334** (REST 6333 is for diagnostics). Three collections (`memories`, `profiles`, `relationships`) are created automatically at first startup.
 
-Qdrant is included in the docker-compose.yml:
-
-```yaml
-services:
-  qdrant:
-    image: qdrant/qdrant:v1.17.0
-    volumes:
-      - qdrant_storage:/qdrant/storage
-    ports:
-      - "6333:6333"  # REST API
-      - "6334:6334"  # gRPC
-```
-
-### Standalone Qdrant
+### Standalone container
 
 ```bash
 docker run -d \
@@ -202,26 +210,30 @@ docker run -d \
   qdrant/qdrant:v1.17.0
 ```
 
-### Qdrant Configuration
+### Vector size
 
-Qdrant collections are automatically created on startup:
+`memory_pipeline.qdrant.vector_size` must match your embedding model's output dimensions. The most common values:
 
-- **memories** - Stores conversation memories (1536 dimensions)
-- **profiles** - Stores user profiles (1536 dimensions)
+| Model | Dimensions |
+|-------|-----------|
+| `text-embedding-3-small` / `ada-002` | 1536 |
+| `text-embedding-3-large` | 3072 |
+| MiniLM, M3E variants | 384–1024 |
+| BGE | 1024 |
 
-No manual configuration needed.
+Switching models requires deleting the existing collections — see [Vector Dimension Errors](#vector-dimension-errors) below.
 
-## Kubernetes Deployment
+---
 
-### Deployment YAML
+## Kubernetes
+
+Minimal deployment. Adapt resources and labels to your cluster.
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ezyapper
-  labels:
-    app: ezyapper
 spec:
   replicas: 1
   selector:
@@ -233,51 +245,49 @@ spec:
         app: ezyapper
     spec:
       containers:
-      - name: ezyapper
-        image: ezyapper:latest
-        imagePullPolicy: IfNotPresent
-        env:
-        - name: EZYAPPER_DISCORD_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: ezyapper-secrets
-              key: discord-token
-        - name: EZYAPPER_AI_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: ezyapper-secrets
-              key: api-key
-        - name: EZYAPPER_QDRANT_HOST
-          value: "qdrant-service"
-        - name: EZYAPPER_QDRANT_PORT
-          value: "6334"
-        ports:
-        - containerPort: 8080
-          name: webui
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 30
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 10
-```
-
-### Secret
-
-```yaml
+        - name: ezyapper
+          image: ezyapper:latest
+          env:
+            - name: EZYAPPER_CORE_DISCORD_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: ezyapper-secrets
+                  key: discord-token
+            - name: EZYAPPER_CORE_AI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ezyapper-secrets
+                  key: api-key
+            - name: EZYAPPER_MEMORY_PIPELINE_QDRANT_HOST
+              value: qdrant
+            - name: EZYAPPER_MEMORY_PIPELINE_QDRANT_PORT
+              value: "6334"
+          ports:
+            - containerPort: 8080
+              name: webui
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits:   { cpu: 500m, memory: 512Mi }
+          # If WebUI is enabled, the /health endpoint exists.
+          # If not, drop the probes or switch to an exec probe.
+          livenessProbe:
+            httpGet: { path: /health, port: 8080 }
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: { path: /health, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: ezyapper-config
+---
 apiVersion: v1
 kind: Secret
 metadata:
@@ -288,318 +298,225 @@ stringData:
   api-key: your_api_key
 ```
 
-### Service
+For Qdrant in-cluster, run a single-replica StatefulSet with a PVC at `/qdrant/storage`. The official Helm chart works fine.
 
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: ezyapper
-spec:
-  selector:
-    app: ezyapper
-  ports:
-  - port: 8080
-    targetPort: 8080
-  type: ClusterIP
-```
-
-### Qdrant in Kubernetes
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: qdrant
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: qdrant
-  template:
-    metadata:
-      labels:
-        app: qdrant
-    spec:
-      containers:
-      - name: qdrant
-        image: qdrant/qdrant:v1.17.0
-        ports:
-        - containerPort: 6333
-        - containerPort: 6334
-        volumeMounts:
-        - name: qdrant-storage
-          mountPath: /qdrant/storage
-      volumes:
-      - name: qdrant-storage
-        persistentVolumeClaim:
-          claimName: qdrant-pvc
 ---
-apiVersion: v1
-kind: Service
-metadata:
-  name: qdrant-service
-spec:
-  selector:
-    app: qdrant
-  ports:
-  - name: rest
-    port: 6333
-  - name: grpc
-    port: 6334
-```
 
-## Nginx Reverse Proxy
+## Reverse Proxy (Nginx)
 
-### Configuration
-
-`/etc/nginx/sites-available/ezyapper`:
+If you exposed the WebUI, put TLS in front of it.
 
 ```nginx
 server {
     listen 80;
-    server_name bot.yourdomain.com;
+    server_name bot.example.com;
 
     location / {
         proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 ```
 
-### Enable Site
-
 ```bash
-sudo ln -s /etc/nginx/sites-available/ezyapper /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl reload nginx
+sudo certbot --nginx -d bot.example.com
 ```
 
-### SSL with Let's Encrypt
+Caddy works just as well — it'll handle TLS automatically.
 
-```bash
-sudo apt install certbot python3-certbot-nginx
-sudo certbot --nginx -d bot.yourdomain.com
-```
+---
 
 ## Monitoring
 
-### Health Check Endpoint
+### Health check
 
 ```bash
 curl http://localhost:8080/health
 ```
 
-Response:
-```json
-{
-  "status": "ok",
-  "timestamp": 1705312800
-}
-```
+Returns `{"status":"ok","timestamp":...}` only when the WebUI is enabled. There's no separate health endpoint when it's off — use process supervision instead.
 
-### Qdrant Health Check
+### Qdrant health
 
 ```bash
-# REST API
 curl http://localhost:6333/healthz
-
-# Collections
-curl http://localhost:6333/collections
+curl http://localhost:6333/collections   # lists memories, profiles, relationships
 ```
 
-### Prometheus Metrics (Optional)
-
-Add to `docker-compose.yml`:
-
-```yaml
-labels:
-  - "prometheus.io/scrape=true"
-  - "prometheus.io/port=8080"
-  - "prometheus.io/path=/metrics"
-```
-
-### Log Monitoring
+### Logs
 
 ```bash
-# Docker
-docker logs -f ezyapper
-
 # Docker Compose
-docker-compose logs -f
+docker compose logs -f
 
-# Systemd
+# systemd
 sudo journalctl -u ezyapper -f
 
-# Log file
-tail -f logs/ezyapper.log
+# log file (per config)
+tail -f /opt/ezyapper/logs/ezyapper.log
 ```
 
-## Scaling Considerations
+### Metrics
 
-### Single Instance
+There's no built-in `/metrics` endpoint. If you want metrics, scrape your container runtime or front the WebUI with a sidecar that watches application logs.
 
-Example configuration supports:
-- Single Discord bot instance
-- Single Qdrant instance
-- Stateless design allows easy scaling
+---
 
-### Multiple Instances (Advanced)
+## Backup & Recovery
 
-For high-availability:
-
-1. Use external Qdrant cluster
-2. Configure Discord sharding
-3. Use load balancer for WebUI
-4. Each instance is stateless
-
-## Backup and Recovery
-
-### Qdrant Backup
+### Snapshot Qdrant
 
 ```bash
-# Create snapshot
-curl -X POST http://localhost:6333/snapshots
+# Trigger a snapshot (REST API)
+curl -X POST http://localhost:6333/collections/memories/snapshots
+curl -X POST http://localhost:6333/collections/profiles/snapshots
+curl -X POST http://localhost:6333/collections/relationships/snapshots
 
 # List snapshots
-curl http://localhost:6333/snapshots
+curl http://localhost:6333/collections/memories/snapshots
 
-# Download snapshot
-curl http://localhost:6333/snapshots/{snapshot_name} > backup.snapshot
-```
-
-### Automated Backup Script
-
-```bash
-#!/bin/bash
-BACKUP_DIR="/backup/ezyapper"
-DATE=$(date +%Y%m%d_%H%M%S)
-
-mkdir -p $BACKUP_DIR
-
-# Backup Qdrant
-curl -X POST http://localhost:6333/snapshots
-cp /var/lib/docker/volumes/qdrant_storage/_data/snapshots/* $BACKUP_DIR/qdrant_$DATE.snapshot
-
-# Cleanup old backups
-find $BACKUP_DIR -name "*.snapshot" -mtime +7 -delete
+# Download
+curl http://localhost:6333/collections/memories/snapshots/<name> > memories.snapshot
 ```
 
 ### Restore
 
 ```bash
-# Upload and restore snapshot
-curl -X POST http://localhost:6333/snapshots/upload \
+curl -X PUT http://localhost:6333/collections/memories/snapshots/upload \
   -H "Content-Type: multipart/form-data" \
-  -F "snapshot=@backup.snapshot"
+  -F "snapshot=@memories.snapshot"
 ```
+
+Or restore from a copy of `qdrant_storage` if you snapshot the volume directly.
+
+### Quick backup script
+
+```bash
+#!/bin/bash
+set -euo pipefail
+BACKUP_DIR="/backup/ezyapper"
+DATE=$(date +%Y%m%d_%H%M%S)
+mkdir -p "$BACKUP_DIR"
+
+for col in memories profiles relationships; do
+  curl -sX POST "http://localhost:6333/collections/$col/snapshots" >/dev/null
+  # Snapshot files are written into the qdrant volume; copy them out:
+  cp /var/lib/docker/volumes/qdrant_storage/_data/snapshots/$col-* \
+     "$BACKUP_DIR/${col}_${DATE}.snapshot"
+done
+
+# Keep last 7 days
+find "$BACKUP_DIR" -name "*.snapshot" -mtime +7 -delete
+```
+
+---
+
+## Scaling
+
+The bot is designed for a single instance per Discord application. Discord bots are inherently stateful (gateway connection, presence), and we don't shard.
+
+To handle larger guilds, the pragmatic options are:
+
+1. **Vertical scaling** — give the bot more CPU/RAM, give Qdrant a faster disk.
+2. **External Qdrant cluster** — run Qdrant separately with replication if memory durability matters.
+3. **Discord sharding** — supported by `discordgo`, but EZyapper's session code doesn't currently coordinate shards. Not recommended without code changes.
+
+The web layer is stateless (sessions live in memory but auto-expire), so you can put it behind a load balancer if you ever split it out — but right now it's bound to the same process as the bot.
+
+---
 
 ## Security Checklist
 
-- [ ] Change default WebUI password
-- [ ] Use environment variables for secrets
-- [ ] Enable HTTPS via reverse proxy
-- [ ] Restrict WebUI access with firewall
-- [ ] Keep dependencies updated
-- [ ] Enable audit logging
-- [ ] Use read-only config file
-- [ ] Run as non-root user
-- [ ] Set appropriate file permissions
-- [ ] Secure Qdrant (use authentication in production)
+- [ ] Real WebUI password (not `changeme123`)
+- [ ] Secrets in env vars, not in `config.yaml` on disk
+- [ ] HTTPS terminated by a reverse proxy
+- [ ] Firewall: WebUI port not exposed publicly unless intentional
+- [ ] Qdrant API key set if your instance is reachable beyond localhost
+- [ ] `chmod 400 config.yaml`
+- [ ] Container runs as non-root (the provided Dockerfile already does this)
+- [ ] Dependency updates (`make deps-update`, `make vuln`)
+- [ ] Audit logging enabled at the reverse proxy or systemd level
+
+---
 
 ## Troubleshooting
 
-### Bot Not Responding
+### Bot doesn't connect to Discord
 
-1. Check Discord token:
 ```bash
 ./ezyapper -config config.yaml 2>&1 | grep -i token
 ```
 
-2. Verify intents are enabled in Discord Developer Portal:
-- Message Content Intent
-- Server Members Intent (if needed)
+Check that:
 
-### AI API Errors
+- The token is valid (try regenerating in the Developer Portal)
+- **Privileged Gateway Intents** are enabled in the Developer Portal:
+  - Message Content Intent (required)
+  - Server Members Intent (required for member-related tools)
 
-1. Test API connection:
+### AI API errors
+
 ```bash
-curl -H "Authorization: Bearer YOUR_KEY" \
-  https://api.openai.com/v1/models
+curl -H "Authorization: Bearer YOUR_KEY" https://api.openai.com/v1/models
 ```
 
-2. Check rate limits and credits
+If that fails, the issue is upstream. If it succeeds, double-check the `core.ai.api_base_url` and `core.ai.api_key` in your config.
 
-### Qdrant Connection Errors
+### Qdrant connection errors
 
-1. Check Qdrant is running:
 ```bash
 curl http://localhost:6333/healthz
-```
-
-2. Verify connection settings in config.yaml
-
-3. Check Qdrant logs:
-```bash
 docker logs qdrant
 ```
 
-### Memory Issues
+Verify host/port match `memory_pipeline.qdrant.host` / `memory_pipeline.qdrant.port`.
 
-1. Reduce context window:
+### Memory pressure
+
+Trim a few knobs:
+
 ```yaml
 memory_pipeline:
   memory:
-    short_term_limit: 10
-```
+    short_term_limit: 10            # was 20
+    retrieval:
+      top_k: 3                      # was 5
 
-2. Lower max tokens:
-```yaml
 core:
   ai:
-    max_tokens: 512
+    max_tokens: 512                 # was 1024+
 ```
 
-3. Check Qdrant memory usage:
-```bash
-docker stats qdrant
-```
+For Qdrant memory, watch `docker stats qdrant`. The big lever is collection size; consider lowering `prune_age_days` and bumping `prune_decay_threshold` to be more aggressive about cleanup.
 
-### Vector Dimension Errors
+### Vector dimension errors
 
-**Error:** `Vector dimension error: expected dim: X, got Y`
+Error: `Vector dimension error: expected dim: X, got Y`
 
-This happens when changing embedding models with different vector sizes.
-
-**Solution - Nuke and Recreate Collections:**
+Happens when you change embedding models without dropping collections. Fix:
 
 ```bash
-# Delete collections (data will be lost!)
 curl -X DELETE http://localhost:6333/collections/memories
 curl -X DELETE http://localhost:6333/collections/profiles
+curl -X DELETE http://localhost:6333/collections/relationships
+```
 
-# Or with authentication:
+…or with auth:
+
+```bash
 curl -X DELETE https://your-cluster.qdrant.io:6333/collections/memories \
   -H "api-key: your-key"
 ```
 
-**Why:** Qdrant collections have fixed vector dimensions. When you switch from:
-- OpenAI text-embedding-3-small (1536) to MiniLM (384)
-- Or any model with different output size
+Update `embedding.model` and `qdrant.vector_size`, restart. **All memory data is lost** by this — snapshot first if you care.
 
-The existing collection expects the old dimension and rejects new vectors.
+### `/health` says unhealthy but the bot is fine
 
-**Prevention:**
-- Set correct `memory_pipeline.qdrant.vector_size` before first run
-- Or always delete collections when switching embedding models
-- Vector sizes by model:
-  - OpenAI text-embedding-3-small: 1536
-  - OpenAI text-embedding-3-large: 3072
-  - MiniLM/M3E: 384-1024
-  - BGE: 1024
+The `/health` endpoint is part of the WebUI. If `operations.web.enabled: false`, there's nothing serving HTTP and the Docker healthcheck will fail. Either:
+
+- enable the WebUI, or
+- override the healthcheck in your runtime (compose, k8s) to check the process instead of HTTP.

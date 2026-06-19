@@ -131,8 +131,10 @@ Bot: The issue is missing a closing brace on line 42.
 
 | Variable | Config Path |
 |----------|-------------|
-| `EZYAPPER_CORE_AI_VISION_MODEL` | `core.ai.vision_model` |
+| `EZYAPPER_CORE_AI_VISION_MODEL` | `core.ai.vision.model` |
 | `EZYAPPER_CORE_AI_VISION_MODE` | `core.ai.vision.mode` (e.g. `text_only`) |
+| `EZYAPPER_CORE_AI_VISION_MAX_IMAGES` | `core.ai.vision.max_images` |
+| `EZYAPPER_CORE_AI_VISION_DESCRIPTION_PROMPT` | `core.ai.vision.description_prompt` |
 
 ## Decision System Integration
 
@@ -145,7 +147,7 @@ The decision service (if enabled) is **image-aware** and considers images when d
 **Decision Rules Enhanced:**
 - Respond when user shares relevant image
 - Respond when image requires analysis or comment
-- See: `internal/ai/decision.go`
+- See: `internal/ai/decision/decision.go`
 
 ## Memory System Integration
 
@@ -228,6 +230,7 @@ The decision service (if enabled) is **image-aware** and considers images when d
 - Log vision model usage to confirm images are being sent
 
 ### Consolidation misses image context
-- By design: Memory system is text-only
-- Images are only in short-term Discord context (20 messages default)
-- Consider increasing `memory_pipeline.memory.short_term_limit` to keep image URLs longer
+- Long-term memories are text-only — images aren't stored as binary
+- During consolidation, images attached to messages are described by the vision model first; descriptions feed into memory extraction (so memories CAN reference image content via text)
+- For chat-time context, images live only in short-term Discord context (`short_term_limit`, default 20)
+- Bump `memory_pipeline.memory.short_term_limit` if image URLs disappear from context too quickly
