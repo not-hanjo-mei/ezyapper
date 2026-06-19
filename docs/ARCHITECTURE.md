@@ -78,7 +78,6 @@ Viper-backed YAML loader with env overrides. The runtime `Config` struct has 13 
 
 Key invariants:
 
-- Schema version must be `4` (hard-coded).
 - Every required field must be declared in YAML or env. There are no in-code defaults.
 - 15 validators run in sequence; errors are collected via `errors.Join` and reported all at once.
 - Updates persisted via `Save()` go through the same validation path before being written.
@@ -306,7 +305,7 @@ internal/
   utils/                  # SplitMessage etc.
   web/                    # optional admin dashboard
 examples/
-  config.yaml.example     # canonical config (schema_version: 4)
+  config.yaml.example     # canonical config
   .env.example            # env-var reference
   plugins/                # 11 example plugins (Go, Zig, C, Java)
 plugins/                  # runtime plugin binaries (gitignored, build output)

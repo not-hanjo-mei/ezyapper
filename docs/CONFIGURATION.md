@@ -20,8 +20,6 @@ EZyapper is configured via a single YAML file (default: `config.yaml`). Pass a c
 ## Top-level Shape
 
 ```yaml
-schema_version: 4
-
 core:
   discord: { ... }
   ai: { ... }
@@ -44,8 +42,6 @@ operations:
   runtime: { ... }
 ```
 
-`schema_version` must be `4`. Older configs will be rejected at startup; the schema number bumps when fields are reorganized.
-
 For a complete annotated example, see `examples/config.yaml.example`. For the JSON Schema (editor autocomplete), see `examples/config.schema.json`.
 
 ---
@@ -65,7 +61,7 @@ operations.web.enabled                        → EZYAPPER_OPERATIONS_WEB_ENABLE
 operations.plugins.plugins_dir                → EZYAPPER_OPERATIONS_PLUGINS_PLUGINS_DIR
 ```
 
-The full nested path is required — short forms like `EZYAPPER_DISCORD_TOKEN` (without `CORE_`) do **not** map to anything in `schema_version: 4` and are silently ignored.
+The full nested path is required — short forms like `EZYAPPER_DISCORD_TOKEN` (without `CORE_`) do **not** map to anything and are silently ignored.
 
 ---
 
@@ -351,6 +347,8 @@ See [PLUGINS.md](PLUGINS.md) for what each timeout actually does.
 | `command_timeout_sec` | int (>0) | enabled | Default command-runtime tool timeout. |
 | `shutdown_timeout_sec` | int (>0) | enabled | Graceful shutdown grace period. |
 | `disable_timeout_sec` | int (>0) | enabled | Grace period for runtime disable via WebUI. |
+| `max_restarts` | int (>0) | enabled | Max auto-restart attempts before cooldown. Warns if >10. |
+| `restart_cooldown_sec` | int (>0) | enabled | Cooldown after max restarts exhausted. Warns if >3600. |
 
 ### `operations.mcp`
 
