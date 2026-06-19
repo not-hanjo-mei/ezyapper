@@ -529,6 +529,12 @@ func (b *Bot) ApplyRuntimeConfig() error {
 	if b.cfg().AI.Vision.APIKey != "" {
 		visionAIConfig.APIKey = b.cfg().AI.Vision.APIKey
 	}
+	if b.cfg().AI.Vision.RetryCount > 0 {
+		visionAIConfig.RetryCount = b.cfg().AI.Vision.RetryCount
+	}
+	if b.cfg().AI.Vision.Timeout > 0 {
+		visionAIConfig.Timeout = b.cfg().AI.Vision.Timeout
+	}
 
 	clientWrapper := ai.NewClient(&visionAIConfig, b.toolRegistry)
 	b.visionDescriber = vision.NewVisionDescriber(clientWrapper, &b.cfg().AI.Vision, &visionAIConfig)
