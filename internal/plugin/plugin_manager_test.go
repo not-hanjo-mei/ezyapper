@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -72,7 +73,7 @@ func TestManagerHelperProcess(t *testing.T) {
 }
 
 func TestEnablePluginAlreadyEnabled(t *testing.T) {
-	pm := NewManager(0, 90, 5, 180, 45, 5, 2)
+	pm := NewManager(0, 90, 5, 180, 45, 5, 2, 3, 300)
 	pm.plugins["demo"] = &Client{Name: "demo"}
 
 	if err := pm.EnablePlugin("demo"); err != nil {
@@ -81,7 +82,7 @@ func TestEnablePluginAlreadyEnabled(t *testing.T) {
 }
 
 func TestEnablePluginNotFound(t *testing.T) {
-	pm := NewManager(0, 90, 5, 180, 45, 5, 2)
+	pm := NewManager(0, 90, 5, 180, 45, 5, 2, 3, 300)
 
 	err := pm.EnablePlugin("missing")
 	if err == nil {
@@ -93,7 +94,7 @@ func TestEnablePluginNotFound(t *testing.T) {
 }
 
 func TestEnablePluginLoadFailureFromDisabled(t *testing.T) {
-	pm := NewManager(0, 90, 5, 180, 45, 5, 2)
+	pm := NewManager(0, 90, 5, 180, 45, 5, 2, 3, 300)
 	missingPath := filepath.Join(t.TempDir(), "missing-plugin")
 	pm.disabled["demo"] = disabledPlugin{
 		Info: Info{Name: "demo"},
@@ -110,7 +111,7 @@ func TestEnablePluginLoadFailureFromDisabled(t *testing.T) {
 }
 
 func TestDisablePluginNotFound(t *testing.T) {
-	pm := NewManager(0, 90, 5, 180, 45, 5, 2)
+	pm := NewManager(0, 90, 5, 180, 45, 5, 2, 3, 300)
 
 	err := pm.DisablePlugin("missing")
 	if err == nil {
@@ -122,7 +123,7 @@ func TestDisablePluginNotFound(t *testing.T) {
 }
 
 func TestDisablePluginMovesToDisabledRegistry(t *testing.T) {
-	pm := NewManager(0, 90, 5, 180, 45, 5, 2)
+	pm := NewManager(0, 90, 5, 180, 45, 5, 2, 3, 300)
 	pm.plugins["demo"] = &Client{
 		Name:      "demo",
 		Info:      Info{Name: "demo", Version: "1.0.0"},
@@ -152,7 +153,7 @@ func TestDisablePluginMovesToDisabledRegistry(t *testing.T) {
 }
 
 func TestShutdownSkipsCommandRuntimePlugins(t *testing.T) {
-	pm := NewManager(0, 90, 5, 180, 45, 5, 2)
+	pm := NewManager(0, 90, 5, 180, 45, 5, 2, 3, 300)
 	pm.plugins["command-plugin"] = &Client{
 		Name:    "command-plugin",
 		Info:    Info{Name: "command-plugin", Version: "1.0.0"},
@@ -356,7 +357,7 @@ func TestLoadPluginsFromDirCommandRuntimeWithoutLocalExecutable(t *testing.T) {
 		t.Fatalf("failed to write manifest: %v", err)
 	}
 
-	pm := NewManager(0, 90, 5, 180, 45, 5, 2)
+	pm := NewManager(0, 90, 5, 180, 45, 5, 2, 3, 300)
 	if err := pm.LoadPluginsFromDir(pluginsRoot); err != nil {
 		t.Fatalf("LoadPluginsFromDir returned error: %v", err)
 	}
@@ -426,7 +427,7 @@ func TestValidateToolSpec_OK(t *testing.T) {
 }
 
 func TestToolSpecTimeoutMsPropagation(t *testing.T) {
-	pm := NewManager(0, 90, 5, 180, 45, 5, 2)
+	pm := NewManager(0, 90, 5, 180, 45, 5, 2, 3, 300)
 	pm.plugins["test-plugin"] = &Client{
 		Name:    "test-plugin",
 		runtime: pluginRuntimeJSONRPC,
@@ -527,7 +528,7 @@ func newTimeoutTestManager(t *testing.T, toolTimeoutMs int, toolDelay time.Durat
 	jsonClient, cleanup := newMockJSONRPCClient(toolDelay)
 	t.Cleanup(cleanup)
 
-	pm := NewManager(defaultToolTimeoutMs, 90, 5, 180, 45, 5, 2)
+	pm := NewManager(defaultToolTimeoutMs, 90, 5, 180, 45, 5, 2, 3, 300)
 	pm.plugins["mock-plugin"] = &Client{
 		Name:    "mock-plugin",
 		jsonrpc: jsonClient,
@@ -604,7 +605,7 @@ func TestExecuteToolTimeout_SuccessWithConfigTimeout(t *testing.T) {
 }
 
 func TestManagerDefaultToolTimeoutMsZero(t *testing.T) {
-	pm := NewManager(0, 90, 5, 180, 45, 5, 2)
+	pm := NewManager(0, 90, 5, 180, 45, 5, 2, 3, 300)
 	if pm.defaultToolTimeoutMs != 0 {
 		t.Fatalf("expected DefaultToolTimeoutMs=0, got %d", pm.defaultToolTimeoutMs)
 	}
@@ -712,7 +713,7 @@ func TestExecuteCommandTool_PerToolTimeout(t *testing.T) {
 		t.Fatalf("failed to write manifest: %v", err)
 	}
 
-	pm := NewManager(0, 90, 5, 180, 30, 5, 2)
+	pm := NewManager(0, 90, 5, 180, 30, 5, 2, 3, 300)
 	if err := pm.LoadPluginsFromDir(pluginsRoot); err != nil {
 		t.Fatalf("LoadPluginsFromDir returned error: %v", err)
 	}
@@ -736,7 +737,7 @@ func TestConcurrentExecuteToolAndDisablePluginNoPanic(t *testing.T) {
 	jsonClient, cleanup := newMockJSONRPCClient(200 * time.Millisecond)
 	t.Cleanup(cleanup)
 
-	pm := NewManager(10000, 90, 5, 180, 45, 5, 2)
+	pm := NewManager(10000, 90, 5, 180, 45, 5, 2, 3, 300)
 	pm.plugins["test"] = &Client{
 		Name:    "test",
 		jsonrpc: jsonClient,
@@ -780,7 +781,7 @@ func TestConcurrentOnMessageAndDisablePluginNoPanic(t *testing.T) {
 	jsonClient, cleanup := newMockJSONRPCClient(200 * time.Millisecond)
 	t.Cleanup(cleanup)
 
-	pm := NewManager(10000, 90, 5, 180, 45, 5, 2)
+	pm := NewManager(10000, 90, 5, 180, 45, 5, 2, 3, 300)
 	pm.plugins["test"] = &Client{
 		Name:    "test",
 		Info:    Info{Name: "test", Priority: 10},
@@ -818,7 +819,7 @@ func TestConcurrentOnMessageAndDisablePluginNoPanic(t *testing.T) {
 }
 
 func TestWaitForPending_SuccessWhenNoPendingOperations(t *testing.T) {
-	pm := NewManager(0, 90, 5, 180, 45, 1, 2)
+	pm := NewManager(0, 90, 5, 180, 45, 1, 2, 3, 300)
 
 	err := pm.WaitForPending()
 	if err != nil {
@@ -827,7 +828,7 @@ func TestWaitForPending_SuccessWhenNoPendingOperations(t *testing.T) {
 }
 
 func TestWaitForPending_TimeoutWhenOperationsBlocking(t *testing.T) {
-	pm := NewManager(0, 90, 5, 180, 45, 1, 2)
+	pm := NewManager(0, 90, 5, 180, 45, 1, 2, 3, 300)
 
 	pm.wg.Add(1)
 
@@ -843,7 +844,7 @@ func TestWaitForPending_TimeoutWhenOperationsBlocking(t *testing.T) {
 }
 
 func TestWaitForPending_RecoversFromPanic(t *testing.T) {
-	pm := NewManager(0, 90, 5, 180, 45, 1, 2)
+	pm := NewManager(0, 90, 5, 180, 45, 1, 2, 3, 300)
 
 	err := pm.WaitForPending()
 	if err != nil {
@@ -876,7 +877,7 @@ func TestConcurrentBeforeSendAndDisablePluginNoPanic(t *testing.T) {
 	jsonClient, cleanup := newMockJSONRPCClient(200 * time.Millisecond)
 	t.Cleanup(cleanup)
 
-	pm := NewManager(10000, 90, 5, 180, 45, 5, 2)
+	pm := NewManager(10000, 90, 5, 180, 45, 5, 2, 3, 300)
 	pm.plugins["test"] = &Client{
 		Name:    "test",
 		Info:    Info{Name: "test", Priority: 10},
@@ -911,4 +912,146 @@ func TestConcurrentBeforeSendAndDisablePluginNoPanic(t *testing.T) {
 	}()
 
 	wg.Wait()
+}
+
+func newDeadClient(t *testing.T) *stdioJSONRPCClient {
+	t.Helper()
+	stdin := &nopWriteCloser{&bytes.Buffer{}}
+	stdoutR, stdoutW := io.Pipe()
+	t.Cleanup(func() {
+		stdoutW.Close()
+		stdoutR.Close()
+	})
+	client := newStdioJSONRPCClient(stdin, stdoutR)
+	client.dead.Store(true)
+	return client
+}
+
+func newManagerWithDeadPlugin(t *testing.T, pluginName string) *Manager {
+	t.Helper()
+	jsonClient := newDeadClient(t)
+	tmpDir := t.TempDir()
+	pm := NewManager(10000, 90, 5, 180, 45, 5, 2, 3, 300)
+	pm.plugins[pluginName] = &Client{
+		Name:      pluginName,
+		Info:      Info{Name: pluginName, Priority: 10},
+		jsonrpc:   jsonClient,
+		runtime:   pluginRuntimeJSONRPC,
+		priority:  10,
+		path:      filepath.Join(tmpDir, "fake-binary"),
+		configDir: tmpDir,
+	}
+	return pm
+}
+
+func TestBeforeSend_DeadClientSkipped(t *testing.T) {
+	pm := newManagerWithDeadPlugin(t, "dead-plugin")
+	defer pm.wg.Wait()
+
+	response, files, skipSend, err := pm.BeforeSend(
+		context.Background(),
+		types.DiscordMessage{Username: "user", Content: "hello"},
+		"test response",
+	)
+	if err != nil {
+		t.Fatalf("expected nil error for dead plugin, got: %v", err)
+	}
+	if response != "test response" {
+		t.Fatalf("expected original response, got: %s", response)
+	}
+	if skipSend {
+		t.Fatal("expected skipSend=false")
+	}
+	if len(files) != 0 {
+		t.Fatalf("expected no files, got: %d", len(files))
+	}
+}
+
+func TestBeforeSend_TimeoutClientSkipped(t *testing.T) {
+	stdin := &nopWriteCloser{&bytes.Buffer{}}
+	stdoutR, stdoutW := io.Pipe()
+	t.Cleanup(func() {
+		stdoutW.Close()
+		stdoutR.Close()
+	})
+
+	jsonClient := newStdioJSONRPCClient(stdin, stdoutR)
+	tmpDir := t.TempDir()
+	pm := NewManager(10000, 90, 5, 1, 45, 5, 2, 3, 300)
+	pm.plugins["slow-plugin"] = &Client{
+		Name:      "slow-plugin",
+		Info:      Info{Name: "slow-plugin", Priority: 10},
+		jsonrpc:   jsonClient,
+		runtime:   pluginRuntimeJSONRPC,
+		priority:  10,
+		path:      filepath.Join(tmpDir, "fake-binary"),
+		configDir: tmpDir,
+	}
+	defer pm.wg.Wait()
+
+	response, _, skipSend, err := pm.BeforeSend(
+		context.Background(),
+		types.DiscordMessage{Username: "user", Content: "hello"},
+		"test response",
+	)
+	if err != nil {
+		t.Fatalf("expected nil error for timed-out plugin, got: %v", err)
+	}
+	if response != "test response" {
+		t.Fatalf("expected original response, got: %s", response)
+	}
+	if skipSend {
+		t.Fatal("expected skipSend=false")
+	}
+}
+
+func TestOnMessage_DeadClientSkipped(t *testing.T) {
+	pm := newManagerWithDeadPlugin(t, "dead-plugin")
+	defer pm.wg.Wait()
+
+	shouldContinue, err := pm.OnMessage(
+		context.Background(),
+		types.DiscordMessage{Username: "user", Content: "hello"},
+	)
+	if err != nil {
+		t.Fatalf("expected nil error, got: %v", err)
+	}
+	if !shouldContinue {
+		t.Fatal("expected shouldContinue=true")
+	}
+}
+
+func TestOnResponse_DeadClientSkipped(t *testing.T) {
+	pm := newManagerWithDeadPlugin(t, "dead-plugin")
+	defer pm.wg.Wait()
+
+	err := pm.OnResponse(
+		context.Background(),
+		types.DiscordMessage{Username: "user", Content: "hello"},
+		"response",
+	)
+	if err != nil {
+		t.Fatalf("expected nil error, got: %v", err)
+	}
+}
+
+func TestIsClientDeadError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"dead client", fmt.Errorf("jsonrpc client is dead: transport timed out and connection is stale"), true},
+		{"call timeout", fmt.Errorf("jsonrpc call timeout (30000ms): before_send"), true},
+		{"method not found", fmt.Errorf("jsonrpc -32601: method not found"), false},
+		{"other error", fmt.Errorf("some other error"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isClientDeadError(tt.err); got != tt.want {
+				t.Errorf("isClientDeadError(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
 }

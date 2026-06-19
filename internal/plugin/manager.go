@@ -12,7 +12,7 @@ import (
 )
 
 // NewManager creates a new plugin manager
-func NewManager(defaultToolTimeoutMs int, startupTimeoutSec int, rpcTimeoutSec int, beforeSendTimeoutSec int, commandTimeoutSec int, shutdownTimeoutSec int, disableTimeoutSec int) *Manager {
+func NewManager(defaultToolTimeoutMs int, startupTimeoutSec int, rpcTimeoutSec int, beforeSendTimeoutSec int, commandTimeoutSec int, shutdownTimeoutSec int, disableTimeoutSec int, maxRestarts int, restartCooldownSec int) *Manager {
 	return &Manager{
 		plugins:              make(map[string]*Client),
 		disabled:             make(map[string]disabledPlugin),
@@ -23,6 +23,8 @@ func NewManager(defaultToolTimeoutMs int, startupTimeoutSec int, rpcTimeoutSec i
 		commandTimeoutSec:    commandTimeoutSec,
 		shutdownTimeoutSec:   shutdownTimeoutSec,
 		disableTimeoutSec:    disableTimeoutSec,
+		maxRestarts:          maxRestarts,
+		restartCooldown:      time.Duration(restartCooldownSec) * time.Second,
 	}
 }
 
@@ -47,9 +49,17 @@ func (pm *Manager) OnMessage(ctx context.Context, msg types.DiscordMessage) (boo
 			continue
 		}
 
+		if plugin.jsonrpc.dead.Load() {
+			pm.triggerRestart(plugin.Name)
+			continue
+		}
+
 		var shouldContinue bool
 		err := callPluginOnMessageWithTimeout(plugin, msg, &shouldContinue, time.Duration(pm.rpcTimeoutSec)*time.Second)
 		if err != nil {
+			if isClientDeadError(err) {
+				pm.triggerRestart(plugin.Name)
+			}
 			logger.Warnf("[plugin] Plugin %s error in OnMessage: %v", plugin.Name, err)
 			continue
 		}
@@ -82,9 +92,17 @@ func (pm *Manager) OnResponse(ctx context.Context, msg types.DiscordMessage, res
 			continue
 		}
 
+		if plugin.jsonrpc.dead.Load() {
+			pm.triggerRestart(plugin.Name)
+			continue
+		}
+
 		var reply struct{}
 		err := callPluginOnResponseWithTimeout(plugin, args, &reply, time.Duration(pm.rpcTimeoutSec)*time.Second)
 		if err != nil {
+			if isClientDeadError(err) {
+				pm.triggerRestart(plugin.Name)
+			}
 			logger.Warnf("[plugin] Plugin %s error in OnResponse: %v", plugin.Name, err)
 		}
 	}
@@ -122,6 +140,11 @@ func (pm *Manager) BeforeSend(
 			continue
 		}
 
+		if plugin.jsonrpc.dead.Load() {
+			pm.triggerRestart(plugin.Name)
+			continue
+		}
+
 		var reply BeforeSendResult
 		err := callPluginBeforeSendWithTimeout(
 			plugin,
@@ -130,6 +153,10 @@ func (pm *Manager) BeforeSend(
 			time.Duration(pm.beforeSendTimeoutSec)*time.Second,
 		)
 		if err != nil {
+			if isClientDeadError(err) {
+				pm.triggerRestart(plugin.Name)
+				continue
+			}
 			if isMethodNotFoundPluginError(err) {
 				continue
 			}

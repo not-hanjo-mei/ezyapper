@@ -66,6 +66,8 @@ func main() {
 		cfg.Plugins.CommandTimeoutSec,
 		cfg.Plugins.ShutdownTimeoutSec,
 		cfg.Plugins.DisableTimeoutSec,
+		cfg.Plugins.MaxRestarts,
+		cfg.Plugins.RestartCooldownSec,
 	)
 
 	// Create shared config store (copy-on-write via atomic.Value)

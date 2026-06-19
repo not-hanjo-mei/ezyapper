@@ -811,3 +811,95 @@ func (pm *Manager) DisablePlugin(name string) error {
 	logger.Infof("[plugin] Plugin disabled: %s", name)
 	return nil
 }
+
+func (pm *Manager) triggerRestart(name string) {
+	pm.wg.Add(1)
+	go func() {
+		defer pm.wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Errorf("[plugin] panic in restart of %s: %v\n%s", name, r, debug.Stack())
+			}
+		}()
+		pm.tryRestartPlugin(name)
+	}()
+}
+
+func (pm *Manager) tryRestartPlugin(name string) {
+	state := pm.getRestartState(name)
+
+	if state.inProgress.Load() {
+		return
+	}
+
+	state.mu.Lock()
+	if state.count >= pm.maxRestarts && time.Since(state.lastAttempt) < pm.restartCooldown {
+		state.mu.Unlock()
+		return
+	}
+	state.mu.Unlock()
+
+	state.inProgress.Store(true)
+	defer state.inProgress.Store(false)
+
+	logger.Warnf("[plugin] Plugin %s transport is dead, attempting restart", name)
+
+	if err := pm.restartPluginInternal(name); err != nil {
+		state.mu.Lock()
+		state.count++
+		state.lastAttempt = time.Now()
+		attempt := state.count
+		state.mu.Unlock()
+
+		if attempt >= pm.maxRestarts {
+			logger.Errorf("[plugin] Plugin %s restart failed %d times, entering %v cooldown: %v",
+				name, attempt, pm.restartCooldown, err)
+		} else {
+			logger.Warnf("[plugin] Plugin %s restart attempt %d failed: %v", name, attempt, err)
+		}
+		return
+	}
+
+	state.mu.Lock()
+	state.count = 0
+	state.mu.Unlock()
+	logger.Infof("[plugin] Plugin %s restarted successfully", name)
+}
+
+func (pm *Manager) restartPluginInternal(name string) error {
+	pm.mu.Lock()
+	plugin, exists := pm.plugins[name]
+	if !exists {
+		pm.mu.Unlock()
+		return nil
+	}
+	path := plugin.path
+	configDir := plugin.configDir
+	info := plugin.Info
+	delete(pm.plugins, name)
+	pm.mu.Unlock()
+
+	if plugin.jsonrpc != nil {
+		plugin.jsonrpc.Close()
+	}
+	pm.stopPluginProcess(plugin, time.Duration(pm.disableTimeoutSec)*time.Second)
+
+	if err := pm.loadPluginWithConfig(path, configDir); err != nil {
+		pm.mu.Lock()
+		if _, stillExists := pm.plugins[name]; !stillExists {
+			pm.disabled[name] = disabledPlugin{Info: info, Path: path, ConfigDir: configDir}
+		}
+		pm.mu.Unlock()
+		return err
+	}
+	return nil
+}
+
+func (pm *Manager) getRestartState(name string) *restartState {
+	if val, ok := pm.restartStates.Load(name); ok {
+		return val.(*restartState)
+	}
+	state := &restartState{}
+	actual, _ := pm.restartStates.LoadOrStore(name, state)
+	return actual.(*restartState)
+}

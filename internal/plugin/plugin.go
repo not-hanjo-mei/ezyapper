@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"ezyapper/internal/logger"
@@ -242,8 +243,18 @@ type Manager struct {
 	commandTimeoutSec    int
 	shutdownTimeoutSec   int
 	disableTimeoutSec    int
+	maxRestarts          int
+	restartCooldown      time.Duration
 	pluginsDir           string
 	wg                   sync.WaitGroup
+	restartStates        sync.Map // name -> *restartState
+}
+
+type restartState struct {
+	inProgress  atomic.Bool
+	count       int
+	lastAttempt time.Time
+	mu          sync.Mutex
 }
 
 // ListTools returns all tools exposed by currently enabled plugins.
@@ -276,6 +287,10 @@ func (pm *Manager) ExecuteTool(ctx context.Context, pluginName string, toolName 
 	}
 
 	if plugin.jsonrpc != nil {
+		if plugin.jsonrpc.dead.Load() {
+			pm.triggerRestart(pluginName)
+			return "", fmt.Errorf("plugin %s transport is dead", pluginName)
+		}
 		return pm.executeJSONRPCTool(plugin, toolName, args)
 	}
 
@@ -317,6 +332,9 @@ func (pm *Manager) executeJSONRPCTool(plugin *Client, toolName string, args map[
 		timeout,
 	)
 	if err != nil {
+		if isClientDeadError(err) {
+			pm.triggerRestart(plugin.Name)
+		}
 		return "", fmt.Errorf("plugin tool execution failed: %w", err)
 	}
 

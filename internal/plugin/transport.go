@@ -21,6 +21,20 @@ func isMethodNotFoundPluginError(err error) bool {
 		strings.Contains(msg, "jsonrpc -32601")
 }
 
+// isClientDeadError returns true if the error indicates the JSON-RPC client
+// is dead — either it was already dead before the call ("jsonrpc client is
+// dead") or it timed out during the call and was killed ("jsonrpc call
+// timeout"). In both cases the client's dead flag is set and the plugin is
+// unrecoverable without a restart.
+func isClientDeadError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "jsonrpc client is dead") ||
+		strings.Contains(msg, "jsonrpc call timeout")
+}
+
 func callJSONRPCWithTimeout(
 	client *stdioJSONRPCClient,
 	wg *sync.WaitGroup,
