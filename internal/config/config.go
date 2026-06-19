@@ -232,6 +232,8 @@ type PluginsConfig struct {
 	CommandTimeoutSec    int    `mapstructure:"command_timeout_sec" yaml:"command_timeout_sec"`
 	ShutdownTimeoutSec   int    `mapstructure:"shutdown_timeout_sec" yaml:"shutdown_timeout_sec"`
 	DisableTimeoutSec    int    `mapstructure:"disable_timeout_sec" yaml:"disable_timeout_sec"`
+	MaxRestarts          int    `mapstructure:"max_restarts" yaml:"max_restarts"`
+	RestartCooldownSec   int    `mapstructure:"restart_cooldown_sec" yaml:"restart_cooldown_sec"`
 }
 
 type MCPConfig struct {
@@ -592,6 +594,14 @@ func validatePlugins(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Plugins.CommandTimeoutSec, "operations.plugins.command_timeout_sec", errs)
 	requirePositive(cfg.Plugins.ShutdownTimeoutSec, "operations.plugins.shutdown_timeout_sec", errs)
 	requirePositive(cfg.Plugins.DisableTimeoutSec, "operations.plugins.disable_timeout_sec", errs)
+	requirePositive(cfg.Plugins.MaxRestarts, "operations.plugins.max_restarts", errs)
+	requirePositive(cfg.Plugins.RestartCooldownSec, "operations.plugins.restart_cooldown_sec", errs)
+	if cfg.Plugins.MaxRestarts > 10 {
+		fmt.Fprintf(os.Stderr, "[config][WARNING] operations.plugins.max_restarts is %d (recommended max 10) — honoring user value\n", cfg.Plugins.MaxRestarts)
+	}
+	if cfg.Plugins.RestartCooldownSec > 3600 {
+		fmt.Fprintf(os.Stderr, "[config][WARNING] operations.plugins.restart_cooldown_sec is %d (recommended max 3600) — honoring user value\n", cfg.Plugins.RestartCooldownSec)
+	}
 }
 
 func validateBlacklist(cfg *Config, errs *[]string) {

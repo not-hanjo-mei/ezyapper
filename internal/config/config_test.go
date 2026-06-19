@@ -224,6 +224,8 @@ operations:
 		command_timeout_sec: 45
 		shutdown_timeout_sec: 5
 		disable_timeout_sec: 2
+		max_restarts: 3
+		restart_cooldown_sec: 300
 	mcp:
 		enabled: false
 		servers: []
@@ -324,6 +326,8 @@ operations:
 		command_timeout_sec: 45
 		shutdown_timeout_sec: 5
 		disable_timeout_sec: 2
+		max_restarts: 3
+		restart_cooldown_sec: 300
 	mcp:
 		enabled: false
 		servers: []
@@ -424,6 +428,8 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 			CommandTimeoutSec:    45,
 			ShutdownTimeoutSec:   5,
 			DisableTimeoutSec:    2,
+			MaxRestarts:          3,
+			RestartCooldownSec:   300,
 		},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
@@ -519,6 +525,8 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 			CommandTimeoutSec:    45,
 			ShutdownTimeoutSec:   5,
 			DisableTimeoutSec:    2,
+			MaxRestarts:          3,
+			RestartCooldownSec:   300,
 		},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
@@ -636,6 +644,8 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 			CommandTimeoutSec:    45,
 			ShutdownTimeoutSec:   5,
 			DisableTimeoutSec:    2,
+			MaxRestarts:          3,
+			RestartCooldownSec:   300,
 		},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
@@ -738,6 +748,8 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 			CommandTimeoutSec:    45,
 			ShutdownTimeoutSec:   5,
 			DisableTimeoutSec:    2,
+			MaxRestarts:          3,
+			RestartCooldownSec:   300,
 		},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
@@ -865,6 +877,8 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			CommandTimeoutSec:    45,
 			ShutdownTimeoutSec:   5,
 			DisableTimeoutSec:    2,
+			MaxRestarts:          3,
+			RestartCooldownSec:   300,
 		},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
@@ -1221,6 +1235,8 @@ operations:
     command_timeout_sec: 45
     shutdown_timeout_sec: 5
     disable_timeout_sec: 2
+    max_restarts: 3
+    restart_cooldown_sec: 300
   mcp:
     enabled: false
     servers: []
@@ -2227,6 +2243,8 @@ func TestValidate_PluginsDefaultToolTimeoutMsNegative(t *testing.T) {
 			CommandTimeoutSec:    30,
 			ShutdownTimeoutSec:   30,
 			DisableTimeoutSec:    30,
+			MaxRestarts:          3,
+			RestartCooldownSec:   300,
 		},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
@@ -2303,6 +2321,8 @@ func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
 			CommandTimeoutSec:    30,
 			ShutdownTimeoutSec:   30,
 			DisableTimeoutSec:    30,
+			MaxRestarts:          3,
+			RestartCooldownSec:   300,
 		},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
