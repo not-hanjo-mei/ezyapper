@@ -31,8 +31,6 @@ type Config struct {
 	configPath string `yaml:"-"`
 }
 
-const currentConfigSchemaVersion = 4
-
 // OperationsConfig holds operational runtime settings.
 type OperationsConfig struct {
 	ShutdownTimeoutSec int `mapstructure:"shutdown_timeout_sec" yaml:"shutdown_timeout_sec"`
@@ -320,10 +318,6 @@ func Load(configPath string) (*Config, error) {
 	}
 	if err := v.Unmarshal(&raw); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
-	}
-
-	if raw.SchemaVersion != currentConfigSchemaVersion {
-		return nil, fmt.Errorf("unsupported config schema_version %d: expected %d", raw.SchemaVersion, currentConfigSchemaVersion)
 	}
 
 	cfg := Config{
@@ -770,8 +764,7 @@ func (c *Config) Save() error {
 	}
 
 	fileData := struct {
-		SchemaVersion int `yaml:"schema_version"`
-		Core          struct {
+		Core struct {
 			Discord  DiscordConfig  `yaml:"discord"`
 			AI       AIConfig       `yaml:"ai"`
 			Decision DecisionConfig `yaml:"decision"`

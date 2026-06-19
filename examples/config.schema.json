@@ -2,13 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/not-hanjo-mei/ezyapper/main/examples/config.schema.json",
   "title": "EZyapper Configuration",
-  "description": "JSON Schema for config.yaml v4. Mirrors internal/config validation constraints (vision nested, timeout rename, qdrant retry, consolidation vision object).",
+  "description": "JSON Schema for config.yaml. Mirrors internal/config validation constraints.",
   "type": "object",
-  "required": ["schema_version", "core", "memory_pipeline", "operations"],
+  "required": ["core", "memory_pipeline", "operations"],
   "additionalProperties": false,
   "properties": {
-    "schema_version": { "type": "integer", "const": 4 },
-
     "core": {
       "type": "object",
       "required": ["discord", "ai"],

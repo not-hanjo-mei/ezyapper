@@ -16,8 +16,7 @@ import (
 	"ezyapper/internal/config"
 )
 
-const testConfigYAML = `schema_version: 4
-core:
+const testConfigYAML = `core:
   discord:
     token: "test-token"
     bot_name: "TestBot"

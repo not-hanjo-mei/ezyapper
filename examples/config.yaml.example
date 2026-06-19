@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/not-hanjo-mei/ezyapper/main/examples/config.schema.json
-# EZyapper config example (v3 grouped schema)
+# EZyapper config example
 # ------------------------------------------------
 # Copy this file to config.yaml and fill in your values.
 # ALL fields shown here are required unless marked "optional override".
@@ -11,8 +11,6 @@
 #    - OFF: memory_pipeline.memory.retrieval.top_k=0 and consolidation.enabled=false
 #    - ON: set embedding + qdrant + retrieval/consolidation
 # 3) Enable optional modules in operations.* as needed
-
-schema_version: 4
 
 core:
   # ── Discord Bot Settings ──────────────────────────────
@@ -458,6 +456,8 @@ operations:
     ## command_timeout_sec: 45
     ## shutdown_timeout_sec: 5
     ## disable_timeout_sec: 2
+    ## max_restarts: 3
+    ## restart_cooldown_sec: 300
 
   # ── MCP Client ────────────────────────────────────────
   mcp:

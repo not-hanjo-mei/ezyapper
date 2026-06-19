@@ -142,9 +142,8 @@ func validatePluginManifest(manifest map[string]interface{}) []string {
 func TestLoad_MissingDiscordToken(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	config := `schema_version: 4
-core:
-	discord:
+	config := `core:
+discord:
 		bot_name: "TestBot"
 		other_bot_policy: "full"
 		reply_percentage: 0.15
@@ -1119,8 +1118,7 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 func TestPluginsConfig_DefaultToolTimeoutMs_ParsesCorrectly(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	config := `schema_version: 4
-core:
+	config := `core:
   discord:
     token: "test-token"
     bot_name: "TestBot"
