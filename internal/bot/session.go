@@ -677,7 +677,7 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 		decisionCtx, cancel := context.WithTimeout(ctx, totalTimeout)
 		defer cancel()
 
-		imageCount := len(extractImageURLs(m.Message))
+		imageCount := len(extractImageURLs(m.Message, b.cfg().AI.Vision.MaxImages))
 		decisionMessages := b.getRecentMessagesForDecision(m.ID, recentMessages)
 
 		msgInfo := decision.MessageInfo{
