@@ -368,9 +368,7 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{
-			LLMConfig: LLMConfig{
-				Model: "text-embedding-3-small",
-			},
+			Model: "text-embedding-3-small",
 		},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 50,
@@ -465,9 +463,7 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{
-			LLMConfig: LLMConfig{
-				Model: "text-embedding-3-small",
-			},
+			Model: "text-embedding-3-small",
 		},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 50,
@@ -584,9 +580,7 @@ func TestValidate_MissingVisionMode(t *testing.T) {
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{
-			LLMConfig: LLMConfig{
-				Model: "text-embedding-3-small",
-			},
+			Model: "text-embedding-3-small",
 		},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 50,
@@ -688,9 +682,7 @@ func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{
-			LLMConfig: LLMConfig{
-				Model: "text-embedding-3-small",
-			},
+			Model: "text-embedding-3-small",
 		},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 50,
@@ -793,7 +785,7 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
-		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "text-embedding-3-small", RetryCount: 0, Timeout: 30}},
+		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 0, Timeout: 30},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
@@ -902,7 +894,7 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
-		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "em", RetryCount: 0, Timeout: 1}},
+		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
@@ -1031,7 +1023,7 @@ func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
-		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "text-embedding-3-small", RetryCount: 0, Timeout: 1}},
+		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
@@ -1346,7 +1338,7 @@ func TestValidate_ConsolidationEnabled_RequiresOwnBotID(t *testing.T) {
 			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
-		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1}},
+		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
@@ -1453,7 +1445,7 @@ func TestValidate_TopKEnabled_RequiresOwnBotID(t *testing.T) {
 			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
-		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "text-embedding-3-small", RetryCount: 0, Timeout: 1}},
+		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
 			ConsolidationInterval:      1,
 			ShortTermLimit:             1,
@@ -1559,7 +1551,7 @@ func TestValidate_ConsolidationEnabled_WithCoreAIFallback(t *testing.T) {
 			MaxToolIterations: 5,
 			MaxImageBytes:     10485760,
 		},
-		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1}},
+		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
@@ -1629,7 +1621,7 @@ func TestValidate_ConsolidationEnabled_BothEmpty(t *testing.T) {
 			MaxToolIterations: 5,
 			MaxImageBytes:     10485760,
 		},
-		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1}},
+		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
@@ -1820,7 +1812,7 @@ func TestValidate_VisionMaxTokensNegative(t *testing.T) {
 			},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
-		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1}},
+		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
@@ -1864,7 +1856,7 @@ func TestValidate_EmbeddingTimeoutZero(t *testing.T) {
 			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
-		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 0}},
+		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 0},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
@@ -2219,7 +2211,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsNegative(t *testing.T) {
 			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
-		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "em", RetryCount: 0, Timeout: 1}},
+		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
@@ -2271,7 +2263,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
 			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
-		Embedding: EmbeddingConfig{LLMConfig: LLMConfig{Model: "em", RetryCount: 0, Timeout: 1}},
+		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
 			ConsolidationInterval:        1,
 			ShortTermLimit:               1,

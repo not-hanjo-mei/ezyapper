@@ -26,13 +26,11 @@ func TestBuildEmbeddingAIConfig_UsesEmbeddingOverrides(t *testing.T) {
 			},
 		},
 		Embedding: config.EmbeddingConfig{
-			LLMConfig: config.LLMConfig{
-				APIBaseURL:  "https://embed.example/v1",
-				APIKey:      "embed-key",
-				RetryCount:  1,
-				Timeout:     15,
-				ExtraParams: map[string]interface{}{"source": "embed"},
-			},
+			APIBaseURL:  "https://embed.example/v1",
+			APIKey:      "embed-key",
+			RetryCount:  1,
+			Timeout:     15,
+			ExtraParams: map[string]interface{}{"source": "embed"},
 		},
 	}
 
@@ -66,10 +64,8 @@ func TestBuildEmbeddingAIConfig_FallsBackToMainAI(t *testing.T) {
 			},
 		},
 		Embedding: config.EmbeddingConfig{
-			LLMConfig: config.LLMConfig{
-				RetryCount: 0,
-				Timeout:    0,
-			},
+			RetryCount: 0,
+			Timeout:    0,
 		},
 	}
 

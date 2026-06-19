@@ -244,10 +244,8 @@ func TestHandleTextOnlyMode_NoContext(t *testing.T) {
 			CooldownSeconds: 5,
 		},
 		Embedding: config.EmbeddingConfig{
-			LLMConfig: config.LLMConfig{
-				Model:  "embed",
-				APIKey: "key",
-			},
+			Model:  "embed",
+			APIKey: "key",
 		},
 		Qdrant: config.QdrantConfig{Host: "localhost", Port: 6334},
 	}
@@ -287,10 +285,8 @@ func TestGenerateResponse_UnknownVisionMode(t *testing.T) {
 			CooldownSeconds: 5,
 		},
 		Embedding: config.EmbeddingConfig{
-			LLMConfig: config.LLMConfig{
-				Model:  "embed",
-				APIKey: "key",
-			},
+			Model:  "embed",
+			APIKey: "key",
 		},
 		Qdrant: config.QdrantConfig{Host: "localhost", Port: 6334},
 	}
@@ -331,10 +327,8 @@ func TestGenerateResponse_ContextCancelled(t *testing.T) {
 			CooldownSeconds: 5,
 		},
 		Embedding: config.EmbeddingConfig{
-			LLMConfig: config.LLMConfig{
-				Model:  "embed",
-				APIKey: "key",
-			},
+			Model:  "embed",
+			APIKey: "key",
 		},
 		Qdrant: config.QdrantConfig{Host: "localhost", Port: 6334},
 	}
@@ -376,10 +370,8 @@ func TestFormatSystemPrompt_Basic(t *testing.T) {
 			CooldownSeconds: 5,
 		},
 		Embedding: config.EmbeddingConfig{
-			LLMConfig: config.LLMConfig{
-				Model:  "embed",
-				APIKey: "key",
-			},
+			Model:  "embed",
+			APIKey: "key",
 		},
 		Qdrant: config.QdrantConfig{Host: "localhost", Port: 6334},
 	}
@@ -452,10 +444,8 @@ func TestLongResponseChunking_Basic(t *testing.T) {
 			Vision: config.VisionConfig{Mode: config.VisionModeTextOnly},
 		},
 		Embedding: config.EmbeddingConfig{
-			LLMConfig: config.LLMConfig{
-				Model:  "embed",
-				APIKey: "key",
-			},
+			Model:  "embed",
+			APIKey: "key",
 		},
 		Qdrant: config.QdrantConfig{Host: "localhost", Port: 6334},
 	}
@@ -579,10 +569,8 @@ func TestRunBeforeSendPluginHooks_NilManager(t *testing.T) {
 			Vision: config.VisionConfig{Mode: config.VisionModeTextOnly},
 		},
 		Embedding: config.EmbeddingConfig{
-			LLMConfig: config.LLMConfig{
-				Model:  "embed",
-				APIKey: "key",
-			},
+			Model:  "embed",
+			APIKey: "key",
 		},
 		Qdrant: config.QdrantConfig{Host: "localhost", Port: 6334},
 	}

@@ -102,9 +102,16 @@ type AIConfig struct {
 	RequireImageContentType bool         `mapstructure:"require_image_content_type" yaml:"require_image_content_type"`
 }
 
-// EmbeddingConfig holds settings for embedding generation
+// EmbeddingConfig holds settings for embedding generation.
+// Only fields the embedding API actually accepts — max_tokens and temperature
+// are not part of the OpenAI embedding protocol, so they are intentionally absent.
 type EmbeddingConfig struct {
-	LLMConfig `mapstructure:",squash"`
+	APIBaseURL  string         `mapstructure:"api_base_url" yaml:"api_base_url"`
+	APIKey      string         `mapstructure:"api_key" yaml:"api_key"`
+	Model       string         `mapstructure:"model" yaml:"model"`
+	RetryCount  int            `mapstructure:"retry_count" yaml:"retry_count"`
+	Timeout     int            `mapstructure:"timeout" yaml:"timeout"`
+	ExtraParams map[string]any `mapstructure:"extra_params" yaml:"extra_params"`
 }
 
 // LongTermMemoryConfig controls long-term memory features.
