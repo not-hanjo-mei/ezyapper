@@ -243,9 +243,8 @@ operations:
 func TestLoad_MissingAPIKey(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	config := `schema_version: 4
-core:
-	discord:
+	config := `core:
+discord:
 		token: "test-token"
 		bot_name: "TestBot"
 		other_bot_policy: "full"

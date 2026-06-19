@@ -293,8 +293,7 @@ func Load(configPath string) (*Config, error) {
 	}
 
 	var raw struct {
-		SchemaVersion int `mapstructure:"schema_version"`
-		Core          struct {
+		Core struct {
 			Discord  DiscordConfig  `mapstructure:"discord"`
 			AI       AIConfig       `mapstructure:"ai"`
 			Decision DecisionConfig `mapstructure:"decision"`
@@ -786,7 +785,6 @@ func (c *Config) Save() error {
 			Runtime OperationsConfig `yaml:"runtime"`
 		} `yaml:"operations"`
 	}{
-		SchemaVersion: currentConfigSchemaVersion,
 		Core: struct {
 			Discord  DiscordConfig  `yaml:"discord"`
 			AI       AIConfig       `yaml:"ai"`

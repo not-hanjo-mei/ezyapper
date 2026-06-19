@@ -146,7 +146,7 @@
         },
         "memory": {
           "type": "object",
-          "required": ["consolidation_interval", "short_term_limit", "max_paginated_limit", "retrieval", "consolidation", "maintenance_interval_sec", "merge_cron_hour_utc", "summarize_cron_day", "merge_cosine_threshold", "prune_decay_threshold", "prune_age_days", "max_maintenance_llm_calls_per_day", "entropy_min_unique_word_ratio", "decay_rates", "scoring", "rrf_k", "context_max_memories"],
+          "required": ["consolidation_interval", "short_term_limit", "max_paginated_limit", "retrieval", "consolidation", "long_term_memory", "max_mentioned_users_per_memory", "memory_strength_multiplier", "maintenance_interval_sec", "merge_cron_hour_utc", "summarize_cron_day", "merge_cosine_threshold", "prune_decay_threshold", "prune_age_days", "relationship_prune_age_days", "max_maintenance_llm_calls_per_day", "entropy_min_unique_word_ratio", "decay_rates", "scoring", "rrf_k", "context_max_memories"],
           "additionalProperties": false,
           "properties": {
             "consolidation_interval": { "type": "integer", "minimum": 1 },
@@ -344,7 +344,7 @@
             {
               "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
               "then": {
-                "required": ["plugins_dir", "default_tool_timeout_ms", "startup_timeout_sec", "rpc_timeout_sec", "before_send_timeout_sec", "command_timeout_sec", "shutdown_timeout_sec", "disable_timeout_sec"]
+                "required": ["plugins_dir", "default_tool_timeout_ms", "startup_timeout_sec", "rpc_timeout_sec", "before_send_timeout_sec", "command_timeout_sec", "shutdown_timeout_sec", "disable_timeout_sec", "max_restarts", "restart_cooldown_sec"]
               }
             }
           ],
@@ -357,7 +357,9 @@
             "before_send_timeout_sec":  { "type": "integer", "minimum": 1 },
             "command_timeout_sec":      { "type": "integer", "minimum": 1 },
             "shutdown_timeout_sec":     { "type": "integer", "minimum": 1 },
-            "disable_timeout_sec":      { "type": "integer", "minimum": 1 }
+            "disable_timeout_sec":      { "type": "integer", "minimum": 1 },
+            "max_restarts":             { "type": "integer", "minimum": 1 },
+            "restart_cooldown_sec":     { "type": "integer", "minimum": 1 }
           }
         },
         "mcp": {
