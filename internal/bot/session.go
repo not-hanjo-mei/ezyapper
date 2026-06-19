@@ -449,6 +449,27 @@ func (b *Bot) IsChannelAllowed(channelID string) bool {
 	return true
 }
 
+// IsGuildAllowed checks if the bot should respond in a guild.
+// Mirrors IsChannelAllowed: blacklist takes precedence, then whitelist (if set).
+func (b *Bot) IsGuildAllowed(guildID string) bool {
+	for _, id := range b.cfg().Blacklist.Guilds {
+		if id == guildID {
+			return false
+		}
+	}
+
+	if len(b.cfg().Whitelist.Guilds) > 0 {
+		for _, id := range b.cfg().Whitelist.Guilds {
+			if id == guildID {
+				return true
+			}
+		}
+		return false
+	}
+
+	return true
+}
+
 // IsUserBlacklisted checks if a user is blacklisted
 func (b *Bot) IsUserBlacklisted(userID string) bool {
 	for _, id := range b.cfg().Blacklist.Users {
@@ -624,6 +645,10 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 		case config.OtherBotIgnore, config.OtherBotContextOnly:
 			return false, "other bot message (policy: " + string(b.cfg().Discord.OtherBotPolicy) + ")"
 		}
+	}
+
+	if m.GuildID != "" && !b.IsGuildAllowed(m.GuildID) {
+		return false, "guild not allowed"
 	}
 
 	if b.IsUserBlacklisted(m.Author.ID) {
