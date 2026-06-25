@@ -464,7 +464,8 @@ operations:
     enabled: false
 
     # All fields below are required ONLY when enabled: true.
-    # Servers can use either "stdio" or "sse" transport.
+    # Servers can use "stdio" (subprocess), "sse" (Server-Sent Events),
+    # or "http" (Streamable HTTP, MCP 2025-03-26 spec) transport.
     servers: []
     # Example server list:
     # servers:
@@ -474,9 +475,14 @@ operations:
     #     args: ["-y", "@pinkpixel/datetime-mcp"]
     #     env:
     #       "TZ": "UTC"
-    #   - name: remote-tool
+    #   - name: remote-sse
     #     type: sse
     #     url: "http://localhost:8080/sse"
+    #   - name: remote-http
+    #     type: http
+    #     url: "http://localhost:8080/mcp"
+    #     headers:
+    #       Authorization: "Bearer $ANYSEARCH_API_KEY"
 
   # ── Operational Settings ──────────────────────────────
   runtime:
