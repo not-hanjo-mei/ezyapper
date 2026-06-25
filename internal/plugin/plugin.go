@@ -194,10 +194,21 @@ var secretEnvKeywords = []string{
 	"AUTH",
 }
 
+// isSecretEnvVar prevents credential leakage to plugin subprocesses by
+// matching secret keywords (TOKEN, SECRET, KEY, ...) as substrings.
+func isSecretEnvVar(key string) bool {
+	upper := strings.ToUpper(key)
+	for _, kw := range secretEnvKeywords {
+		if strings.Contains(upper, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 func buildPluginEnv(configDir string, extra ...string) []string {
 	env := os.Environ()
 	out := make([]string, 0, len(env)+len(extra))
-outer:
 	for _, e := range env {
 		key, _, found := strings.Cut(e, "=")
 		if !found {
@@ -209,11 +220,8 @@ outer:
 			continue
 		}
 		// Filter out any env var whose name contains a secret keyword
-		upper := strings.ToUpper(key)
-		for _, kw := range secretEnvKeywords {
-			if strings.Contains(upper, kw) {
-				continue outer
-			}
+		if isSecretEnvVar(key) {
+			continue
 		}
 		out = append(out, e)
 	}
