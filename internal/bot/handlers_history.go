@@ -21,6 +21,28 @@ type UserInfo struct {
 	Username string
 }
 
+// imageKeywords is the read-only list of substrings that indicate a message
+// is likely about an image. Callers must lowercase content before matching.
+var imageKeywords = []string{
+	"image",
+	"img",
+	"photo",
+	"picture",
+	"pic",
+	"screenshot",
+}
+
+// containsImageKeyword reports whether content contains any image-related
+// keyword substring. The caller is responsible for lowercasing content.
+func containsImageKeyword(content string) bool {
+	for _, keyword := range imageKeywords {
+		if strings.Contains(content, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
 // formatMessageXML formats a single message in unified style:
 //
 //	displayname (username, ID:id): "content"
@@ -63,22 +85,7 @@ func shouldEnrichRecentHistoricalImages(userContent string, hasReference bool) b
 		return false
 	}
 
-	imageKeywords := []string{
-		"image",
-		"img",
-		"photo",
-		"picture",
-		"pic",
-		"screenshot",
-	}
-
-	for _, keyword := range imageKeywords {
-		if strings.Contains(content, keyword) {
-			return true
-		}
-	}
-
-	return false
+	return containsImageKeyword(content)
 }
 
 // buildConversationHistoryText builds formatted conversation history text from Discord messages

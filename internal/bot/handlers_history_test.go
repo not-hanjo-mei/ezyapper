@@ -425,3 +425,65 @@ func TestFormatMessageXML_EscapesSpecialChars(t *testing.T) {
 		})
 	}
 }
+
+func TestShouldEnrichRecentHistoricalImages_EmptyNoReference(t *testing.T) {
+	if shouldEnrichRecentHistoricalImages("", false) {
+		t.Error("expected false for empty content with no reference")
+	}
+}
+
+func TestShouldEnrichRecentHistoricalImages_HasReferenceTrueEvenEmptyContent(t *testing.T) {
+	if !shouldEnrichRecentHistoricalImages("", true) {
+		t.Error("expected true when hasReference is true even with empty content")
+	}
+}
+
+func TestShouldEnrichRecentHistoricalImages_KeywordSubstringCaseInsensitive(t *testing.T) {
+	if !shouldEnrichRecentHistoricalImages("an image link", false) {
+		t.Error("expected true for content containing 'image' substring")
+	}
+	// Caller lowercases content, so "IMGUR" becomes "imgur" which contains "img".
+	if !shouldEnrichRecentHistoricalImages("IMGUR", false) {
+		t.Error("expected true for 'IMGUR' (lowercased to 'imgur' containing 'img')")
+	}
+}
+
+func TestShouldEnrichRecentHistoricalImages_WhitespaceOnly(t *testing.T) {
+	if shouldEnrichRecentHistoricalImages("   \t  \n ", false) {
+		t.Error("expected false for whitespace-only content with no reference")
+	}
+}
+
+func TestShouldEnrichRecentHistoricalImages_NoKeywordNoReference(t *testing.T) {
+	if shouldEnrichRecentHistoricalImages("plain text", false) {
+		t.Error("expected false for content with no image keyword and no reference")
+	}
+}
+
+func TestContainsImageKeyword_Matches(t *testing.T) {
+	keywords := []string{
+		"an image link",
+		"imgur",
+		"my photo album",
+		"nice picture",
+		"take a pic",
+		"full screenshot",
+	}
+	for _, c := range keywords {
+		if !containsImageKeyword(c) {
+			t.Errorf("containsImageKeyword(%q) = false, want true", c)
+		}
+	}
+}
+
+func TestContainsImageKeyword_NoMatch(t *testing.T) {
+	if containsImageKeyword("plain text") {
+		t.Error("expected false for content without any image keyword")
+	}
+}
+
+func TestContainsImageKeyword_Empty(t *testing.T) {
+	if containsImageKeyword("") {
+		t.Error("expected false for empty content")
+	}
+}
