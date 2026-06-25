@@ -2,6 +2,7 @@
 
 ## MCP
 
+- [x] Add HTTP (Streamable HTTP, MCP 2025-03-26 spec) transport support for MCP servers.
 - [ ] Known issue: MCP works, but related runtime logs are not consistently visible.
 - [ ] Add startup logs for MCP connect status per server (success/failure + reason).
 - [ ] Add summary logs after MCP tool registration (total tools and source server).

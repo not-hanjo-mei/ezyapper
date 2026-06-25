@@ -1,5 +1,6 @@
 // Package mcp provides the Model Context Protocol client for connecting to
-// external tool servers (stdio, SSE) and calling tools across multiple providers.
+// external tool servers (stdio, SSE, streamable HTTP) and calling tools across
+// multiple providers.
 package mcp
 
 import (
@@ -7,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -67,8 +69,13 @@ func (m *MCPManager) connectServer(ctx context.Context, server config.MCPServer)
 		transport = &mcp.CommandTransport{Command: cmd}
 	case "sse":
 		transport = &mcp.SSEClientTransport{Endpoint: server.URL}
+	case "http":
+		transport = &mcp.StreamableClientTransport{
+			Endpoint:   server.URL,
+			HTTPClient: newHeaderClient(server.Headers),
+		}
 	default:
-		return fmt.Errorf("unsupported transport type: %s", server.Type)
+		return fmt.Errorf("unsupported transport type: %s (must be stdio, sse, or http)", server.Type)
 	}
 
 	session, err := client.Connect(ctx, transport, nil)
@@ -170,6 +177,39 @@ func (m *MCPManager) Close() error {
 		}
 	}
 	return nil
+}
+
+// newHeaderClient builds an *http.Client that injects custom headers per request.
+// Values are expanded via os.ExpandEnv so secrets can reference env vars.
+// Returns nil when no headers are set, letting the SDK use its default client.
+func newHeaderClient(headers map[string]string) *http.Client {
+	if len(headers) == 0 {
+		return nil
+	}
+	expanded := make(map[string]string, len(headers))
+	for k, v := range headers {
+		expanded[k] = os.ExpandEnv(v)
+	}
+	return &http.Client{
+		Transport: &headerTransport{headers: expanded},
+	}
+}
+
+type headerTransport struct {
+	headers map[string]string
+	base    http.RoundTripper
+}
+
+func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	clone := req.Clone(req.Context()) // avoid mutating caller's request
+	for k, v := range t.headers {
+		clone.Header.Set(k, v)
+	}
+	return base.RoundTrip(clone)
 }
 
 // secretEnvKeywords are keywords that, if present in an env var name, cause it
