@@ -172,25 +172,34 @@ func (m *MCPManager) Close() error {
 	return nil
 }
 
+// secretEnvKeywords are keywords that, if present in an env var name, cause it
+// to be filtered out to prevent secrets from leaking to MCP subprocesses.
+var secretEnvKeywords = []string{
+	"TOKEN",
+	"SECRET",
+	"KEY",
+	"PASSWORD",
+	"PASSWD",
+	"CREDENTIAL",
+	"AUTH",
+}
+
 // filterPluginEnv returns a filtered copy of os.Environ() suitable for
 // passing to MCP subprocesses, excluding variables that may contain secrets.
 func filterPluginEnv() []string {
 	env := os.Environ()
 	out := make([]string, 0, len(env))
+outer:
 	for _, e := range env {
 		key, _, found := strings.Cut(e, "=")
 		if !found {
 			continue
 		}
 		upper := strings.ToUpper(key)
-		if strings.Contains(upper, "TOKEN") ||
-			strings.Contains(upper, "SECRET") ||
-			strings.Contains(upper, "KEY") ||
-			strings.Contains(upper, "PASSWORD") ||
-			strings.Contains(upper, "PASSWD") ||
-			strings.Contains(upper, "CREDENTIAL") ||
-			strings.Contains(upper, "AUTH") {
-			continue
+		for _, kw := range secretEnvKeywords {
+			if strings.Contains(upper, kw) {
+				continue outer
+			}
 		}
 		out = append(out, e)
 	}
