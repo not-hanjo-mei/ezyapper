@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
@@ -86,7 +87,7 @@ func (m *MCPManager) connectServer(ctx context.Context, server config.MCPServer)
 	m.mu.Lock()
 	m.sessions[server.Name] = session
 	m.mu.Unlock()
-	logger.Infof("[mcp] Connected to MCP server '%s'", server.Name)
+	logger.Infof("[mcp] Connected to MCP server '%s' (transport: %s)", server.Name, server.Type)
 	return nil
 }
 
@@ -104,6 +105,7 @@ func (m *MCPManager) GetAllTools(ctx context.Context) ([]MCPTool, error) {
 			logger.Warnf("[mcp] Failed to get tools from MCP server '%s': %v", name, err)
 			continue
 		}
+		logger.Debugf("[mcp] Discovered %d tools from server '%s'", len(tools), name)
 		allTools = append(allTools, tools...)
 	}
 	return allTools, nil
@@ -132,12 +134,16 @@ func (m *MCPManager) CallTool(ctx context.Context, serverName, toolName string, 
 	if !exists {
 		return "", fmt.Errorf("mcp server '%s' not connected", serverName)
 	}
+	logger.Debugf("[mcp] Calling tool '%s' on server '%s'", toolName, serverName)
+	start := time.Now()
 	params := &mcp.CallToolParams{
 		Name:      toolName,
 		Arguments: arguments,
 	}
 	result, err := session.CallTool(ctx, params)
+	elapsed := time.Since(start)
 	if err != nil {
+		logger.Errorf("[mcp] Tool '%s' on server '%s' failed after %v: %v", toolName, serverName, elapsed, err)
 		return "", fmt.Errorf("tool call failed: %w", err)
 	}
 	if result.IsError {
@@ -150,6 +156,7 @@ func (m *MCPManager) CallTool(ctx context.Context, serverName, toolName string, 
 		if errMsg == "" {
 			errMsg = "unknown error"
 		}
+		logger.Errorf("[mcp] Tool '%s' on server '%s' returned error after %v: %s", toolName, serverName, elapsed, errMsg)
 		return "", fmt.Errorf("tool returned error: %s", errMsg)
 	}
 	var output strings.Builder
@@ -158,6 +165,7 @@ func (m *MCPManager) CallTool(ctx context.Context, serverName, toolName string, 
 			output.WriteString(textContent.Text)
 		}
 	}
+	logger.Debugf("[mcp] Tool '%s' on server '%s' returned %d bytes in %v", toolName, serverName, output.Len(), elapsed)
 	return output.String(), nil
 }
 
