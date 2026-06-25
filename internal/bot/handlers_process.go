@@ -27,9 +27,7 @@ func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *disco
 }
 
 func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, withImages bool, recentMessages []*types.DiscordMessage) {
-	if err := ctx.Err(); err != nil {
-		logger.Infof("[processing] Message %s cancelled before starting", m.ID)
-		b.clearProcessingMessage(pm, m.ID)
+	if b.cancelledBefore(ctx, pm, m.ID, "starting") {
 		return
 	}
 
@@ -41,9 +39,113 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		pm.SetPhase(PhaseGenerating)
 	}
 
-	imageURLs := make([]string, 0)
-	imageDescriptions := make([]string, 0)
-	var msg *types.DiscordMessage
+	msg, imageURLs, imageDescriptions := b.extractMessageImages(ctx, m, withImages)
+
+	if b.cancelledBefore(ctx, pm, m.ID, "guild lookup") {
+		return
+	}
+
+	guild, err := b.GetGuild(m.GuildID)
+	if err != nil {
+		logger.Warnf("[processing] failed to get guild %s: %v", m.GuildID, err)
+		b.clearProcessingMessage(pm, m.ID)
+		return
+	}
+	guildName := guild.Name
+
+	if b.cancelledBefore(ctx, pm, m.ID, "fetching recent messages") {
+		return
+	}
+
+	recentMessages = b.fetchRecentMessagesIfEmpty(ctx, m.ChannelID, recentMessages)
+
+	if withImages {
+		for i, recentMsg := range recentMessages {
+			if recentMsg.ID == m.ID {
+				recentMessages[i] = msg
+				break
+			}
+		}
+	}
+
+	if b.cancelledBefore(ctx, pm, m.ID, "memory search") {
+		return
+	}
+
+	memories := b.searchMemories(ctx, m, recentMessages)
+
+	if b.cancelledBefore(ctx, pm, m.ID, "profile fetch") {
+		return
+	}
+
+	profile, displayName := b.fetchProfileAndDisplayName(ctx, m)
+
+	s.ChannelTyping(m.ChannelID)
+	typingCtx, cancelTyping := context.WithCancel(ctx)
+	b.wg.Go(func() {
+		maintainTyping(typingCtx, s, m.ChannelID, b.cfg().Discord.TypingIndicatorIntervalSec)
+	})
+	defer cancelTyping()
+
+	mc, gc := b.buildModeContexts(m, displayName, guildName, imageURLs, imageDescriptions)
+
+	response, err := b.generateResponse(ctx, mc, gc, recentMessages, memories, profile)
+	if err != nil {
+		if ctx.Err() == context.Canceled {
+			logger.Infof("[processing] Message %s generation cancelled", m.ID)
+		} else {
+			logger.Errorf("[processing] Failed to generate response: %v", err)
+			if shouldSendGenerationFallback(err) {
+				b.addGenerationFailureReaction(s, m)
+			}
+		}
+		b.clearProcessingMessage(pm, m.ID)
+		return
+	}
+
+	if response == "" {
+		b.clearProcessingMessage(pm, m.ID)
+		return
+	}
+
+	if pm != nil {
+		pm.SetPhase(PhaseSending)
+	}
+
+	if b.cancelledBefore(ctx, pm, m.ID, "sending") {
+		return
+	}
+
+	if err := b.sendResponse(ctx, s, m, response); err != nil {
+		logger.Errorf("[processing] failed to send response for message %s: %v", m.ID, err)
+		b.clearProcessingMessage(pm, m.ID)
+		return
+	}
+
+	b.clearProcessingMessage(pm, m.ID)
+
+	if b.pluginManager != nil {
+		dm := types.FromDiscordgo(m)
+		if err := b.pluginManager.OnResponse(ctx, dm, response); err != nil {
+			logger.Warnf("[processing] Plugin error in OnResponse: %v", err)
+		}
+	}
+
+	b.SetCooldown(m.Author.ID, time.Duration(b.cfg().Discord.CooldownSeconds)*time.Second)
+}
+
+func (b *Bot) cancelledBefore(ctx context.Context, pm *ProcessingMessage, msgID, phase string) bool {
+	if err := ctx.Err(); err != nil {
+		logger.Infof("[processing] Message %s cancelled before %s", msgID, phase)
+		b.clearProcessingMessage(pm, msgID)
+		return true
+	}
+	return false
+}
+
+func (b *Bot) extractMessageImages(ctx context.Context, m *discordgo.MessageCreate, withImages bool) (msg *types.DiscordMessage, imageURLs []string, imageDescriptions []string) {
+	imageURLs = make([]string, 0)
+	imageDescriptions = make([]string, 0)
 
 	if withImages {
 		imageURLs = extractImageURLs(m.Message, b.cfg().AI.Vision.MaxImages)
@@ -85,49 +187,21 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		}
 	}
 
-	if err := ctx.Err(); err != nil {
-		logger.Infof("[processing] Message %s cancelled before guild lookup", m.ID)
-		b.clearProcessingMessage(pm, m.ID)
-		return
-	}
+	return msg, imageURLs, imageDescriptions
+}
 
-	guild, err := b.GetGuild(m.GuildID)
-	if err != nil {
-		logger.Warnf("[processing] failed to get guild %s: %v", m.GuildID, err)
-		b.clearProcessingMessage(pm, m.ID)
-		return
-	}
-	guildName := guild.Name
-
-	if err := ctx.Err(); err != nil {
-		logger.Infof("[processing] Message %s cancelled before fetching recent messages", m.ID)
-		b.clearProcessingMessage(pm, m.ID)
-		return
-	}
-
+func (b *Bot) fetchRecentMessagesIfEmpty(ctx context.Context, channelID string, recentMessages []*types.DiscordMessage) []*types.DiscordMessage {
 	if len(recentMessages) == 0 {
 		var fetchErr error
-		recentMessages, fetchErr = b.discordClient.FetchRecentMessages(ctx, m.ChannelID, b.cfg().Memory.ShortTermLimit)
+		recentMessages, fetchErr = b.discordClient.FetchRecentMessages(ctx, channelID, b.cfg().Memory.ShortTermLimit)
 		if fetchErr != nil {
 			logger.Warnf("[processing] Failed to fetch recent messages: %v", fetchErr)
 		}
 	}
+	return recentMessages
+}
 
-	if withImages {
-		for i, recentMsg := range recentMessages {
-			if recentMsg.ID == m.ID {
-				recentMessages[i] = msg
-				break
-			}
-		}
-	}
-
-	if err := ctx.Err(); err != nil {
-		logger.Infof("[processing] Message %s cancelled before memory search", m.ID)
-		b.clearProcessingMessage(pm, m.ID)
-		return
-	}
-
+func (b *Bot) searchMemories(ctx context.Context, m *discordgo.MessageCreate, recentMessages []*types.DiscordMessage) []*memory.Record {
 	memories := []*memory.Record{}
 	if b.cfg().Memory.Retrieval.TopK > 0 {
 		query, _ := memory.BuildSearchQuery(m.Content, recentMessages, b.cfg().Discord.OwnBotID)
@@ -221,35 +295,27 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 				len(userMemories), len(mentionedMemories), len(channelMemories), len(memories), m.Content)
 		}
 	}
+	return memories
+}
 
-	if err := ctx.Err(); err != nil {
-		logger.Infof("[processing] Message %s cancelled before profile fetch", m.ID)
-		b.clearProcessingMessage(pm, m.ID)
-		return
-	}
-
+func (b *Bot) fetchProfileAndDisplayName(ctx context.Context, m *discordgo.MessageCreate) (profile *memory.Profile, displayName string) {
 	profile, err := b.profileStore.GetProfile(ctx, m.Author.ID)
 	if err != nil {
 		logger.Warnf("[processing] Failed to get profile: %v", err)
 		profile = nil
 	}
-	displayName := m.Author.GlobalName
+	displayName = m.Author.GlobalName
 	if displayName == "" {
 		displayName = m.Author.Username
 	}
 	if profile != nil {
 		profile.DisplayName = displayName
 	}
+	return profile, displayName
+}
 
-	s.ChannelTyping(m.ChannelID)
-	typingCtx, cancelTyping := context.WithCancel(ctx)
-	b.wg.Go(func() {
-		maintainTyping(typingCtx, s, m.ChannelID, b.cfg().Discord.TypingIndicatorIntervalSec)
-	})
-	defer cancelTyping()
-
+func (b *Bot) buildModeContexts(m *discordgo.MessageCreate, displayName, guildName string, imageURLs, imageDescriptions []string) (ModeContext, GenerateContext) {
 	replyToUsername, replyToContent := extractReplyInfo(m)
-
 	mc := ModeContext{
 		AIClient:        ai.NewClient(&b.cfg().AI, b.toolRegistry),
 		UserContent:     m.Content,
@@ -268,52 +334,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		ImageURLs:         imageURLs,
 		ImageDescriptions: imageDescriptions,
 	}
-
-	response, err := b.generateResponse(ctx, mc, gc, recentMessages, memories, profile)
-	if err != nil {
-		if ctx.Err() == context.Canceled {
-			logger.Infof("[processing] Message %s generation cancelled", m.ID)
-		} else {
-			logger.Errorf("[processing] Failed to generate response: %v", err)
-			if shouldSendGenerationFallback(err) {
-				b.addGenerationFailureReaction(s, m)
-			}
-		}
-		b.clearProcessingMessage(pm, m.ID)
-		return
-	}
-
-	if response == "" {
-		b.clearProcessingMessage(pm, m.ID)
-		return
-	}
-
-	if pm != nil {
-		pm.SetPhase(PhaseSending)
-	}
-
-	if err := ctx.Err(); err != nil {
-		logger.Infof("[processing] Message %s cancelled before sending", m.ID)
-		b.clearProcessingMessage(pm, m.ID)
-		return
-	}
-
-	if err := b.sendResponse(ctx, s, m, response); err != nil {
-		logger.Errorf("[processing] failed to send response for message %s: %v", m.ID, err)
-		b.clearProcessingMessage(pm, m.ID)
-		return
-	}
-
-	b.clearProcessingMessage(pm, m.ID)
-
-	if b.pluginManager != nil {
-		dm := types.FromDiscordgo(m)
-		if err := b.pluginManager.OnResponse(ctx, dm, response); err != nil {
-			logger.Warnf("[processing] Plugin error in OnResponse: %v", err)
-		}
-	}
-
-	b.SetCooldown(m.Author.ID, time.Duration(b.cfg().Discord.CooldownSeconds)*time.Second)
+	return mc, gc
 }
 
 func recoverHandler() {
