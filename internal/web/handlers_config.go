@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -41,100 +42,7 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 			}
 			newCfg := *oldCfg
 
-			parseErrs := []string{}
-
-			if v := r.FormValue("bot_name"); v != "" {
-				newCfg.Discord.BotName = v
-			}
-			if v := r.FormValue("reply_percentage"); v != "" {
-				pct, err := strconv.ParseFloat(v, 64)
-				if err != nil {
-					parseErrs = append(parseErrs, "reply_percentage must be a number")
-				} else {
-					newCfg.Discord.ReplyPercentage = pct / 100.0
-				}
-			}
-			if v := r.FormValue("cooldown_seconds"); v != "" {
-				sec, err := strconv.Atoi(v)
-				if err != nil {
-					parseErrs = append(parseErrs, "cooldown_seconds must be a whole number")
-				} else {
-					newCfg.Discord.CooldownSeconds = sec
-				}
-			}
-			if v := r.FormValue("max_responses_per_minute"); v != "" {
-				max, err := strconv.Atoi(v)
-				if err != nil {
-					parseErrs = append(parseErrs, "max_responses_per_minute must be a whole number")
-				} else {
-					newCfg.Discord.MaxResponsesPerMin = max
-				}
-			}
-
-			if v := r.FormValue("model"); v != "" {
-				newCfg.AI.Model = v
-			}
-			if v := r.FormValue("vision_model"); v != "" {
-				newCfg.AI.Vision.Model = v
-			}
-			if v := r.FormValue("max_tokens"); v != "" {
-				tok, err := strconv.Atoi(v)
-				if err != nil {
-					parseErrs = append(parseErrs, "max_tokens must be a whole number")
-				} else {
-					newCfg.AI.MaxTokens = tok
-				}
-			}
-			if v := r.FormValue("temperature"); v != "" {
-				temp, err := strconv.ParseFloat(v, 32)
-				if err != nil {
-					parseErrs = append(parseErrs, "temperature must be a number")
-				} else {
-					newCfg.AI.Temperature = float32(temp)
-				}
-			}
-			if v := r.FormValue("system_prompt"); v != "" {
-				newCfg.AI.SystemPrompt = v
-			}
-
-			if v := r.FormValue("vision_mode"); v != "" {
-				newCfg.AI.Vision.Mode = config.VisionMode(v)
-			}
-			if v := r.FormValue("vision_description_prompt"); v != "" {
-				newCfg.AI.Vision.DescriptionPrompt = v
-			}
-			if v := r.FormValue("consolidation_interval"); v != "" {
-				val, err := strconv.Atoi(v)
-				if err != nil {
-					parseErrs = append(parseErrs, "consolidation_interval must be a whole number")
-				} else {
-					newCfg.Memory.ConsolidationInterval = val
-				}
-			}
-			if v := r.FormValue("short_term_limit"); v != "" {
-				val, err := strconv.Atoi(v)
-				if err != nil {
-					parseErrs = append(parseErrs, "short_term_limit must be a whole number")
-				} else {
-					newCfg.Memory.ShortTermLimit = val
-				}
-			}
-			if v := r.FormValue("retrieval_top_k"); v != "" {
-				val, err := strconv.Atoi(v)
-				if err != nil {
-					parseErrs = append(parseErrs, "retrieval_top_k must be a whole number")
-				} else {
-					newCfg.Memory.Retrieval.TopK = val
-				}
-			}
-			if v := r.FormValue("retrieval_min_score"); v != "" {
-				val, err := strconv.ParseFloat(v, 64)
-				if err != nil {
-					parseErrs = append(parseErrs, "retrieval_min_score must be a number")
-				} else {
-					newCfg.Memory.Retrieval.MinScore = val
-				}
-			}
+			parseErrs := applyConfigForm(r, &newCfg)
 
 			if len(parseErrs) > 0 {
 				renderConfigError(w, r, ts, cfgStore, "Failed to parse form values: "+strings.Join(parseErrs, "; "))
@@ -172,6 +80,110 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	}
+}
+
+type configFieldApplier struct {
+	formKey string
+	apply   func(cfg *config.Config, raw string) error
+}
+
+// applyConfigForm runs each applier in declared order and returns the
+// collected parse errors. The order is a behavior contract: tests assert on
+// combined messages built via strings.Join(parseErrs, "; ").
+func applyConfigForm(r *http.Request, cfg *config.Config) []string {
+	var parseErrs []string
+	for _, applier := range configFormAppliers {
+		v := r.FormValue(applier.formKey)
+		if v == "" {
+			continue
+		}
+		if err := applier.apply(cfg, v); err != nil {
+			parseErrs = append(parseErrs, err.Error())
+		}
+	}
+	return parseErrs
+}
+
+var configFormAppliers = []configFieldApplier{
+	{formKey: "bot_name", apply: func(c *config.Config, v string) error { c.Discord.BotName = v; return nil }},
+	{formKey: "reply_percentage", apply: func(c *config.Config, v string) error {
+		pct, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return fmt.Errorf("reply_percentage must be a number")
+		}
+		c.Discord.ReplyPercentage = pct / 100.0
+		return nil
+	}},
+	{formKey: "cooldown_seconds", apply: func(c *config.Config, v string) error {
+		sec, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("cooldown_seconds must be a whole number")
+		}
+		c.Discord.CooldownSeconds = sec
+		return nil
+	}},
+	{formKey: "max_responses_per_minute", apply: func(c *config.Config, v string) error {
+		max, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("max_responses_per_minute must be a whole number")
+		}
+		c.Discord.MaxResponsesPerMin = max
+		return nil
+	}},
+	{formKey: "model", apply: func(c *config.Config, v string) error { c.AI.Model = v; return nil }},
+	{formKey: "vision_model", apply: func(c *config.Config, v string) error { c.AI.Vision.Model = v; return nil }},
+	{formKey: "max_tokens", apply: func(c *config.Config, v string) error {
+		tok, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("max_tokens must be a whole number")
+		}
+		c.AI.MaxTokens = tok
+		return nil
+	}},
+	{formKey: "temperature", apply: func(c *config.Config, v string) error {
+		// Keep bit-size 32: ParseFloat(v, 32) then cast to float32.
+		temp, err := strconv.ParseFloat(v, 32)
+		if err != nil {
+			return fmt.Errorf("temperature must be a number")
+		}
+		c.AI.Temperature = float32(temp)
+		return nil
+	}},
+	{formKey: "system_prompt", apply: func(c *config.Config, v string) error { c.AI.SystemPrompt = v; return nil }},
+	{formKey: "vision_mode", apply: func(c *config.Config, v string) error { c.AI.Vision.Mode = config.VisionMode(v); return nil }},
+	{formKey: "vision_description_prompt", apply: func(c *config.Config, v string) error { c.AI.Vision.DescriptionPrompt = v; return nil }},
+	{formKey: "consolidation_interval", apply: func(c *config.Config, v string) error {
+		val, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("consolidation_interval must be a whole number")
+		}
+		c.Memory.ConsolidationInterval = val
+		return nil
+	}},
+	{formKey: "short_term_limit", apply: func(c *config.Config, v string) error {
+		val, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("short_term_limit must be a whole number")
+		}
+		c.Memory.ShortTermLimit = val
+		return nil
+	}},
+	{formKey: "retrieval_top_k", apply: func(c *config.Config, v string) error {
+		val, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("retrieval_top_k must be a whole number")
+		}
+		c.Memory.Retrieval.TopK = val
+		return nil
+	}},
+	{formKey: "retrieval_min_score", apply: func(c *config.Config, v string) error {
+		val, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return fmt.Errorf("retrieval_min_score must be a number")
+		}
+		c.Memory.Retrieval.MinScore = val
+		return nil
+	}},
 }
 
 func renderConfigError(w http.ResponseWriter, r *http.Request, ts *TemplateSet, cfgStore *atomic.Value, message string) {
