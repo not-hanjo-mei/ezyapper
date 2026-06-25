@@ -80,6 +80,86 @@ func WriteJSONRPCResponse(enc *json.Encoder, id int64, result any, err error) er
 	return nil
 }
 
+// rpcHandler dispatches one JSON-RPC method. A nil result with a nil error
+// is serialised as an empty object by WriteJSONRPCResponse; a decode failure
+// returns (nil, err) so the JSON-RPC error is reported unchanged.
+type rpcHandler func(impl plugin.Interface, params any) (result any, err error)
+
+func handleInfo(impl plugin.Interface, _ any) (any, error) {
+	return impl.Info()
+}
+
+func handleOnMessage(impl plugin.Interface, params any) (any, error) {
+	var msg types.DiscordMessage
+	if err := decodeJSONRPCParams(params, &msg); err != nil {
+		return nil, fmt.Errorf("invalid params for on_message")
+	}
+	return impl.OnMessage(msg)
+}
+
+func handleOnResponse(impl plugin.Interface, params any) (any, error) {
+	var args plugin.ResponseArgs
+	if err := decodeJSONRPCParams(params, &args); err != nil {
+		return nil, fmt.Errorf("invalid params for on_response")
+	}
+	if err := impl.OnResponse(args.Message, args.Response); err != nil {
+		return nil, err
+	}
+	return map[string]any{}, nil
+}
+
+func handleBeforeSend(impl plugin.Interface, params any) (any, error) {
+	provider, ok := impl.(plugin.BeforeSendProvider)
+	if !ok {
+		return plugin.BeforeSendResult{}, nil
+	}
+	var args plugin.BeforeSendArgs
+	if err := decodeJSONRPCParams(params, &args); err != nil {
+		return nil, fmt.Errorf("invalid params for before_send")
+	}
+	return provider.BeforeSend(args.Message, args.Response)
+}
+
+func handleListTools(impl plugin.Interface, _ any) (any, error) {
+	provider, ok := impl.(plugin.ToolProvider)
+	if !ok {
+		return []plugin.ToolSpec{}, nil
+	}
+	return provider.ListTools()
+}
+
+func handleExecuteTool(impl plugin.Interface, params any) (any, error) {
+	provider, ok := impl.(plugin.ToolProvider)
+	if !ok {
+		return nil, fmt.Errorf("plugin does not implement tool provider")
+	}
+	var args plugin.ExecuteToolArgs
+	if err := decodeJSONRPCParams(params, &args); err != nil {
+		return nil, fmt.Errorf("invalid params for execute_tool")
+	}
+	if args.Arguments == nil {
+		args.Arguments = map[string]any{}
+	}
+	return provider.ExecuteTool(args.Name, args.Arguments)
+}
+
+func handleShutdown(impl plugin.Interface, _ any) (any, error) {
+	if err := impl.Shutdown(); err != nil {
+		return nil, err
+	}
+	return map[string]any{}, nil
+}
+
+var rpcHandlers = map[string]rpcHandler{
+	"info":         handleInfo,
+	"on_message":   handleOnMessage,
+	"on_response":  handleOnResponse,
+	"before_send":  handleBeforeSend,
+	"list_tools":   handleListTools,
+	"execute_tool": handleExecuteTool,
+	"shutdown":     handleShutdown,
+}
+
 // Serve starts a plugin server loop over stdio, reading JSON-RPC requests from the
 // host bot process and dispatching them to impl.
 //
@@ -112,73 +192,11 @@ func Serve(impl plugin.Interface) error {
 
 		var result any
 		var callErr error
-
-		switch req.Method {
-		case "info":
-			result, callErr = impl.Info()
-		case "on_message":
-			var msg types.DiscordMessage
-			if err := decodeJSONRPCParams(req.Params, &msg); err != nil {
-				callErr = fmt.Errorf("invalid params for on_message")
-				break
-			}
-
-			var shouldContinue bool
-			shouldContinue, callErr = impl.OnMessage(msg)
-			result = shouldContinue
-		case "on_response":
-			var args plugin.ResponseArgs
-			if err := decodeJSONRPCParams(req.Params, &args); err != nil {
-				callErr = fmt.Errorf("invalid params for on_response")
-				break
-			}
-
-			callErr = impl.OnResponse(args.Message, args.Response)
-			result = map[string]any{}
-		case "before_send":
-			provider, ok := impl.(plugin.BeforeSendProvider)
-			if !ok {
-				result = plugin.BeforeSendResult{}
-				break
-			}
-
-			var args plugin.BeforeSendArgs
-			if err := decodeJSONRPCParams(req.Params, &args); err != nil {
-				callErr = fmt.Errorf("invalid params for before_send")
-				break
-			}
-
-			result, callErr = provider.BeforeSend(args.Message, args.Response)
-		case "list_tools":
-			provider, ok := impl.(plugin.ToolProvider)
-			if !ok {
-				result = []plugin.ToolSpec{}
-				break
-			}
-
-			result, callErr = provider.ListTools()
-		case "execute_tool":
-			provider, ok := impl.(plugin.ToolProvider)
-			if !ok {
-				callErr = fmt.Errorf("plugin does not implement tool provider")
-				break
-			}
-
-			var args plugin.ExecuteToolArgs
-			if err := decodeJSONRPCParams(req.Params, &args); err != nil {
-				callErr = fmt.Errorf("invalid params for execute_tool")
-				break
-			}
-			if args.Arguments == nil {
-				args.Arguments = map[string]any{}
-			}
-
-			result, callErr = provider.ExecuteTool(args.Name, args.Arguments)
-		case "shutdown":
-			callErr = impl.Shutdown()
-			result = map[string]any{}
-		default:
+		handler, ok := rpcHandlers[req.Method]
+		if !ok {
 			callErr = fmt.Errorf("jsonrpc -32601: method not found")
+		} else {
+			result, callErr = handler(impl, req.Params)
 		}
 
 		if err := WriteJSONRPCResponse(encoder, req.ID, result, callErr); err != nil {
