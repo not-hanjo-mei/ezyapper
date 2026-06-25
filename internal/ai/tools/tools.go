@@ -150,5 +150,6 @@ func (r *ToolRegistry) ExecuteTool(ctx context.Context, name string, args map[st
 		return "", fmt.Errorf("tool not found: %s", name)
 	}
 
+	logger.Debugf("[tools] dispatching tool '%s'", name)
 	return tool.Handler(ctx, args)
 }

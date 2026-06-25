@@ -598,6 +598,12 @@ func (c *Client) runToolLoop(ctx context.Context, initialMessages []openai.ChatC
 	resp := initial
 
 	for i := 0; i < maxIterations && len(resp.toolCalls) > 0; i++ {
+		toolNames := make([]string, len(resp.toolCalls))
+		for j, tc := range resp.toolCalls {
+			toolNames[j] = tc.Function.Name
+		}
+		logger.Debugf("[ai] tool loop iteration %d/%d: executing %d tool calls: %s", i+1, maxIterations, len(resp.toolCalls), strings.Join(toolNames, ", "))
+
 		messages = append(messages, openai.ChatCompletionMessage{
 			Role:             openai.ChatMessageRoleAssistant,
 			Content:          resp.content,
@@ -606,13 +612,17 @@ func (c *Client) runToolLoop(ctx context.Context, initialMessages []openai.ChatC
 		})
 
 		for _, toolCall := range resp.toolCalls {
+			start := time.Now()
 			result, err := toolHandler(ctx, toolCall)
+			elapsed := time.Since(start)
 			if err != nil {
-				logger.Errorf("[ai] tool call failed for %s: %v", toolCall.Function.Name, err)
+				logger.Errorf("[ai] tool call failed for %s after %v: %v", toolCall.Function.Name, elapsed, err)
 				result = toolError(err)
 				if strings.TrimSpace(result) == "" {
 					result = "Error: tool execution failed"
 				}
+			} else {
+				logger.Debugf("[ai] tool %s returned %d bytes in %v", toolCall.Function.Name, len(result), elapsed)
 			}
 
 			messages = append(messages, openai.ChatCompletionMessage{
