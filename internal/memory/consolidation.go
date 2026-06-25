@@ -1025,14 +1025,25 @@ func parseFactKeyValues(content string) map[string]string {
 	return map[string]string{key: value}
 }
 
+// trySplitOnSep returns ok=false on sep-absent OR empty-normalized so the
+// caller can fall through to the next separator (do not switch to IndexAny).
+func trySplitOnSep(content, sep string) (key, value string, ok bool) {
+	idx := strings.Index(content, sep)
+	if idx == -1 {
+		return "", "", false
+	}
+	key = normalizeFactKey(content[:idx])
+	value = normalizeFactValue(content[idx+1:])
+	if key == "" || value == "" {
+		return "", "", false
+	}
+	return key, value, true
+}
+
 func splitFactKeyValue(content string) (string, string, bool) {
 	for _, sep := range []string{":", "="} {
-		if idx := strings.Index(content, sep); idx != -1 {
-			key := normalizeFactKey(content[:idx])
-			value := normalizeFactValue(content[idx+1:])
-			if key != "" && value != "" {
-				return key, value, true
-			}
+		if key, value, ok := trySplitOnSep(content, sep); ok {
+			return key, value, true
 		}
 	}
 	return "", "", false
