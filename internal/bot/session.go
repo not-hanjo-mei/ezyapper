@@ -321,8 +321,10 @@ func (b *Bot) registerMCPTools(ctx context.Context) {
 		return
 	}
 
+	perServer := make(map[string]int)
 	for _, tool := range mcpTools {
 		mcpTool := tool
+		perServer[mcpTool.ServerName]++
 		b.toolRegistry.Register(&tools.Tool{
 			Name:        fmt.Sprintf("%s_%s", mcpTool.ServerName, mcpTool.Tool.Name),
 			Description: fmt.Sprintf("[%s] %s", mcpTool.ServerName, mcpTool.Tool.Description),
@@ -333,7 +335,10 @@ func (b *Bot) registerMCPTools(ctx context.Context) {
 		})
 	}
 
-	logger.Infof("[bot] Registered %d MCP tools from external servers", len(mcpTools))
+	for server, count := range perServer {
+		logger.Infof("[bot] Registered %d tools from MCP server '%s'", count, server)
+	}
+	logger.Infof("[bot] Registered %d MCP tools from %d external servers", len(mcpTools), len(perServer))
 }
 
 // GetSession returns the Discord session
