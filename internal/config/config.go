@@ -253,6 +253,7 @@ type MCPServer struct {
 	Env     map[string]string `mapstructure:"env" yaml:"env"`
 	URL     string            `mapstructure:"url" yaml:"url"`
 	Type    string            `mapstructure:"type" yaml:"type"`
+	Headers map[string]string `mapstructure:"headers" yaml:"headers"`
 }
 
 // VisionMode represents the vision processing mode
@@ -703,12 +704,12 @@ func validateSystem(cfg *Config, errs *[]string) {
 			if server.Command == "" {
 				*errs = append(*errs, prefix+".command is required when type is stdio")
 			}
-		case "sse":
+		case "sse", "http":
 			if server.URL == "" {
-				*errs = append(*errs, prefix+".url is required when type is sse")
+				*errs = append(*errs, prefix+".url is required when type is "+server.Type)
 			}
 		default:
-			*errs = append(*errs, prefix+".type must be one of: stdio, sse")
+			*errs = append(*errs, prefix+".type must be one of: stdio, sse, http")
 		}
 	}
 }

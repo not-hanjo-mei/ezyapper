@@ -1963,6 +1963,88 @@ func TestValidate_OtherBotPolicy_Invalid(t *testing.T) {
 	}
 }
 
+func TestValidate_MCP_HTTP_RequiresURL(t *testing.T) {
+	cfg := &Config{
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotIgnore, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		AI: AIConfig{
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
+		},
+		Embedding: EmbeddingConfig{},
+		Memory: MemoryConfig{
+			ConsolidationInterval: 1,
+			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+		},
+		Qdrant:     QdrantConfig{},
+		Web:        WebConfig{Enabled: false},
+		Logging:    LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
+		Plugins:    PluginsConfig{Enabled: false},
+		MCP:        MCPConfig{Enabled: true, Servers: []MCPServer{{Name: "remote", Type: "http"}}},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
+	}
+	err := validate(cfg)
+	if err == nil {
+		t.Fatal("expected validation error for http MCP server missing url")
+	}
+	if !strings.Contains(err.Error(), "url is required when type is http") {
+		t.Fatalf("expected error about http url being required, got: %v", err)
+	}
+}
+
+func TestValidate_MCP_InvalidType(t *testing.T) {
+	cfg := &Config{
+		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotIgnore, ReplyPercentage: 0.1, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
+		AI: AIConfig{
+			LLMConfig: LLMConfig{
+				APIBaseURL:  "https://api.example.com/v1",
+				APIKey:      "k",
+				Model:       "m",
+				MaxTokens:   1,
+				Temperature: 0.1,
+				RetryCount:  1,
+				Timeout:     1,
+			},
+			SystemPrompt:      "sp",
+			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			MaxToolIterations: 5, MaxImageBytes: 10485760,
+		},
+		Embedding: EmbeddingConfig{},
+		Memory: MemoryConfig{
+			ConsolidationInterval: 1,
+			ShortTermLimit:        1,
+			MaxPaginatedLimit:     100,
+			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
+		},
+		Qdrant:     QdrantConfig{},
+		Web:        WebConfig{Enabled: false},
+		Logging:    LoggingConfig{Level: "info", File: "f.log", MaxSize: 1, MaxBackups: 1, MaxAge: 1},
+		Plugins:    PluginsConfig{Enabled: false},
+		MCP:        MCPConfig{Enabled: true, Servers: []MCPServer{{Name: "bad", Type: "foo"}}},
+		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
+	}
+	err := validate(cfg)
+	if err == nil {
+		t.Fatal("expected validation error for invalid MCP transport type")
+	}
+	if !strings.Contains(err.Error(), "type must be one of: stdio, sse, http") {
+		t.Fatalf("expected error about invalid MCP type, got: %v", err)
+	}
+}
+
 func TestDiscordConfig_ChunkSplitDelaySec_NotExist(t *testing.T) {
 	dcType := reflect.TypeOf(DiscordConfig{})
 	for i := range dcType.NumField() {
