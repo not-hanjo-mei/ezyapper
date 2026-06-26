@@ -19,30 +19,96 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # linux (7 archs)
           - goos: linux
             goarch: amd64
+            goarm: ""
             artifact_name: ezyapper-linux-amd64
             binary_name: ezyapper-linux-amd64
           - goos: linux
             goarch: arm64
+            goarm: ""
             artifact_name: ezyapper-linux-arm64
             binary_name: ezyapper-linux-arm64
-          - goos: windows
-            goarch: amd64
-            artifact_name: ezyapper-windows-amd64
-            binary_name: ezyapper-windows-amd64.exe
-          - goos: windows
-            goarch: arm64
-            artifact_name: ezyapper-windows-arm64
-            binary_name: ezyapper-windows-arm64.exe
+          - goos: linux
+            goarch: "386"
+            goarm: ""
+            artifact_name: ezyapper-linux-386
+            binary_name: ezyapper-linux-386
+          - goos: linux
+            goarch: arm
+            goarm: "7"
+            artifact_name: ezyapper-linux-arm
+            binary_name: ezyapper-linux-arm
+          - goos: linux
+            goarch: mipsle
+            goarm: ""
+            artifact_name: ezyapper-linux-mipsle
+            binary_name: ezyapper-linux-mipsle
+          - goos: linux
+            goarch: mips64le
+            goarm: ""
+            artifact_name: ezyapper-linux-mips64le
+            binary_name: ezyapper-linux-mips64le
+          - goos: linux
+            goarch: loong64
+            goarm: ""
+            artifact_name: ezyapper-linux-loong64
+            binary_name: ezyapper-linux-loong64
+          # darwin (2 archs)
           - goos: darwin
             goarch: amd64
+            goarm: ""
             artifact_name: ezyapper-darwin-amd64
             binary_name: ezyapper-darwin-amd64
           - goos: darwin
             goarch: arm64
+            goarm: ""
             artifact_name: ezyapper-darwin-arm64
             binary_name: ezyapper-darwin-arm64
+          # windows (3 archs)
+          - goos: windows
+            goarch: amd64
+            goarm: ""
+            artifact_name: ezyapper-windows-amd64
+            binary_name: ezyapper-windows-amd64.exe
+          - goos: windows
+            goarch: arm64
+            goarm: ""
+            artifact_name: ezyapper-windows-arm64
+            binary_name: ezyapper-windows-arm64.exe
+          - goos: windows
+            goarch: "386"
+            goarm: ""
+            artifact_name: ezyapper-windows-386
+            binary_name: ezyapper-windows-386.exe
+          # freebsd (3 archs)
+          - goos: freebsd
+            goarch: amd64
+            goarm: ""
+            artifact_name: ezyapper-freebsd-amd64
+            binary_name: ezyapper-freebsd-amd64
+          - goos: freebsd
+            goarch: arm64
+            goarm: ""
+            artifact_name: ezyapper-freebsd-arm64
+            binary_name: ezyapper-freebsd-arm64
+          - goos: freebsd
+            goarch: "386"
+            goarm: ""
+            artifact_name: ezyapper-freebsd-386
+            binary_name: ezyapper-freebsd-386
+          # android (arm64 + armv7 — for Termux; static pure-Go binaries)
+          - goos: android
+            goarch: arm64
+            goarm: ""
+            artifact_name: ezyapper-android-arm64
+            binary_name: ezyapper-android-arm64
+          - goos: android
+            goarch: arm
+            goarm: "7"
+            artifact_name: ezyapper-android-arm
+            binary_name: ezyapper-android-arm
 
     steps:
       - name: Checkout
@@ -59,6 +125,7 @@ jobs:
           CGO_ENABLED: 0
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
         run: go build -trimpath -o "${{ matrix.binary_name }}" ./cmd/bot
 
       - name: Upload artifact
@@ -76,18 +143,62 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # linux (7 archs)
           - goos: linux
             goarch: amd64
+            goarm: ""
           - goos: linux
             goarch: arm64
-          - goos: windows
-            goarch: amd64
-          - goos: windows
-            goarch: arm64
+            goarm: ""
+          - goos: linux
+            goarch: "386"
+            goarm: ""
+          - goos: linux
+            goarch: arm
+            goarm: "7"
+          - goos: linux
+            goarch: mipsle
+            goarm: ""
+          - goos: linux
+            goarch: mips64le
+            goarm: ""
+          - goos: linux
+            goarch: loong64
+            goarm: ""
+          # darwin (2 archs)
           - goos: darwin
             goarch: amd64
+            goarm: ""
           - goos: darwin
             goarch: arm64
+            goarm: ""
+          # windows (3 archs)
+          - goos: windows
+            goarch: amd64
+            goarm: ""
+          - goos: windows
+            goarch: arm64
+            goarm: ""
+          - goos: windows
+            goarch: "386"
+            goarm: ""
+          # freebsd (3 archs)
+          - goos: freebsd
+            goarch: amd64
+            goarm: ""
+          - goos: freebsd
+            goarch: arm64
+            goarm: ""
+          - goos: freebsd
+            goarch: "386"
+            goarm: ""
+          # android (arm64 + armv7 — for Termux)
+          - goos: android
+            goarch: arm64
+            goarm: ""
+          - goos: android
+            goarch: arm
+            goarm: "7"
 
     steps:
       - name: Checkout
@@ -104,6 +215,7 @@ jobs:
           CGO_ENABLED: 0
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
         run: |
           set -euo pipefail
 
@@ -129,11 +241,11 @@ jobs:
           }
 
           build_plugin examples/plugins/antispam-go        antispam-plugin
-          build_plugin examples/plugins/clank-o-meter-go  clank-o-meter-plugin
-          build_plugin examples/plugins/datetime-go        datetime-plugin
-          build_plugin examples/plugins/kimi-tools-go      kimi-tools-plugin
-          build_plugin examples/plugins/openai-tts-go      openai-tts-plugin
-          build_plugin examples/plugins/systemspec-go      systemspec-plugin
+          build_plugin examples/plugins/clank-o-meter-go   clank-o-meter-plugin
+          build_plugin examples/plugins/datetime-go         datetime-plugin
+          build_plugin examples/plugins/kimi-tools-go       kimi-tools-plugin
+          build_plugin examples/plugins/openai-tts-go       openai-tts-plugin
+          build_plugin examples/plugins/systemspec-go       systemspec-plugin
 
       - name: Upload Go plugin artifacts
         uses: actions/upload-artifact@v4
@@ -150,6 +262,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # linux-gnu (glibc, dynamically linked — standard Linux servers)
           - target_name: linux-amd64
             zig_target: x86_64-linux-gnu
             ext: ""
@@ -158,6 +271,51 @@ jobs:
             zig_target: aarch64-linux-gnu
             ext: ""
             needs_advapi32: "false"
+          - target_name: linux-386
+            zig_target: x86-linux-gnu
+            ext: ""
+            needs_advapi32: "false"
+          - target_name: linux-arm
+            zig_target: arm-linux-gnueabihf
+            ext: ""
+            needs_advapi32: "false"
+          - target_name: linux-mipsel
+            zig_target: mipsel-linux-gnueabi
+            ext: ""
+            needs_advapi32: "false"
+          - target_name: linux-mips64el
+            zig_target: mips64el-linux-gnuabi64
+            ext: ""
+            needs_advapi32: "false"
+          - target_name: linux-loong64
+            zig_target: loongarch64-linux-gnu
+            ext: ""
+            needs_advapi32: "false"
+          # android (musl, fully static — for Termux on Android)
+          # Zig 0.16 does not ship bionic; static musl binaries run natively on
+          # Termux without any runtime libc dependency.
+          - target_name: android-arm64
+            zig_target: aarch64-linux-musl
+            ext: ""
+            needs_advapi32: "false"
+          - target_name: android-arm
+            zig_target: arm-linux-musleabihf
+            ext: ""
+            needs_advapi32: "false"
+          - target_name: android-amd64
+            zig_target: x86_64-linux-musl
+            ext: ""
+            needs_advapi32: "false"
+          # darwin (macOS)
+          - target_name: darwin-amd64
+            zig_target: x86_64-macos
+            ext: ""
+            needs_advapi32: "false"
+          - target_name: darwin-arm64
+            zig_target: aarch64-macos
+            ext: ""
+            needs_advapi32: "false"
+          # windows (MinGW, advapi32 for registry API in systemspec-c)
           - target_name: windows-amd64
             zig_target: x86_64-windows-gnu
             ext: .exe
@@ -166,6 +324,23 @@ jobs:
             zig_target: aarch64-windows-gnu
             ext: .exe
             needs_advapi32: "true"
+          - target_name: windows-386
+            zig_target: x86-windows-gnu
+            ext: .exe
+            needs_advapi32: "true"
+          # freebsd (FreeBSD 15.0 libc shipped by Zig 0.16)
+          - target_name: freebsd-amd64
+            zig_target: x86_64-freebsd
+            ext: ""
+            needs_advapi32: "false"
+          - target_name: freebsd-arm64
+            zig_target: aarch64-freebsd
+            ext: ""
+            needs_advapi32: "false"
+          - target_name: freebsd-386
+            zig_target: x86-freebsd
+            ext: ""
+            needs_advapi32: "false"
 
     steps:
       - name: Checkout

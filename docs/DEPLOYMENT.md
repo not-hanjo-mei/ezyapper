@@ -36,26 +36,41 @@ go build -ldflags="-s -w" -o ezyapper ./cmd/bot
 ### Cross-compilation
 
 ```bash
-# Linux
+# Linux (amd64, arm64, 386, arm)
 GOOS=linux GOARCH=amd64 go build -o ezyapper-linux-amd64 ./cmd/bot
 GOOS=linux GOARCH=arm64 go build -o ezyapper-linux-arm64 ./cmd/bot
+GOOS=linux GOARCH=386  go build -o ezyapper-linux-386  ./cmd/bot
+GOOS=linux GOARCH=arm  GOARM=7 go build -o ezyapper-linux-arm ./cmd/bot
 
 # Windows
-GOOS=windows GOARCH=amd64 go build -o ezyapper.exe ./cmd/bot
-GOOS=windows GOARCH=arm64 go build -o ezyapper-arm64.exe ./cmd/bot
+GOOS=windows GOARCH=amd64 go build -o ezyapper.exe        ./cmd/bot
+GOOS=windows GOARCH=arm64 go build -o ezyapper-arm64.exe  ./cmd/bot
+GOOS=windows GOARCH=386  go build -o ezyapper-386.exe     ./cmd/bot
 
 # macOS
 GOOS=darwin GOARCH=amd64 go build -o ezyapper-macos-amd64 ./cmd/bot
 GOOS=darwin GOARCH=arm64 go build -o ezyapper-macos-arm64 ./cmd/bot
+
+# FreeBSD
+GOOS=freebsd GOARCH=amd64 go build -o ezyapper-freebsd-amd64 ./cmd/bot
+GOOS=freebsd GOARCH=arm64 go build -o ezyapper-freebsd-arm64 ./cmd/bot
+
+# Android / Termux (pure-Go static binary)
+GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -o ezyapper-android-arm64 ./cmd/bot
+
+# Niche Linux archs (mipsle, mips64le, loong64)
+GOOS=linux GOARCH=mipsle    go build -o ezyapper-linux-mipsle    ./cmd/bot
+GOOS=linux GOARCH=mips64le  go build -o ezyapper-linux-mips64le  ./cmd/bot
+GOOS=linux GOARCH=loong64   go build -o ezyapper-linux-loong64   ./cmd/bot
 ```
 
-`make build-all` does the three amd64 platforms in one shot. CI builds the full six-platform matrix.
+`make build-all` does linux/windows/darwin amd64. CI builds the full matrix: **17 platforms** for the main binary and Go plugins (linux×7, darwin×2, windows×3, freebsd×3, android×2), plus **18 targets** for Zig/C command plugins (adds musl-static Android variants for Termux — see [`build.yml`](../.github/workflows/build.yml)).
 
 ### Don't want to compile? Grab a prebuilt binary
 
-GitHub Actions publishes per-platform artifacts on every push. Hit [Actions](https://github.com/not-hanjo-mei/ezyapper/actions), pick the most recent successful **Build** run, and download the artifact for your OS/arch.
+GitHub Actions publishes per-platform artifacts on every push. Hit [Actions](https://github.com/not-hanjo-mei/ezyapper/actions), pick the most recent successful **build** run, and download the artifact for your OS/arch.
 
-You'll also find prebuilt **plugin binaries** in the same artifacts — Go plugins for six platforms, plus Zig and C command plugins for four. Drop them into `plugins/` if you want a head start.
+You'll also find prebuilt **plugin binaries** in the same artifacts — Go plugins for 17 platforms, plus Zig and C command plugins for 18 targets (including `-musl` static Android/Termux builds). Drop them into `plugins/` if you want a head start.
 
 ---
 
