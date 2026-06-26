@@ -1,0 +1,145 @@
+name: build-go-plugins
+
+on:
+  push:
+    branches:
+      - "**"
+    paths:
+      - "examples/plugins/*-go/**"
+      - "internal/plugin/**"
+      - "internal/types/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/build-go-plugins.yml"
+  pull_request:
+    paths:
+      - "examples/plugins/*-go/**"
+      - "internal/plugin/**"
+      - "internal/types/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/build-go-plugins.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-go-plugins:
+    name: Build Go plugins ${{ matrix.goos }}-${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # linux (7 archs)
+          - goos: linux
+            goarch: amd64
+            goarm: ""
+          - goos: linux
+            goarch: arm64
+            goarm: ""
+          - goos: linux
+            goarch: "386"
+            goarm: ""
+          - goos: linux
+            goarch: arm
+            goarm: "7"
+          - goos: linux
+            goarch: mipsle
+            goarm: ""
+          - goos: linux
+            goarch: mips64le
+            goarm: ""
+          - goos: linux
+            goarch: loong64
+            goarm: ""
+          # darwin (2 archs)
+          - goos: darwin
+            goarch: amd64
+            goarm: ""
+          - goos: darwin
+            goarch: arm64
+            goarm: ""
+          # windows (3 archs)
+          - goos: windows
+            goarch: amd64
+            goarm: ""
+          - goos: windows
+            goarch: arm64
+            goarm: ""
+          - goos: windows
+            goarch: "386"
+            goarm: ""
+          # freebsd (3 archs)
+          - goos: freebsd
+            goarch: amd64
+            goarm: ""
+          - goos: freebsd
+            goarch: arm64
+            goarm: ""
+          - goos: freebsd
+            goarch: "386"
+            goarm: ""
+          # android (arm64 + armv7 — for Termux)
+          - goos: android
+            goarch: arm64
+            goarm: ""
+          - goos: android
+            goarch: arm
+            goarm: "7"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build Go plugin binaries
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+        run: |
+          set -euo pipefail
+
+          ext=""
+          if [ "$GOOS" = "windows" ]; then
+            ext=".exe"
+          fi
+
+          out_dir="dist/go-plugins/${GOOS}-${GOARCH}"
+          mkdir -p "$out_dir"
+
+          # Each Go plugin is its own module (has its own go.mod with
+          # `replace ezyapper => ../../../`), so builds MUST run from inside
+          # the plugin directory. Building from the repo root fails with
+          # "main module (ezyapper) does not contain package ...".
+          build_plugin() {
+            local src_dir="$1"
+            local out_name="$2"
+            (
+              cd "$src_dir"
+              go build -trimpath -o "../../../$out_dir/$out_name${ext}" .
+            )
+          }
+
+          build_plugin examples/plugins/antispam-go        antispam-plugin
+          build_plugin examples/plugins/clank-o-meter-go   clank-o-meter-plugin
+          build_plugin examples/plugins/datetime-go         datetime-plugin
+          build_plugin examples/plugins/kimi-tools-go       kimi-tools-plugin
+          build_plugin examples/plugins/openai-tts-go       openai-tts-plugin
+          build_plugin examples/plugins/systemspec-go       systemspec-plugin
+
+      - name: Upload Go plugin artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-plugins-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/go-plugins/${{ matrix.goos }}-${{ matrix.goarch }}
+          if-no-files-found: error

@@ -64,7 +64,13 @@ GOOS=linux GOARCH=mips64le  go build -o ezyapper-linux-mips64le  ./cmd/bot
 GOOS=linux GOARCH=loong64   go build -o ezyapper-linux-loong64   ./cmd/bot
 ```
 
-`make build-all` does linux/windows/darwin amd64. CI builds the full matrix: **17 platforms** for the main binary and Go plugins (linux×7, darwin×2, windows×3, freebsd×3, android×2), plus **18 targets** for Zig/C command plugins (adds musl-static Android variants for Termux — see [`build.yml`](../.github/workflows/build.yml)).
+`make build-all` does linux/windows/darwin amd64. CI builds the full matrix across three path-filtered workflows:
+
+| Workflow | Matrix entries | What it builds |
+|---|---|---|
+| [`build-main.yml`](../.github/workflows/build-main.yml) | 17 | Main binary (`cmd/bot`) — triggers on changes to Go source |
+| [`build-go-plugins.yml`](../.github/workflows/build-go-plugins.yml) | 17 | Go plugin binaries — triggers on plugin source |
+| [`build-command-plugins.yml`](../.github/workflows/build-command-plugins.yml) | 18 | Zig/C plugin binaries (including musl-static Android/Termux) — triggers on command plugin source |
 
 ### Don't want to compile? Grab a prebuilt binary
 
