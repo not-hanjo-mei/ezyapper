@@ -115,12 +115,25 @@ jobs:
           out_dir="dist/go-plugins/${GOOS}-${GOARCH}"
           mkdir -p "$out_dir"
 
-          go build -trimpath -o "$out_dir/antispam-plugin${ext}" ./examples/plugins/antispam-go
-          go build -trimpath -o "$out_dir/clank-o-meter-plugin${ext}" ./examples/plugins/clank-o-meter-go
-          go build -trimpath -o "$out_dir/datetime-plugin${ext}" ./examples/plugins/datetime-go
-          go build -trimpath -o "$out_dir/kimi-tools-plugin${ext}" ./examples/plugins/kimi-tools-go
-          go build -trimpath -o "$out_dir/openai-tts-plugin${ext}" ./examples/plugins/openai-tts-go
-          go build -trimpath -o "$out_dir/systemspec-plugin${ext}" ./examples/plugins/systemspec-go
+          # Each Go plugin is its own module (has its own go.mod with
+          # `replace ezyapper => ../../../`), so builds MUST run from inside
+          # the plugin directory. Building from the repo root fails with
+          # "main module (ezyapper) does not contain package ...".
+          build_plugin() {
+            local src_dir="$1"
+            local out_name="$2"
+            (
+              cd "$src_dir"
+              go build -trimpath -o "../../../$out_dir/$out_name${ext}" .
+            )
+          }
+
+          build_plugin examples/plugins/antispam-go        antispam-plugin
+          build_plugin examples/plugins/clank-o-meter-go  clank-o-meter-plugin
+          build_plugin examples/plugins/datetime-go        datetime-plugin
+          build_plugin examples/plugins/kimi-tools-go      kimi-tools-plugin
+          build_plugin examples/plugins/openai-tts-go      openai-tts-plugin
+          build_plugin examples/plugins/systemspec-go      systemspec-plugin
 
       - name: Upload Go plugin artifacts
         uses: actions/upload-artifact@v4
