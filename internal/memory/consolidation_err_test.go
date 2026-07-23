@@ -10,12 +10,13 @@ import (
 	"ezyapper/internal/ai"
 )
 
-// mockAIClient implements aiChatCompleter for testing.
 type mockAIClient struct {
 	createChatCompletionFn func(context.Context, ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error)
+	calls                  int
 }
 
-func (m *mockAIClient) CreateChatCompletion(ctx context.Context, req ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error) {
+func (m *mockAIClient) CreateChatCompletionSingle(ctx context.Context, req ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error) {
+	m.calls++
 	if m.createChatCompletionFn != nil {
 		return m.createChatCompletionFn(ctx, req)
 	}

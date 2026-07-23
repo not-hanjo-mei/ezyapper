@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"ezyapper/internal/ai"
+	"ezyapper/internal/ai/llmjson"
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/retry"
@@ -109,7 +110,7 @@ func relationshipID(userA, userB string, relType RelationshipType) string {
 
 // aiChatCompleter is the subset of ai.Client methods used by Consolidator.
 type aiChatCompleter interface {
-	CreateChatCompletion(ctx context.Context, req ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error)
+	CreateChatCompletionSingle(ctx context.Context, req ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error)
 }
 
 // visionDescriber is the subset of vision.VisionDescriber methods used by Consolidator.
@@ -758,94 +759,6 @@ func (c *Consolidator) getOrCreateProfile(ctx context.Context, userID string) (*
 	return profile, nil
 }
 
-// truncate returns a truncated version of s with at most n characters.
-// If s is longer than n, it appends "..." to indicate truncation.
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
-}
-
-// sanitizeJSON preprocesses JSON from LLM responses for Go 1.25 compatibility.
-// It handles invalid UTF-8 bytes and removes duplicate keys.
-func sanitizeJSON(s string) string {
-	// Replace invalid UTF-8 bytes with the Unicode replacement character
-	// This prevents Go 1.25's stricter json.Unmarshal from rejecting them
-	var buf strings.Builder
-	buf.Grow(len(s))
-	for i := 0; i < len(s); i++ {
-		b := s[i]
-		if b < 0x80 {
-			buf.WriteByte(b)
-		} else if b < 0xC0 {
-			// Invalid continuation byte, replace
-			buf.WriteRune('\uFFFD')
-		} else if b < 0xE0 {
-			// 2-byte sequence
-			if i+1 < len(s) && (s[i+1]&0xC0) == 0x80 {
-				buf.WriteByte(b)
-				buf.WriteByte(s[i+1])
-				i++
-			} else {
-				buf.WriteRune('\uFFFD')
-			}
-		} else if b < 0xF0 {
-			// 3-byte sequence
-			if i+2 < len(s) && (s[i+1]&0xC0) == 0x80 && (s[i+2]&0xC0) == 0x80 {
-				buf.WriteByte(b)
-				buf.WriteByte(s[i+1])
-				buf.WriteByte(s[i+2])
-				i += 2
-			} else {
-				buf.WriteRune('\uFFFD')
-			}
-		} else if b < 0xF8 {
-			// 4-byte sequence
-			if i+3 < len(s) && (s[i+1]&0xC0) == 0x80 && (s[i+2]&0xC0) == 0x80 && (s[i+3]&0xC0) == 0x80 {
-				buf.WriteByte(b)
-				buf.WriteByte(s[i+1])
-				buf.WriteByte(s[i+2])
-				buf.WriteByte(s[i+3])
-				i += 3
-			} else {
-				buf.WriteRune('\uFFFD')
-			}
-		} else {
-			buf.WriteRune('\uFFFD')
-		}
-	}
-	return buf.String()
-}
-
-// extractJSONFromLLMResponse extracts JSON from LLM responses that may contain
-// markdown code blocks, explanatory text, or other non-JSON content.
-func extractJSONFromLLMResponse(content string) string {
-	content = strings.TrimSpace(content)
-
-	// Try to find JSON array first (for consolidation responses)
-	if idx := strings.Index(content, "["); idx >= 0 {
-		endIdx := strings.LastIndex(content, "]")
-		if endIdx > idx {
-			return strings.TrimSpace(content[idx : endIdx+1])
-		}
-	}
-
-	// Try to find JSON object
-	if idx := strings.Index(content, "{"); idx >= 0 {
-		endIdx := strings.LastIndex(content, "}")
-		if endIdx > idx {
-			return strings.TrimSpace(content[idx : endIdx+1])
-		}
-	}
-
-	// Fall back to markdown stripping
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	return strings.TrimSpace(content)
-}
-
 func (c *Consolidator) analyzeConversation(ctx context.Context, conversation string, targetUserIDs []string) ([]Extract, error) {
 	batch, err := c.analyzeConversationBatch(ctx, conversation, targetUserIDs)
 	if err != nil {
@@ -859,74 +772,150 @@ func (c *Consolidator) analyzeConversation(ctx context.Context, conversation str
 	return extracts, nil
 }
 
-// analyzeConversationBatch performs batch memory extraction for multiple users
 func (c *Consolidator) analyzeConversationBatch(ctx context.Context, conversation string, targetUserIDs []string) ([]UserMemoryExtract, error) {
-	content, err := c.callExtractionLLM(ctx, conversation, targetUserIDs, "batch memory extraction", "LLM batch request failed")
-	if err != nil {
-		return nil, err
-	}
-	if content == "" {
-		return nil, nil
-	}
-	batchExtracts := make([]UserMemoryExtract, 0, len(targetUserIDs))
-	if err := json.Unmarshal([]byte(content), &batchExtracts); err != nil {
-		logger.Debugf("[consolidation] failed to parse LLM batch response (len=%d): %s", len(content), truncate(content, 500))
-		return nil, fmt.Errorf("consolidation: failed to parse LLM batch response: %w", err)
-	}
-	logger.Infof("[consolidation] successfully extracted memories for %d users from LLM response", len(batchExtracts))
-	return batchExtracts, nil
-}
-
-// callExtractionLLM performs the shared LLM interaction for memory extraction.
-// Returns the sanitized JSON content from the LLM response.
-func (c *Consolidator) callExtractionLLM(ctx context.Context, conversation string, targetUserIDs []string, logLabel, errLabel string) (string, error) {
-	start := time.Now()
-
 	if c.aiClient == nil {
 		logger.Error("[consolidation] AI client not configured, cannot perform LLM extraction")
-		return "", fmt.Errorf("consolidation: AI client not configured")
+		return nil, fmt.Errorf("consolidation: AI client not configured")
 	}
-
 	if strings.TrimSpace(conversation) == "" {
 		logger.Warnf("[consolidation] empty conversation, skipping LLM analysis")
-		return "", nil
+		return nil, nil
 	}
-
 	if c.prompt == "" {
 		logger.Error("[consolidation] consolidation prompt is empty, cannot perform LLM extraction")
-		return "", fmt.Errorf("consolidation: system prompt is empty")
+		return nil, fmt.Errorf("consolidation: system prompt is empty")
 	}
 
-	logger.Debugf("[consolidation] preparing LLM prompt with conversation length=%d", len(conversation))
+	allow := make(map[string]struct{}, len(targetUserIDs))
+	for _, id := range targetUserIDs {
+		allow[id] = struct{}{}
+	}
 
 	targetUsersStr := strings.Join(targetUserIDs, ", ")
 	systemPrompt := fmt.Sprintf("%s\n\nTarget UserIDs: %s (extract memories for these users only)", c.prompt, targetUsersStr)
-
-	req := ai.ChatCompletionRequest{
+	baseReq := ai.ChatCompletionRequest{
 		SystemPrompt: systemPrompt,
 		Messages: []openai.ChatCompletionMessage{
-			{
-				Role:    openai.ChatMessageRoleUser,
-				Content: conversation,
-			},
+			{Role: openai.ChatMessageRoleUser, Content: conversation},
 		},
 	}
+	var feedback string
 
-	logger.Debugf("[consolidation] sending request to LLM for %s", logLabel)
-	resp, err := c.aiClient.CreateChatCompletion(ctx, req)
+	batch, err := retry.Retry(ctx, c.retryMaxRetries, func(ctx context.Context) ([]UserMemoryExtract, error) {
+		req := baseReq
+		if feedback != "" {
+			req.Messages = append(append([]openai.ChatCompletionMessage{}, baseReq.Messages...), openai.ChatCompletionMessage{
+				Role:    openai.ChatMessageRoleUser,
+				Content: feedback,
+			})
+		}
+		start := time.Now()
+		logger.Debugf("[consolidation] sending request to LLM for batch memory extraction")
+		resp, err := c.aiClient.CreateChatCompletionSingle(ctx, req)
+		if err != nil {
+			return nil, fmt.Errorf("consolidation: LLM batch request failed: %w", err)
+		}
+		logger.Infof("[consolidation] LLM batch memory extraction received duration=%s", time.Since(start))
+		logger.Debugf("[consolidation] raw LLM response: %s", resp.Content)
+
+		items, err := llmjson.DecodeSlice(resp.Content, func(e *UserMemoryExtract) error {
+			return validateUserMemoryExtract(e, allow)
+		}, nil)
+		if err != nil {
+			feedback = "Your previous response failed validation: " + err.Error() +
+				`. Return ONLY a JSON array of {"user_id":"...","memories":[{"content":"...","type":"fact|episode|interest|summary","confidence":0-1,...}]}`
+			logger.Warnf("[consolidation] schema/parse failed, will retry if budget remains: %v", err)
+			return nil, err
+		}
+		return items, nil
+	},
+		retry.WithBaseDelay(c.retryBaseDelay),
+		retry.WithMaxDelay(c.retryMaxDelay),
+		retry.WithErrorClassifier(func(err error) bool {
+			return llmjson.IsOutputError(err) || ai.IsRetryableError(err)
+		}),
+	)
 	if err != nil {
-		return "", fmt.Errorf("consolidation: %s: %w", errLabel, err)
+		return nil, err
 	}
+	logger.Infof("[consolidation] successfully extracted memories for %d users from LLM response", len(batch))
+	return batch, nil
+}
 
-	elapsed := time.Since(start)
-	logger.Infof("[consolidation] LLM %s received duration=%s", logLabel, elapsed)
+func validateUserMemoryExtract(u *UserMemoryExtract, allow map[string]struct{}) error {
+	if strings.TrimSpace(u.UserID) == "" {
+		return llmjson.SchemaError("user_id must be non-empty", nil)
+	}
+	if _, ok := allow[u.UserID]; !ok {
+		return llmjson.SchemaError(fmt.Sprintf("user_id %q not in target allowlist", u.UserID), nil)
+	}
+	for i := range u.Memories {
+		if err := validateExtract(&u.Memories[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
-	content := extractJSONFromLLMResponse(resp.Content)
-	content = sanitizeJSON(content)
+func profileUpdatesNonEmpty(p *ProfileUpdateSet) bool {
+	if p == nil {
+		return false
+	}
+	for _, t := range p.Traits {
+		if strings.TrimSpace(t) != "" {
+			return true
+		}
+	}
+	for _, i := range p.Interests {
+		if strings.TrimSpace(i) != "" {
+			return true
+		}
+	}
+	for k, v := range p.Facts {
+		if strings.TrimSpace(k) != "" && strings.TrimSpace(v) != "" {
+			return true
+		}
+	}
+	for k, v := range p.Preferences {
+		if strings.TrimSpace(k) != "" && strings.TrimSpace(v) != "" {
+			return true
+		}
+	}
+	return false
+}
 
-	logger.Debugf("[consolidation] raw LLM response: %s", resp.Content)
-
-	return content, nil
+func validateExtract(e *Extract) error {
+	content := strings.TrimSpace(e.Content)
+	profileOnly := content == "" && profileUpdatesNonEmpty(e.ProfileUpdates)
+	if content == "" && !profileOnly {
+		return llmjson.SchemaError("content required unless profile_updates has a non-empty update", nil)
+	}
+	switch Type(e.Type) {
+	case TypeSummary, TypeFact, TypeEpisode, TypeInterest:
+	default:
+		return llmjson.SchemaError(fmt.Sprintf("invalid memory type %q", e.Type), nil)
+	}
+	if e.Confidence < 0 || e.Confidence > 1 {
+		return llmjson.SchemaError(fmt.Sprintf("confidence %v out of range [0,1]", e.Confidence), nil)
+	}
+	if e.ImportanceScore != nil {
+		if *e.ImportanceScore < 0 || *e.ImportanceScore > 1 {
+			return llmjson.SchemaError(fmt.Sprintf("importance_score %v out of range [0,1]", *e.ImportanceScore), nil)
+		}
+	}
+	if e.ProfileUpdates != nil {
+		for k := range e.ProfileUpdates.Facts {
+			if strings.TrimSpace(k) == "" {
+				return llmjson.SchemaError("profile_updates.facts has empty key", nil)
+			}
+		}
+		for k := range e.ProfileUpdates.Preferences {
+			if strings.TrimSpace(k) == "" {
+				return llmjson.SchemaError("profile_updates.preferences has empty key", nil)
+			}
+		}
+	}
+	return nil
 }
 
 func (c *Consolidator) updateProfileFromExtraction(profile *Profile, extracts []Extract) {
