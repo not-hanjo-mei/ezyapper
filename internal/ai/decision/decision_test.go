@@ -64,12 +64,28 @@ func TestNewDecisionServiceRequiresBaseURL(t *testing.T) {
 func TestDecisionParseResponse(t *testing.T) {
 	d := &DecisionService{}
 
-	result, err := d.parseResponse("prefix {\"should_respond\":true,\"reason\":\"mention\",\"confidence\":1.5} suffix")
+	result, err := d.parseResponse(`prefix {"should_respond":true,"reason":"mention","confidence":0.9} suffix`)
 	if err != nil {
-		t.Fatalf("expected clamped success for out-of-range confidence 1.5, got error: %v", err)
+		t.Fatalf("expected success, got %v", err)
 	}
-	if result.Confidence != 1.0 {
-		t.Fatalf("expected confidence clamped to 1.0, got %f", result.Confidence)
+	if !result.ShouldRespond || result.Reason != "mention" || result.Confidence != 0.9 {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+}
+
+func TestDecisionParseResponseRejectsOOBConfidence(t *testing.T) {
+	d := &DecisionService{}
+	_, err := d.parseResponse(`{"should_respond":true,"reason":"mention","confidence":1.5}`)
+	if err == nil {
+		t.Fatal("expected schema error for confidence 1.5")
+	}
+}
+
+func TestDecisionParseResponseMissingReason(t *testing.T) {
+	d := &DecisionService{}
+	_, err := d.parseResponse(`{"should_respond":true,"confidence":0.5}`)
+	if err == nil {
+		t.Fatal("expected missing required field error")
 	}
 }
 
@@ -79,9 +95,6 @@ func TestDecisionParseResponseInvalidJSON(t *testing.T) {
 	_, err := d.parseResponse("not json")
 	if err == nil {
 		t.Fatal("expected error for invalid response")
-	}
-	if !strings.Contains(err.Error(), "no valid json") {
-		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

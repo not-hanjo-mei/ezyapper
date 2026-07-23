@@ -4,6 +4,7 @@ package ai
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"ezyapper/internal/ai/llmjson"
 	"ezyapper/internal/ai/tools"
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
@@ -145,17 +147,21 @@ func IsTimeoutLikeError(err error) bool {
 	return strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline exceeded")
 }
 
+func (c *Client) CreateChatCompletionOnce(ctx context.Context, req openai.ChatCompletionRequest, operation string) (openai.ChatCompletionResponse, error) {
+	attemptCtx, cancel := context.WithTimeout(ctx, time.Duration(c.config.Timeout)*time.Second)
+	defer cancel()
+	logger.Debugf("[ai] calling %s API (once)...", operation)
+	resp, err := c.client.CreateChatCompletion(attemptCtx, req)
+	if err != nil && IsTimeoutLikeError(err) {
+		c.closeIdleConnections()
+	}
+	return resp, err
+}
+
 // CreateChatCompletionWithRetry sends a chat completion request with automatic retry on failures.
 func (c *Client) CreateChatCompletionWithRetry(ctx context.Context, req openai.ChatCompletionRequest, operation string) (openai.ChatCompletionResponse, error) {
 	return retry.Retry(ctx, c.config.RetryCount, func(ctx context.Context) (openai.ChatCompletionResponse, error) {
-		attemptCtx, cancel := context.WithTimeout(ctx, time.Duration(c.config.Timeout)*time.Second)
-		defer cancel()
-		logger.Debugf("[ai] calling %s API...", operation)
-		resp, err := c.client.CreateChatCompletion(attemptCtx, req)
-		if err != nil && IsTimeoutLikeError(err) {
-			c.closeIdleConnections()
-		}
-		return resp, err
+		return c.CreateChatCompletionOnce(ctx, req, operation)
 	},
 		retry.WithBaseDelay(1*time.Second),
 		retry.WithMaxDelay(30*time.Second),
@@ -212,12 +218,9 @@ func (c *Client) buildVisionParts(ctx context.Context, textPrompt string, imageU
 	return parts, nil
 }
 
-// CreateChatCompletion creates a chat completion
-func (c *Client) CreateChatCompletion(ctx context.Context, req ChatCompletionRequest) (*ChatCompletionResponse, error) {
-	// Build messages
+func (c *Client) buildChatRequest(ctx context.Context, req ChatCompletionRequest) (openai.ChatCompletionRequest, error) {
 	messages := make([]openai.ChatCompletionMessage, 0, len(req.Messages)+1)
 
-	// Add system prompt
 	if req.SystemPrompt != "" {
 		messages = append(messages, openai.ChatCompletionMessage{
 			Role:    openai.ChatMessageRoleSystem,
@@ -225,29 +228,22 @@ func (c *Client) CreateChatCompletion(ctx context.Context, req ChatCompletionReq
 		})
 	}
 
-	// Process messages (convert images to base64 if needed)
 	processedMessages, err := c.processMessages(ctx, req.Messages)
 	if err != nil {
-		return nil, err
+		return openai.ChatCompletionRequest{}, err
 	}
 
-	// Prepend UserContext to the last user message if provided
-	// This places dynamic content after the static system prompt, preserving cacheability
 	if req.UserContext != "" && len(processedMessages) > 0 {
-		// Find the last user message
 		for i := len(processedMessages) - 1; i >= 0; i-- {
 			if processedMessages[i].Role == openai.ChatMessageRoleUser {
-				// Prepend context to the user message
 				processedMessages[i].Content = req.UserContext + "\n\n" + processedMessages[i].Content
 				break
 			}
 		}
 	}
 
-	// Add conversation messages
 	messages = append(messages, processedMessages...)
 
-	// Build request
 	chatReq := openai.ChatCompletionRequest{
 		Model:       c.config.Model,
 		Messages:    messages,
@@ -255,36 +251,24 @@ func (c *Client) CreateChatCompletion(ctx context.Context, req ChatCompletionReq
 		Temperature: c.config.Temperature,
 	}
 
-	// Add tools if provided
 	if len(req.Tools) > 0 {
 		chatReq.Tools = req.Tools
 	}
 
-	// Apply extra parameters from config
 	c.applyExtraParams(&chatReq)
+	return chatReq, nil
+}
 
-	logger.Debugf("[ai] creating chat completion:")
-	logger.Debugf("  Model: %s", c.config.Model)
-	logger.Debugf("  Messages: %d", len(messages))
-	logger.Debugf("  System prompt length: %d", len(req.SystemPrompt))
-	logger.Debugf("  Tools: %d", len(chatReq.Tools))
-
-	resp, err := c.CreateChatCompletionWithRetry(ctx, chatReq, "llm completion")
-	if err != nil {
-		return nil, err
-	}
-
+func chatResponseFromOpenAI(resp openai.ChatCompletionResponse) (*ChatCompletionResponse, error) {
 	if len(resp.Choices) == 0 {
 		return nil, fmt.Errorf("no response choices returned")
 	}
-
 	choice := resp.Choices[0]
 	logger.Debugf("[ai] received response:")
 	logger.Debugf("  Finish reason: %s", choice.FinishReason)
 	logger.Debugf("  Prompt tokens: %d", resp.Usage.PromptTokens)
 	logger.Debugf("  Completion tokens: %d", resp.Usage.CompletionTokens)
 	logger.Debugf("  Total tokens: %d", resp.Usage.TotalTokens)
-
 	return &ChatCompletionResponse{
 		Content:          choice.Message.Content,
 		ToolCalls:        choice.Message.ToolCalls,
@@ -292,6 +276,40 @@ func (c *Client) CreateChatCompletion(ctx context.Context, req ChatCompletionReq
 		FinishReason:     string(choice.FinishReason),
 		Usage:            resp.Usage,
 	}, nil
+}
+
+func (c *Client) CreateChatCompletion(ctx context.Context, req ChatCompletionRequest) (*ChatCompletionResponse, error) {
+	chatReq, err := c.buildChatRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	logger.Debugf("[ai] creating chat completion:")
+	logger.Debugf("  Model: %s", c.config.Model)
+	logger.Debugf("  Messages: %d", len(chatReq.Messages))
+	logger.Debugf("  System prompt length: %d", len(req.SystemPrompt))
+	logger.Debugf("  Tools: %d", len(chatReq.Tools))
+
+	resp, err := c.CreateChatCompletionWithRetry(ctx, chatReq, "llm completion")
+	if err != nil {
+		return nil, err
+	}
+	return chatResponseFromOpenAI(resp)
+}
+
+func (c *Client) createChatCompletionOnce(ctx context.Context, req ChatCompletionRequest) (*ChatCompletionResponse, error) {
+	chatReq, err := c.buildChatRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.CreateChatCompletionOnce(ctx, chatReq, "llm completion")
+	if err != nil {
+		return nil, err
+	}
+	return chatResponseFromOpenAI(resp)
+}
+
+func (c *Client) CreateChatCompletionSingle(ctx context.Context, req ChatCompletionRequest) (*ChatCompletionResponse, error) {
+	return c.createChatCompletionOnce(ctx, req)
 }
 
 // applyExtraParams applies extra parameters from config to the request
@@ -588,14 +606,80 @@ type toolLoopResponse struct {
 
 type toolLoopRequester func(ctx context.Context, messages []openai.ChatCompletionMessage) (*toolLoopResponse, error)
 
-func (c *Client) runToolLoop(ctx context.Context, initialMessages []openai.ChatCompletionMessage, initial *toolLoopResponse, maxIterations int, toolHandler ToolHandler, request toolLoopRequester, toolError func(error) string, warnLabel string) (*toolLoopResponse, error) {
-	if initial == nil {
-		return nil, fmt.Errorf("tool loop: initial response is nil")
+func validateToolCallsArgs(registry *tools.ToolRegistry, toolCalls []openai.ToolCall) error {
+	if registry == nil {
+		return nil
 	}
+	for _, tc := range toolCalls {
+		var args map[string]any
+		if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
+			return llmjson.ParseError(fmt.Sprintf("tool %q arguments", tc.Function.Name), err)
+		}
+		if args == nil {
+			args = map[string]any{}
+		}
+		tool, ok := registry.Get(tc.Function.Name)
+		if !ok {
+			continue
+		}
+		if err := llmjson.ValidateArgsAgainstParameters(args, tool.Parameters); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
+func (c *Client) requestCompletionSlot(ctx context.Context, baseMessages []openai.ChatCompletionMessage, request toolLoopRequester) (*toolLoopResponse, error) {
+	messages := make([]openai.ChatCompletionMessage, len(baseMessages))
+	copy(messages, baseMessages)
+	var feedback string
+	var lastErr error
+
+	for attempt := 0; attempt <= c.config.RetryCount; attempt++ {
+		msgs := make([]openai.ChatCompletionMessage, len(messages))
+		copy(msgs, messages)
+		if feedback != "" {
+			msgs = append(msgs, openai.ChatCompletionMessage{
+				Role:    openai.ChatMessageRoleUser,
+				Content: feedback,
+			})
+		}
+
+		resp, err := request(ctx, msgs)
+		if err != nil {
+			lastErr = err
+			if !IsRetryableError(err) {
+				return nil, err
+			}
+			logger.Warnf("[ai] completion slot network failure attempt %d/%d: %v", attempt+1, c.config.RetryCount+1, err)
+			continue
+		}
+		if len(resp.toolCalls) == 0 {
+			return resp, nil
+		}
+		if err := validateToolCallsArgs(c.toolRegistry, resp.toolCalls); err != nil {
+			lastErr = err
+			feedback = "Your previous tool_calls failed argument validation: " + err.Error() +
+				". Re-issue valid tool_calls only with correct JSON arguments matching each tool schema."
+			logger.Warnf("[ai] tool arg schema failure attempt %d/%d: %v", attempt+1, c.config.RetryCount+1, err)
+			continue
+		}
+		return resp, nil
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("completion slot exhausted")
+	}
+	return nil, fmt.Errorf("completion slot exhausted after %d attempts: %w", c.config.RetryCount+1, lastErr)
+}
+
+func (c *Client) runToolLoop(ctx context.Context, initialMessages []openai.ChatCompletionMessage, maxIterations int, toolHandler ToolHandler, request toolLoopRequester, toolError func(error) string, warnLabel string) (*toolLoopResponse, error) {
 	messages := make([]openai.ChatCompletionMessage, len(initialMessages))
 	copy(messages, initialMessages)
-	resp := initial
+
+	resp, err := c.requestCompletionSlot(ctx, messages, request)
+	if err != nil {
+		return nil, err
+	}
 
 	for i := 0; i < maxIterations && len(resp.toolCalls) > 0; i++ {
 		toolNames := make([]string, len(resp.toolCalls))
@@ -632,8 +716,7 @@ func (c *Client) runToolLoop(ctx context.Context, initialMessages []openai.ChatC
 			})
 		}
 
-		var err error
-		resp, err = request(ctx, messages)
+		resp, err = c.requestCompletionSlot(ctx, messages, request)
 		if err != nil {
 			return nil, err
 		}
@@ -647,8 +730,8 @@ func (c *Client) runToolLoop(ctx context.Context, initialMessages []openai.ChatC
 	return resp, nil
 }
 
-func (c *Client) executeToolLoop(ctx context.Context, messages []openai.ChatCompletionMessage, initial *toolLoopResponse, request toolLoopRequester, toolHandler ToolHandler, warnLabel string) (*ChatCompletionResponse, error) {
-	final, err := c.runToolLoop(ctx, messages, initial, c.config.MaxToolIterations, toolHandler, request, func(err error) string {
+func (c *Client) executeToolLoop(ctx context.Context, messages []openai.ChatCompletionMessage, request toolLoopRequester, toolHandler ToolHandler, warnLabel string) (*ChatCompletionResponse, error) {
+	final, err := c.runToolLoop(ctx, messages, c.config.MaxToolIterations, toolHandler, request, func(err error) string {
 		return fmt.Sprintf("Error: %v", err)
 	}, warnLabel)
 	if err != nil {
@@ -663,32 +746,15 @@ func (c *Client) executeToolLoop(ctx context.Context, messages []openai.ChatComp
 	}, nil
 }
 
-// CreateChatCompletionWithTools creates a chat completion with tool support
 func (c *Client) CreateChatCompletionWithTools(ctx context.Context, req ChatCompletionRequest, toolHandler ToolHandler) (*ChatCompletionResponse, error) {
-	// Get available tools
-	tools := c.toolRegistry.GetTools()
-
-	// Add tools to request
-	req.Tools = tools
-
-	// Make initial request
-	resp, err := c.CreateChatCompletion(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	initial := &toolLoopResponse{
-		content:          resp.Content,
-		reasoningContent: resp.ReasoningContent,
-		toolCalls:        resp.ToolCalls,
-		finishReason:     resp.FinishReason,
-		usage:            resp.Usage,
-	}
+	toolDefs := c.toolRegistry.GetTools()
+	req.Tools = toolDefs
 
 	request := func(ctx context.Context, messages []openai.ChatCompletionMessage) (*toolLoopResponse, error) {
-		req.Messages = messages
-		req.Tools = tools
-		next, err := c.CreateChatCompletion(ctx, req)
+		reqCopy := req
+		reqCopy.Messages = messages
+		reqCopy.Tools = toolDefs
+		next, err := c.createChatCompletionOnce(ctx, reqCopy)
 		if err != nil {
 			return nil, err
 		}
@@ -701,7 +767,7 @@ func (c *Client) CreateChatCompletionWithTools(ctx context.Context, req ChatComp
 		}, nil
 	}
 
-	return c.executeToolLoop(ctx, req.Messages, initial, request, toolHandler, "tool")
+	return c.executeToolLoop(ctx, req.Messages, request, toolHandler, "tool")
 }
 
 // CreateVisionCompletionWithTools creates a chat completion with vision and tool support (multimodal mode)
@@ -740,7 +806,6 @@ func (c *Client) CreateVisionCompletionWithTools(ctx context.Context, systemProm
 		MultiContent: parts,
 	})
 
-	// Make initial request with tools and retry logic
 	chatReq := openai.ChatCompletionRequest{
 		Model:       c.config.Vision.Model,
 		Messages:    messages,
@@ -749,27 +814,11 @@ func (c *Client) CreateVisionCompletionWithTools(ctx context.Context, systemProm
 		Tools:       tools,
 	}
 
-	resp, err := c.CreateChatCompletionWithRetry(ctx, chatReq, "vision+tools completion")
-	if err != nil {
-		return nil, err
-	}
-
-	if len(resp.Choices) == 0 {
-		return nil, fmt.Errorf("no response choices returned")
-	}
-
-	initial := &toolLoopResponse{
-		content:          resp.Choices[0].Message.Content,
-		reasoningContent: resp.Choices[0].Message.ReasoningContent,
-		toolCalls:        resp.Choices[0].Message.ToolCalls,
-		finishReason:     string(resp.Choices[0].FinishReason),
-		usage:            resp.Usage,
-	}
-
-	request := func(ctx context.Context, messages []openai.ChatCompletionMessage) (*toolLoopResponse, error) {
-		chatReq.Messages = messages
-		chatReq.Tools = tools
-		next, err := c.CreateChatCompletionWithRetry(ctx, chatReq, "vision+tools follow-up")
+	request := func(ctx context.Context, msgs []openai.ChatCompletionMessage) (*toolLoopResponse, error) {
+		reqCopy := chatReq
+		reqCopy.Messages = msgs
+		reqCopy.Tools = tools
+		next, err := c.CreateChatCompletionOnce(ctx, reqCopy, "vision+tools")
 		if err != nil {
 			return nil, fmt.Errorf("tool iteration failed: %w", err)
 		}
@@ -785,7 +834,7 @@ func (c *Client) CreateVisionCompletionWithTools(ctx context.Context, systemProm
 		}, nil
 	}
 
-	return c.executeToolLoop(ctx, messages, initial, request, toolHandler, "vision tool")
+	return c.executeToolLoop(ctx, messages, request, toolHandler, "vision tool")
 }
 
 // ToolHandler is a function that handles tool calls

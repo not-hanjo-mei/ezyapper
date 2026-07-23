@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sync"
 
+	"ezyapper/internal/ai/llmjson"
 	"ezyapper/internal/logger"
 
 	openai "github.com/sashabaranov/go-openai"
@@ -54,7 +55,13 @@ func (r *ToolRegistry) Register(tool *Tool) {
 	r.rebuildSchemaLocked()
 }
 
-// Unregister removes a tool from the registry if it exists.
+func (r *ToolRegistry) Get(name string) (*Tool, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	t, ok := r.tools[name]
+	return t, ok
+}
+
 func (r *ToolRegistry) Unregister(name string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -130,11 +137,23 @@ func computeToolSchemaHash(tools []openai.Tool) (string, error) {
 	return hex.EncodeToString(h.Sum(nil))[:16], nil
 }
 
-// HandleToolCall processes a tool call from the LLM and executes the corresponding tool
 func HandleToolCall(ctx context.Context, registry *ToolRegistry, toolCall openai.ToolCall) (string, error) {
 	var args map[string]any
 	if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
-		return "", fmt.Errorf("failed to parse tool arguments: %w", err)
+		return "", llmjson.ParseError("failed to parse tool arguments", err)
+	}
+	if args == nil {
+		args = map[string]any{}
+	}
+
+	registry.mu.RLock()
+	tool, exists := registry.tools[toolCall.Function.Name]
+	registry.mu.RUnlock()
+	if !exists {
+		return "", fmt.Errorf("tool not found: %s", toolCall.Function.Name)
+	}
+	if err := llmjson.ValidateArgsAgainstParameters(args, tool.Parameters); err != nil {
+		return "", err
 	}
 
 	return registry.ExecuteTool(ctx, toolCall.Function.Name, args)

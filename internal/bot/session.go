@@ -683,7 +683,7 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 	}
 
 	if b.decisionService != nil && b.cfg().Decision.Enabled {
-		// Total timeout = (timeout per attempt) * (retry_count + 2) to allow for all retries plus overhead
+		// Timeout*(retry_count+1) for attempts + one Timeout unit as overhead/slack (schema and network share retry_count).
 		totalTimeout := time.Duration(b.cfg().Decision.Timeout) * time.Second * time.Duration(b.cfg().Decision.RetryCount+2)
 		decisionCtx, cancel := context.WithTimeout(ctx, totalTimeout)
 		defer cancel()

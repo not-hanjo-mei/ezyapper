@@ -3,13 +3,13 @@ package decision
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"ezyapper/internal/ai"
+	"ezyapper/internal/ai/llmjson"
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/retry"
@@ -17,31 +17,26 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 )
 
-// DecisionService uses an LLM to decide whether the bot should respond to a message.
-// It considers message content, author, conversation context, and images.
 type DecisionService struct {
 	config     *config.DecisionConfig
 	client     *openai.Client
 	httpClient *http.Client
 }
 
-// DecisionResult contains the LLM's decision about whether to respond.
 type DecisionResult struct {
 	ShouldRespond bool    `json:"should_respond"`
 	Reason        string  `json:"reason"`
 	Confidence    float64 `json:"confidence"`
 }
 
-// MessageInfo contains metadata about a message for decision making
 type MessageInfo struct {
-	AuthorName string // Username of the message author
-	AuthorID   string // Discord ID of the message author
-	Content    string // Message content
-	ReplyTo    string // Username of the user being replied to (empty if not a reply)
-	ReplyToID  string // Discord ID of the user being replied to (empty if not a reply)
+	AuthorName string
+	AuthorID   string
+	Content    string
+	ReplyTo    string
+	ReplyToID  string
 }
 
-// ContextMessage represents a single message in the conversation context
 type ContextMessage struct {
 	AuthorName string
 	AuthorID   string
@@ -50,7 +45,6 @@ type ContextMessage struct {
 	Timestamp  time.Time
 }
 
-// NewDecisionService creates a new decision service for LLM-based reply decisions.
 func NewDecisionService(cfg *config.DecisionConfig) (*DecisionService, error) {
 	if cfg.APIKey == "" {
 		return nil, fmt.Errorf("decision.api_key is required when decision is enabled")
@@ -80,7 +74,6 @@ func (d *DecisionService) closeIdleConnections() {
 	}
 }
 
-// ShouldRespondWithInfo uses an LLM to decide whether the bot should respond to a message.
 func (d *DecisionService) ShouldRespondWithInfo(ctx context.Context, botName string, msgInfo MessageInfo, imageCount int, recentMessages []ContextMessage) (*DecisionResult, error) {
 	if !d.config.Enabled {
 		return &DecisionResult{ShouldRespond: true, Reason: "decision service disabled, falling back to random"}, nil
@@ -104,44 +97,62 @@ func (d *DecisionService) ShouldRespondWithInfo(ctx context.Context, botName str
 	logger.Debugf("[decision] built system prompt (length: %d)", len(systemPrompt))
 	logger.Debugf("[decision] built user prompt (length: %d)", len(userPrompt))
 
-	req := openai.ChatCompletionRequest{
-		Model: d.config.Model,
-		Messages: []openai.ChatCompletionMessage{
-			{Role: openai.ChatMessageRoleSystem, Content: systemPrompt},
-			{Role: openai.ChatMessageRoleUser, Content: userPrompt},
-		},
-		MaxTokens:   d.config.MaxTokens,
-		Temperature: d.config.Temperature,
+	baseMessages := []openai.ChatCompletionMessage{
+		{Role: openai.ChatMessageRoleSystem, Content: systemPrompt},
+		{Role: openai.ChatMessageRoleUser, Content: userPrompt},
 	}
+	var feedback string
 
-	ai.ApplyExtraParams(&req, d.config.ExtraParams, "[decision]")
+	result, err := retry.Retry(ctx, d.config.RetryCount, func(ctx context.Context) (*DecisionResult, error) {
+		messages := make([]openai.ChatCompletionMessage, len(baseMessages))
+		copy(messages, baseMessages)
+		if feedback != "" {
+			messages = append(messages, openai.ChatCompletionMessage{
+				Role:    openai.ChatMessageRoleUser,
+				Content: feedback,
+			})
+		}
 
-	resp, err := retry.Retry(ctx, d.config.RetryCount, func(ctx context.Context) (openai.ChatCompletionResponse, error) {
+		req := openai.ChatCompletionRequest{
+			Model:       d.config.Model,
+			Messages:    messages,
+			MaxTokens:   d.config.MaxTokens,
+			Temperature: d.config.Temperature,
+		}
+		ai.ApplyExtraParams(&req, d.config.ExtraParams, "[decision]")
+
 		attemptCtx, cancel := context.WithTimeout(ctx, time.Duration(d.config.Timeout)*time.Second)
 		defer cancel()
 
 		logger.Debugf("[decision] making LLM request")
 		resp, err := d.client.CreateChatCompletion(attemptCtx, req)
-		if err != nil && ai.IsTimeoutLikeError(err) {
-			d.closeIdleConnections()
+		if err != nil {
+			if ai.IsTimeoutLikeError(err) {
+				d.closeIdleConnections()
+			}
+			return nil, err
 		}
-		return resp, err
+		if len(resp.Choices) == 0 {
+			return nil, llmjson.ParseError("no response from decision llm", nil)
+		}
+
+		parsed, err := d.parseResponse(resp.Choices[0].Message.Content)
+		if err != nil {
+			feedback = "Your previous response failed validation: " + err.Error() +
+				`. Return ONLY valid JSON: {"should_respond":true|false,"reason":"...","confidence":0.0-1.0}`
+			logger.Warnf("[decision] schema/parse failed, will retry if budget remains: %v", err)
+			return nil, err
+		}
+		return parsed, nil
 	},
 		retry.WithBaseDelay(100*time.Millisecond),
-		retry.WithErrorClassifier(ai.IsRetryableError),
+		retry.WithErrorClassifier(func(err error) bool {
+			return ai.IsRetryableError(err) || llmjson.IsOutputError(err)
+		}),
 	)
 
 	if err != nil {
 		return nil, fmt.Errorf("decision llm call failed: %w", err)
-	}
-
-	if len(resp.Choices) == 0 {
-		return nil, fmt.Errorf("no response from decision llm")
-	}
-
-	result, err := d.parseResponse(resp.Choices[0].Message.Content)
-	if err != nil {
-		return nil, err
 	}
 
 	logger.Debugf("[decision] result: should_respond=%v, reason=%q, confidence=%.2f",
@@ -150,10 +161,8 @@ func (d *DecisionService) ShouldRespondWithInfo(ctx context.Context, botName str
 }
 
 func (d *DecisionService) buildPromptsWithInfo(botName string, msgInfo MessageInfo, content string, recentMessages []ContextMessage) (string, string) {
-	// Build user prompt with XML formatting
 	var userPrompt strings.Builder
 
-	// Build context section with recent messages
 	if len(recentMessages) > 0 {
 		userPrompt.WriteString("<context>\n")
 		for _, msg := range recentMessages {
@@ -163,7 +172,6 @@ func (d *DecisionService) buildPromptsWithInfo(botName string, msgInfo MessageIn
 		userPrompt.WriteString("</context>\n\n")
 	}
 
-	// Build current message section
 	userPrompt.WriteString("<currentMessage>\n")
 	fmt.Fprintf(&userPrompt, "\"%s\"{UserID=%s}: \"%s\"\n", msgInfo.AuthorName, msgInfo.AuthorID, content)
 	if msgInfo.ReplyTo != "" {
@@ -171,36 +179,24 @@ func (d *DecisionService) buildPromptsWithInfo(botName string, msgInfo MessageIn
 	}
 	userPrompt.WriteString("</currentMessage>")
 
-	// Build system prompt with role and rules (use config.system_prompt as template)
 	systemPrompt := strings.ReplaceAll(d.config.SystemPrompt, "{BotName}", botName)
 
 	return systemPrompt, userPrompt.String()
 }
 
 func (d *DecisionService) parseResponse(content string) (*DecisionResult, error) {
-	content = strings.TrimSpace(content)
-
-	jsonStart := strings.Index(content, "{")
-	jsonEnd := strings.LastIndex(content, "}")
-	if jsonStart == -1 || jsonEnd == -1 || jsonEnd <= jsonStart {
-		return nil, fmt.Errorf("no valid json found in response: %s", content)
+	if err := llmjson.RequiredKeysPresent(content, []string{"should_respond", "reason", "confidence"}); err != nil {
+		return nil, err
 	}
+	return llmjson.Decode(content, validateDecisionResult)
+}
 
-	jsonStr := content[jsonStart : jsonEnd+1]
-
-	var result DecisionResult
-	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
-		return nil, fmt.Errorf("failed to parse json: %w", err)
+func validateDecisionResult(r *DecisionResult) error {
+	if strings.TrimSpace(r.Reason) == "" {
+		return llmjson.SchemaError("reason must be non-empty", nil)
 	}
-
-	if result.Confidence < 0 {
-		logger.Warnf("[decision] confidence %f is below 0, clamping to 0", result.Confidence)
-		result.Confidence = 0
+	if r.Confidence < 0 || r.Confidence > 1 {
+		return llmjson.SchemaError(fmt.Sprintf("confidence %v out of range [0,1]", r.Confidence), nil)
 	}
-	if result.Confidence > 1 {
-		logger.Warnf("[decision] confidence %f is above 1, clamping to 1", result.Confidence)
-		result.Confidence = 1
-	}
-
-	return &result, nil
+	return nil
 }
