@@ -304,6 +304,7 @@ vision:
   model: "gpt-4o"
   timeout_seconds: 60
   prompt: "Custom prompt"
+  retry_count: 1
 
 auto_steal:
   enabled: false
@@ -323,6 +324,7 @@ emote:
   api_base_url: "https://api.example.com/v1"
   max_tokens: 2048
   temperature: 0.5
+  retry_count: 2
 
 discord:
   token: "test-token"
@@ -383,6 +385,12 @@ tool_timeouts:
 	}
 	if cfg.EmoteTemperature != 0.5 {
 		t.Fatalf("EmoteTemperature mismatch: got %f", cfg.EmoteTemperature)
+	}
+	if cfg.EmoteRetryCount != 2 {
+		t.Fatalf("EmoteRetryCount mismatch: got %d", cfg.EmoteRetryCount)
+	}
+	if cfg.VisionRetryCount != 1 {
+		t.Fatalf("VisionRetryCount mismatch: got %d", cfg.VisionRetryCount)
 	}
 	if cfg.DiscordToken != "test-token" {
 		t.Fatalf("DiscordToken mismatch: got %q", cfg.DiscordToken)

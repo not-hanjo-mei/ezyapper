@@ -24,6 +24,7 @@ type fileConfig struct {
 		Model          *string `yaml:"model"`
 		TimeoutSeconds *int    `yaml:"timeout_seconds"`
 		Prompt         *string `yaml:"prompt"`
+		RetryCount     *int    `yaml:"retry_count"`
 	} `yaml:"vision"`
 	AutoSteal *struct {
 		Enabled                     *bool     `yaml:"enabled"`
@@ -43,6 +44,7 @@ type fileConfig struct {
 		ApiBaseURL  *string  `yaml:"api_base_url"`
 		MaxTokens   *int     `yaml:"max_tokens"`
 		Temperature *float64 `yaml:"temperature"`
+		RetryCount  *int     `yaml:"retry_count"`
 	} `yaml:"emote"`
 	Discord *struct {
 		Token *string `yaml:"token"`
@@ -77,6 +79,8 @@ type Config struct {
 	EmoteApiBaseURL             string
 	EmoteMaxTokens              int
 	EmoteTemperature            float64
+	EmoteRetryCount             int
+	VisionRetryCount            int
 	DiscordToken                string
 	SearchEmoteMs               int
 	SendEmoteMs                 int
@@ -302,6 +306,20 @@ func loadConfig() (Config, error) {
 		cfg.EmoteTemperature = *raw.Emote.Temperature
 	}
 
+	// emote.retry_count (required)
+	if raw.Emote == nil || raw.Emote.RetryCount == nil {
+		errs = append(errs, "emote.retry_count is required")
+	} else {
+		cfg.EmoteRetryCount = *raw.Emote.RetryCount
+	}
+
+	// vision.retry_count (required)
+	if raw.Vision == nil || raw.Vision.RetryCount == nil {
+		errs = append(errs, "vision.retry_count is required")
+	} else {
+		cfg.VisionRetryCount = *raw.Vision.RetryCount
+	}
+
 	// discord.token (required)
 	if raw.Discord == nil || raw.Discord.Token == nil {
 		errs = append(errs, "discord.token is required")
@@ -341,6 +359,12 @@ func loadConfig() (Config, error) {
 	}
 	if cfg.EmoteTemperature < 0 || cfg.EmoteTemperature > 2 {
 		errs = append(errs, "emote.temperature must be between 0 and 2")
+	}
+	if cfg.EmoteRetryCount < 0 {
+		errs = append(errs, "emote.retry_count must be >= 0")
+	}
+	if cfg.VisionRetryCount < 0 {
+		errs = append(errs, "vision.retry_count must be >= 0")
 	}
 	if cfg.SearchEmoteMs <= 0 {
 		errs = append(errs, "tool_timeouts.search_emote_ms must be a positive integer")

@@ -384,6 +384,7 @@ func newEmotePlugin(cfg Config) (*EmotePlugin, error) {
 			cfg.VisionModel,
 			cfg.VisionPrompt,
 			time.Duration(cfg.VisionTimeoutSeconds)*time.Second,
+			cfg.VisionRetryCount,
 		)
 	}
 
@@ -394,6 +395,7 @@ func newEmotePlugin(cfg Config) (*EmotePlugin, error) {
 		cfg.EmoteMaxTokens,
 		cfg.EmoteTemperature,
 		15*time.Second,
+		cfg.EmoteRetryCount,
 	)
 
 	p.cdnRefresh = NewCDNRefreshClient(cfg.DiscordToken)

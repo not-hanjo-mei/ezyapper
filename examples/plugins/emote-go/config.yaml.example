@@ -15,6 +15,7 @@ vision:
   api_base_url: "https://api.openai.com/v1"  # OpenAI-compatible API base URL
   model: "gpt-4o-mini"  # Vision-capable model
   timeout_seconds: 30  # Max time for vision analysis
+  retry_count: 2  # additional retries on parse/schema/network failure (total attempts = retry_count+1)
   prompt: |
     Analyze this image and determine if it is a "meme/emote/sticker" suitable for a chat reaction library.
 
@@ -67,6 +68,7 @@ emote:
   api_base_url: ""
   max_tokens: 1024     # thinking models need more tokens
   temperature: 0.1     # low for deterministic matching
+  retry_count: 2       # additional retries on parse/schema/network failure
 
 # Discord — token for independent message sending (same as main bot token)
 discord:

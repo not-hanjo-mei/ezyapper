@@ -71,6 +71,7 @@ vision:
   api_base_url: "https://api.openai.com/v1"
   model: "gpt-4o-mini"
   timeout_seconds: 30
+  retry_count: 2  # parse/schema/network retries (total attempts = retry_count+1)
   prompt: |
     Analyze this image and determine if it is a "meme/emote/sticker"...
 
@@ -79,6 +80,9 @@ emote:
   model: ""
   api_key: ""
   api_base_url: ""
+  max_tokens: 1024
+  temperature: 0.1
+  retry_count: 2
 
 # Discord — for independent emote sending (same as main bot token)
 discord:

@@ -31,7 +31,7 @@
     "vision": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["api_key", "api_base_url", "model", "timeout_seconds", "prompt"],
+      "required": ["api_key", "api_base_url", "model", "timeout_seconds", "prompt", "retry_count"],
       "properties": {
         "api_key": {
           "type": "string",
@@ -53,6 +53,11 @@
         "prompt": {
           "type": "string",
           "description": "Prompt used to analyze images for emote suitability."
+        },
+        "retry_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Additional retries on parse/schema/network failure (total attempts = retry_count+1)."
         }
       }
     },
@@ -127,7 +132,7 @@
     "emote": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["model", "api_key", "api_base_url", "max_tokens", "temperature"],
+      "required": ["model", "api_key", "api_base_url", "max_tokens", "temperature", "retry_count"],
       "properties": {
         "model": {
           "type": "string",
@@ -151,6 +156,11 @@
           "minimum": 0,
           "maximum": 2,
           "description": "Temperature for emote LLM (0-2, lower is more deterministic)."
+        },
+        "retry_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Additional retries on parse/schema/network failure (total attempts = retry_count+1)."
         }
       }
     },
