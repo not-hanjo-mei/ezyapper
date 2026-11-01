@@ -146,6 +146,15 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		}
 	}
 
+	// An edit that arrived while we were fetching context (PhaseReceived)
+	// only updated pm; decide on the edited text, not the original.
+	if pm.GetEditCount() > 0 {
+		if edited := pm.GetContent(); edited != m.Content {
+			logger.Infof("[edit] Message %s was edited before the decision, using edited content", m.ID)
+			m.Content = edited
+		}
+	}
+
 	pm.SetPhase(PhaseDeciding)
 	shouldRespond, reason := b.ShouldRespond(messageCtx, m, recentMessages)
 	logger.Infof("[bot] Message from %s: shouldRespond=%v, reason=%s", m.Author.Username, shouldRespond, reason)

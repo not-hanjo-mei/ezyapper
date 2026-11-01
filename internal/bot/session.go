@@ -647,6 +647,20 @@ func (b *Bot) registerPluginTools() {
 // ShouldRespond determines if the bot should respond to a message
 // The context is used to cancel the LLM decision if the message is edited
 func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, recentMessages []*types.DiscordMessage) (bool, string) {
+	return b.shouldRespond(ctx, m, recentMessages, respondOptions{})
+}
+
+// respondOptions tunes a reply decision.
+type respondOptions struct {
+	// reEvaluation marks a decision re-run for a message that already passed
+	// the rate limiter once (an edit while in flight). Charging the limiter
+	// again counted one message twice against max_responses_per_minute, so
+	// near the limit an edit came back "rate limited" and the reply was
+	// silently dropped instead of regenerated.
+	reEvaluation bool
+}
+
+func (b *Bot) shouldRespond(ctx context.Context, m *discordgo.MessageCreate, recentMessages []*types.DiscordMessage, opts respondOptions) (bool, string) {
 	if m.Author.ID == b.session.State.User.ID {
 		return false, "own message"
 	}
@@ -670,7 +684,7 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 		return false, "channel not allowed"
 	}
 
-	if !b.CheckRateLimit(m.ChannelID, m.Author.ID) {
+	if !opts.reEvaluation && !b.CheckRateLimit(m.ChannelID, m.Author.ID) {
 		return false, "rate limited"
 	}
 
@@ -877,6 +891,19 @@ func (b *Bot) addMessageToChannelBuffer(channelID string, msg *types.DiscordMess
 	if len(b.channelMessageBuffer[channelID]) > maxBuffer {
 		b.channelMessageBuffer[channelID] = b.channelMessageBuffer[channelID][len(b.channelMessageBuffer[channelID])-maxBuffer:]
 		logger.Warnf("[channel_buffer] truncated buffer for channel=%s to %d messages", channelID, maxBuffer)
+	}
+}
+
+// updateChannelBufferContent rewrites the content of a buffered message after
+// an edit, so consolidation sees what the user finally said.
+func (b *Bot) updateChannelBufferContent(channelID, messageID, content string) {
+	b.channelBufferMu.Lock()
+	defer b.channelBufferMu.Unlock()
+	for _, msg := range b.channelMessageBuffer[channelID] {
+		if msg != nil && msg.ID == messageID {
+			msg.Content = content
+			return
+		}
 	}
 }
 
