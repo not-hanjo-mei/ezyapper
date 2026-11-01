@@ -217,7 +217,7 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 		return nil, fmt.Errorf("failed to create embedder: %w", err)
 	}
 
-	qdrantClient, err := memory.NewQdrantClient(context.Background(), &cfg.Qdrant)
+	qdrantClient, err := memory.NewQdrantClient(context.Background(), &cfg.Qdrant, cfg.Embedding.Model)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create qdrant client: %w", err)
 	}

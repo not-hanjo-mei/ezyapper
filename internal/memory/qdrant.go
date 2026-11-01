@@ -31,19 +31,42 @@ func discordIDToUint64(discordID string) (uint64, error) {
 	return id, nil
 }
 
-// QdrantClient wraps the Qdrant client
+// QdrantClient wraps the Qdrant client.
+//
+// Long-term memories are stored in two tiers (see tiers.go): a payload-only
+// source collection that is the source of truth, and a per-embedding-model
+// vector collection used for search. Profiles and relationships are plain
+// payload stores (they are only ever fetched by ID or payload filter).
 type QdrantClient struct {
 	client      *qdrant.Client
+	store       pointStore
 	host        string
 	port        int
 	vectorSize  int
 	maxRetries  int
 	baseBackoff time.Duration
 	maxBackoff  time.Duration
+
+	embeddingModel string
+	// collPrefix is prepended to every collection name. It is empty in
+	// production and only set by the live smoke test to isolate test data.
+	collPrefix string
+
+	sourceCollection        string
+	vectorCollection        string
+	legacyCollection        string
+	profilesCollection      string
+	relationshipsCollection string
+
+	// profilesDim / relationshipsDim are the dense vector sizes of the
+	// existing profiles / relationships collections (0 when payload-only).
+	// Collections created by older versions require a placeholder vector of
+	// their own size, independent of the current embedding model.
+	profilesDim      int
+	relationshipsDim int
 }
 
 const (
-	CollectionMemories      = "memories"
 	CollectionProfiles      = "profiles"
 	CollectionRelationships = "relationships"
 )
@@ -78,8 +101,20 @@ func isRetryableGrpc(err error) bool {
 	}
 }
 
-// NewQdrantClient creates a new Qdrant client using configuration from config package.
-func NewQdrantClient(ctx context.Context, cfg *config.QdrantConfig) (*QdrantClient, error) {
+// NewQdrantClient creates a new Qdrant client and makes sure all collections
+// exist. embeddingModel and cfg.VectorSize select the vector-tier collection.
+func NewQdrantClient(ctx context.Context, cfg *config.QdrantConfig, embeddingModel string) (*QdrantClient, error) {
+	return newQdrantClient(ctx, cfg, embeddingModel, "")
+}
+
+func newQdrantClient(ctx context.Context, cfg *config.QdrantConfig, embeddingModel, collPrefix string) (*QdrantClient, error) {
+	if strings.TrimSpace(embeddingModel) == "" {
+		return nil, fmt.Errorf("embedding model is required to select the vector collection")
+	}
+	if cfg.VectorSize <= 0 {
+		return nil, fmt.Errorf("vector size must be greater than 0, got %d", cfg.VectorSize)
+	}
+
 	qdrantCfg := &qdrant.Config{
 		Host: cfg.Host,
 		Port: cfg.Port,
@@ -96,22 +131,37 @@ func NewQdrantClient(ctx context.Context, cfg *config.QdrantConfig) (*QdrantClie
 		return nil, fmt.Errorf("failed to create qdrant client: %w", err)
 	}
 
-	qc := &QdrantClient{
-		client:      client,
-		host:        cfg.Host,
-		port:        cfg.Port,
-		vectorSize:  cfg.VectorSize,
-		maxRetries:  cfg.MaxRetries,
-		baseBackoff: time.Duration(cfg.RetryBaseDelayMs) * time.Millisecond,
-		maxBackoff:  time.Duration(cfg.RetryMaxDelayMs) * time.Millisecond,
-	}
+	qc := newQdrantClientWithStore(&grpcPointStore{client: client}, cfg, embeddingModel, collPrefix)
+	qc.client = client
+	qc.host = cfg.Host
+	qc.port = cfg.Port
 
 	// Initialize collections
 	if err := qc.initializeCollections(ctx); err != nil {
+		_ = client.Close()
 		return nil, fmt.Errorf("failed to initialize collections: %w", err)
 	}
 
 	return qc, nil
+}
+
+// newQdrantClientWithStore builds a client around an arbitrary pointStore
+// (used by tests with an in-memory fake). It does not create collections.
+func newQdrantClientWithStore(store pointStore, cfg *config.QdrantConfig, embeddingModel, collPrefix string) *QdrantClient {
+	return &QdrantClient{
+		store:                   store,
+		vectorSize:              cfg.VectorSize,
+		maxRetries:              cfg.MaxRetries,
+		baseBackoff:             time.Duration(cfg.RetryBaseDelayMs) * time.Millisecond,
+		maxBackoff:              time.Duration(cfg.RetryMaxDelayMs) * time.Millisecond,
+		embeddingModel:          embeddingModel,
+		collPrefix:              collPrefix,
+		sourceCollection:        collPrefix + CollectionMemorySource,
+		vectorCollection:        collPrefix + vectorCollectionName(embeddingModel, cfg.VectorSize),
+		legacyCollection:        collPrefix + CollectionLegacyMemories,
+		profilesCollection:      collPrefix + CollectionProfiles,
+		relationshipsCollection: collPrefix + CollectionRelationships,
+	}
 }
 
 // Close closes the connection
@@ -122,153 +172,120 @@ func (qc *QdrantClient) Close() error {
 	return nil
 }
 
-// initializeCollections creates collections if they don't exist
+// VectorCollection returns the name of the vector collection for the
+// configured embedding model and dimension.
+func (qc *QdrantClient) VectorCollection() string { return qc.vectorCollection }
+
+// SourceCollection returns the name of the payload-only source collection.
+func (qc *QdrantClient) SourceCollection() string { return qc.sourceCollection }
+
+// initializeCollections creates collections if they don't exist.
 func (qc *QdrantClient) initializeCollections(ctx context.Context) error {
-	// Create memories collection
-	if err := qc.createCollectionIfNotExists(ctx, CollectionMemories); err != nil {
-		return fmt.Errorf("failed to create memories collection: %w", err)
+	if err := qc.ensureMemoryTiers(ctx); err != nil {
+		return err
 	}
 
-	// Create profiles collection
-	if err := qc.createCollectionIfNotExists(ctx, CollectionProfiles); err != nil {
+	dim, err := qc.ensurePayloadCollection(ctx, qc.profilesCollection, nil)
+	if err != nil {
 		return fmt.Errorf("failed to create profiles collection: %w", err)
 	}
+	qc.profilesDim = dim
 
-	// Create relationships collection
-	if err := qc.createCollectionIfNotExists(ctx, CollectionRelationships); err != nil {
+	dim, err = qc.ensurePayloadCollection(ctx, qc.relationshipsCollection, qc.createRelationshipsPayloadIndexes)
+	if err != nil {
 		return fmt.Errorf("failed to create relationships collection: %w", err)
 	}
+	qc.relationshipsDim = dim
 
 	return nil
 }
 
-// createCollectionIfNotExists creates a collection with proper configuration
-func (qc *QdrantClient) createCollectionIfNotExists(ctx context.Context, name string) error {
-	exists, err := qc.client.CollectionExists(ctx, name)
+// ensureMemoryTiers creates the source and the current vector collection when
+// missing and logs which other vector collections are left in place.
+func (qc *QdrantClient) ensureMemoryTiers(ctx context.Context) error {
+	srcInfo, err := qc.store.CollectionInfo(ctx, qc.sourceCollection)
 	if err != nil {
 		return err
 	}
-	if exists {
-		logger.Infof("[qdrant] Collection %s already exists", name)
-		return nil
-	}
-
-	createReq := &qdrant.CreateCollection{
-		CollectionName: name,
-		VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
-			Size:     uint64(qc.vectorSize),
-			Distance: qdrant.Distance_Cosine,
-		}),
-	}
-
-	// Memories-specific: tenant HNSW + quantization + sparse vectors
-	if name == CollectionMemories {
-		createReq.HnswConfig = &qdrant.HnswConfigDiff{
-			M:        qdrant.PtrOf(uint64(0)),
-			PayloadM: qdrant.PtrOf(uint64(16)),
+	if srcInfo == nil {
+		if err := qc.store.CreateSourceCollection(ctx, qc.sourceCollection); err != nil {
+			return err
 		}
-		createReq.QuantizationConfig = qdrant.NewQuantizationScalar(&qdrant.ScalarQuantization{
-			Type:      qdrant.QuantizationType_Int8,
-			Quantile:  qdrant.PtrOf(float32(0.99)),
-			AlwaysRam: qdrant.PtrOf(true),
-		})
-		createReq.SparseVectorsConfig = qdrant.NewSparseVectorsConfig(map[string]*qdrant.SparseVectorParams{
-			"bm25_keywords": {},
-		})
-		createReq.OnDiskPayload = qdrant.PtrOf(true)
+		logger.Infof("[qdrant] Created payload-only memory source collection: %s", qc.sourceCollection)
+	} else if srcInfo.DenseSize > 0 {
+		return fmt.Errorf("collection %s exists but has a dense vector (size %d); expected a payload-only source collection", qc.sourceCollection, srcInfo.DenseSize)
 	}
 
-	err = qc.client.CreateCollection(ctx, createReq)
+	vecInfo, err := qc.store.CollectionInfo(ctx, qc.vectorCollection)
 	if err != nil {
-		return fmt.Errorf("failed to create collection: %w", err)
+		return err
+	}
+	if vecInfo == nil {
+		if err := qc.store.CreateVectorCollection(ctx, qc.vectorCollection, qc.vectorSize); err != nil {
+			return err
+		}
+		logger.Infof("[qdrant] Created memory vector collection %s (model=%q dim=%d); it is filled from %s in the background",
+			qc.vectorCollection, qc.embeddingModel, qc.vectorSize, qc.sourceCollection)
+	} else if vecInfo.DenseSize != qc.vectorSize {
+		return fmt.Errorf("vector collection %s has dimension %d but vector_size is %d", qc.vectorCollection, vecInfo.DenseSize, qc.vectorSize)
 	}
 
-	logger.Infof("[qdrant] Created collection: %s", name)
-
-	if err := qc.createPayloadIndexes(ctx, name); err != nil {
-		logger.Warnf("[qdrant] Failed to create payload indexes for %s: %v", name, err)
-	}
-	return nil
-}
-
-// createPayloadIndexes creates indexes for payload fields used in filtering
-func (qc *QdrantClient) createPayloadIndexes(ctx context.Context, collectionName string) error {
-	switch collectionName {
-	case CollectionMemories:
-		return qc.createMemoriesPayloadIndexes(ctx, collectionName)
-	case CollectionRelationships:
-		return qc.createRelationshipsPayloadIndexes(ctx, collectionName)
-	default:
+	names, err := qc.store.ListCollections(ctx)
+	if err != nil {
+		logger.Warnf("[qdrant] could not list collections: %v", err)
 		return nil
 	}
+	for _, name := range names {
+		if name != qc.vectorCollection && isVectorCollection(name, qc.collPrefix) {
+			logger.Infof("[qdrant] Vector collection %s belongs to another embedding model/dimension and is not used; it is kept so switching back needs no re-embedding. Delete it manually if no longer needed.", name)
+		}
+		if name == qc.legacyCollection {
+			logger.Infof("[qdrant] Legacy collection %s is present; it is only read for migration and never modified. Delete it manually once the migration is verified.", name)
+		}
+	}
+	return nil
 }
 
-func (qc *QdrantClient) createMemoriesPayloadIndexes(ctx context.Context, collectionName string) error {
-	if _, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
-		CollectionName: collectionName,
-		FieldName:      "user_id",
-		FieldType:      qdrant.FieldType_FieldTypeKeyword.Enum(),
-		FieldIndexParams: qdrant.NewPayloadIndexParamsKeyword(&qdrant.KeywordIndexParams{
-			IsTenant: qdrant.PtrOf(true),
-		}),
-	}); err != nil {
-		return fmt.Errorf("failed to create user_id index: %w", err)
+// ensurePayloadCollection makes sure a profiles/relationships collection
+// exists and returns the size of its default dense vector (0 for a
+// payload-only collection). New collections are created payload-only because
+// neither profiles nor relationships are ever searched by vector.
+func (qc *QdrantClient) ensurePayloadCollection(ctx context.Context, name string, indexFn func(context.Context, string) error) (int, error) {
+	info, err := qc.store.CollectionInfo(ctx, name)
+	if err != nil {
+		return 0, err
 	}
-
-	if _, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
-		CollectionName: collectionName,
-		FieldName:      "memory_type",
-		FieldType:      qdrant.FieldType_FieldTypeKeyword.Enum(),
-	}); err != nil {
-		return fmt.Errorf("failed to create memory_type index: %w", err)
+	if info != nil {
+		logger.Infof("[qdrant] Collection %s already exists", name)
+		return info.DenseSize, nil
 	}
-
-	if _, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
-		CollectionName: collectionName,
-		FieldName:      "created_at",
-		FieldType:      qdrant.FieldType_FieldTypeDatetime.Enum(),
+	if err := qc.client.CreateCollection(ctx, &qdrant.CreateCollection{
+		CollectionName: name,
+		VectorsConfig:  qdrant.NewVectorsConfigMap(map[string]*qdrant.VectorParams{}),
 	}); err != nil {
-		return fmt.Errorf("failed to create created_at index: %w", err)
+		return 0, fmt.Errorf("failed to create collection: %w", err)
 	}
-
-	if _, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
-		CollectionName: collectionName,
-		FieldName:      "content",
-		FieldType:      qdrant.FieldType_FieldTypeText.Enum(),
-		FieldIndexParams: qdrant.NewPayloadIndexParamsText(&qdrant.TextIndexParams{
-			Tokenizer: qdrant.TokenizerType_Word,
-			Lowercase: qdrant.PtrOf(true),
-		}),
-	}); err != nil {
-		return fmt.Errorf("failed to create content index: %w", err)
+	logger.Infof("[qdrant] Created payload-only collection: %s", name)
+	if indexFn != nil {
+		if err := indexFn(ctx, name); err != nil {
+			logger.Warnf("[qdrant] Failed to create payload indexes for %s: %v", name, err)
+		}
 	}
+	return 0, nil
+}
 
-	if _, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
-		CollectionName: collectionName,
-		FieldName:      "mentioned_user_ids",
-		FieldType:      qdrant.FieldType_FieldTypeKeyword.Enum(),
-	}); err != nil {
-		return fmt.Errorf("failed to create mentioned_user_ids index: %w", err)
+// placeholderVectors returns the vectors to write for a point in a collection
+// that is never searched by vector. For a payload-only collection that is an
+// empty named-vector map; collections created by older versions have a dense
+// vector of their own size, which gets a zero vector (or emb when it fits).
+func placeholderVectors(dim int, emb []float32) *qdrant.Vectors {
+	if dim <= 0 {
+		return qdrant.NewVectorsMap(map[string]*qdrant.Vector{})
 	}
-
-	if _, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
-		CollectionName: collectionName,
-		FieldName:      "mentioned_channel_ids",
-		FieldType:      qdrant.FieldType_FieldTypeKeyword.Enum(),
-	}); err != nil {
-		return fmt.Errorf("failed to create mentioned_channel_ids index: %w", err)
+	if len(emb) == dim {
+		return qdrant.NewVectors(emb...)
 	}
-
-	if _, err := qc.client.CreateFieldIndex(ctx, &qdrant.CreateFieldIndexCollection{
-		CollectionName: collectionName,
-		FieldName:      "channel_id",
-		FieldType:      qdrant.FieldType_FieldTypeKeyword.Enum(),
-	}); err != nil {
-		return fmt.Errorf("failed to create channel_id index: %w", err)
-	}
-
-	logger.Infof("[qdrant] Created payload indexes for collection: %s", collectionName)
-	return nil
+	return qdrant.NewVectors(make([]float32, dim)...)
 }
 
 func (qc *QdrantClient) createRelationshipsPayloadIndexes(ctx context.Context, collectionName string) error {
@@ -308,7 +325,23 @@ func (qc *QdrantClient) createRelationshipsPayloadIndexes(ctx context.Context, c
 	return nil
 }
 
-// UpsertMemory stores or updates a memory
+// vectorPointFor builds the vector-tier point for a record from its
+// source-tier payload and embedding.
+func vectorPointFor(id string, sourcePayload map[string]*qdrant.Value, embedding []float32, content string, keywords []string) *tierPoint {
+	idx, vals := computeBM25SparseVector(content, keywords)
+	return &tierPoint{
+		ID:            id,
+		Payload:       vectorPayloadFromSource(sourcePayload),
+		Dense:         embedding,
+		SparseIndices: idx,
+		SparseValues:  vals,
+	}
+}
+
+// UpsertMemory stores or updates a memory in both tiers. The source tier is
+// written first so a record is never only searchable but not readable; if the
+// vector write fails the record stays in the source tier and the startup
+// vector sync embeds it again.
 func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error {
 	if memory.ID == "" {
 		memory.ID = uuid.New().String()
@@ -318,6 +351,11 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error 
 		memory.CreatedAt = time.Now()
 	}
 
+	if len(memory.Embedding) > 0 && len(memory.Embedding) != qc.vectorSize {
+		return fmt.Errorf("upsert memory for userID=%s: embedding has %d dimensions, vector collection %s expects %d",
+			memory.UserID, len(memory.Embedding), qc.vectorCollection, qc.vectorSize)
+	}
+
 	logger.Debugf("[qdrant] userID=%s type=%s content=%.50s", memory.UserID, memory.MemoryType, memory.Content)
 
 	payload, err := qc.memoryToPayload(memory)
@@ -325,35 +363,24 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error 
 		return fmt.Errorf("failed to prepare memory payload: %w", err)
 	}
 	memID := memory.ID
-	embedding := memory.Embedding
 
-	sparseIndices, sparseValues := computeBM25SparseVector(memory.Content, memory.Keywords)
-
-	_, err = retry.Retry(ctx, qc.maxRetries, func(ctx context.Context) (*qdrant.UpdateResult, error) {
-		var vectorsConfig *qdrant.Vectors
-		if len(sparseIndices) > 0 {
-			vectorsConfig = qdrant.NewVectorsMap(map[string]*qdrant.Vector{
-				"":              qdrant.NewVectorDense(embedding),
-				"bm25_keywords": qdrant.NewVectorSparse(sparseIndices, sparseValues),
-			})
-		} else {
-			vectorsConfig = qdrant.NewVectors(embedding...)
-		}
-
-		return qc.client.Upsert(ctx, &qdrant.UpsertPoints{
-			CollectionName: CollectionMemories,
-			UpdateMode:     qdrant.UpdateMode_Upsert.Enum(),
-			Points: []*qdrant.PointStruct{
-				{
-					Id:      qdrant.NewID(memID),
-					Vectors: vectorsConfig,
-					Payload: payload,
-				},
-			},
-		})
-	}, retry.WithErrorClassifier(isRetryableGrpc), retry.WithBaseDelay(qc.baseBackoff), retry.WithMaxDelay(qc.maxBackoff))
-	if err != nil {
+	srcPoint := &tierPoint{ID: memID, Payload: payload}
+	if err := qc.retryWithBackoff(ctx, "upsert source record", func() error {
+		return qc.store.Upsert(ctx, qc.sourceCollection, []*tierPoint{srcPoint})
+	}); err != nil {
 		return fmt.Errorf("upsert memory for userID=%s: %w", memory.UserID, err)
+	}
+
+	if len(memory.Embedding) == 0 {
+		logger.Warnf("[qdrant] memoryID=%s stored without embedding; it will be embedded by the next vector sync", memID)
+		return nil
+	}
+
+	vecPoint := vectorPointFor(memID, payload, memory.Embedding, memory.Content, memory.Keywords)
+	if err := qc.retryWithBackoff(ctx, "upsert vector", func() error {
+		return qc.store.Upsert(ctx, qc.vectorCollection, []*tierPoint{vecPoint})
+	}); err != nil {
+		return fmt.Errorf("upsert memory vector for userID=%s (record kept in source tier): %w", memory.UserID, err)
 	}
 	logger.Debugf("[qdrant] successfully stored memoryID=%s for userID=%s", memID, memory.UserID)
 	return nil
@@ -361,17 +388,13 @@ func (qc *QdrantClient) UpsertMemory(ctx context.Context, memory *Record) error 
 
 // IncrementAccessCount sets the access_count payload field to the given
 // absolute values and updates updated_at and last_accessed_at for the given
-// memory IDs, without touching vectors.
+// memory IDs. Access statistics only live in the source tier.
 func (qc *QdrantClient) IncrementAccessCount(ctx context.Context, memoryIDs []string, increments map[string]int) error {
 	if len(memoryIDs) == 0 {
 		return nil
 	}
 
 	now := float64(time.Now().UnixMilli()) / 1000.0
-	pointIDs := make([]*qdrant.PointId, len(memoryIDs))
-	for i, id := range memoryIDs {
-		pointIDs[i] = qdrant.NewID(id)
-	}
 
 	// Build payload: updated_at and last_accessed_at are common across all
 	// points; access_count differs per point. All use SetPayload (merge
@@ -381,12 +404,7 @@ func (qc *QdrantClient) IncrementAccessCount(ctx context.Context, memoryIDs []st
 		"last_accessed_at": {Kind: &qdrant.Value_DoubleValue{DoubleValue: now}},
 	}
 
-	_, err := qc.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
-		CollectionName: CollectionMemories,
-		Payload:        commonPayload,
-		PointsSelector: qdrant.NewPointsSelector(pointIDs...),
-	})
-	if err != nil {
+	if err := qc.store.SetPayload(ctx, qc.sourceCollection, memoryIDs, commonPayload); err != nil {
 		return fmt.Errorf("increment access count: %w", err)
 	}
 
@@ -399,12 +417,7 @@ func (qc *QdrantClient) IncrementAccessCount(ctx context.Context, memoryIDs []st
 		perPointPayload := map[string]*qdrant.Value{
 			"access_count": {Kind: &qdrant.Value_IntegerValue{IntegerValue: int64(inc)}},
 		}
-		_, err := qc.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
-			CollectionName: CollectionMemories,
-			Payload:        perPointPayload,
-			PointsSelector: qdrant.NewPointsSelector(qdrant.NewID(id)),
-		})
-		if err != nil {
+		if err := qc.store.SetPayload(ctx, qc.sourceCollection, []string{id}, perPointPayload); err != nil {
 			logger.Warnf("[qdrant] failed to set access_count for memoryID=%s: %v", id, err)
 			errs = append(errs, fmt.Errorf("set access_count for memoryID=%s: %w", id, err))
 		}
@@ -414,38 +427,130 @@ func (qc *QdrantClient) IncrementAccessCount(ctx context.Context, memoryIDs []st
 }
 
 // GetMemoryPayloads retrieves lightweight payload data for multiple memory IDs.
-// Returns a map of memoryID -> access_count. Only fetches necessary fields.
+// Returns a map of memoryID -> access_count.
 func (qc *QdrantClient) GetMemoryPayloads(ctx context.Context, memoryIDs []string) (map[string]int, error) {
 	if len(memoryIDs) == 0 {
 		return map[string]int{}, nil
 	}
 
-	pointIDs := make([]*qdrant.PointId, len(memoryIDs))
-	for i, id := range memoryIDs {
-		pointIDs[i] = qdrant.NewID(id)
-	}
-
-	points, err := qc.client.Get(ctx, &qdrant.GetPoints{
-		CollectionName: CollectionMemories,
-		Ids:            pointIDs,
-		WithPayload:    qdrant.NewWithPayload(true),
-	})
+	points, err := qc.store.Get(ctx, qc.sourceCollection, memoryIDs, true, false)
 	if err != nil {
 		return nil, fmt.Errorf("get memory payloads: %w", err)
 	}
 
 	result := make(map[string]int, len(points))
 	for _, pt := range points {
-		id := pt.Id.GetUuid()
 		ac, err := getRequiredInt(pt.Payload, "access_count")
 		if err != nil {
-			logger.Warnf("[qdrant] missing access_count for memoryID=%s: %v", id, err)
-			result[id] = 0
+			logger.Warnf("[qdrant] missing access_count for memoryID=%s: %v", pt.ID, err)
+			result[pt.ID] = 0
 			continue
 		}
-		result[id] = int(ac)
+		result[pt.ID] = int(ac)
 	}
 	return result, nil
+}
+
+// memoryTypeShould returns the Should clause for a memory type filter.
+func memoryTypeShould(types []string) []*qdrant.Condition {
+	if len(types) == 0 {
+		return nil
+	}
+	conditions := make([]*qdrant.Condition, 0, len(types))
+	for _, mt := range types {
+		conditions = append(conditions, qdrant.NewMatch("memory_type", mt))
+	}
+	return conditions
+}
+
+// buildUserSearchFilter builds the vector-tier filter for SearchMemories.
+func buildUserSearchFilter(userID string, opts *SearchOptions) *qdrant.Filter {
+	filter := &qdrant.Filter{
+		Must: []*qdrant.Condition{
+			qdrant.NewMatch("user_id", userID),
+		},
+	}
+	if opts.ChannelID != "" {
+		filter.Must = append(filter.Must, qdrant.NewMatch("channel_id", opts.ChannelID))
+	}
+	filter.Should = memoryTypeShould(opts.MemoryTypes)
+	if len(opts.MentionedUserIDs) > 0 {
+		filter.Must = append(filter.Must, qdrant.NewMatchKeywords("mentioned_user_ids", opts.MentionedUserIDs...))
+	}
+	if len(opts.MentionedChannelIDs) > 0 {
+		filter.Must = append(filter.Must, qdrant.NewMatchKeywords("mentioned_channel_ids", opts.MentionedChannelIDs...))
+	}
+	return filter
+}
+
+// searchAndHydrate runs a vector-tier query, drops hits below minScore and
+// loads the full records from the source tier, preserving the ranking.
+func (qc *QdrantClient) searchAndHydrate(ctx context.Context, q *vectorQuery, minScore float64) ([]*Record, error) {
+	hits, err := qc.store.Query(ctx, qc.vectorCollection, q)
+	if err != nil {
+		return nil, err
+	}
+	logger.Debugf("[qdrant] got %d results, min_score=%.4f", len(hits), minScore)
+
+	kept := make([]scoredID, 0, len(hits))
+	for i, h := range hits {
+		logger.Debugf("[qdrant] result %d: score=%.4f", i+1, h.Score)
+		if h.Score < float32(minScore) {
+			continue
+		}
+		kept = append(kept, h)
+	}
+	return qc.hydrate(ctx, kept)
+}
+
+// hydrate loads records for the given hits from the source tier in hit
+// order. Vector points whose record no longer exists in the source tier
+// (e.g. a delete whose vector half failed) are removed best-effort.
+func (qc *QdrantClient) hydrate(ctx context.Context, hits []scoredID) ([]*Record, error) {
+	if len(hits) == 0 {
+		return []*Record{}, nil
+	}
+	ids := make([]string, len(hits))
+	for i, h := range hits {
+		ids[i] = h.ID
+	}
+	points, err := qc.store.Get(ctx, qc.sourceCollection, ids, true, false)
+	if err != nil {
+		return nil, fmt.Errorf("hydrate %d records: %w", len(ids), err)
+	}
+	byID := make(map[string]*tierPoint, len(points))
+	for _, pt := range points {
+		byID[pt.ID] = pt
+	}
+
+	memories := make([]*Record, 0, len(hits))
+	var orphans []string
+	failed := 0
+	for _, h := range hits {
+		pt, ok := byID[h.ID]
+		if !ok {
+			orphans = append(orphans, h.ID)
+			continue
+		}
+		memory, err := qc.payloadToMemory(pt.Payload, h.ID)
+		if err != nil {
+			logger.Warnf("[qdrant] Failed to convert payload to memory (id=%s): %v", h.ID, err)
+			failed++
+			continue
+		}
+		logger.Debugf("[qdrant] hit score=%.4f type=%s content=%q", h.Score, memory.MemoryType, memory.Content)
+		memories = append(memories, memory)
+	}
+	if failed > 0 {
+		logger.Warnf("[qdrant] %d payloads failed to convert", failed)
+	}
+	if len(orphans) > 0 {
+		logger.Warnf("[qdrant] %d vector points have no source record; removing them from %s", len(orphans), qc.vectorCollection)
+		if err := qc.store.Delete(ctx, qc.vectorCollection, orphans); err != nil {
+			logger.Warnf("[qdrant] failed to remove orphan vectors: %v", err)
+		}
+	}
+	return memories, nil
 }
 
 // SearchMemories searches for similar memories. opts must be non-nil.
@@ -454,75 +559,14 @@ func (qc *QdrantClient) SearchMemories(ctx context.Context, userID string, embed
 		return nil, fmt.Errorf("search options are required")
 	}
 
-	limit := uint64(opts.TopK)
-
-	filter := &qdrant.Filter{
-		Must: []*qdrant.Condition{
-			qdrant.NewMatch("user_id", userID),
-		},
-	}
-
-	// Add channel ID filter if specified
-	if opts.ChannelID != "" {
-		filter.Must = append(filter.Must, qdrant.NewMatch("channel_id", opts.ChannelID))
-	}
-
-	// Add memory type filter if specified
-	if len(opts.MemoryTypes) > 0 {
-		conditions := []*qdrant.Condition{}
-		for _, mt := range opts.MemoryTypes {
-			conditions = append(conditions, qdrant.NewMatch("memory_type", mt))
-		}
-		filter.Should = conditions
-	}
-
-	// Add mentioned user filter if specified
-	if len(opts.MentionedUserIDs) > 0 {
-		filter.Must = append(filter.Must, qdrant.NewMatchKeywords(
-			"mentioned_user_ids", opts.MentionedUserIDs...,
-		))
-	}
-
-	// Add mentioned channel filter if specified
-	if len(opts.MentionedChannelIDs) > 0 {
-		filter.Must = append(filter.Must, qdrant.NewMatchKeywords(
-			"mentioned_channel_ids", opts.MentionedChannelIDs...,
-		))
-	}
-
-	results, err := qc.client.Query(ctx, &qdrant.QueryPoints{
-		CollectionName: CollectionMemories,
-		Query:          qdrant.NewQuery(embedding...),
-		Filter:         filter,
-		Limit:          &limit,
-		WithPayload:    qdrant.NewWithPayload(true),
-	})
+	memories, err := qc.searchAndHydrate(ctx, &vectorQuery{
+		Dense:  embedding,
+		Filter: buildUserSearchFilter(userID, opts),
+		Limit:  uint64(opts.TopK),
+	}, opts.MinScore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search memories: %w", err)
 	}
-
-	memories := []*Record{}
-	errs := []error{}
-	logger.Debugf("[qdrant] got %d results, min_score=%.4f", len(results), opts.MinScore)
-	for i, result := range results {
-		logger.Debugf("[qdrant] result %d: score=%.4f", i+1, result.Score)
-		if result.Score < float32(opts.MinScore) {
-			continue
-		}
-		memory, err := qc.payloadToMemory(result.Payload, result.Id.GetUuid())
-		if err != nil {
-			logger.Warnf("[qdrant] Failed to convert payload to memory (id=%s): %v", result.Id.GetUuid(), err)
-			errs = append(errs, fmt.Errorf("convert payload %s: %w", result.Id.GetUuid(), err))
-			continue
-		}
-		logger.Debugf("[qdrant] result %d: score=%.4f type=%s content=%q", i+1, result.Score, memory.MemoryType, memory.Content)
-		memories = append(memories, memory)
-	}
-
-	if len(errs) > 0 {
-		logger.Warnf("[qdrant] %d payloads failed to convert", len(errs))
-	}
-
 	return memories, nil
 }
 
@@ -536,53 +580,39 @@ func (qc *QdrantClient) SearchMemoriesByChannel(ctx context.Context, channelID s
 		return nil, fmt.Errorf("search options are required")
 	}
 
-	limit := uint64(opts.TopK)
-
 	filter := &qdrant.Filter{
 		Must: []*qdrant.Condition{
 			qdrant.NewMatch("channel_id", channelID),
 		},
+		Should: memoryTypeShould(opts.MemoryTypes),
 	}
 
-	if len(opts.MemoryTypes) > 0 {
-		conditions := []*qdrant.Condition{}
-		for _, mt := range opts.MemoryTypes {
-			conditions = append(conditions, qdrant.NewMatch("memory_type", mt))
-		}
-		filter.Should = conditions
-	}
-
-	results, err := qc.client.Query(ctx, &qdrant.QueryPoints{
-		CollectionName: CollectionMemories,
-		Query:          qdrant.NewQuery(embedding...),
-		Filter:         filter,
-		Limit:          &limit,
-		WithPayload:    qdrant.NewWithPayload(true),
-	})
+	memories, err := qc.searchAndHydrate(ctx, &vectorQuery{
+		Dense:  embedding,
+		Filter: filter,
+		Limit:  uint64(opts.TopK),
+	}, opts.MinScore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search memories by channel: %w", err)
 	}
+	return memories, nil
+}
 
+// scrollSourceRecords reads one page of source records matching filter.
+func (qc *QdrantClient) scrollSourceRecords(ctx context.Context, filter *qdrant.Filter, limit uint32) ([]*Record, error) {
+	points, _, err := qc.store.Scroll(ctx, qc.sourceCollection, filter, "", limit, true, false)
+	if err != nil {
+		return nil, err
+	}
 	memories := []*Record{}
-	errs := []error{}
-	for i, result := range results {
-		if result.Score < float32(opts.MinScore) {
-			continue
-		}
-		memory, err := qc.payloadToMemory(result.Payload, result.Id.GetUuid())
+	for _, point := range points {
+		memory, err := qc.payloadToMemory(point.Payload, point.ID)
 		if err != nil {
-			logger.Warnf("[qdrant] Failed to convert payload to memory (id=%s): %v", result.Id.GetUuid(), err)
-			errs = append(errs, fmt.Errorf("convert payload %s: %w", result.Id.GetUuid(), err))
+			logger.Warnf("[qdrant] failed to convert payload to memory: %v", err)
 			continue
 		}
-		logger.Debugf("[qdrant] result %d: score=%.4f type=%s content=%q", i+1, result.Score, memory.MemoryType, memory.Content)
 		memories = append(memories, memory)
 	}
-
-	if len(errs) > 0 {
-		logger.Warnf("[qdrant] %d payloads failed to convert", len(errs))
-	}
-
 	return memories, nil
 }
 
@@ -594,32 +624,11 @@ func (qc *QdrantClient) GetMemoriesByUser(ctx context.Context, userID string, li
 
 	logger.Debugf("[qdrant] retrieving memories for userID=%s limit=%d", userID, limit)
 
-	// Use scroll to get all memories for a user
-	filter := &qdrant.Filter{
-		Must: []*qdrant.Condition{
-			qdrant.NewMatch("user_id", userID),
-		},
-	}
-
-	limitPtr := uint32(limit)
-	results, err := qc.client.Scroll(ctx, &qdrant.ScrollPoints{
-		CollectionName: CollectionMemories,
-		Filter:         filter,
-		Limit:          &limitPtr,
-		WithPayload:    qdrant.NewWithPayload(true),
-	})
+	memories, err := qc.scrollSourceRecords(ctx, &qdrant.Filter{
+		Must: []*qdrant.Condition{qdrant.NewMatch("user_id", userID)},
+	}, uint32(limit))
 	if err != nil {
 		return nil, fmt.Errorf("query memories for userID=%s: %w", userID, err)
-	}
-
-	memories := []*Record{}
-	for _, point := range results {
-		memory, err := qc.payloadToMemory(point.Payload, point.Id.GetUuid())
-		if err != nil {
-			logger.Warnf("[qdrant] failed to convert payload to memory: %v", err)
-			continue
-		}
-		memories = append(memories, memory)
 	}
 
 	logger.Debugf("[qdrant] retrieved %d memories for userID=%s", len(memories), userID)
@@ -630,65 +639,51 @@ func (qc *QdrantClient) GetMemoriesByUser(ctx context.Context, userID string, li
 func (qc *QdrantClient) ListMemoriesByType(ctx context.Context, userID string, memoryType string) ([]*Record, error) {
 	logger.Debugf("[qdrant] listing memories for userID=%s type=%s", userID, memoryType)
 
-	filter := &qdrant.Filter{
+	memories, err := qc.scrollSourceRecords(ctx, &qdrant.Filter{
 		Must: []*qdrant.Condition{
 			qdrant.NewMatch("user_id", userID),
 			qdrant.NewMatch("memory_type", memoryType),
 		},
-	}
-
-	limit := uint32(1000)
-	results, err := qc.client.Scroll(ctx, &qdrant.ScrollPoints{
-		CollectionName: CollectionMemories,
-		Filter:         filter,
-		Limit:          &limit,
-		WithPayload:    qdrant.NewWithPayload(true),
-	})
+	}, 1000)
 	if err != nil {
 		return nil, fmt.Errorf("list memories for userID=%s type=%s: %w", userID, memoryType, err)
-	}
-
-	memories := []*Record{}
-	for _, point := range results {
-		memory, err := qc.payloadToMemory(point.Payload, point.Id.GetUuid())
-		if err != nil {
-			logger.Warnf("[qdrant] failed to convert payload to memory in list: %v", err)
-			continue
-		}
-		memories = append(memories, memory)
 	}
 
 	logger.Debugf("[qdrant] listed %d memories for userID=%s type=%s", len(memories), userID, memoryType)
 	return memories, nil
 }
 
-// ScrollMemories scrolls all memories with payload and vectors, limited to `limit` points.
+// ScrollMemories reads up to `limit` records from the source tier and
+// attaches their embeddings from the current vector tier. Records without a
+// vector yet (e.g. while re-embedding) are returned with an empty Embedding.
 func (qc *QdrantClient) ScrollMemories(ctx context.Context, limit uint32) ([]*scrollPoint, error) {
-	limitPtr := limit
-	results, err := qc.client.Scroll(ctx, &qdrant.ScrollPoints{
-		CollectionName: CollectionMemories,
-		Limit:          &limitPtr,
-		WithPayload:    qdrant.NewWithPayload(true),
-		WithVectors:    qdrant.NewWithVectors(true),
-	})
+	results, _, err := qc.store.Scroll(ctx, qc.sourceCollection, nil, "", limit, true, false)
 	if err != nil {
 		return nil, fmt.Errorf("scroll memories: %w", err)
 	}
 
+	ids := make([]string, 0, len(results))
+	for _, pt := range results {
+		ids = append(ids, pt.ID)
+	}
+	vectors := map[string][]float32{}
+	if len(ids) > 0 {
+		vecPoints, err := qc.store.Get(ctx, qc.vectorCollection, ids, false, true)
+		if err != nil {
+			return nil, fmt.Errorf("scroll memories: load vectors: %w", err)
+		}
+		for _, vp := range vecPoints {
+			vectors[vp.ID] = vp.Dense
+		}
+	}
+
 	points := make([]*scrollPoint, 0, len(results))
 	for _, pt := range results {
-		sp := &scrollPoint{
-			ID:      pt.Id.GetUuid(),
-			Payload: pt.Payload,
-		}
-		if vo := pt.GetVectors(); vo != nil {
-			if vout := vo.GetVector(); vout != nil {
-				if dense, ok := vout.GetVector().(*qdrant.VectorOutput_Dense); ok {
-					sp.Embedding = dense.Dense.Data
-				}
-			}
-		}
-		points = append(points, sp)
+		points = append(points, &scrollPoint{
+			ID:        pt.ID,
+			Payload:   pt.Payload,
+			Embedding: vectors[pt.ID],
+		})
 	}
 	return points, nil
 }
@@ -787,34 +782,38 @@ func (qc *QdrantClient) RepairOrDeleteDamagedMemories(ctx context.Context, limit
 
 // ScrollRelationships scrolls all relationship points with payload, limited to `limit` points.
 func (qc *QdrantClient) ScrollRelationships(ctx context.Context, limit uint32) ([]*scrollRelationshipPoint, error) {
-	limitPtr := limit
-	results, err := qc.client.Scroll(ctx, &qdrant.ScrollPoints{
-		CollectionName: CollectionRelationships,
-		Limit:          &limitPtr,
-		WithPayload:    qdrant.NewWithPayload(true),
-	})
+	results, _, err := qc.store.Scroll(ctx, qc.relationshipsCollection, nil, "", limit, true, false)
 	if err != nil {
 		return nil, fmt.Errorf("scroll relationships: %w", err)
 	}
 
 	points := make([]*scrollRelationshipPoint, 0, len(results))
 	for _, pt := range results {
-		sp := &scrollRelationshipPoint{
-			ID:      pt.Id.GetUuid(),
+		points = append(points, &scrollRelationshipPoint{
+			ID:      pt.ID,
 			Payload: pt.Payload,
-		}
-		points = append(points, sp)
+		})
 	}
 	return points, nil
 }
 
-// DeletePoint deletes a single point by ID from the memories collection.
+// deleteRecords removes records from both tiers. The source tier (truth) is
+// deleted first: once that succeeds the record is gone for every reader. A
+// failed vector delete only leaves an orphan vector, which search hydration
+// detects and removes.
+func (qc *QdrantClient) deleteRecords(ctx context.Context, ids []string) error {
+	if err := qc.store.Delete(ctx, qc.sourceCollection, ids); err != nil {
+		return err
+	}
+	if err := qc.store.Delete(ctx, qc.vectorCollection, ids); err != nil {
+		logger.Warnf("[qdrant] deleted %d records from %s but not their vectors from %s: %v", len(ids), qc.sourceCollection, qc.vectorCollection, err)
+	}
+	return nil
+}
+
+// DeletePoint deletes a single memory by ID from both tiers.
 func (qc *QdrantClient) DeletePoint(ctx context.Context, id string) error {
-	_, err := qc.client.Delete(ctx, &qdrant.DeletePoints{
-		CollectionName: CollectionMemories,
-		Points:         qdrant.NewPointsSelector(qdrant.NewID(id)),
-	})
-	if err != nil {
+	if err := qc.deleteRecords(ctx, []string{id}); err != nil {
 		return fmt.Errorf("delete point %s: %w", id, err)
 	}
 	return nil
@@ -822,27 +821,17 @@ func (qc *QdrantClient) DeletePoint(ctx context.Context, id string) error {
 
 // DeleteRelationshipPoint deletes a single point by ID from the relationships collection.
 func (qc *QdrantClient) DeleteRelationshipPoint(ctx context.Context, id string) error {
-	_, err := qc.client.Delete(ctx, &qdrant.DeletePoints{
-		CollectionName: CollectionRelationships,
-		Points:         qdrant.NewPointsSelector(qdrant.NewID(id)),
-	})
-	if err != nil {
+	if err := qc.store.Delete(ctx, qc.relationshipsCollection, []string{id}); err != nil {
 		return fmt.Errorf("delete relationship point %s: %w", id, err)
 	}
 	return nil
 }
 
-// GetMemory retrieves a single memory by ID
+// GetMemory retrieves a single memory by ID from the source tier.
 func (qc *QdrantClient) GetMemory(ctx context.Context, memoryID string) (*Record, error) {
 	logger.Debugf("[qdrant] retrieving memoryID=%s", memoryID)
 
-	points, err := qc.client.Get(ctx, &qdrant.GetPoints{
-		CollectionName: CollectionMemories,
-		Ids: []*qdrant.PointId{
-			qdrant.NewID(memoryID),
-		},
-		WithPayload: qdrant.NewWithPayload(true),
-	})
+	points, err := qc.store.Get(ctx, qc.sourceCollection, []string{memoryID}, true, false)
 	if err != nil {
 		return nil, fmt.Errorf("get memory %s: %w", memoryID, err)
 	}
@@ -861,15 +850,11 @@ func (qc *QdrantClient) GetMemory(ctx context.Context, memoryID string) (*Record
 	return memory, nil
 }
 
-// DeleteMemory deletes a single memory
+// DeleteMemory deletes a single memory from both tiers.
 func (qc *QdrantClient) DeleteMemory(ctx context.Context, memoryID string) error {
 	logger.Warnf("[qdrant] deleting memoryID=%s", memoryID)
 
-	_, err := qc.client.Delete(ctx, &qdrant.DeletePoints{
-		CollectionName: CollectionMemories,
-		Points:         qdrant.NewPointsSelector(qdrant.NewID(memoryID)),
-	})
-	if err != nil {
+	if err := qc.deleteRecords(ctx, []string{memoryID}); err != nil {
 		return fmt.Errorf("delete memory %s: %w", memoryID, err)
 	}
 
@@ -877,24 +862,34 @@ func (qc *QdrantClient) DeleteMemory(ctx context.Context, memoryID string) error
 	return nil
 }
 
-// DeleteUserMemories deletes all memories for a user
+// DeleteUserMemories deletes all memories for a user from both tiers.
 func (qc *QdrantClient) DeleteUserMemories(ctx context.Context, userID string) error {
 	logger.Warnf("[qdrant] deleting all memories for userID=%s", userID)
 
-	_, err := qc.client.Delete(ctx, &qdrant.DeletePoints{
-		CollectionName: CollectionMemories,
-		Points: qdrant.NewPointsSelectorFilter(&qdrant.Filter{
-			Must: []*qdrant.Condition{
-				qdrant.NewMatch("user_id", userID),
-			},
-		}),
-	})
-	if err != nil {
+	filter := &qdrant.Filter{
+		Must: []*qdrant.Condition{
+			qdrant.NewMatch("user_id", userID),
+		},
+	}
+	if err := qc.store.DeleteByFilter(ctx, qc.sourceCollection, filter); err != nil {
 		return fmt.Errorf("delete user memories for userID=%s: %w", userID, err)
+	}
+	if err := qc.store.DeleteByFilter(ctx, qc.vectorCollection, filter); err != nil {
+		return fmt.Errorf("delete user memory vectors for userID=%s: %w", userID, err)
 	}
 
 	logger.Infof("[qdrant] successfully deleted all memories for userID=%s", userID)
 	return nil
+}
+
+// CountMemories returns the exact number of memory records (source tier).
+func (qc *QdrantClient) CountMemories(ctx context.Context) (uint64, error) {
+	return qc.store.Count(ctx, qc.sourceCollection)
+}
+
+// CountProfiles returns the exact number of stored profiles.
+func (qc *QdrantClient) CountProfiles(ctx context.Context) (uint64, error) {
+	return qc.store.Count(ctx, qc.profilesCollection)
 }
 
 // UpsertProfile stores or updates a user profile
@@ -910,14 +905,9 @@ func (qc *QdrantClient) UpsertProfile(ctx context.Context, profile *Profile) err
 		return fmt.Errorf("failed to prepare profile payload: %w", err)
 	}
 
-	embedding := profile.Embedding
-	var vectors *qdrant.Vectors
-	if len(embedding) > 0 {
-		vectors = qdrant.NewVectors(embedding...)
-	} else {
-		// Qdrant requires vectors for all points; use a zero-vector placeholder
-		vectors = qdrant.NewVectors(make([]float32, qc.vectorSize)...)
-	}
+	// Profiles are never searched by vector; the collection is payload-only
+	// unless it was created by an older version with a dense vector.
+	vectors := placeholderVectors(qc.profilesDim, profile.Embedding)
 
 	numID, err := discordIDToUint64(profile.UserID)
 	if err != nil {
@@ -926,7 +916,7 @@ func (qc *QdrantClient) UpsertProfile(ctx context.Context, profile *Profile) err
 
 	_, err = retry.Retry(ctx, qc.maxRetries, func(ctx context.Context) (*qdrant.UpdateResult, error) {
 		return qc.client.Upsert(ctx, &qdrant.UpsertPoints{
-			CollectionName: CollectionProfiles,
+			CollectionName: qc.profilesCollection,
 			Points: []*qdrant.PointStruct{
 				{
 					Id:      qdrant.NewIDNum(numID),
@@ -953,7 +943,7 @@ func (qc *QdrantClient) GetProfile(ctx context.Context, userID string) (*Profile
 	}
 
 	points, err := qc.client.Get(ctx, &qdrant.GetPoints{
-		CollectionName: CollectionProfiles,
+		CollectionName: qc.profilesCollection,
 		Ids: []*qdrant.PointId{
 			qdrant.NewIDNum(numID),
 		},
@@ -984,19 +974,6 @@ func getPayloadKeys(payload map[string]*qdrant.Value) []string {
 	return keys
 }
 
-// CountCollection returns the exact point count for a collection.
-func (qc *QdrantClient) CountCollection(ctx context.Context, collectionName string) (uint64, error) {
-	exact := true
-	count, err := qc.client.Count(ctx, &qdrant.CountPoints{
-		CollectionName: collectionName,
-		Exact:          &exact,
-	})
-	if err != nil {
-		return 0, fmt.Errorf("failed to count collection %s: %w", collectionName, err)
-	}
-	return count, nil
-}
-
 // DeleteProfile deletes a user profile
 func (qc *QdrantClient) DeleteProfile(ctx context.Context, userID string) error {
 	logger.Warnf("[qdrant] deleting profile for userID=%s", userID)
@@ -1007,7 +984,7 @@ func (qc *QdrantClient) DeleteProfile(ctx context.Context, userID string) error 
 	}
 
 	_, err = qc.client.Delete(ctx, &qdrant.DeletePoints{
-		CollectionName: CollectionProfiles,
+		CollectionName: qc.profilesCollection,
 		Points:         qdrant.NewPointsSelector(qdrant.NewIDNum(numID)),
 	})
 	if err != nil {
@@ -1034,11 +1011,11 @@ func (qc *QdrantClient) UpsertRelationship(ctx context.Context, rel *Relationshi
 	}
 
 	relID := rel.ID
-	vectors := qdrant.NewVectors(make([]float32, qc.vectorSize)...)
+	vectors := placeholderVectors(qc.relationshipsDim, nil)
 
 	_, err = retry.Retry(ctx, qc.maxRetries, func(ctx context.Context) (*qdrant.UpdateResult, error) {
 		return qc.client.Upsert(ctx, &qdrant.UpsertPoints{
-			CollectionName: CollectionRelationships,
+			CollectionName: qc.relationshipsCollection,
 			Points: []*qdrant.PointStruct{
 				{
 					Id:      qdrant.NewID(relID),
@@ -1092,7 +1069,7 @@ func (qc *QdrantClient) GetRelationships(ctx context.Context, userID string, rel
 // scrollRelationships executes a scroll query and converts results to Relationship records.
 func (qc *QdrantClient) scrollRelationships(ctx context.Context, filter *qdrant.Filter, userID string) ([]*Relationship, error) {
 	results, err := qc.client.Scroll(ctx, &qdrant.ScrollPoints{
-		CollectionName: CollectionRelationships,
+		CollectionName: qc.relationshipsCollection,
 		Filter:         filter,
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
@@ -1150,7 +1127,7 @@ func (qc *QdrantClient) GetRelationshipBetween(ctx context.Context, userA, userB
 	}
 
 	results, err := qc.client.Scroll(ctx, &qdrant.ScrollPoints{
-		CollectionName: CollectionRelationships,
+		CollectionName: qc.relationshipsCollection,
 		Filter:         filter,
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
@@ -1173,8 +1150,9 @@ func (qc *QdrantClient) GetRelationshipBetween(ctx context.Context, userA, userB
 }
 
 // RemoveUserFromMentions finds all memory records where mentioned_user_ids
-// contains userID and removes it from the array. Logs a warning on failure
-// but does not return an error to avoid blocking other operations.
+// contains userID and removes it from the array in both tiers (the vector
+// tier mirrors mentioned_user_ids for filtered search). Logs a warning on
+// failure but does not return an error to avoid blocking other operations.
 func (qc *QdrantClient) RemoveUserFromMentions(ctx context.Context, userID string) {
 	logger.Debugf("[qdrant] removing userID=%s from mentioned_user_ids", userID)
 
@@ -1184,68 +1162,59 @@ func (qc *QdrantClient) RemoveUserFromMentions(ctx context.Context, userID strin
 		},
 	}
 
-	var offset *qdrant.PointId
-	pageLimit := uint32(100)
-
+	// Collect first, then update: updating the filtered field while paging
+	// through the same filter would shift the pages.
+	type pending struct {
+		id       string
+		mentions []string
+	}
+	var updates []pending
 	var totalRemoved, totalFailed int
+	offset := ""
 	for {
-		scrollResult, err := qc.client.Scroll(ctx, &qdrant.ScrollPoints{
-			CollectionName: CollectionMemories,
-			Filter:         filter,
-			Offset:         offset,
-			Limit:          &pageLimit,
-			WithPayload:    qdrant.NewWithPayload(true),
-		})
+		points, next, err := qc.store.Scroll(ctx, qc.sourceCollection, filter, offset, 100, true, false)
 		if err != nil {
 			logger.Warnf("[qdrant] failed to scroll memories for mention removal: %v", err)
 			return
 		}
-
-		if len(scrollResult) == 0 {
-			break
-		}
-
-		for _, point := range scrollResult {
-			memory, err := qc.payloadToMemory(point.Payload, point.Id.GetUuid())
+		for _, point := range points {
+			memory, err := qc.payloadToMemory(point.Payload, point.ID)
 			if err != nil {
-				logger.Warnf("[qdrant] failed to convert payload for mention removal (id=%s): %v", point.Id.GetUuid(), err)
+				logger.Warnf("[qdrant] failed to convert payload for mention removal (id=%s): %v", point.ID, err)
 				totalFailed++
 				continue
 			}
-
 			newMentions := make([]string, 0, len(memory.MentionedUserIDs))
 			for _, uid := range memory.MentionedUserIDs {
 				if uid != userID {
 					newMentions = append(newMentions, uid)
 				}
 			}
-
-			vals := make([]*qdrant.Value, 0, len(newMentions))
-			for _, uid := range newMentions {
-				vals = append(vals, &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: uid}})
-			}
-
-			updatedPayload := map[string]*qdrant.Value{
-				"mentioned_user_ids": {Kind: &qdrant.Value_ListValue{ListValue: &qdrant.ListValue{Values: vals}}},
-			}
-
-			_, err = qc.client.SetPayload(ctx, &qdrant.SetPayloadPoints{
-				CollectionName: CollectionMemories,
-				Payload:        updatedPayload,
-				PointsSelector: qdrant.NewPointsSelector(point.Id),
-			})
-			if err != nil {
-				logger.Warnf("[qdrant] failed to update mentions for memoryID=%s: %v", point.Id.GetUuid(), err)
-				totalFailed++
-				continue
-			}
-			totalRemoved++
+			updates = append(updates, pending{id: point.ID, mentions: newMentions})
 		}
-
-		if scrollResult[len(scrollResult)-1].Id == nil {
+		if next == "" || len(points) == 0 {
 			break
 		}
-		offset = scrollResult[len(scrollResult)-1].Id
+		offset = next
+	}
+
+	for _, u := range updates {
+		vals := make([]*qdrant.Value, 0, len(u.mentions))
+		for _, uid := range u.mentions {
+			vals = append(vals, &qdrant.Value{Kind: &qdrant.Value_StringValue{StringValue: uid}})
+		}
+		updatedPayload := map[string]*qdrant.Value{
+			"mentioned_user_ids": {Kind: &qdrant.Value_ListValue{ListValue: &qdrant.ListValue{Values: vals}}},
+		}
+		if err := qc.store.SetPayload(ctx, qc.sourceCollection, []string{u.id}, updatedPayload); err != nil {
+			logger.Warnf("[qdrant] failed to update mentions for memoryID=%s: %v", u.id, err)
+			totalFailed++
+			continue
+		}
+		if err := qc.store.SetPayload(ctx, qc.vectorCollection, []string{u.id}, updatedPayload); err != nil {
+			logger.Warnf("[qdrant] failed to update vector-tier mentions for memoryID=%s: %v", u.id, err)
+		}
+		totalRemoved++
 	}
 
 	if totalRemoved > 0 || totalFailed > 0 {

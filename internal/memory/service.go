@@ -218,9 +218,9 @@ func NewService(cfg *ServiceConfig, qdrantCfg *config.QdrantConfig, qdrantClient
 	service.startAccessWorker()
 
 	// Best-effort cleanup of damaged points left by previous OverwritePayload
-	// bug. Skipped when the gRPC client is nil (e.g. in unit tests using a
-	// bare &QdrantClient{}). Failure logs a warning but does not block startup.
-	if qdrantClient.client != nil {
+	// bug. Skipped for a bare &QdrantClient{} as used by unit tests.
+	// Failure logs a warning but does not block startup.
+	if qdrantClient.store != nil {
 		repairCtx, repairCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		deleted, userIDs, repairErr := qdrantClient.RepairOrDeleteDamagedMemories(repairCtx, repairScanLimit)
 		repairCancel()
@@ -594,12 +594,12 @@ func (s *MemoryService) GetStats(ctx context.Context) (*GlobalStats, error) {
 }
 
 func (s *MemoryService) CountMemories(ctx context.Context) (int64, error) {
-	count, err := s.qdrant.CountCollection(ctx, CollectionMemories)
+	count, err := s.qdrant.CountMemories(ctx)
 	return int64(count), err
 }
 
 func (s *MemoryService) CountProfiles(ctx context.Context) (int64, error) {
-	count, err := s.qdrant.CountCollection(ctx, CollectionProfiles)
+	count, err := s.qdrant.CountProfiles(ctx)
 	return int64(count), err
 }
 
