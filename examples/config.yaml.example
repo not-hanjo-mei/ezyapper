@@ -66,6 +66,15 @@ core:
     # Max number of images kept in the in-memory cache.
     image_cache_max_entries: 100
 
+    # Optional /clear-context slash command: makes the bot forget the
+    # conversation context of the channel it is run in (only that channel;
+    # Discord history, stored data and long-term memory are untouched).
+    # Replies are ephemeral. Context is re-fetched from Discord, so this
+    # hides older messages until the bot restarts.
+    clear_command:
+      enabled: false
+      allowed_user_ids: []   # Discord user IDs allowed to run it
+
   # ── AI / LLM Settings ─────────────────────────────────
   ai:
     # OpenAI-compatible API endpoint.

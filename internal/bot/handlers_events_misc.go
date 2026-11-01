@@ -83,7 +83,7 @@ func (b *Bot) onMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) 
 	// conversation, which used to be passed as nil here.
 	var recentMessages []*types.DiscordMessage
 	if b.discordClient != nil {
-		fetched, fetchErr := b.discordClient.FetchRecentMessages(messageCtx, m.ChannelID, b.cfg().Memory.ShortTermLimit)
+		fetched, fetchErr := b.fetchContextMessages(messageCtx, m.ChannelID, b.cfg().Memory.ShortTermLimit)
 		if fetchErr != nil {
 			logger.Warnf("[reprocess] Failed to fetch recent messages for edited message %s: %v", m.ID, fetchErr)
 		} else {

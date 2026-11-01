@@ -104,6 +104,17 @@ type DiscordConfig struct {
 
 	ImageCacheTTLMin     int `mapstructure:"image_cache_ttl_min" yaml:"image_cache_ttl_min"`
 	ImageCacheMaxEntries int `mapstructure:"image_cache_max_entries" yaml:"image_cache_max_entries"`
+
+	// ClearCommand configures the /clear-context slash command (optional).
+	ClearCommand ClearCommandConfig `mapstructure:"clear_command" yaml:"clear_command,omitempty"`
+}
+
+// ClearCommandConfig controls the /clear-context slash command, which makes
+// the bot forget the conversation context of the channel it is run in.
+type ClearCommandConfig struct {
+	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
+	// AllowedUserIDs are the Discord user IDs allowed to run the command.
+	AllowedUserIDs []string `mapstructure:"allowed_user_ids" yaml:"allowed_user_ids"`
 }
 
 // AIConfig holds AI/LLM settings for chat
@@ -749,6 +760,9 @@ func validate(cfg *Config) error {
 	validateDecision(cfg, &errs)
 	validateSystem(cfg, &errs)
 	validateMessageFilters(cfg, &errs)
+	if cfg.Discord.ClearCommand.Enabled && len(cfg.Discord.ClearCommand.AllowedUserIDs) == 0 {
+		errs = append(errs, "core.discord.clear_command.allowed_user_ids must list at least one user ID when the command is enabled")
+	}
 	if len(errs) > 0 {
 		errList := make([]error, len(errs))
 		for i, s := range errs {

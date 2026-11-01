@@ -19,10 +19,12 @@ func (b *Bot) registerHandlers() {
 	b.session.AddHandler(b.onMessageDelete)
 	b.session.AddHandler(b.onGuildJoin)
 	b.session.AddHandler(b.onGuildLeave)
+	b.session.AddHandler(b.onInteractionCreate)
 }
 
 func (b *Bot) onReady(s *discordgo.Session, r *discordgo.Ready) {
 	logger.Infof("[bot] Bot is ready! Serving %d guilds", len(r.Guilds))
+	b.registerClearCommand(s)
 
 	s.UpdateStatusComplex(discordgo.UpdateStatusData{
 		Status: "online",
@@ -138,7 +140,7 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 	pm.CancelFunc = cancel
 
 	// Fetch recent messages once for both decision and response paths
-	recentMessages, fetchErr := b.discordClient.FetchRecentMessages(ctx, m.ChannelID, b.cfg().Memory.ShortTermLimit)
+	recentMessages, fetchErr := b.fetchContextMessages(ctx, m.ChannelID, b.cfg().Memory.ShortTermLimit)
 	if fetchErr != nil {
 		logger.Warnf("[bot] Failed to fetch recent messages for decision: %v", fetchErr)
 	}

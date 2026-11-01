@@ -119,6 +119,8 @@ type Bot struct {
 	mcpManager      *mcp.MCPManager
 	decisionService *decision.DecisionService
 	rateLimiter     *ratelimit.Limiter
+	// cutoffs hides channel history older than a /clear-context call.
+	cutoffs         contextCutoffs
 	visionDescriber *vision.VisionDescriber
 	pluginToolNames map[string]struct{}
 

@@ -623,3 +623,24 @@ Then update `embedding.model` and `qdrant.vector_size`, restart the bot. Collect
 - **Set a real WebUI password** if you enable the dashboard.
 - **Use a reverse proxy** (nginx, Caddy) with TLS in front of the WebUI — there's no built-in HTTPS.
 - **Blacklist before deploying** — at minimum, add yourself if you're a bot operator who tests in the same channels.
+
+## `core.discord.clear_command`
+
+Optional `/clear-context` slash command. Run in a channel, it makes the bot
+forget that channel's conversation context: older messages are hidden from
+the model and replies still being generated there are cancelled. Other
+channels, Discord's own history, stored data and long-term memory are not
+touched. Replies are ephemeral (only the caller sees them) and the command
+never appears in the channel's message history.
+
+```yaml
+core:
+  discord:
+    clear_command:
+      enabled: true
+      allowed_user_ids: ["446248181886484480"]
+```
+
+Only users in `allowed_user_ids` can run it; everyone else gets an ephemeral
+refusal. The cut-off is kept in memory, so a restart brings the older
+context back. The bot needs the `applications.commands` scope.

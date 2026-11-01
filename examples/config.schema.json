@@ -37,7 +37,16 @@
             "long_response_delay_ms":        { "type": "integer", "minimum": 1 },
 
             "image_cache_ttl_min":           { "type": "integer", "minimum": 1 },
-            "image_cache_max_entries":       { "type": "integer", "minimum": 1 }
+            "image_cache_max_entries":       { "type": "integer", "minimum": 1 },
+            "clear_command": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Optional /clear-context slash command; only allowed_user_ids may run it.",
+              "properties": {
+                "enabled":          { "type": "boolean" },
+                "allowed_user_ids": { "type": "array", "items": { "anyOf": [{ "type": "string" }, { "type": "integer" }] } }
+              }
+            }
           }
         },
         "ai": {

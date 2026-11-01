@@ -195,7 +195,7 @@ func (b *Bot) extractMessageImages(ctx context.Context, m *discordgo.MessageCrea
 func (b *Bot) fetchRecentMessagesIfEmpty(ctx context.Context, channelID string, recentMessages []*types.DiscordMessage) []*types.DiscordMessage {
 	if len(recentMessages) == 0 {
 		var fetchErr error
-		recentMessages, fetchErr = b.discordClient.FetchRecentMessages(ctx, channelID, b.cfg().Memory.ShortTermLimit)
+		recentMessages, fetchErr = b.fetchContextMessages(ctx, channelID, b.cfg().Memory.ShortTermLimit)
 		if fetchErr != nil {
 			logger.Warnf("[processing] Failed to fetch recent messages: %v", fetchErr)
 		}
