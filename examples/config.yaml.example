@@ -168,12 +168,20 @@ core:
     ## extra_params: {}
 
   # ── Decision Classifier ───────────────────────────────
-  # When enabled, an LLM decides whether the bot should respond.
+  # When enabled, a model decides whether the bot should respond to messages
+  # that neither mention it nor reply to it.
   # Disable if you want simple mention/percentage-based replies.
   decision:
     enabled: false
 
-    # All fields below are required ONLY when enabled: true.
+    # Which decision backend to use:
+    #   llm        - an OpenAI-compatible chat model returns a JSON verdict
+    #                (default when this key is absent)
+    #   system_one - a System One decision model (TypeSafe Jev) returns
+    #                P(yes); the bot replies when it reaches the threshold
+    ## provider: llm
+
+    # provider: llm - fields below are required ONLY when enabled: true.
     ## model: "gpt-4o-mini"
     ## api_base_url: "https://api.openai.com/v1"
     ## api_key: "YOUR_DECISION_API_KEY"
@@ -185,6 +193,24 @@ core:
     ##   You are a decision classifier for a Discord bot. Decide if the bot should respond.
     ##   Respond ONLY with valid JSON: {"should_respond": true/false, "reason": "...", "confidence": 0.0-1.0}
     ## extra_params: {}
+
+    # provider: system_one - this block is required ONLY when enabled: true
+    # and provider: system_one. The state sent to the model is JSON built from
+    # the recent channel messages and the current message (text only).
+    # instructions/criteria are sent verbatim: no {BotName} substitution,
+    # write the bot's name literally.
+    ## system_one:
+    ##   api_base_url: "https://api.typesafe.ai/v1"
+    ##   api_key: "YOUR_TYPESAFE_API_KEY"
+    ##   model: "jev-latest"
+    ##   timeout: 10          # per-request seconds
+    ##   retry_count: 2       # retries on 429/529/5xx/network errors
+    ##   threshold: 0.7       # reply when P(yes) >= threshold, (0, 1]
+    ##   instructions: "Should the Discord bot Ezy send a reply to current_message?"
+    ##   # Optional, set both or neither:
+    ##   criteria_true: "current_message talks to Ezy, asks Ezy or the channel something Ezy can answer, or continues a conversation with Ezy"
+    ##   criteria_false: "current_message is aimed at other people, is a reaction or small talk between other users, or needs no reply"
+    ##   max_state_bytes: 48000  # JSON state budget; oldest context messages are dropped first
 
 memory_pipeline:
   # ── Embedding Model ───────────────────────────────────

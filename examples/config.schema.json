@@ -112,15 +112,26 @@
           "required": ["enabled"],
           "allOf": [
             {
-              "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+              "if": {
+                "properties": { "enabled": { "const": true }, "provider": { "enum": ["llm"] } },
+                "required": ["enabled"]
+              },
               "then": {
                 "required": ["model", "api_base_url", "api_key", "system_prompt", "max_tokens", "timeout"]
               }
+            },
+            {
+              "if": {
+                "properties": { "enabled": { "const": true }, "provider": { "const": "system_one" } },
+                "required": ["enabled", "provider"]
+              },
+              "then": { "required": ["system_one"] }
             }
           ],
           "additionalProperties": false,
           "properties": {
             "enabled":       { "type": "boolean" },
+            "provider":      { "type": "string", "enum": ["llm", "system_one"] },
             "model":         { "type": "string" },
             "api_base_url":  { "type": "string" },
             "api_key":       { "type": "string" },
@@ -129,7 +140,25 @@
             "retry_count":   { "type": "integer", "minimum": 0 },
             "timeout":       { "type": "integer", "minimum": 1 },
             "system_prompt": { "type": "string" },
-            "extra_params":  { "type": "object" }
+            "extra_params":  { "type": "object" },
+            "system_one": {
+              "type": "object",
+              "required": ["api_base_url", "api_key", "model", "timeout", "threshold", "instructions", "max_state_bytes"],
+              "dependentRequired": { "criteria_true": ["criteria_false"], "criteria_false": ["criteria_true"] },
+              "additionalProperties": false,
+              "properties": {
+                "api_base_url":    { "type": "string" },
+                "api_key":         { "type": "string" },
+                "model":           { "type": "string" },
+                "timeout":         { "type": "integer", "minimum": 1 },
+                "retry_count":     { "type": "integer", "minimum": 0 },
+                "threshold":       { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+                "instructions":    { "type": "string", "minLength": 1 },
+                "criteria_true":   { "type": "string" },
+                "criteria_false":  { "type": "string" },
+                "max_state_bytes": { "type": "integer", "minimum": 1 }
+              }
+            }
           }
         }
       }
