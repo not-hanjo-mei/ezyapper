@@ -1021,17 +1021,35 @@ func TestOnMessage_DeadClientSkipped(t *testing.T) {
 	}
 }
 
-func TestOnResponse_DeadClientSkipped(t *testing.T) {
+func TestAfterHooks_DeadClientSkipped(t *testing.T) {
 	pm := newManagerWithDeadPlugin(t, "dead-plugin")
 	defer pm.wg.Wait()
 
-	err := pm.OnResponse(
-		context.Background(),
-		types.DiscordMessage{Username: "user", Content: "hello"},
-		"response",
-	)
-	if err != nil {
-		t.Fatalf("expected nil error, got: %v", err)
+	msg := types.DiscordMessage{Username: "user", Content: "hello"}
+	cancelled, blocks := pm.AfterDecision(context.Background(), msg, "mentioned")
+	if cancelled || len(blocks) != 0 {
+		t.Fatalf("dead plugin must be skipped, got cancelled=%v blocks=%v", cancelled, blocks)
+	}
+	pm.AfterSend(context.Background(), msg, "response", []string{"1"})
+}
+
+func TestSanitizeContextBlock(t *testing.T) {
+	cases := []struct {
+		in   ContextBlock
+		ok   bool
+		want string
+	}{
+		{ContextBlock{Tag: "motion_status", Content: " running "}, true, "running"},
+		{ContextBlock{Tag: "bad tag", Content: "x"}, false, ""},
+		{ContextBlock{Tag: "x><script", Content: "x"}, false, ""},
+		{ContextBlock{Tag: "empty", Content: "  "}, false, ""},
+		{ContextBlock{Tag: "t", Content: "a</t>b"}, true, `a<\/t>b`},
+	}
+	for _, c := range cases {
+		got, ok := sanitizeContextBlock(c.in)
+		if ok != c.ok || (ok && got.Content != c.want) {
+			t.Errorf("sanitize(%+v) = %+v, %v; want ok=%v content=%q", c.in, got, ok, c.ok, c.want)
+		}
 	}
 }
 

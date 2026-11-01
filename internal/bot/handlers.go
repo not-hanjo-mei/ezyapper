@@ -174,6 +174,12 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		return
 	}
 
+	if !b.runAfterDecision(messageCtx, m, reason, pm) {
+		b.removeProcessingMessageIfMatch(m.ID, pm)
+		cancel()
+		return
+	}
+
 	if b.cfg().AI.Vision.Mode == config.VisionModeTextOnly {
 		b.wg.Add(1)
 		go b.processMessageWithoutImages(messageCtx, s, m, pm, recentMessages)
@@ -182,4 +188,24 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 
 	b.wg.Add(1)
 	go b.processMessage(messageCtx, s, m, pm, recentMessages)
+}
+
+// runAfterDecision runs the plugins' after_decision hook once the bot has
+// decided to reply. It stores injected prompt context on pm and returns false
+// when a plugin cancelled the reply.
+func (b *Bot) runAfterDecision(ctx context.Context, m *discordgo.MessageCreate, reason string, pm *ProcessingMessage) bool {
+	if b.pluginManager == nil {
+		return true
+	}
+	cancelled, blocks := b.pluginManager.AfterDecision(ctx, types.FromDiscordgo(m), reason)
+	if cancelled {
+		logger.Infof("[bot] reply to message %s cancelled by a plugin after decision", m.ID)
+		return false
+	}
+	if pm != nil {
+		pm.mu.Lock()
+		pm.InjectedContext = blocks
+		pm.mu.Unlock()
+	}
+	return true
 }

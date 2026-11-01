@@ -104,10 +104,6 @@ func (p *ClankOMeterPlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	return true, nil
 }
 
-func (p *ClankOMeterPlugin) OnResponse(msg types.DiscordMessage, response string) error {
-	return nil
-}
-
 func (p *ClankOMeterPlugin) Shutdown() error {
 	return nil
 }

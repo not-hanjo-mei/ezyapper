@@ -143,7 +143,7 @@ logging:
 3. Discord CDN URL: refreshes via Discord API → queues
 4. Local file: queues file path
 5. Returns confirmation text
-6. `OnResponse`: plugin sends emote as separate Discord message (pure URL = clean image render, or file attachment)
+6. `AfterSend`: after the reply is sent, the plugin sends the emote as separate Discord message (pure URL = clean image render, or file attachment)
 
 ## Storage Layout
 

@@ -188,6 +188,7 @@ A typical user message in a non-blacklisted, non-rate-limited channel:
       reply to bot? → true
       decision LLM enabled? → JSON classifier verdict
       otherwise → random reply%
+   If true: plugin AfterDecision hooks may cancel the reply or inject prompt context.
 9. Dispatch to processMessageWithoutImages or processMessage based on
    vision mode + presence of images
 10. processMessageCore (phase: Generating):
@@ -206,13 +207,13 @@ A typical user message in a non-blacklisted, non-rate-limited channel:
            multimodal: single multimodal model with images and tools
       h. executeToolLoop runs tool calls (Discord + plugin + MCP) until no more
          calls or MaxToolIterations hit
-11. Phase: Sending. runBeforeSendPluginHooks may rewrite the response or attach files
+11. Phase: Sending. BeforeSend plugin hooks may rewrite the response, attach files, or cancel sending
 12. sendResponse:
       - splits into chunks at ~1900 chars
       - reply vs send based on mention/reference
       - uploads any plugin-provided files
       - adds the bot's own reply back into the channel buffer
-13. Plugin OnResponse hooks (fire-and-forget)
+13. Plugin AfterSend hooks with the final text and sent message IDs
 14. SetCooldown for the user/channel pair
 ```
 

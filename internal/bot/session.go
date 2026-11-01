@@ -56,6 +56,8 @@ type ProcessingMessage struct {
 	CancelFunc      context.CancelFunc
 	OriginalContent string // Store original content before any edits
 	EditCount       int    // Track number of edits
+	// InjectedContext holds prompt blocks plugins added in after_decision.
+	InjectedContext []plugin.ContextBlock
 	mu              sync.RWMutex
 }
 

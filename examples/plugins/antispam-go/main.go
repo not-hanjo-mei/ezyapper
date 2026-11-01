@@ -105,12 +105,6 @@ func (p *AntiSpamPlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	return true, nil
 }
 
-// OnResponse is called after the bot generates a response
-func (p *AntiSpamPlugin) OnResponse(msg types.DiscordMessage, response string) error {
-	// No action needed
-	return nil
-}
-
 // Shutdown is called when the plugin is being stopped
 func (p *AntiSpamPlugin) Shutdown() error {
 	fmt.Println("[ANTISPAM] Plugin shutting down")

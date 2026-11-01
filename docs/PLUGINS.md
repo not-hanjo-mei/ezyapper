@@ -21,7 +21,6 @@ If you're writing a Go plugin, your `main` ends in `plugin.Serve(impl)` where `i
 type Interface interface {
     Info() (Info, error)
     OnMessage(msg types.DiscordMessage) (bool, error)
-    OnResponse(msg types.DiscordMessage, response string) error
     Shutdown() error
 }
 ```
@@ -30,8 +29,76 @@ type Interface interface {
 |--------|----------|
 | `Info()` | Metadata: Name, Version, Author, Description, Priority. Higher Priority runs first in hook chains. |
 | `OnMessage(msg)` | Per-message hook. Return `false` to **block** the message (bot won't process or respond). |
-| `OnResponse(msg, response)` | Fire-and-forget hook called after the bot generates a reply. |
 | `Shutdown()` | Called when the plugin is being stopped. Clean up resources here. |
+
+### Hook chain
+
+Every message goes through these hooks, in plugin priority order:
+
+| Hook (JSON-RPC method) | When | Can do |
+|------------------------|------|--------|
+| `OnMessage` (`on_message`) | every incoming message | block all further processing |
+| `AfterDecision` (`after_decision`) | only when the bot decided to reply, before generation | cancel the reply; inject prompt context |
+| `BeforeSend` (`before_send`) | after generation, before sending | rewrite the text, attach files, cancel sending |
+| `AfterSend` (`after_send`) | after the reply was sent | react to the final text and sent message IDs |
+
+`OnResponse` no longer exists: what it did belongs in `AfterSend`, which
+receives the text that was actually sent (after `BeforeSend` rewrites) and the
+IDs of the Discord messages (several when a long reply was split).
+
+### Optional: `plugin.AfterDecisionProvider`
+
+```go
+type AfterDecisionProvider interface {
+    AfterDecision(args AfterDecisionArgs) (AfterDecisionResult, error)
+}
+
+type AfterDecisionArgs struct {
+    Message types.DiscordMessage
+    Reason  string // why the bot decided to reply
+}
+
+type AfterDecisionResult struct {
+    Cancel  bool           // true → do not generate a reply
+    Context []ContextBlock // prompt sections to inject for this reply
+}
+
+type ContextBlock struct {
+    Tag     string // XML tag name: letters, digits, '_' and '-'
+    Content string
+}
+```
+
+Injected blocks are rendered as `<Tag>...</Tag>` sections in the plugin slot
+of the **user** prompt (after the conversation and participants, before the
+user profile and key facts). They never go into the system prompt, which
+stays byte-identical across requests so prompt caching keeps working.
+
+### Optional: `plugin.SystemPromptProvider`
+
+```go
+type SystemPromptProvider interface {
+    SystemPrompt() (ContextBlock, error)
+}
+```
+
+Queried once when the plugin loads. The block is appended to the system
+prompt after the configured instructions. It must be static: do not put
+per-message data here (use `AfterDecision` context blocks instead).
+
+### Optional: `plugin.AfterSendProvider`
+
+```go
+type AfterSendProvider interface {
+    AfterSend(args AfterSendArgs) error
+}
+
+type AfterSendArgs struct {
+    Message    types.DiscordMessage
+    Response   string   // final text that was sent
+    MessageIDs []string // IDs of the sent Discord messages, in order
+}
+```
 
 ### Optional: `plugin.ToolProvider`
 
@@ -48,7 +115,13 @@ Implements LLM-callable tools. Returned `ToolSpec`s are merged into the bot's to
 
 ```go
 type BeforeSendProvider interface {
-    BeforeSend(msg types.DiscordMessage, response string) (BeforeSendResult, error)
+    BeforeSend(args BeforeSendArgs) (BeforeSendResult, error)
+}
+
+type BeforeSendArgs struct {
+    Message        types.DiscordMessage
+    Response       string
+    DeadlineUnixMs int64 // the host stops waiting at this time; finish before it
 }
 
 type BeforeSendResult struct {
@@ -184,10 +257,6 @@ func (p *myPlugin) Info() (plugin.Info, error) {
 
 func (p *myPlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
     return true, nil
-}
-
-func (p *myPlugin) OnResponse(msg types.DiscordMessage, response string) error {
-    return nil
 }
 
 func (p *myPlugin) Shutdown() error { return nil }

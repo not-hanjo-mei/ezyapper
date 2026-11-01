@@ -116,7 +116,8 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		return
 	}
 
-	if err := b.sendResponse(ctx, s, m, response); err != nil {
+	outcome, err := b.sendResponse(ctx, s, m, response)
+	if err != nil {
 		logger.Errorf("[processing] failed to send response for message %s: %v", m.ID, err)
 		b.clearProcessingMessage(pm, m.ID)
 		return
@@ -124,11 +125,12 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 
 	b.clearProcessingMessage(pm, m.ID)
 
+	if outcome.Skipped {
+		return
+	}
+
 	if b.pluginManager != nil {
-		dm := types.FromDiscordgo(m)
-		if err := b.pluginManager.OnResponse(ctx, dm, response); err != nil {
-			logger.Warnf("[processing] Plugin error in OnResponse: %v", err)
-		}
+		b.pluginManager.AfterSend(ctx, types.FromDiscordgo(m), outcome.Text, outcome.MessageIDs)
 	}
 
 	b.SetCooldown(m.Author.ID, time.Duration(b.cfg().Discord.CooldownSeconds)*time.Second)

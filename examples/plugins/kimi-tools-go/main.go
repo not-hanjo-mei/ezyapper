@@ -109,10 +109,6 @@ func (p *kimiToolsPlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	return true, nil
 }
 
-func (p *kimiToolsPlugin) OnResponse(msg types.DiscordMessage, response string) error {
-	return nil
-}
-
 func (p *kimiToolsPlugin) Shutdown() error {
 	p.http.CloseIdleConnections()
 	return nil

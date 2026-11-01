@@ -159,10 +159,6 @@ func (p *DateTimePlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	return true, nil
 }
 
-func (p *DateTimePlugin) OnResponse(msg types.DiscordMessage, response string) error {
-	return nil
-}
-
 func (p *DateTimePlugin) Shutdown() error {
 	return nil
 }

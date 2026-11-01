@@ -92,23 +92,6 @@ func callPluginOnMessageWithTimeout(
 	return fmt.Errorf("plugin %s has no jsonrpc transport", plugin.Name)
 }
 
-func callPluginOnResponseWithTimeout(
-	plugin *Client,
-	args ResponseArgs,
-	reply *struct{},
-	timeout time.Duration,
-) error {
-	if plugin == nil {
-		return fmt.Errorf("plugin is nil")
-	}
-
-	if plugin.jsonrpc != nil {
-		return callJSONRPCWithTimeout(plugin.jsonrpc, plugin.wg, "on_response", args, reply, timeout)
-	}
-
-	return fmt.Errorf("plugin %s has no jsonrpc transport", plugin.Name)
-}
-
 func callPluginBeforeSendWithTimeout(
 	plugin *Client,
 	args BeforeSendArgs,

@@ -98,15 +98,39 @@ func handleOnMessage(impl plugin.Interface, params any) (any, error) {
 	return impl.OnMessage(msg)
 }
 
-func handleOnResponse(impl plugin.Interface, params any) (any, error) {
-	var args plugin.ResponseArgs
-	if err := decodeJSONRPCParams(params, &args); err != nil {
-		return nil, fmt.Errorf("jsonrpc -32602: invalid params for on_response: %w", err)
+func handleAfterDecision(impl plugin.Interface, params any) (any, error) {
+	provider, ok := impl.(plugin.AfterDecisionProvider)
+	if !ok {
+		return plugin.AfterDecisionResult{}, nil
 	}
-	if err := impl.OnResponse(args.Message, args.Response); err != nil {
+	var args plugin.AfterDecisionArgs
+	if err := decodeJSONRPCParams(params, &args); err != nil {
+		return nil, fmt.Errorf("jsonrpc -32602: invalid params for after_decision: %w", err)
+	}
+	return provider.AfterDecision(args)
+}
+
+func handleAfterSend(impl plugin.Interface, params any) (any, error) {
+	provider, ok := impl.(plugin.AfterSendProvider)
+	if !ok {
+		return map[string]any{}, nil
+	}
+	var args plugin.AfterSendArgs
+	if err := decodeJSONRPCParams(params, &args); err != nil {
+		return nil, fmt.Errorf("jsonrpc -32602: invalid params for after_send: %w", err)
+	}
+	if err := provider.AfterSend(args); err != nil {
 		return nil, err
 	}
 	return map[string]any{}, nil
+}
+
+func handleSystemPrompt(impl plugin.Interface, _ any) (any, error) {
+	provider, ok := impl.(plugin.SystemPromptProvider)
+	if !ok {
+		return plugin.ContextBlock{}, nil
+	}
+	return provider.SystemPrompt()
 }
 
 func handleBeforeSend(impl plugin.Interface, params any) (any, error) {
@@ -118,7 +142,7 @@ func handleBeforeSend(impl plugin.Interface, params any) (any, error) {
 	if err := decodeJSONRPCParams(params, &args); err != nil {
 		return nil, fmt.Errorf("jsonrpc -32602: invalid params for before_send: %w", err)
 	}
-	return provider.BeforeSend(args.Message, args.Response)
+	return provider.BeforeSend(args)
 }
 
 func handleListTools(impl plugin.Interface, _ any) (any, error) {
@@ -152,13 +176,15 @@ func handleShutdown(impl plugin.Interface, _ any) (any, error) {
 }
 
 var rpcHandlers = map[string]rpcHandler{
-	"info":         handleInfo,
-	"on_message":   handleOnMessage,
-	"on_response":  handleOnResponse,
-	"before_send":  handleBeforeSend,
-	"list_tools":   handleListTools,
-	"execute_tool": handleExecuteTool,
-	"shutdown":     handleShutdown,
+	"info":           handleInfo,
+	"on_message":     handleOnMessage,
+	"after_decision": handleAfterDecision,
+	"after_send":     handleAfterSend,
+	"system_prompt":  handleSystemPrompt,
+	"before_send":    handleBeforeSend,
+	"list_tools":     handleListTools,
+	"execute_tool":   handleExecuteTool,
+	"shutdown":       handleShutdown,
 }
 
 // Serve starts a plugin server loop over stdio, reading JSON-RPC requests from the

@@ -103,10 +103,6 @@ func (p *SystemSpecPlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	return true, nil
 }
 
-func (p *SystemSpecPlugin) OnResponse(msg types.DiscordMessage, response string) error {
-	return nil
-}
-
 func (p *SystemSpecPlugin) Shutdown() error {
 	return nil
 }

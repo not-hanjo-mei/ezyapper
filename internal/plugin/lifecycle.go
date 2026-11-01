@@ -161,6 +161,17 @@ func (pm *Manager) loadRPCPlugin(pluginPath string, pluginConfigDir string) erro
 		pluginTools = []ToolSpec{}
 	}
 
+	var systemPrompt *ContextBlock
+	var sp ContextBlock
+	if err := callJSONRPCWithTimeout(jsonClient, &pm.wg, "system_prompt", map[string]any{}, &sp, time.Duration(pm.rpcTimeoutSec)*time.Second); err != nil {
+		if !isMethodNotFoundPluginError(err) {
+			logger.Warnf("[plugin] Failed to get system prompt section for plugin %s: %v", info.Name, err)
+		}
+	} else if clean, ok := sanitizeContextBlock(sp); ok {
+		systemPrompt = &clean
+		logger.Infof("[plugin] Plugin %s adds system prompt section <%s> (%d chars)", info.Name, clean.Tag, len(clean.Content))
+	}
+
 	for i := range pluginTools {
 		if err := validateToolSpec(&pluginTools[i]); err != nil {
 			jsonClient.Close()
@@ -181,17 +192,18 @@ func (pm *Manager) loadRPCPlugin(pluginPath string, pluginConfigDir string) erro
 	}
 
 	pm.plugins[info.Name] = &Client{
-		Name:      info.Name,
-		Info:      info,
-		jsonrpc:   jsonClient,
-		process:   cmd.Process,
-		exited:    exited,
-		priority:  info.Priority,
-		path:      pluginPath,
-		configDir: pluginConfigDir,
-		tools:     pluginTools,
-		runtime:   pluginRuntimeJSONRPC,
-		wg:        &pm.wg,
+		Name:         info.Name,
+		Info:         info,
+		jsonrpc:      jsonClient,
+		process:      cmd.Process,
+		exited:       exited,
+		priority:     info.Priority,
+		path:         pluginPath,
+		configDir:    pluginConfigDir,
+		tools:        pluginTools,
+		systemPrompt: systemPrompt,
+		runtime:      pluginRuntimeJSONRPC,
+		wg:           &pm.wg,
 	}
 	delete(pm.disabled, info.Name)
 

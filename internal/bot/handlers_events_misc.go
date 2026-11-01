@@ -95,7 +95,7 @@ func (b *Bot) onMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) 
 	shouldRespond, reason := b.shouldRespond(messageCtx, tempMsg, recentMessages, respondOptions{reEvaluation: true})
 	logger.Infof("[reprocess] Message %s re-decision: shouldRespond=%v, reason=%s", m.ID, shouldRespond, reason)
 
-	if !shouldRespond {
+	if !shouldRespond || !b.runAfterDecision(messageCtx, tempMsg, reason, newPm) {
 		b.clearProcessingMessage(newPm, m.ID)
 		cancel()
 		return

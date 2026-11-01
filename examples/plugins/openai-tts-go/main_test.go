@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -45,7 +46,7 @@ func newRewriterTestPlugin(t *testing.T, retryCount int, replies []string) (*ope
 func TestRewriterRetriesOnMalformedJSON(t *testing.T) {
 	p, calls := newRewriterTestPlugin(t, 2, []string{`{"input": "unterminated`, `{"input":"fixed text"}`})
 
-	text, _, rewritten, _, err := p.maybeRewriteInputAndInstructions("original", "")
+	text, _, rewritten, _, err := p.maybeRewriteInputAndInstructions(context.Background(), "original", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -60,7 +61,7 @@ func TestRewriterRetriesOnMalformedJSON(t *testing.T) {
 func TestRewriterFallsBackAfterRetriesExhausted(t *testing.T) {
 	p, calls := newRewriterTestPlugin(t, 1, []string{`not json at all`})
 
-	text, _, rewritten, _, err := p.maybeRewriteInputAndInstructions("original", "")
+	text, _, rewritten, _, err := p.maybeRewriteInputAndInstructions(context.Background(), "original", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -69,5 +70,20 @@ func TestRewriterFallsBackAfterRetriesExhausted(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(calls); got != 2 {
 		t.Fatalf("expected retry_count+1 = 2 calls, got %d", got)
+	}
+}
+
+// The rewriter must stop retrying once the host's before_send deadline has
+// passed, instead of running past it and getting the plugin killed.
+func TestRewriterStopsAtDeadline(t *testing.T) {
+	p, calls := newRewriterTestPlugin(t, 5, []string{`not json`})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	text, _, rewritten, _, err := p.maybeRewriteInputAndInstructions(ctx, "original", "")
+	if err != nil || text != "original" || rewritten {
+		t.Fatalf("expected fallback to original text, got %q rewritten=%v err=%v", text, rewritten, err)
+	}
+	if got := atomic.LoadInt32(calls); got != 0 {
+		t.Fatalf("expected no calls after the deadline, got %d", got)
 	}
 }
