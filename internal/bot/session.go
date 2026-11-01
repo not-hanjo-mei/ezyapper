@@ -117,7 +117,7 @@ type Bot struct {
 	toolRegistry    *tools.ToolRegistry
 	pluginManager   *plugin.Manager
 	mcpManager      *mcp.MCPManager
-	decisionService *decision.DecisionService
+	decider         decision.Decider
 	rateLimiter     *ratelimit.Limiter
 	// cutoffs hides channel history older than a /clear-context call.
 	cutoffs         contextCutoffs
@@ -188,10 +188,10 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 	// Create Discord client for short-term context
 	discordClient := memory.NewShortTermClient(NewDiscordMessageFetcher(session), cfg.Memory.MaxPaginatedLimit)
 
-	var decisionService *decision.DecisionService
+	var decider decision.Decider
 	if cfg.Decision.Enabled {
 		var err error
-		decisionService, err = decision.NewDecisionService(&cfg.Decision)
+		decider, err = decision.New(&cfg.Decision)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create decision service: %w", err)
 		}
@@ -214,7 +214,7 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 		toolRegistry:             toolRegistry,
 		pluginManager:            pluginManager,
 		mcpManager:               mcpManager,
-		decisionService:          decisionService,
+		decider:                  decider,
 		rateLimiter:              limiter,
 		visionDescriber:          nil,
 		pluginToolNames:          make(map[string]struct{}),
@@ -699,9 +699,10 @@ func (b *Bot) shouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 		return true, "reply to bot"
 	}
 
-	if b.decisionService != nil && b.cfg().Decision.Enabled {
+	if b.decider != nil && b.cfg().Decision.Enabled {
 		// Timeout*(retry_count+1) for attempts + one Timeout unit as overhead/slack (schema and network share retry_count).
-		totalTimeout := time.Duration(b.cfg().Decision.Timeout) * time.Second * time.Duration(b.cfg().Decision.RetryCount+2)
+		timeoutSec, retryCount := b.cfg().Decision.RequestBudget()
+		totalTimeout := time.Duration(timeoutSec) * time.Second * time.Duration(retryCount+2)
 		decisionCtx, cancel := context.WithTimeout(ctx, totalTimeout)
 		defer cancel()
 
@@ -718,16 +719,17 @@ func (b *Bot) shouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 			msgInfo.ReplyToID = m.ReferencedMessage.Author.ID
 		}
 
-		result, err := b.decisionService.ShouldRespondWithInfo(decisionCtx, b.cfg().Discord.BotName, msgInfo, imageCount, decisionMessages)
+		provider := b.cfg().Decision.EffectiveProvider()
+		result, err := b.decider.ShouldRespondWithInfo(decisionCtx, b.cfg().Discord.BotName, msgInfo, imageCount, decisionMessages)
 		if err != nil {
 			logger.Warnf("[bot] decision service failed: %v, using fallback", err)
-			return b.ShouldRandomReply(), "llm decision failed, fallback"
+			return b.ShouldRandomReply(), fmt.Sprintf("%s decision failed, fallback", provider)
 		}
 
 		if result.ShouldRespond {
-			return true, fmt.Sprintf("llm decision: %s (confidence: %.2f)", result.Reason, result.Confidence)
+			return true, fmt.Sprintf("%s decision: %s (confidence: %.2f)", provider, result.Reason, result.Confidence)
 		}
-		return false, fmt.Sprintf("llm decision: %s", result.Reason)
+		return false, fmt.Sprintf("%s decision: %s", provider, result.Reason)
 	}
 
 	if !b.ShouldRandomReply() {

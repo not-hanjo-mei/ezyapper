@@ -1,4 +1,5 @@
-// Package decision provides LLM-based reply decisions for whether the bot should respond to a message.
+// Package decision decides whether the bot should respond to a message,
+// using either a chat LLM or a System One decision model.
 package decision
 
 import (
@@ -18,6 +19,32 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 )
 
+// Decider decides whether the bot should reply to a message that neither
+// mentions it nor replies to it. The bot depends only on this interface, so
+// the decision backend (core.decision.provider) can change without touching
+// the message pipeline.
+type Decider interface {
+	// ShouldRespondWithInfo returns the verdict for msgInfo given the recent
+	// channel context. botName is the configured bot name; providers that
+	// do not substitute placeholders ignore it. An error means "no verdict":
+	// the caller applies its own fallback.
+	ShouldRespondWithInfo(ctx context.Context, botName string, msgInfo MessageInfo, imageCount int, recentMessages []ContextMessage) (*DecisionResult, error)
+}
+
+// New builds the Decider selected by cfg.Provider.
+func New(cfg *config.DecisionConfig) (Decider, error) {
+	switch p := cfg.EffectiveProvider(); p {
+	case config.DecisionProviderLLM:
+		return NewDecisionService(cfg)
+	default:
+		return nil, fmt.Errorf("unsupported decision provider %q", p)
+	}
+}
+
+var _ Decider = (*DecisionService)(nil)
+
+// DecisionService is the "llm" provider: it asks an OpenAI-compatible chat
+// model for a JSON verdict.
 type DecisionService struct {
 	config     *config.DecisionConfig
 	client     *openai.Client

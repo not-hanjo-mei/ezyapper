@@ -136,3 +136,22 @@ func TestBuildPromptsWithInfo(t *testing.T) {
 		t.Fatalf("expected reply metadata in user prompt, got %q", userPrompt)
 	}
 }
+
+func TestNewSelectsLLMProviderByDefault(t *testing.T) {
+	cfg := &config.DecisionConfig{
+		LLMConfig: config.LLMConfig{APIKey: "k", APIBaseURL: "https://example.com/v1", Timeout: 5},
+	}
+	d, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, ok := d.(*DecisionService); !ok {
+		t.Fatalf("absent provider must build the llm DecisionService, got %T", d)
+	}
+}
+
+func TestNewRejectsUnknownProvider(t *testing.T) {
+	if _, err := New(&config.DecisionConfig{Provider: "nope"}); err == nil {
+		t.Fatal("expected error for unknown provider")
+	}
+}
