@@ -212,13 +212,21 @@ func (f *DiscordMessageFetcher) convertMessage(msg *discordgo.Message) types.Dis
 		GuildID:   msg.GuildID,
 		Content:   msg.Content,
 		ImageURLs: extractImageURLs(msg, 0),
+		Embeds:    types.SummarizeEmbeds(msg.Embeds),
 		Timestamp: msg.Timestamp,
 	}
 
 	if msg.Author != nil {
 		d.AuthorID = msg.Author.ID
 		d.Username = msg.Author.Username
+		d.DisplayName = msg.Author.GlobalName
 		d.IsBot = msg.Author.Bot
+	}
+	if msg.Member != nil && msg.Member.Nick != "" {
+		d.DisplayName = msg.Member.Nick
+	}
+	if d.DisplayName == "" {
+		d.DisplayName = d.Username
 	}
 
 	if msg.MessageReference != nil {

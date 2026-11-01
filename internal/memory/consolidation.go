@@ -193,7 +193,7 @@ func (c *Consolidator) buildConversationText(ctx context.Context, messages []*Di
 		} else if msg.IsBot {
 			botMarker = ",BOT=OTHERS" // BOT=OTHERS tag - always present, prompt controls behavior
 		}
-		fmt.Fprintf(&conversation, `"%s"{UserID=%s,Time=%s%s}: "%s"`+"\n", msg.Username, msg.AuthorID, timeStr, botMarker, msg.Content)
+		fmt.Fprintf(&conversation, `"%s"{UserID=%s,Time=%s%s}: "%s"`+"\n", msg.Username, msg.AuthorID, timeStr, botMarker, msg.FullText())
 
 		if userID != "" {
 			logger.Debugf("[consolidation] message %d [%s] for user=%s: %s%s: %s", i+1, timeStr, userID, msg.Username, botMarker, msg.Content)

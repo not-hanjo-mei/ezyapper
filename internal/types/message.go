@@ -12,17 +12,21 @@ import (
 // DiscordMessage represents a simplified Discord message for short-term context
 // and plugin communication.
 type DiscordMessage struct {
-	ID                string    `json:"id"`
-	ChannelID         string    `json:"channel_id"`
-	GuildID           string    `json:"guild_id"`
-	AuthorID          string    `json:"author_id"`
-	Username          string    `json:"username"`
-	DisplayName       string    `json:"display_name"`
-	Content           string    `json:"content"`
-	ImageURLs         []string  `json:"image_urls,omitempty"`
-	ImageDescriptions []string  `json:"image_descriptions,omitempty"` // Cached image descriptions to avoid redundant API calls
-	Timestamp         time.Time `json:"timestamp"`
-	IsBot             bool      `json:"is_bot"`
+	ID                string   `json:"id"`
+	ChannelID         string   `json:"channel_id"`
+	GuildID           string   `json:"guild_id"`
+	AuthorID          string   `json:"author_id"`
+	Username          string   `json:"username"`
+	DisplayName       string   `json:"display_name"`
+	Content           string   `json:"content"`
+	ImageURLs         []string `json:"image_urls,omitempty"`
+	ImageDescriptions []string `json:"image_descriptions,omitempty"` // Cached image descriptions to avoid redundant API calls
+	// Embeds holds the readable text of the message's embeds (bot embeds,
+	// link previews). Content stays the raw message text; use FullText for
+	// content plus embeds.
+	Embeds    []EmbedSummary `json:"embeds,omitempty"`
+	Timestamp time.Time      `json:"timestamp"`
+	IsBot     bool           `json:"is_bot"`
 
 	// ReplyToID is the ID of the message being replied to (from MessageReference)
 	ReplyToID string `json:"reply_to_id"`
@@ -49,6 +53,7 @@ func FromDiscordgo(m *discordgo.MessageCreate) DiscordMessage {
 		DisplayName: displayName,
 		Content:     m.Content,
 		ImageURLs:   extractImageURLsFromMessage(m.Message),
+		Embeds:      SummarizeEmbeds(m.Embeds),
 		Timestamp:   m.Timestamp,
 		IsBot:       m.Author.Bot,
 	}

@@ -169,6 +169,7 @@ func (b *Bot) extractMessageImages(ctx context.Context, m *discordgo.MessageCrea
 			AuthorID:          m.Author.ID,
 			Username:          m.Author.Username,
 			Content:           m.Content,
+			Embeds:            types.SummarizeEmbeds(m.Embeds),
 			ImageURLs:         imageURLs,
 			ImageDescriptions: imageDescriptions,
 			Timestamp:         m.Timestamp,
@@ -322,7 +323,7 @@ func (b *Bot) buildModeContexts(m *discordgo.MessageCreate, displayName, guildNa
 	}
 	mc := ModeContext{
 		AIClient:        ai.NewClient(&b.cfg().AI, b.toolRegistry),
-		UserContent:     m.Content,
+		UserContent:     types.JoinContentAndEmbeds(m.Content, types.SummarizeEmbeds(m.Embeds)),
 		Username:        m.Author.Username,
 		UserID:          m.Author.ID,
 		DisplayName:     displayName,

@@ -173,7 +173,7 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 			}
 		}
 
-		content := msg.Content
+		content := msg.FullText()
 
 		if len(msg.ImageURLs) > 0 && b.cfg().AI.Vision.Mode != config.VisionModeTextOnly {
 			isMostRecentImage := (i == mostRecentImageIndex && enrichment.allows(msg.ID))

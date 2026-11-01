@@ -708,7 +708,7 @@ func (b *Bot) shouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 		msgInfo := decision.MessageInfo{
 			AuthorName: m.Author.Username,
 			AuthorID:   m.Author.ID,
-			Content:    m.Content,
+			Content:    types.JoinContentAndEmbeds(m.Content, types.SummarizeEmbeds(m.Embeds)),
 		}
 		if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
 			msgInfo.ReplyTo = m.ReferencedMessage.Author.Username
@@ -743,7 +743,7 @@ func (b *Bot) getRecentMessagesForDecision(currentMessageID string, messages []*
 		result = append(result, decision.ContextMessage{
 			AuthorName: msg.Username,
 			AuthorID:   msg.AuthorID,
-			Content:    msg.Content,
+			Content:    msg.FullText(),
 			IsBot:      msg.IsBot,
 			Timestamp:  msg.Timestamp,
 		})
