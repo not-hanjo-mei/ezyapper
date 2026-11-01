@@ -435,7 +435,7 @@ func TestPassesEntropyGate_PureEmoji(t *testing.T) {
 func TestPassesEntropyGate_LowUniqueRatio(t *testing.T) {
 	cfg := EntropyGateConfig{MinUniqueWordRatio: 0.5}
 	msg := &DiscordMessage{Content: "hello hello hello hello world"}
-	// 5 words, 2 unique 鈫?ratio=0.4 < 0.5 鈫?rejected
+	// 5 words, 2 unique →ratio=0.4 < 0.5 →rejected
 	if PassesEntropyGate(msg, cfg) {
 		t.Error("expected false for low unique word ratio")
 	}

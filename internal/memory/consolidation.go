@@ -99,7 +99,7 @@ func extractMentions(messages []*DiscordMessage) (userIDs, channelIDs []string) 
 
 // relationshipID builds a deterministic UUID from two user IDs and a type.
 // Uses UUID v5 (SHA-1) to generate a valid RFC 4122 UUID that Qdrant accepts,
-// while remaining deterministic (same inputs 鈫?same UUID).
+// while remaining deterministic (same inputs →same UUID).
 func relationshipID(userA, userB string, relType RelationshipType) string {
 	if userA > userB {
 		userA, userB = userB, userA

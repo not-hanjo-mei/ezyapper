@@ -90,7 +90,7 @@ func (b *Bot) addGenerationFailureReaction(s *discordgo.Session, m *discordgo.Me
 		return
 	}
 
-	const timeoutReaction = "棣冩媰"
+	const timeoutReaction = "💀"
 	if err := s.MessageReactionAdd(m.ChannelID, m.ID, timeoutReaction); err != nil {
 		logger.Warnf("[context] Failed to add generation timeout reaction: %v", err)
 	}

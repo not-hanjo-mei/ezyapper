@@ -130,7 +130,7 @@ logging:
 
 ### Semantic Search Flow
 
-1. LLM calls `search_emote(query="网太卡了", guild_id="123")`
+1. LLM calls `search_emote(query="the network is so laggy", guild_id="123")`
 2. Plugin loads emotes from `global` + `guild_123` metadata
 3. Merges and deduplicates by ID
 4. Sends all emotes to emote LLM for matching
