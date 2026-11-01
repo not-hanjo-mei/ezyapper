@@ -50,7 +50,7 @@ func (pm *Manager) OnMessage(ctx context.Context, msg types.DiscordMessage) (boo
 		}
 
 		if plugin.jsonrpc.dead.Load() {
-			pm.triggerRestart(plugin.Name)
+			pm.triggerRestart(plugin.Name, plugin.jsonrpc.DeadReason())
 			continue
 		}
 
@@ -58,7 +58,7 @@ func (pm *Manager) OnMessage(ctx context.Context, msg types.DiscordMessage) (boo
 		err := callPluginOnMessageWithTimeout(plugin, msg, &shouldContinue, time.Duration(pm.rpcTimeoutSec)*time.Second)
 		if err != nil {
 			if isClientDeadError(err) {
-				pm.triggerRestart(plugin.Name)
+				pm.triggerRestart(plugin.Name, err.Error())
 			}
 			logger.Warnf("[plugin] Plugin %s error in OnMessage: %v", plugin.Name, err)
 			continue
@@ -93,7 +93,7 @@ func (pm *Manager) OnResponse(ctx context.Context, msg types.DiscordMessage, res
 		}
 
 		if plugin.jsonrpc.dead.Load() {
-			pm.triggerRestart(plugin.Name)
+			pm.triggerRestart(plugin.Name, plugin.jsonrpc.DeadReason())
 			continue
 		}
 
@@ -101,7 +101,7 @@ func (pm *Manager) OnResponse(ctx context.Context, msg types.DiscordMessage, res
 		err := callPluginOnResponseWithTimeout(plugin, args, &reply, time.Duration(pm.rpcTimeoutSec)*time.Second)
 		if err != nil {
 			if isClientDeadError(err) {
-				pm.triggerRestart(plugin.Name)
+				pm.triggerRestart(plugin.Name, err.Error())
 			}
 			logger.Warnf("[plugin] Plugin %s error in OnResponse: %v", plugin.Name, err)
 		}
@@ -141,7 +141,7 @@ func (pm *Manager) BeforeSend(
 		}
 
 		if plugin.jsonrpc.dead.Load() {
-			pm.triggerRestart(plugin.Name)
+			pm.triggerRestart(plugin.Name, plugin.jsonrpc.DeadReason())
 			continue
 		}
 
@@ -154,7 +154,8 @@ func (pm *Manager) BeforeSend(
 		)
 		if err != nil {
 			if isClientDeadError(err) {
-				pm.triggerRestart(plugin.Name)
+				logger.Errorf("[plugin] Plugin %s before_send failed, skipping it for this message: %v", plugin.Name, err)
+				pm.triggerRestart(plugin.Name, err.Error())
 				continue
 			}
 			if isMethodNotFoundPluginError(err) {

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"ezyapper/internal/plugin"
@@ -92,7 +93,7 @@ func handleInfo(impl plugin.Interface, _ any) (any, error) {
 func handleOnMessage(impl plugin.Interface, params any) (any, error) {
 	var msg types.DiscordMessage
 	if err := decodeJSONRPCParams(params, &msg); err != nil {
-		return nil, fmt.Errorf("invalid params for on_message")
+		return nil, fmt.Errorf("jsonrpc -32602: invalid params for on_message: %w", err)
 	}
 	return impl.OnMessage(msg)
 }
@@ -100,7 +101,7 @@ func handleOnMessage(impl plugin.Interface, params any) (any, error) {
 func handleOnResponse(impl plugin.Interface, params any) (any, error) {
 	var args plugin.ResponseArgs
 	if err := decodeJSONRPCParams(params, &args); err != nil {
-		return nil, fmt.Errorf("invalid params for on_response")
+		return nil, fmt.Errorf("jsonrpc -32602: invalid params for on_response: %w", err)
 	}
 	if err := impl.OnResponse(args.Message, args.Response); err != nil {
 		return nil, err
@@ -115,7 +116,7 @@ func handleBeforeSend(impl plugin.Interface, params any) (any, error) {
 	}
 	var args plugin.BeforeSendArgs
 	if err := decodeJSONRPCParams(params, &args); err != nil {
-		return nil, fmt.Errorf("invalid params for before_send")
+		return nil, fmt.Errorf("jsonrpc -32602: invalid params for before_send: %w", err)
 	}
 	return provider.BeforeSend(args.Message, args.Response)
 }
@@ -135,7 +136,7 @@ func handleExecuteTool(impl plugin.Interface, params any) (any, error) {
 	}
 	var args plugin.ExecuteToolArgs
 	if err := decodeJSONRPCParams(params, &args); err != nil {
-		return nil, fmt.Errorf("invalid params for execute_tool")
+		return nil, fmt.Errorf("jsonrpc -32602: invalid params for execute_tool: %w", err)
 	}
 	if args.Arguments == nil {
 		args.Arguments = map[string]any{}
@@ -167,18 +168,37 @@ var rpcHandlers = map[string]rpcHandler{
 // from the bot process itself. The bot only spawns plugins as subprocesses and
 // communicates with them over stdio; it never calls Serve directly.
 func Serve(impl plugin.Interface) error {
+	return ServeIO(impl, os.Stdin, os.Stdout, os.Stderr)
+}
+
+// ServeIO runs the JSON-RPC loop on the given streams. A malformed frame is
+// answered with a -32700 parse error and skipped; only EOF or a broken pipe
+// ends the loop. Panics inside a handler are recovered and reported as a
+// JSON-RPC error so one bad request cannot take the plugin process down.
+// Diagnostics go to logw (the host captures plugin stderr into its log).
+func ServeIO(impl plugin.Interface, r io.Reader, w io.Writer, logw io.Writer) error {
 	if impl == nil {
 		return fmt.Errorf("plugin implementation is nil")
 	}
+	if logw == nil {
+		logw = io.Discard
+	}
 
-	decoder := json.NewDecoder(os.Stdin)
-	encoder := json.NewEncoder(os.Stdout)
+	decoder := plugin.NewFrameDecoder(r)
+	encoder := json.NewEncoder(w)
 
 	for {
 		var req jsonRPCRequest
 		if err := decoder.Decode(&req); err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
+			}
+			if plugin.IsMalformedFrame(err) {
+				fmt.Fprintf(logw, "[plugin-server] %v\n", err)
+				if werr := WriteJSONRPCResponse(encoder, 0, nil, fmt.Errorf("jsonrpc -32700: parse error")); werr != nil {
+					return werr
+				}
+				continue
 			}
 			return fmt.Errorf("failed to read jsonrpc request: %w", err)
 		}
@@ -190,17 +210,28 @@ func Serve(impl plugin.Interface) error {
 			continue
 		}
 
-		var result any
-		var callErr error
-		handler, ok := rpcHandlers[req.Method]
-		if !ok {
-			callErr = fmt.Errorf("jsonrpc -32601: method not found")
-		} else {
-			result, callErr = handler(impl, req.Params)
+		result, callErr := dispatch(impl, req, logw)
+		if callErr != nil {
+			fmt.Fprintf(logw, "[plugin-server] method %s (id=%d) failed: %v\n", req.Method, req.ID, callErr)
 		}
 
 		if err := WriteJSONRPCResponse(encoder, req.ID, result, callErr); err != nil {
 			return err
 		}
 	}
+}
+
+func dispatch(impl plugin.Interface, req jsonRPCRequest, logw io.Writer) (result any, err error) {
+	handler, ok := rpcHandlers[req.Method]
+	if !ok {
+		return nil, fmt.Errorf("jsonrpc -32601: method not found")
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(logw, "[plugin-server] panic in %s: %v\n%s\n", req.Method, r, debug.Stack())
+			result = nil
+			err = fmt.Errorf("plugin panic in %s: %v", req.Method, r)
+		}
+	}()
+	return handler(impl, req.Params)
 }

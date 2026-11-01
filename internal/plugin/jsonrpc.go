@@ -8,6 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"ezyapper/internal/logger"
 )
 
 type jsonRPCRequest struct {
@@ -34,10 +36,35 @@ type stdioJSONRPCClient struct {
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
 	enc    *json.Encoder
-	dec    *json.Decoder
+	dec    *FrameDecoder
+	// name labels log lines; it is set once the plugin reports its info.
+	name   atomic.Value
 	mu     sync.Mutex
 	nextID int64
 	dead   atomic.Bool
+	// deadReason records why the transport was marked dead, for logs.
+	deadReason atomic.Value
+}
+
+// markDead flags the transport as unusable and records why.
+func (c *stdioJSONRPCClient) markDead(reason string) {
+	if c == nil {
+		return
+	}
+	if c.dead.CompareAndSwap(false, true) {
+		c.deadReason.Store(reason)
+	}
+}
+
+// DeadReason returns why the transport was marked dead, or "" if alive.
+func (c *stdioJSONRPCClient) DeadReason() string {
+	if c == nil || !c.dead.Load() {
+		return ""
+	}
+	if v, ok := c.deadReason.Load().(string); ok && v != "" {
+		return v
+	}
+	return "unknown reason"
 }
 
 func newStdioJSONRPCClient(stdin io.WriteCloser, stdout io.ReadCloser) *stdioJSONRPCClient {
@@ -45,8 +72,23 @@ func newStdioJSONRPCClient(stdin io.WriteCloser, stdout io.ReadCloser) *stdioJSO
 		stdin:  stdin,
 		stdout: stdout,
 		enc:    json.NewEncoder(stdin),
-		dec:    json.NewDecoder(stdout),
+		dec:    NewFrameDecoder(stdout),
 		nextID: 1,
+	}
+}
+
+// label returns the plugin name for log lines, or "unknown" before info.
+func (c *stdioJSONRPCClient) label() string {
+	if v, ok := c.name.Load().(string); ok && v != "" {
+		return v
+	}
+	return "unknown"
+}
+
+// SetName sets the plugin name used in log lines.
+func (c *stdioJSONRPCClient) SetName(name string) {
+	if c != nil {
+		c.name.Store(name)
 	}
 }
 
@@ -69,7 +111,7 @@ func (c *stdioJSONRPCClient) Call(method string, params any, reply any) error {
 	}
 
 	if c.dead.Load() {
-		return fmt.Errorf("jsonrpc client is dead: transport timed out and connection is stale")
+		return fmt.Errorf("jsonrpc client is dead: %s", c.DeadReason())
 	}
 
 	c.mu.Lock()
@@ -90,17 +132,28 @@ func (c *stdioJSONRPCClient) Call(method string, params any, reply any) error {
 	}
 
 	if err := c.enc.Encode(req); err != nil {
-		return fmt.Errorf("failed to write jsonrpc request: %w", err)
+		c.markDead(fmt.Sprintf("write failed during %s: %v", method, err))
+		return fmt.Errorf("jsonrpc client is dead: failed to write jsonrpc request for %s: %w", method, err)
 	}
 
 	for {
 		if c.dead.Load() {
-			return fmt.Errorf("jsonrpc client is dead: transport timed out and connection is stale")
+			return fmt.Errorf("jsonrpc client is dead: %s", c.DeadReason())
 		}
 
 		var resp jsonRPCResponse
 		if err := c.dec.Decode(&resp); err != nil {
-			return fmt.Errorf("failed to read jsonrpc response: %w", err)
+			if IsMalformedFrame(err) {
+				// A stray or corrupt line on the plugin's stdout must not
+				// kill the transport. Log it and keep waiting for our reply.
+				logger.Warnf("[plugin] %s: skipping %v (method=%s id=%d)", c.label(), err, method, id)
+				continue
+			}
+			// The stream itself is broken (EOF or closed pipe): the plugin
+			// process most likely exited. Mark the transport dead so the
+			// manager restarts it instead of failing every later call.
+			c.markDead(fmt.Sprintf("read failed during %s: %v", method, err))
+			return fmt.Errorf("jsonrpc client is dead: failed to read jsonrpc response for %s: %w", method, err)
 		}
 
 		if resp.ID != id {

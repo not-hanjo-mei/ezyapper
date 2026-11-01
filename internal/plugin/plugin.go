@@ -144,10 +144,12 @@ type ExecuteToolArgs struct {
 
 // Client represents a connection to a plugin
 type Client struct {
-	Name      string
-	Info      Info
-	jsonrpc   *stdioJSONRPCClient
-	process   *os.Process
+	Name    string
+	Info    Info
+	jsonrpc *stdioJSONRPCClient
+	process *os.Process
+	// exited is closed once the plugin process has exited and been reaped.
+	exited    chan struct{}
 	priority  int
 	path      string
 	configDir string
@@ -296,7 +298,7 @@ func (pm *Manager) ExecuteTool(ctx context.Context, pluginName string, toolName 
 
 	if plugin.jsonrpc != nil {
 		if plugin.jsonrpc.dead.Load() {
-			pm.triggerRestart(pluginName)
+			pm.triggerRestart(pluginName, plugin.jsonrpc.DeadReason())
 			return "", fmt.Errorf("plugin %s transport is dead", pluginName)
 		}
 		return pm.executeJSONRPCTool(plugin, toolName, args)
@@ -341,7 +343,7 @@ func (pm *Manager) executeJSONRPCTool(plugin *Client, toolName string, args map[
 	)
 	if err != nil {
 		if isClientDeadError(err) {
-			pm.triggerRestart(plugin.Name)
+			pm.triggerRestart(plugin.Name, err.Error())
 		}
 		return "", fmt.Errorf("plugin tool execution failed: %w", err)
 	}
