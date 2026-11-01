@@ -36,6 +36,8 @@ func New(cfg *config.DecisionConfig) (Decider, error) {
 	switch p := cfg.EffectiveProvider(); p {
 	case config.DecisionProviderLLM:
 		return NewDecisionService(cfg)
+	case config.DecisionProviderSystemOne:
+		return NewSystemOneService(&cfg.SystemOne)
 	default:
 		return nil, fmt.Errorf("unsupported decision provider %q", p)
 	}
@@ -63,6 +65,10 @@ type MessageInfo struct {
 	Content    string
 	ReplyTo    string
 	ReplyToID  string
+	// IsBot and Timestamp are used by the system_one state; the llm
+	// prompt does not include them.
+	IsBot     bool
+	Timestamp time.Time
 }
 
 type ContextMessage struct {
@@ -71,6 +77,9 @@ type ContextMessage struct {
 	Content    string
 	IsBot      bool
 	Timestamp  time.Time
+	// ReplyTo is the username of the replied-to message's author, if any.
+	// Used by the system_one state; the llm prompt does not include it.
+	ReplyTo string
 }
 
 func NewDecisionService(cfg *config.DecisionConfig) (*DecisionService, error) {
