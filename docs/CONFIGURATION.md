@@ -133,11 +133,20 @@ The "defaults to `core.ai.X` if empty" pattern means you can leave the fields bl
 
 ### `core.decision`
 
-The optional LLM-based reply classifier. When enabled, every non-trivial message is sent to a (typically small/fast) model that returns `{"should_respond": ..., "reason": ..., "confidence": ...}`. The bot uses this to decide whether to reply.
+The optional reply classifier. When enabled, every message that neither mentions the bot nor replies to it is sent to a decision model, and the bot replies only when the model says so. Two providers are available:
+
+- `llm` (default): a (typically small/fast) chat model returns `{"should_respond": ..., "reason": ..., "confidence": ...}`.
+- `system_one`: a [System One](https://docs.typesafe.ai/concepts/system-one.md) decision model such as TypeSafe Jev answers one yes/no ("noul") question with a calibrated probability P(yes). It is not an LLM: it generates no text, so there is no prompt or JSON format to get wrong.
 
 | Field | Type | Required when | Notes |
 |-------|------|---------------|-------|
-| `enabled` | bool | always | If false, all fields below are skipped. |
+| `enabled` | bool | always | If false, all fields below are skipped (an invalid `provider` is still reported). |
+| `provider` | `llm` \| `system_one` | optional | Defaults to `llm` when absent, so existing configs keep working. Only the selected provider's fields are validated. |
+
+#### `provider: llm`
+
+| Field | Type | Required when | Notes |
+|-------|------|---------------|-------|
 | `model` | string | enabled | Decision model (use a fast one). |
 | `api_base_url` | string | enabled | |
 | `api_key` | string | enabled | |
@@ -148,7 +157,37 @@ The optional LLM-based reply classifier. When enabled, every non-trivial message
 | `timeout` | int (>0) | enabled | Per-request timeout. |
 | `extra_params` | map | optional | |
 
-If the decision LLM fails (timeout, error, invalid JSON), the bot falls back to `core.discord.reply_percentage`. So a decision-service outage doesn't kill the bot — it just makes it less smart about when to chime in.
+#### `provider: system_one` (`core.decision.system_one`)
+
+| Field | Type | Required when | Notes |
+|-------|------|---------------|-------|
+| `api_base_url` | string | enabled | e.g. `https://api.typesafe.ai/v1`. Requests go to `<api_base_url>/systemone`. |
+| `api_key` | string | enabled | Sent as `Authorization: Bearer <key>`. |
+| `model` | string | enabled | e.g. `jev-latest` (or `jev-preview`). |
+| `timeout` | int (>0) | enabled | Per-request timeout in seconds. |
+| `retry_count` | int (≥0) | enabled | Retries on 429, 529, 5xx and network errors. 400/401/413/422 fail at once. |
+| `threshold` | float (0 < t ≤ 1) | enabled | Reply when P(yes) ≥ threshold. 0.7 is TypeSafe's suggested starting point; raise it to make the bot quieter. |
+| `instructions` | string | enabled | The yes/no question, e.g. `Should the Discord bot Ezy send a reply to current_message?`. Sent verbatim: there is **no** `{BotName}` substitution, write the bot's name literally. |
+| `criteria_true` / `criteria_false` | string | optional | What a yes / a no means. Set both or neither. Sent verbatim. |
+| `max_state_bytes` | int (>0) | enabled | Budget for the JSON state. 48000 keeps even CJK-heavy text well inside Jev's 64k-token context. |
+
+The state sent with the question is a JSON object:
+
+```json
+{
+  "recent_messages": [
+    {"author": "alice", "is_bot": false, "content": "...", "timestamp": "2026-11-01T08:00:00Z", "reply_to": "bob"}
+  ],
+  "older_messages_omitted": 3,
+  "current_message": {"author": "carol", "is_bot": false, "content": "...", "timestamp": "2026-11-01T08:02:00Z", "image_count": 1}
+}
+```
+
+`recent_messages` is oldest first; `reply_to` (the replied-to author) is omitted when the message is not a reply, and author IDs are not sent. When the encoded state exceeds `max_state_bytes`, the oldest messages are dropped first (`older_messages_omitted` says how many); if the current message alone is still too large, its content is cut. Images are not sent (text only); `image_count` tells the model they exist. The decision is logged like `system_one decision: p(yes)=0.83 threshold=0.70 (confidence: 0.83)`; the reported confidence is the probability of the chosen verdict: P(yes) when replying, 1 − P(yes) when not.
+
+Tuning: with the criteria from `config.yaml.example` and `jev-latest` (jev-1.14.0, November 2026), a message addressed to the bot by name scored about 0.94, a follow-up in a conversation with the bot 0.97, two users talking to each other 0.04, and an open question to the whole channel about 0.65. With the default threshold of 0.7 the bot therefore stays out of open channel questions; lower it to about 0.6 if it should take those. Instructions alone (no criteria) separate the cases less sharply (0.84 / 0.94 / 0.14 / 0.71).
+
+If the decision model fails (timeout, error, invalid JSON for `llm`, an HTTP error or missing answer for `system_one`), the bot falls back to `core.discord.reply_percentage`. So a decision-service outage doesn't kill the bot — it just makes it less smart about when to chime in.
 
 ---
 
