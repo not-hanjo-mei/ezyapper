@@ -109,7 +109,7 @@ func TestBuildConversationHistory_ResolvedMentions(t *testing.T) {
 		messages,
 		"",    // currentMsgID empty so no messages skipped
 		"",    // botID empty so all treated as User
-		false, // no on-demand enrichment
+		recentImageEnrichment{}, // no on-demand enrichment
 		userMentions,
 		channelMappings,
 	)
@@ -188,7 +188,7 @@ func TestBuildConversationHistory_WithReply(t *testing.T) {
 		messages,
 		"", // no current message to skip
 		"", // no bot ID
-		false,
+		recentImageEnrichment{},
 		nil,
 		nil,
 	)
@@ -235,7 +235,7 @@ func TestBuildConversationHistory_WithReplyDeleted(t *testing.T) {
 		messages,
 		"",
 		"",
-		false,
+		recentImageEnrichment{},
 		nil,
 		nil,
 	)
@@ -273,7 +273,7 @@ func TestBuildConversationHistory_NoReply(t *testing.T) {
 		messages,
 		"",
 		"",
-		false,
+		recentImageEnrichment{},
 		nil,
 		nil,
 	)
@@ -333,7 +333,7 @@ func TestBuildConversationHistory_WithRename(t *testing.T) {
 		messages,
 		"",
 		"bot1",
-		false,
+		recentImageEnrichment{},
 		nil,
 		nil,
 	)
@@ -426,37 +426,44 @@ func TestFormatMessageXML_EscapesSpecialChars(t *testing.T) {
 	}
 }
 
-func TestShouldEnrichRecentHistoricalImages_EmptyNoReference(t *testing.T) {
-	if shouldEnrichRecentHistoricalImages("", false) {
-		t.Error("expected false for empty content with no reference")
+func TestPlanRecentImageEnrichment_EmptyNoReference(t *testing.T) {
+	if planRecentImageEnrichment("", "").allows("img-msg") {
+		t.Error("expected no enrichment for empty content with no reference")
 	}
 }
 
-func TestShouldEnrichRecentHistoricalImages_HasReferenceTrueEvenEmptyContent(t *testing.T) {
-	if !shouldEnrichRecentHistoricalImages("", true) {
-		t.Error("expected true when hasReference is true even with empty content")
+func TestPlanRecentImageEnrichment_ReplyToImageMessage(t *testing.T) {
+	if !planRecentImageEnrichment("", "img-msg").allows("img-msg") {
+		t.Error("expected enrichment when replying to the image message itself")
 	}
 }
 
-func TestShouldEnrichRecentHistoricalImages_KeywordSubstringCaseInsensitive(t *testing.T) {
-	if !shouldEnrichRecentHistoricalImages("an image link", false) {
-		t.Error("expected true for content containing 'image' substring")
-	}
-	// Caller lowercases content, so "IMGUR" becomes "imgur" which contains "img".
-	if !shouldEnrichRecentHistoricalImages("IMGUR", false) {
-		t.Error("expected true for 'IMGUR' (lowercased to 'imgur' containing 'img')")
+// Regression: replying to an unrelated message used to trigger a vision call
+// on whatever image was most recent in history.
+func TestPlanRecentImageEnrichment_ReplyToOtherMessage(t *testing.T) {
+	if planRecentImageEnrichment("ok sure", "text-msg").allows("img-msg") {
+		t.Error("expected no enrichment when replying to a different message")
 	}
 }
 
-func TestShouldEnrichRecentHistoricalImages_WhitespaceOnly(t *testing.T) {
-	if shouldEnrichRecentHistoricalImages("   \t  \n ", false) {
-		t.Error("expected false for whitespace-only content with no reference")
+func TestPlanRecentImageEnrichment_KeywordSubstringCaseInsensitive(t *testing.T) {
+	if !planRecentImageEnrichment("an image link", "").allows("img-msg") {
+		t.Error("expected enrichment for content containing 'image'")
+	}
+	if !planRecentImageEnrichment("IMGUR", "").allows("img-msg") {
+		t.Error("expected enrichment for 'IMGUR' (lowercased contains 'img')")
 	}
 }
 
-func TestShouldEnrichRecentHistoricalImages_NoKeywordNoReference(t *testing.T) {
-	if shouldEnrichRecentHistoricalImages("plain text", false) {
-		t.Error("expected false for content with no image keyword and no reference")
+func TestPlanRecentImageEnrichment_WhitespaceOnly(t *testing.T) {
+	if planRecentImageEnrichment("   \t  \n ", "").allows("img-msg") {
+		t.Error("expected no enrichment for whitespace-only content")
+	}
+}
+
+func TestPlanRecentImageEnrichment_NoKeywordNoReference(t *testing.T) {
+	if planRecentImageEnrichment("plain text", "").allows("img-msg") {
+		t.Error("expected no enrichment without keyword or reference")
 	}
 }
 

@@ -912,7 +912,7 @@ func (b *Bot) getHistoricalImageDescriptions(messageID string, imageURLs []strin
 		return nil, false
 	}
 
-	key := strings.Join(imageURLs, "\n")
+	key := imageURLsCacheKey(imageURLs)
 
 	b.historicalImageDescCacheMu.RLock()
 	entry, ok := b.historicalImageDescCache[messageID]
@@ -943,7 +943,7 @@ func (b *Bot) setHistoricalImageDescriptions(messageID string, imageURLs, descri
 		return
 	}
 
-	key := strings.Join(imageURLs, "\n")
+	key := imageURLsCacheKey(imageURLs)
 	copied := make([]string, len(descriptions))
 	copy(copied, descriptions)
 
@@ -990,4 +990,14 @@ func (b *Bot) pruneHistoricalImageDescCacheLocked() {
 			delete(b.historicalImageDescCache, entries[i].id)
 		}
 	}
+}
+
+// imageURLsCacheKey joins stable per-image keys so a cached description still
+// matches after Discord re-signs the CDN URLs on a later fetch.
+func imageURLsCacheKey(imageURLs []string) string {
+	keys := make([]string, len(imageURLs))
+	for i, u := range imageURLs {
+		keys[i] = types.StableImageKey(u)
+	}
+	return strings.Join(keys, "\n")
 }

@@ -316,12 +316,17 @@ func (b *Bot) fetchProfileAndDisplayName(ctx context.Context, m *discordgo.Messa
 
 func (b *Bot) buildModeContexts(m *discordgo.MessageCreate, displayName, guildName string, imageURLs, imageDescriptions []string) (ModeContext, GenerateContext) {
 	replyToUsername, replyToContent := extractReplyInfo(m)
+	replyToID := ""
+	if m.MessageReference != nil {
+		replyToID = m.MessageReference.MessageID
+	}
 	mc := ModeContext{
 		AIClient:        ai.NewClient(&b.cfg().AI, b.toolRegistry),
 		UserContent:     m.Content,
 		Username:        m.Author.Username,
 		UserID:          m.Author.ID,
 		DisplayName:     displayName,
+		ReplyToID:       replyToID,
 		ReplyToUsername: replyToUsername,
 		ReplyToContent:  replyToContent,
 		GuildID:         m.GuildID,

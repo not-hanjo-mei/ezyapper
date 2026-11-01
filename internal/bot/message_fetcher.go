@@ -2,7 +2,6 @@ package bot
 
 import (
 	"context"
-	"strings"
 
 	"ezyapper/internal/types"
 
@@ -103,31 +102,5 @@ func (f *DiscordMessageFetcher) convertMessage(msg *discordgo.Message) types.Dis
 }
 
 func extractImageURLs(msg *discordgo.Message, maxImages int) []string {
-	urls := []string{}
-
-	for _, attachment := range msg.Attachments {
-		if strings.HasPrefix(attachment.ContentType, "image/") {
-			urls = append(urls, attachment.URL)
-			if maxImages > 0 && len(urls) >= maxImages {
-				return urls
-			}
-		}
-	}
-
-	for _, embed := range msg.Embeds {
-		if embed.Image != nil && embed.Image.URL != "" {
-			urls = append(urls, embed.Image.URL)
-			if maxImages > 0 && len(urls) >= maxImages {
-				return urls
-			}
-		}
-		if embed.Thumbnail != nil && embed.Thumbnail.URL != "" {
-			urls = append(urls, embed.Thumbnail.URL)
-			if maxImages > 0 && len(urls) >= maxImages {
-				return urls
-			}
-		}
-	}
-
-	return urls
+	return types.ExtractImageURLs(msg, maxImages)
 }

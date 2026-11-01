@@ -207,27 +207,6 @@ func TestBuildDynamicContext_WithMemories(t *testing.T) {
 	}
 }
 
-func TestShouldEnrichRecentHistoricalImages_EmptyContent(t *testing.T) {
-	result := shouldEnrichRecentHistoricalImages("", false)
-	if result {
-		t.Fatal("expected false for empty content without reference")
-	}
-}
-
-func TestShouldEnrichRecentHistoricalImages_WithReference(t *testing.T) {
-	result := shouldEnrichRecentHistoricalImages("", true)
-	if !result {
-		t.Fatal("expected true when replying to a message")
-	}
-}
-
-func TestShouldEnrichRecentHistoricalImages_WithContent(t *testing.T) {
-	result := shouldEnrichRecentHistoricalImages("look at this image", false)
-	if !result {
-		t.Fatal("expected true when user mentions an image keyword")
-	}
-}
-
 func TestHandleTextOnlyMode_NoContext(t *testing.T) {
 	cfg := &config.Config{
 		AI: config.AIConfig{

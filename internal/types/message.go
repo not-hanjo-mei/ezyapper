@@ -2,6 +2,7 @@
 package types
 
 import (
+	"net/url"
 	"strings"
 	"time"
 
@@ -67,22 +68,68 @@ func FromDiscordgo(m *discordgo.MessageCreate) DiscordMessage {
 }
 
 func extractImageURLsFromMessage(msg *discordgo.Message) []string {
+	return ExtractImageURLs(msg, 0)
+}
+
+// ExtractImageURLs returns the image URLs a message carries, capped at
+// maxImages when maxImages > 0. It includes image attachments, the main image
+// of embeds, and the thumbnail of image/gifv embeds (where Discord puts the
+// posted image itself). Thumbnails of link previews (article, link, video,
+// rich) are skipped: they are decoration, and describing them made every link
+// post cost a vision call.
+func ExtractImageURLs(msg *discordgo.Message, maxImages int) []string {
 	urls := []string{}
+	if msg == nil {
+		return urls
+	}
+	add := func(u string) bool {
+		if u == "" {
+			return false
+		}
+		urls = append(urls, u)
+		return maxImages > 0 && len(urls) >= maxImages
+	}
 
 	for _, attachment := range msg.Attachments {
-		if strings.HasPrefix(attachment.ContentType, "image/") {
-			urls = append(urls, attachment.URL)
+		if attachment != nil && strings.HasPrefix(attachment.ContentType, "image/") {
+			if add(attachment.URL) {
+				return urls
+			}
 		}
 	}
 
 	for _, embed := range msg.Embeds {
-		if embed.Image != nil && embed.Image.URL != "" {
-			urls = append(urls, embed.Image.URL)
+		if embed == nil {
+			continue
 		}
-		if embed.Thumbnail != nil && embed.Thumbnail.URL != "" {
-			urls = append(urls, embed.Thumbnail.URL)
+		if embed.Image != nil && add(embed.Image.URL) {
+			return urls
+		}
+		if embed.Thumbnail != nil && isImageEmbed(embed) && add(embed.Thumbnail.URL) {
+			return urls
 		}
 	}
 
 	return urls
+}
+
+func isImageEmbed(e *discordgo.MessageEmbed) bool {
+	return e.Type == discordgo.EmbedTypeImage || e.Type == discordgo.EmbedTypeGifv
+}
+
+// StableImageKey returns a cache key for an image URL that survives Discord
+// CDN re-signing. Discord attachment URLs carry ex/is/hm query parameters
+// that change every time the message is fetched, so the raw URL never hits a
+// cache. For Discord CDN hosts the query string is dropped; other URLs are
+// returned unchanged.
+func StableImageKey(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return rawURL
+	}
+	switch strings.ToLower(u.Host) {
+	case "cdn.discordapp.com", "media.discordapp.net", "images-ext-1.discordapp.net", "images-ext-2.discordapp.net":
+		return "discord-cdn:" + u.Path
+	}
+	return rawURL
 }

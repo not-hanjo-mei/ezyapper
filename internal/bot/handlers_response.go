@@ -24,6 +24,7 @@ type ModeContext struct {
 	Username        string
 	UserID          string
 	DisplayName     string
+	ReplyToID       string
 	ReplyToUsername string
 	ReplyToContent  string
 	GuildID         string
@@ -94,7 +95,7 @@ func (b *Bot) generateResponse(ctx context.Context, mc ModeContext, gc GenerateC
 		recentMessages,
 		mc.MessageID,
 		botID,
-		shouldEnrichRecentHistoricalImages(mc.UserContent, mc.ReplyToUsername != ""),
+		planRecentImageEnrichment(mc.UserContent, mc.ReplyToID),
 		mc.Mentions,
 		channelMappings,
 	)

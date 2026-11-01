@@ -68,32 +68,43 @@ func formatMessageXML(displayName, username, userID, content string, timestamp t
 	return base + fmt.Sprintf(" (replying to @%s)", replyToUsername)
 }
 
-// shouldEnrichRecentHistoricalImages checks if recent historical images should be enriched
-// based on message content and whether the user is replying to a previous message.
-func shouldEnrichRecentHistoricalImages(userContent string, hasReference bool) bool {
-	if userContent == "" && !hasReference {
-		return false
-	}
+// recentImageEnrichment describes when the most recent historical image may
+// be described on demand (a vision call) while building history.
+type recentImageEnrichment struct {
+	// replyToID is the message the user replied to, if any. A reply only
+	// justifies enrichment when it targets the image message itself.
+	replyToID string
+	// keyword is true when the user's text mentions an image.
+	keyword bool
+}
 
-	// Replying to a previous message usually means the user is referring to it.
-	if hasReference {
+// planRecentImageEnrichment decides whether on-demand enrichment is allowed.
+// Previously any reply enabled it, and the target was "the most recent image
+// in history" rather than the replied-to message, so in hybrid mode nearly
+// every reply re-described the same image.
+func planRecentImageEnrichment(userContent, replyToID string) recentImageEnrichment {
+	content := strings.ToLower(strings.TrimSpace(userContent))
+	return recentImageEnrichment{
+		replyToID: replyToID,
+		keyword:   content != "" && containsImageKeyword(content),
+	}
+}
+
+// allows reports whether the image message with the given ID may be enriched.
+func (p recentImageEnrichment) allows(messageID string) bool {
+	if p.keyword {
 		return true
 	}
-
-	content := strings.ToLower(strings.TrimSpace(userContent))
-	if content == "" {
-		return false
-	}
-
-	return containsImageKeyword(content)
+	return p.replyToID != "" && p.replyToID == messageID
 }
 
 // buildConversationHistoryText builds formatted conversation history text from Discord messages
 // Returns XML formatted <context> section with previous messages
 // Filters out the current message being processed and marks only the current bot as "Assistant"
 // In hybrid mode, primarily uses cached historical image descriptions; optionally performs
-// tightly bounded on-demand enrichment for the most recent image message.
-func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*types.DiscordMessage, currentMsgID, botID string, allowOnDemandRecentImageEnrichment bool, mentions []*discordgo.User, channelMappings []ChannelMapping) string {
+// tightly bounded on-demand enrichment for the most recent image message when the
+// user replied to that message or mentioned an image.
+func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*types.DiscordMessage, currentMsgID, botID string, enrichment recentImageEnrichment, mentions []*discordgo.User, channelMappings []ChannelMapping) string {
 	if len(messages) == 0 {
 		return ""
 	}
@@ -156,7 +167,7 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 		content := msg.Content
 
 		if len(msg.ImageURLs) > 0 && b.cfg().AI.Vision.Mode != config.VisionModeTextOnly {
-			isMostRecentImage := (i == mostRecentImageIndex && allowOnDemandRecentImageEnrichment)
+			isMostRecentImage := (i == mostRecentImageIndex && enrichment.allows(msg.ID))
 
 			descriptions := []string{}
 			var haveCachedDescriptions bool
