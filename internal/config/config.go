@@ -49,7 +49,25 @@ func (c *Config) MessageFilter() *filter.Filter {
 type OperationsConfig struct {
 	ShutdownTimeoutSec int `mapstructure:"shutdown_timeout_sec" yaml:"shutdown_timeout_sec"`
 	CleanupIntervalMin int `mapstructure:"cleanup_interval_min" yaml:"cleanup_interval_min"`
+	// HotReload controls watching the config file and applying changes
+	// without a restart (operations.runtime.hot_reload).
+	HotReload HotReloadConfig `mapstructure:"hot_reload" yaml:"hot_reload"`
 }
+
+// HotReloadConfig controls config file watching.
+type HotReloadConfig struct {
+	// Enabled turns the config file watcher on.
+	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
+	// DebounceMs is the quiet period after the last file event before the
+	// file is reloaded. Required when Enabled.
+	DebounceMs int `mapstructure:"debounce_ms" yaml:"debounce_ms"`
+}
+
+// Hot reload debounce bounds (milliseconds).
+const (
+	MinHotReloadDebounceMs = 50
+	MaxHotReloadDebounceMs = 60000
+)
 
 // LLMConfig is the shared LLM client configuration embedded by all LLM-using configs.
 type LLMConfig struct {
@@ -714,6 +732,21 @@ func validateOperations(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Logging.MaxAge, "operations.logging.max_age", errs)
 	requirePositive(cfg.Operations.ShutdownTimeoutSec, "operations.runtime.shutdown_timeout_sec", errs)
 	requirePositive(cfg.Operations.CleanupIntervalMin, "operations.runtime.cleanup_interval_min", errs)
+	validateHotReload(cfg, errs)
+}
+
+func validateHotReload(cfg *Config, errs *[]string) {
+	hr := cfg.Operations.HotReload
+	if !hr.Enabled {
+		if hr.DebounceMs < 0 {
+			*errs = append(*errs, "operations.runtime.hot_reload.debounce_ms must be greater than or equal to 0")
+		}
+		return
+	}
+	if hr.DebounceMs < MinHotReloadDebounceMs || hr.DebounceMs > MaxHotReloadDebounceMs {
+		*errs = append(*errs, fmt.Sprintf("operations.runtime.hot_reload.debounce_ms must be between %d and %d when hot_reload is enabled (got %d)",
+			MinHotReloadDebounceMs, MaxHotReloadDebounceMs, hr.DebounceMs))
+	}
 }
 
 func validatePrompt(cfg *Config, errs *[]string) {
@@ -885,6 +918,20 @@ func validateMessageFilters(cfg *Config, errs *[]string) {
 		return
 	}
 	cfg.messageFilter = f
+}
+
+// Path returns the file the config was loaded from ("" for configs built in
+// code). Hot reload watches this file.
+func (c *Config) Path() string {
+	if c == nil {
+		return ""
+	}
+	return c.configPath
+}
+
+// SetPath sets the file Save writes to and hot reload watches.
+func (c *Config) SetPath(path string) {
+	c.configPath = path
 }
 
 // Validate checks runtime config consistency and required fields.

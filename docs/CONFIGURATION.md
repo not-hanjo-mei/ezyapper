@@ -464,6 +464,8 @@ operations:
 |-------|------|-------|
 | `shutdown_timeout_sec` | int (>0) | Total grace period for graceful shutdown. |
 | `cleanup_interval_min` | int (>0) | Periodic cleanup ticker (rate limiter pruning, image cache eviction, etc.). |
+| `hot_reload.enabled` | bool | Watch the config file and apply changes on save without a restart. Default `false` when omitted. See [Hot reload](#hot-reload). |
+| `hot_reload.debounce_ms` | int (50-60000) | Required when `hot_reload.enabled` is true. Quiet period after the last file event before the file is re-read (editors emit several events per save). Must be `>= 0` when disabled. |
 
 ---
 
