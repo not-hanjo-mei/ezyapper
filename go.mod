@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/bwmarrin/discordgo v0.29.0
+	github.com/fsnotify/fsnotify v1.7.0
 	github.com/google/uuid v1.6.0
 	github.com/modelcontextprotocol/go-sdk v1.3.1
 	github.com/qdrant/go-client v1.17.0
@@ -18,7 +19,6 @@ require (
 require gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 
 require (
-	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/google/jsonschema-go v0.4.2 // indirect
 	github.com/gorilla/websocket v1.5.1 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
