@@ -18,6 +18,7 @@ import (
 	"ezyapper/internal/ai/llmjson"
 	"ezyapper/internal/ai/tools"
 	"ezyapper/internal/config"
+	"ezyapper/internal/httpcapture"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/retry"
 
@@ -35,7 +36,7 @@ type Client struct {
 // NewClient creates a new AI client
 func NewClient(cfg *config.AIConfig, toolRegistry *tools.ToolRegistry) *Client {
 	httpTimeout := time.Duration(cfg.Timeout) * time.Second
-	httpClient := &http.Client{Timeout: httpTimeout}
+	httpClient := httpcapture.Wrap(&http.Client{Timeout: httpTimeout}, "ai:"+cfg.Model)
 
 	// Create OpenAI config with custom base URL
 	openaiConfig := openai.DefaultConfig(cfg.APIKey)

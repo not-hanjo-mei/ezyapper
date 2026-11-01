@@ -541,3 +541,17 @@ The `/health` endpoint is part of the WebUI. If `operations.web.enabled: false`,
 
 - enable the WebUI, or
 - override the healthcheck in your runtime (compose, k8s) to check the process instead of HTTP.
+
+## Capturing model requests
+
+Set `EZYAPPER_CAPTURE_DIR` to a directory to record every request the bot
+sends to the chat, decision, vision, consolidation and embedding APIs, with
+the response, as one JSON object per line in
+`capture-<timestamp>.jsonl`. API keys and auth headers are redacted; image
+downloads are recorded by size only; bodies are capped at 1 MiB. Leave the
+variable unset in normal operation.
+
+```bash
+EZYAPPER_CAPTURE_DIR=./captures ./bot
+jq -r 'select(.label|startswith("ai:")) | .request_body.messages[] | "\(.role):\n\(.content)\n"' captures/*.jsonl
+```

@@ -11,6 +11,7 @@ import (
 	"ezyapper/internal/ai"
 	"ezyapper/internal/ai/llmjson"
 	"ezyapper/internal/config"
+	"ezyapper/internal/httpcapture"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/retry"
 
@@ -58,7 +59,7 @@ func NewDecisionService(cfg *config.DecisionConfig) (*DecisionService, error) {
 	openaiConfig.BaseURL = cfg.APIBaseURL
 
 	httpTimeout := time.Duration(cfg.Timeout) * time.Second
-	httpClient := &http.Client{Timeout: httpTimeout}
+	httpClient := httpcapture.Wrap(&http.Client{Timeout: httpTimeout}, "decision:"+cfg.Model)
 	openaiConfig.HTTPClient = httpClient
 
 	return &DecisionService{
