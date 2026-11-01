@@ -146,12 +146,21 @@ func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*type
 	}
 
 	seenNames := make(map[string]string)
+	// Message IDs are unique; a message must never appear twice in context,
+	// whatever produced the slice.
+	seenIDs := make(map[string]struct{}, len(messages))
 
 	// Process messages in reverse (Discord returns newest first, we need oldest first)
 	for i := len(messages) - 1; i >= 0; i-- {
 		msg := messages[i]
 		if msg.ID == currentMsgID {
 			continue
+		}
+		if msg.ID != "" {
+			if _, dup := seenIDs[msg.ID]; dup {
+				continue
+			}
+			seenIDs[msg.ID] = struct{}{}
 		}
 
 		// Determine role: Assistant (self), Bot (other bots), User (humans)

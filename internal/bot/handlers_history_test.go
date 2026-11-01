@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"ezyapper/internal/config"
 	"ezyapper/internal/types"
 
 	"github.com/bwmarrin/discordgo"
@@ -107,8 +109,8 @@ func TestBuildConversationHistory_ResolvedMentions(t *testing.T) {
 	result := b.buildConversationHistoryText(
 		context.Background(),
 		messages,
-		"",    // currentMsgID empty so no messages skipped
-		"",    // botID empty so all treated as User
+		"",                      // currentMsgID empty so no messages skipped
+		"",                      // botID empty so all treated as User
 		recentImageEnrichment{}, // no on-demand enrichment
 		userMentions,
 		channelMappings,
@@ -492,5 +494,23 @@ func TestContainsImageKeyword_NoMatch(t *testing.T) {
 func TestContainsImageKeyword_Empty(t *testing.T) {
 	if containsImageKeyword("") {
 		t.Error("expected false for empty content")
+	}
+}
+
+func TestBuildConversationHistoryText_DeduplicatesByID(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.AI.Vision.Mode = config.VisionModeTextOnly
+	cfgStore := &atomic.Value{}
+	cfgStore.Store(cfg)
+	b := &Bot{configStore: cfgStore}
+	now := time.Now()
+	messages := []*types.DiscordMessage{
+		{ID: "2", AuthorID: "u", Username: "alice", Content: "second", Timestamp: now},
+		{ID: "1", AuthorID: "u", Username: "alice", Content: "first", Timestamp: now},
+		{ID: "2", AuthorID: "u", Username: "alice", Content: "second", Timestamp: now},
+	}
+	out := b.buildConversationHistoryText(context.Background(), messages, "", "", recentImageEnrichment{}, nil, nil)
+	if got := strings.Count(out, `"second"`); got != 1 {
+		t.Fatalf("expected message 2 once, got %d times:\n%s", got, out)
 	}
 }
