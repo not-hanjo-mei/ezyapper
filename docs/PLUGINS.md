@@ -230,6 +230,20 @@ Response:
 
 The host probes `info` once at startup. If the plugin doesn't respond within `startup_timeout_sec`, it's considered dead and skipped. Other calls use `rpc_timeout_sec`, except `before_send` which uses its own (typically longer) `before_send_timeout_sec` to accommodate things like TTS generation.
 
+### Notifications the plugin may send
+
+| Notification | Meaning |
+|--------------|---------|
+| `tools_changed` | The plugin's tool list changed (typically after it reloaded its own config). The host re-queries `list_tools`, validates the result (an invalid list is rejected and the previous one kept) and re-registers the plugin's tools with the model. |
+
+A notification is a JSON-RPC message with a `method` and **no** `id`:
+
+```json
+{"jsonrpc": "2.0", "method": "tools_changed"}
+```
+
+The transport is strictly request/response, so the host reads a notification during its next exchange with the plugin. Every incoming Discord message reaches each plugin through `on_message`, so in practice the refresh lands with the next message. This was chosen over periodic `list_tools` polling (constant traffic for a rare event, plus a new config knob) and over a background reader on the plugin's stdout (a larger change to a transport that is shared with request timeouts and restarts). Go plugins call `server.NotifyToolsChanged()`, which is safe from any goroutine because the server serialises all writes to stdout.
+
 ### Implementing in Go
 
 `internal/plugin/server` provides a `Serve()` helper that wires the dispatch loop for you. A minimal plugin:

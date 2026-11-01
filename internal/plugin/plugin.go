@@ -305,21 +305,15 @@ type pluginLoadTarget struct {
 }
 
 type Manager struct {
-	plugins              map[string]*Client
-	disabled             map[string]disabledPlugin
-	mu                   sync.RWMutex
-	defaultToolTimeoutMs int
-	startupTimeoutSec    int
-	rpcTimeoutSec        int
-	beforeSendTimeoutSec int
-	commandTimeoutSec    int
-	shutdownTimeoutSec   int
-	disableTimeoutSec    int
-	maxRestarts          int
-	restartCooldown      time.Duration
-	pluginsDir           string
-	wg                   sync.WaitGroup
-	restartStates        sync.Map // name -> *restartState
+	plugins  map[string]*Client
+	disabled map[string]disabledPlugin
+	mu       sync.RWMutex
+	// settings holds the current *Settings; replaced by UpdateSettings.
+	settings atomic.Pointer[Settings]
+	// toolsChanged holds the handler set by SetToolsChangedHandler.
+	toolsChanged  atomic.Pointer[func()]
+	wg            sync.WaitGroup
+	restartStates sync.Map // name -> *restartState
 }
 
 type restartState struct {
@@ -384,8 +378,8 @@ func (pm *Manager) executeJSONRPCTool(plugin *Client, toolName string, args map[
 			break
 		}
 	}
-	if timeout == 0 && pm.defaultToolTimeoutMs > 0 {
-		timeout = time.Duration(pm.defaultToolTimeoutMs) * time.Millisecond
+	if timeout == 0 && pm.st().DefaultToolTimeoutMs > 0 {
+		timeout = time.Duration(pm.st().DefaultToolTimeoutMs) * time.Millisecond
 		source = "config"
 	}
 	if timeout == 0 {
@@ -446,7 +440,7 @@ func (pm *Manager) executeCommandTool(ctx context.Context, plugin *Client, toolN
 		}
 	}
 	if timeout == 0 {
-		timeout = time.Duration(pm.commandTimeoutSec) * time.Second
+		timeout = time.Duration(pm.st().CommandTimeoutSec) * time.Second
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)

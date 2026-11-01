@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"ezyapper/internal/plugin"
 	"ezyapper/internal/types"
@@ -101,3 +102,47 @@ func TestServeEOFEndsCleanly(t *testing.T) {
 		t.Fatalf("expected nil on EOF, got %v", err)
 	}
 }
+
+func TestNotifyToolsChanged(t *testing.T) {
+	if err := NotifyToolsChanged(); err != ErrNotServing {
+		t.Fatalf("expected ErrNotServing outside Serve, got %v", err)
+	}
+
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	done := make(chan error, 1)
+	go func() { done <- ServeIO(&notifyTestPlugin{}, inR, outW, io.Discard) }()
+
+	// Wait until the loop is running.
+	deadline := time.Now().Add(2 * time.Second)
+	for active.Load() == nil && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	go func() { _ = NotifyToolsChanged() }()
+
+	var frame map[string]any
+	if err := json.NewDecoder(outR).Decode(&frame); err != nil {
+		t.Fatal(err)
+	}
+	if frame["method"] != plugin.NotificationToolsChanged {
+		t.Fatalf("unexpected frame %v", frame)
+	}
+	if _, hasID := frame["id"]; hasID {
+		t.Fatalf("a notification must not carry an id: %v", frame)
+	}
+
+	inW.Close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if err := NotifyToolsChanged(); err != ErrNotServing {
+		t.Fatalf("expected ErrNotServing after Serve returned, got %v", err)
+	}
+}
+
+type notifyTestPlugin struct{}
+
+func (notifyTestPlugin) Info() (plugin.Info, error)                    { return plugin.Info{Name: "n"}, nil }
+func (notifyTestPlugin) OnMessage(types.DiscordMessage) (bool, error)  { return true, nil }
+func (notifyTestPlugin) OnResponse(types.DiscordMessage, string) error { return nil }
+func (notifyTestPlugin) Shutdown() error                               { return nil }

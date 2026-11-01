@@ -606,8 +606,8 @@ func TestExecuteToolTimeout_SuccessWithConfigTimeout(t *testing.T) {
 
 func TestManagerDefaultToolTimeoutMsZero(t *testing.T) {
 	pm := NewManager(0, 90, 5, 180, 45, 5, 2, 3, 300)
-	if pm.defaultToolTimeoutMs != 0 {
-		t.Fatalf("expected DefaultToolTimeoutMs=0, got %d", pm.defaultToolTimeoutMs)
+	if pm.st().DefaultToolTimeoutMs != 0 {
+		t.Fatalf("expected DefaultToolTimeoutMs=0, got %d", pm.st().DefaultToolTimeoutMs)
 	}
 }
 

@@ -112,6 +112,18 @@ func (pm *Manager) loadPluginWithConfig(pluginPath string, pluginConfigDir strin
 	return pm.loadRPCPlugin(pluginPath, pluginConfigDir)
 }
 
+// attachNotifications routes the plugin's unprompted notifications to the
+// manager. Only tools_changed is defined.
+func (pm *Manager) attachNotifications(client *stdioJSONRPCClient) {
+	client.onNotify = func(method string) {
+		if method != NotificationToolsChanged {
+			logger.Debugf("[plugin] %s: ignoring unknown notification %q", client.label(), method)
+			return
+		}
+		pm.refreshTools(client)
+	}
+}
+
 func (pm *Manager) loadRPCPlugin(pluginPath string, pluginConfigDir string) error {
 	cmd := exec.Command(pluginPath)
 	cmd.Env = buildPluginEnv(pluginConfigDir,
@@ -145,17 +157,18 @@ func (pm *Manager) loadRPCPlugin(pluginPath string, pluginConfigDir string) erro
 
 	jsonClient := newStdioJSONRPCClient(stdin, stdout)
 	jsonClient.SetName(filepath.Base(pluginPath))
+	pm.attachNotifications(jsonClient)
 	exited := pm.watchPluginProcess(cmd, stderr, jsonClient)
 
 	var info Info
-	if err := callJSONRPCWithTimeout(jsonClient, &pm.wg, "info", map[string]any{}, &info, time.Duration(pm.startupTimeoutSec)*time.Second); err != nil {
+	if err := callJSONRPCWithTimeout(jsonClient, &pm.wg, "info", map[string]any{}, &info, time.Duration(pm.st().StartupTimeoutSec)*time.Second); err != nil {
 		jsonClient.Close()
 		cmd.Process.Kill()
 		return fmt.Errorf("plugin failed to initialize jsonrpc: %w", err)
 	}
 	jsonClient.SetName(info.Name)
 
-	pluginTools, err := listPluginToolsJSONRPC(jsonClient, &pm.wg, time.Duration(pm.rpcTimeoutSec)*time.Second)
+	pluginTools, err := listPluginToolsJSONRPC(jsonClient, &pm.wg, time.Duration(pm.st().RPCTimeoutSec)*time.Second)
 	if err != nil {
 		logger.Warnf("[plugin] Failed to list tools for plugin %s: %v", info.Name, err)
 		pluginTools = []ToolSpec{}
@@ -163,7 +176,7 @@ func (pm *Manager) loadRPCPlugin(pluginPath string, pluginConfigDir string) erro
 
 	var systemPrompt *ContextBlock
 	var sp ContextBlock
-	if err := callJSONRPCWithTimeout(jsonClient, &pm.wg, "system_prompt", map[string]any{}, &sp, time.Duration(pm.rpcTimeoutSec)*time.Second); err != nil {
+	if err := callJSONRPCWithTimeout(jsonClient, &pm.wg, "system_prompt", map[string]any{}, &sp, time.Duration(pm.st().RPCTimeoutSec)*time.Second); err != nil {
 		if !isMethodNotFoundPluginError(err) {
 			logger.Warnf("[plugin] Failed to get system prompt section for plugin %s: %v", info.Name, err)
 		}
@@ -649,7 +662,7 @@ func (pm *Manager) shutdownPlugin(plugin *Client) error {
 		return nil
 	}
 
-	err := callPluginShutdownWithTimeout(plugin, time.Duration(pm.rpcTimeoutSec)*time.Second)
+	err := callPluginShutdownWithTimeout(plugin, time.Duration(pm.st().RPCTimeoutSec)*time.Second)
 	if isBenignPluginShutdownError(err) {
 		return nil
 	}
@@ -786,7 +799,7 @@ func (pm *Manager) WaitForPending() error {
 		close(done)
 	}()
 
-	timer := time.NewTimer(time.Duration(pm.shutdownTimeoutSec) * time.Second)
+	timer := time.NewTimer(time.Duration(pm.st().ShutdownTimeoutSec) * time.Second)
 	defer timer.Stop()
 
 	select {
@@ -814,7 +827,7 @@ func (pm *Manager) Shutdown(ctx context.Context) error {
 			errs = append(errs, fmt.Errorf("plugin %s shutdown error: %w", name, err))
 		}
 
-		pm.stopPluginProcess(plugin, time.Duration(pm.shutdownTimeoutSec)*time.Second)
+		pm.stopPluginProcess(plugin, time.Duration(pm.st().ShutdownTimeoutSec)*time.Second)
 	}
 
 	if err := pm.WaitForPending(); err != nil {
@@ -871,7 +884,7 @@ func (pm *Manager) DisablePlugin(name string) error {
 		logger.Warnf("[plugin] Error shutting down plugin %s: %v", name, err)
 	}
 
-	pm.stopPluginProcess(plugin, time.Duration(pm.disableTimeoutSec)*time.Second)
+	pm.stopPluginProcess(plugin, time.Duration(pm.st().DisableTimeoutSec)*time.Second)
 
 	pm.mu.Lock()
 	pm.disabled[name] = disabledPlugin{
@@ -906,7 +919,7 @@ func (pm *Manager) tryRestartPlugin(name string, reason string) {
 	}
 
 	state.mu.Lock()
-	if state.count >= pm.maxRestarts && time.Since(state.lastAttempt) < pm.restartCooldown {
+	if state.count >= pm.st().MaxRestarts && time.Since(state.lastAttempt) < pm.st().RestartCooldown {
 		state.mu.Unlock()
 		return
 	}
@@ -927,9 +940,9 @@ func (pm *Manager) tryRestartPlugin(name string, reason string) {
 		attempt := state.count
 		state.mu.Unlock()
 
-		if attempt >= pm.maxRestarts {
+		if attempt >= pm.st().MaxRestarts {
 			logger.Errorf("[plugin] Plugin %s restart failed %d times, entering %v cooldown: %v",
-				name, attempt, pm.restartCooldown, err)
+				name, attempt, pm.st().RestartCooldown, err)
 		} else {
 			logger.Warnf("[plugin] Plugin %s restart attempt %d failed: %v", name, attempt, err)
 		}
@@ -958,7 +971,7 @@ func (pm *Manager) restartPluginInternal(name string) error {
 	if plugin.jsonrpc != nil {
 		plugin.jsonrpc.Close()
 	}
-	pm.stopPluginProcess(plugin, time.Duration(pm.disableTimeoutSec)*time.Second)
+	pm.stopPluginProcess(plugin, time.Duration(pm.st().DisableTimeoutSec)*time.Second)
 
 	if err := pm.loadPluginWithConfig(path, configDir); err != nil {
 		pm.mu.Lock()
