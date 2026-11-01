@@ -100,6 +100,13 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		}
 	}
 
+	// Regex message filters: an ignored message is not answered, not buffered
+	// for consolidation and not counted toward it.
+	if ignored, rule := b.isFilteredOut(&msg); ignored {
+		logger.Infof("[filter] ignoring message %s from %s in channel %s (rule: %s)", m.ID, m.Author.Username, m.ChannelID, rule)
+		return
+	}
+
 	// Always add to channel buffer for complete conversation context in consolidation
 	// This ensures bot's own messages are included in batch consolidation
 	b.addMessageToChannelBuffer(m.ChannelID, &msg)

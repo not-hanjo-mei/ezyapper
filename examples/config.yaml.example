@@ -409,6 +409,28 @@ access_control:
     guilds: []
     channels: []
 
+  # ── Message filters (optional) ────────────────────────
+  # Regex rules applied to incoming messages, in order; the first matching
+  # rule wins, otherwise default_action applies. An ignored message is not
+  # answered and is hidden from history, the decision model and memory
+  # consolidation. The bot's own messages are never filtered.
+  # Patterns are Go regexes searched in the value: anchor IDs with ^...$.
+  # kinds: text, embed, image, sticker, audio, voice, video, file, reply, bot, webhook
+  #   kinds     = matches if the message has ANY listed kind
+  #   kinds_all = matches if the message has ALL listed kinds
+  message_filters:
+    default_action: allow   # allow | ignore (ignore = whitelist mode)
+    rules: []
+    # rules:
+    #   - name: "status bot embeds in #general"
+    #     action: ignore
+    #     channel: "^123456789012345678$"
+    #     user: "^234567890123456789$"
+    #     kinds: [embed]
+    #   - name: "prefix commands for other bots"
+    #     action: ignore
+    #     content: "^[!/]"
+
 operations:
   # ── Web Dashboard ─────────────────────────────────────
   web:

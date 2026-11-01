@@ -1,6 +1,7 @@
 package types
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/bwmarrin/discordgo"
@@ -40,5 +41,23 @@ func TestStableImageKeyIgnoresDiscordSignature(t *testing.T) {
 	other := "https://example.com/x.png?v=1"
 	if StableImageKey(other) != other {
 		t.Fatal("non-Discord URLs must keep their query string")
+	}
+}
+
+func TestMessageKinds(t *testing.T) {
+	m := &discordgo.Message{
+		Content:          "hi",
+		Author:           &discordgo.User{Bot: true},
+		Embeds:           []*discordgo.MessageEmbed{{Type: discordgo.EmbedTypeRich, Title: "x"}},
+		StickerItems:     []*discordgo.StickerItem{{ID: "s"}},
+		Attachments:      []*discordgo.MessageAttachment{{ContentType: "audio/ogg"}, {ContentType: "video/mp4"}, {ContentType: "application/pdf"}},
+		Flags:            discordgo.MessageFlagsIsVoiceMessage,
+		MessageReference: &discordgo.MessageReference{MessageID: "1"},
+		WebhookID:        "w",
+	}
+	got := strings.Join(MessageKinds(m), ",")
+	want := "text,embed,sticker,voice,video,file,reply,bot,webhook"
+	if got != want {
+		t.Fatalf("got %s want %s", got, want)
 	}
 }

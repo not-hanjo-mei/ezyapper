@@ -18,6 +18,7 @@ import (
 	"ezyapper/internal/ai/tools"
 	"ezyapper/internal/ai/vision"
 	"ezyapper/internal/config"
+	"ezyapper/internal/filter"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
 	"ezyapper/internal/plugin"
@@ -736,7 +737,7 @@ func (b *Bot) shouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 
 func (b *Bot) getRecentMessagesForDecision(currentMessageID string, messages []*types.DiscordMessage) []decision.ContextMessage {
 	result := []decision.ContextMessage{}
-	for _, msg := range messages {
+	for _, msg := range b.filterMessages(messages) {
 		if msg.ID == currentMessageID {
 			continue
 		}
@@ -1027,4 +1028,52 @@ func imageURLsCacheKey(imageURLs []string) string {
 		keys[i] = types.StableImageKey(u)
 	}
 	return strings.Join(keys, "\n")
+}
+
+// isFilteredOut reports whether the message filters ignore msg. The bot's own
+// messages are never filtered, so its side of the conversation stays intact.
+func (b *Bot) isFilteredOut(msg *types.DiscordMessage) (bool, string) {
+	if msg == nil {
+		return false, ""
+	}
+	f := b.messageFilter()
+	if f == nil {
+		return false, ""
+	}
+	if own := b.cfg().Discord.OwnBotID; own != "" && msg.AuthorID == own {
+		return false, ""
+	}
+	if b.session != nil && b.session.State != nil && b.session.State.User != nil && msg.AuthorID == b.session.State.User.ID {
+		return false, ""
+	}
+	action, rule := f.Decide(filter.SubjectOf(msg))
+	return action == filter.ActionIgnore, rule
+}
+
+// messageFilter returns the compiled filter, or nil when none is configured
+// (or the bot has no config, as in some unit tests).
+func (b *Bot) messageFilter() *filter.Filter {
+	if b == nil || b.configStore == nil {
+		return nil
+	}
+	c, ok := b.configStore.Load().(*config.Config)
+	if !ok {
+		return nil
+	}
+	return c.MessageFilter()
+}
+
+// filterMessages drops messages the filters ignore (never the bot's own).
+func (b *Bot) filterMessages(msgs []*types.DiscordMessage) []*types.DiscordMessage {
+	if b.messageFilter() == nil {
+		return msgs
+	}
+	out := make([]*types.DiscordMessage, 0, len(msgs))
+	for _, m := range msgs {
+		if ignored, _ := b.isFilteredOut(m); ignored {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
 }

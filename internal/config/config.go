@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 
+	"ezyapper/internal/filter"
+
 	"github.com/spf13/viper"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/yaml.v3"
@@ -14,21 +16,33 @@ import (
 
 // Config represents the complete application configuration
 type Config struct {
-	Discord    DiscordConfig    `mapstructure:"discord" yaml:"discord"`
-	AI         AIConfig         `mapstructure:"ai" yaml:"ai"`
-	Embedding  EmbeddingConfig  `mapstructure:"embedding" yaml:"embedding"`
-	Memory     MemoryConfig     `mapstructure:"memory" yaml:"memory"`
-	Web        WebConfig        `mapstructure:"web" yaml:"web"`
-	Logging    LoggingConfig    `mapstructure:"logging" yaml:"logging"`
-	Qdrant     QdrantConfig     `mapstructure:"qdrant" yaml:"qdrant"`
-	Blacklist  BlacklistConfig  `mapstructure:"blacklist" yaml:"blacklist"`
-	Whitelist  WhitelistConfig  `mapstructure:"whitelist" yaml:"whitelist"`
-	Plugins    PluginsConfig    `mapstructure:"plugins" yaml:"plugins"`
-	MCP        MCPConfig        `mapstructure:"mcp" yaml:"mcp"`
-	Decision   DecisionConfig   `mapstructure:"decision" yaml:"decision"`
-	Operations OperationsConfig `mapstructure:"operations" yaml:"operations"`
+	Discord   DiscordConfig   `mapstructure:"discord" yaml:"discord"`
+	AI        AIConfig        `mapstructure:"ai" yaml:"ai"`
+	Embedding EmbeddingConfig `mapstructure:"embedding" yaml:"embedding"`
+	Memory    MemoryConfig    `mapstructure:"memory" yaml:"memory"`
+	Web       WebConfig       `mapstructure:"web" yaml:"web"`
+	Logging   LoggingConfig   `mapstructure:"logging" yaml:"logging"`
+	Qdrant    QdrantConfig    `mapstructure:"qdrant" yaml:"qdrant"`
+	Blacklist BlacklistConfig `mapstructure:"blacklist" yaml:"blacklist"`
+	Whitelist WhitelistConfig `mapstructure:"whitelist" yaml:"whitelist"`
+	// MessageFilters holds regex allow/ignore rules (access_control.message_filters).
+	MessageFilters filter.Config    `mapstructure:"message_filters" yaml:"message_filters"`
+	Plugins        PluginsConfig    `mapstructure:"plugins" yaml:"plugins"`
+	MCP            MCPConfig        `mapstructure:"mcp" yaml:"mcp"`
+	Decision       DecisionConfig   `mapstructure:"decision" yaml:"decision"`
+	Operations     OperationsConfig `mapstructure:"operations" yaml:"operations"`
 
 	configPath string `yaml:"-"`
+	// messageFilter is MessageFilters compiled during validation.
+	messageFilter *filter.Filter
+}
+
+// MessageFilter returns the compiled message filter (nil allows everything).
+func (c *Config) MessageFilter() *filter.Filter {
+	if c == nil {
+		return nil
+	}
+	return c.messageFilter
 }
 
 // OperationsConfig holds operational runtime settings.
@@ -314,6 +328,7 @@ func Load(configPath string) (*Config, error) {
 		Access struct {
 			Blacklist BlacklistConfig `mapstructure:"blacklist"`
 			Whitelist WhitelistConfig `mapstructure:"whitelist"`
+			Filters   filter.Config   `mapstructure:"message_filters"`
 		} `mapstructure:"access_control"`
 		Operations struct {
 			Web     WebConfig        `mapstructure:"web"`
@@ -328,19 +343,20 @@ func Load(configPath string) (*Config, error) {
 	}
 
 	cfg := Config{
-		Discord:    raw.Core.Discord,
-		AI:         raw.Core.AI,
-		Decision:   raw.Core.Decision,
-		Embedding:  raw.MemoryPipe.Embedding,
-		Memory:     raw.MemoryPipe.Memory,
-		Qdrant:     raw.MemoryPipe.Qdrant,
-		Blacklist:  raw.Access.Blacklist,
-		Whitelist:  raw.Access.Whitelist,
-		Web:        raw.Operations.Web,
-		Logging:    raw.Operations.Logging,
-		Plugins:    raw.Operations.Plugins,
-		MCP:        raw.Operations.MCP,
-		Operations: raw.Operations.Runtime,
+		Discord:        raw.Core.Discord,
+		AI:             raw.Core.AI,
+		Decision:       raw.Core.Decision,
+		Embedding:      raw.MemoryPipe.Embedding,
+		Memory:         raw.MemoryPipe.Memory,
+		Qdrant:         raw.MemoryPipe.Qdrant,
+		Blacklist:      raw.Access.Blacklist,
+		Whitelist:      raw.Access.Whitelist,
+		MessageFilters: raw.Access.Filters,
+		Web:            raw.Operations.Web,
+		Logging:        raw.Operations.Logging,
+		Plugins:        raw.Operations.Plugins,
+		MCP:            raw.Operations.MCP,
+		Operations:     raw.Operations.Runtime,
 	}
 
 	if err := validate(&cfg); err != nil {
@@ -732,6 +748,7 @@ func validate(cfg *Config) error {
 	validateConsolidation(cfg, &errs)
 	validateDecision(cfg, &errs)
 	validateSystem(cfg, &errs)
+	validateMessageFilters(cfg, &errs)
 	if len(errs) > 0 {
 		errList := make([]error, len(errs))
 		for i, s := range errs {
@@ -740,6 +757,15 @@ func validate(cfg *Config) error {
 		return errors.Join(errList...)
 	}
 	return nil
+}
+
+func validateMessageFilters(cfg *Config, errs *[]string) {
+	f, err := filter.Compile(cfg.MessageFilters)
+	if err != nil {
+		*errs = append(*errs, "access_control.message_filters: "+err.Error())
+		return
+	}
+	cfg.messageFilter = f
 }
 
 // Validate checks runtime config consistency and required fields.
@@ -765,6 +791,13 @@ func (c *Config) FormatSystemPrompt(authorName, serverName, guildID, channelID s
 	return prompt
 }
 
+func filtersForSave(f filter.Config) *filter.Config {
+	if f.DefaultAction == "" && len(f.Rules) == 0 {
+		return nil
+	}
+	return &f
+}
+
 func (c *Config) Save() error {
 	if c.configPath == "" {
 		return fmt.Errorf("config path not set")
@@ -784,6 +817,7 @@ func (c *Config) Save() error {
 		Access struct {
 			Blacklist BlacklistConfig `yaml:"blacklist"`
 			Whitelist WhitelistConfig `yaml:"whitelist"`
+			Filters   *filter.Config  `yaml:"message_filters,omitempty"`
 		} `yaml:"access_control"`
 		Operations struct {
 			Web     WebConfig        `yaml:"web"`
@@ -814,9 +848,11 @@ func (c *Config) Save() error {
 		Access: struct {
 			Blacklist BlacklistConfig `yaml:"blacklist"`
 			Whitelist WhitelistConfig `yaml:"whitelist"`
+			Filters   *filter.Config  `yaml:"message_filters,omitempty"`
 		}{
 			Blacklist: c.Blacklist,
 			Whitelist: c.Whitelist,
+			Filters:   filtersForSave(c.MessageFilters),
 		},
 		Operations: struct {
 			Web     WebConfig        `yaml:"web"`

@@ -288,6 +288,33 @@
             "guilds":   { "type": "array", "items": { "anyOf": [{"type": "string"}, {"type": "integer"}] } },
             "channels": { "type": "array", "items": { "anyOf": [{"type": "string"}, {"type": "integer"}] } }
           }
+        },
+        "message_filters": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Regex allow/ignore rules for incoming messages. First matching rule wins; ignored messages are not answered and are hidden from context and consolidation. The bot's own messages are never filtered.",
+          "properties": {
+            "default_action": { "type": "string", "enum": ["allow", "ignore"] },
+            "rules": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["action"],
+                "properties": {
+                  "name": { "type": "string", "description": "Label shown in logs when the rule matches." },
+                  "action": { "type": "string", "enum": ["allow", "ignore"] },
+                  "guild": { "type": "string", "description": "Regex searched in the guild ID (anchor with ^...$ for exact)." },
+                  "channel": { "type": "string", "description": "Regex searched in the channel ID." },
+                  "user": { "type": "string", "description": "Regex searched in the author ID." },
+                  "username": { "type": "string", "description": "Regex searched in the author username." },
+                  "content": { "type": "string", "description": "Regex searched in the message text plus rendered embeds." },
+                  "kinds": { "type": "array", "items": { "type": "string", "enum": ["text", "embed", "image", "sticker", "audio", "voice", "video", "file", "reply", "bot", "webhook"] }, "description": "Matches when the message has ANY of these kinds." },
+                  "kinds_all": { "type": "array", "items": { "type": "string", "enum": ["text", "embed", "image", "sticker", "audio", "voice", "video", "file", "reply", "bot", "webhook"] }, "description": "Matches when the message has ALL of these kinds." }
+                }
+              }
+            }
+          }
         }
       }
     },

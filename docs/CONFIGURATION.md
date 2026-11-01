@@ -302,6 +302,40 @@ When a category has whitelist entries, the bot **only** responds in/from those t
 
 ---
 
+
+### `access_control.message_filters`
+
+Optional regex rules for incoming messages. Rules run in order and the first
+match wins; if none matches, `default_action` applies (`allow` by default,
+`ignore` turns the list into a whitelist). An ignored message is not
+answered, and it is left out of history, the decision model and memory
+consolidation. The bot's own messages are never filtered.
+
+```yaml
+access_control:
+  message_filters:
+    default_action: allow
+    rules:
+      - name: "status bot embeds in #general"
+        action: ignore
+        channel: "^123456789012345678$"
+        user: "^234567890123456789$"
+        kinds: [embed]
+```
+
+| Field | Meaning |
+|-------|---------|
+| `action` | `allow` or `ignore` (required) |
+| `guild`, `channel`, `user` | Regex searched in the guild, channel or author ID. Anchor with `^...$` for an exact ID. |
+| `username` | Regex searched in the author's username |
+| `content` | Regex searched in the message text plus rendered embeds |
+| `kinds` | Matches if the message has **any** of these kinds |
+| `kinds_all` | Matches if the message has **all** of these kinds |
+
+Kinds: `text`, `embed`, `image`, `sticker`, `audio`, `voice` (voice message),
+`video`, `file`, `reply`, `bot`, `webhook`. A rule needs at least one
+condition. Invalid regexes and unknown kinds fail config validation.
+
 ## `operations`
 
 ### `operations.web`

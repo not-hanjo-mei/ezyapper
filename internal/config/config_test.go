@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"ezyapper/internal/filter"
 )
 
 func TestLoad_MissingRequired(t *testing.T) {
@@ -2413,5 +2415,21 @@ func TestMemoryConfig_MaxBufferSize_NotExist(t *testing.T) {
 			t.Fatalf("MemoryConfig field %q still has max_buffer_size tag (yaml=%q, mapstructure=%q)",
 				f.Name, yamlTag, mapTag)
 		}
+	}
+}
+
+func TestValidateMessageFilters(t *testing.T) {
+	cfg := &Config{MessageFilters: filter.Config{Rules: []filter.RuleConfig{{Action: "ignore", Channel: "^1$", Kinds: []string{"embed"}}}}}
+	var errs []string
+	validateMessageFilters(cfg, &errs)
+	if len(errs) != 0 || cfg.MessageFilter() == nil {
+		t.Fatalf("expected a compiled filter, errs=%v", errs)
+	}
+
+	bad := &Config{MessageFilters: filter.Config{Rules: []filter.RuleConfig{{Action: "ignore", User: "("}}}}
+	errs = nil
+	validateMessageFilters(bad, &errs)
+	if len(errs) != 1 || !strings.Contains(errs[0], "access_control.message_filters") {
+		t.Fatalf("expected a prefixed regex error, got %v", errs)
 	}
 }

@@ -24,9 +24,12 @@ type DiscordMessage struct {
 	// Embeds holds the readable text of the message's embeds (bot embeds,
 	// link previews). Content stays the raw message text; use FullText for
 	// content plus embeds.
-	Embeds    []EmbedSummary `json:"embeds,omitempty"`
-	Timestamp time.Time      `json:"timestamp"`
-	IsBot     bool           `json:"is_bot"`
+	Embeds []EmbedSummary `json:"embeds,omitempty"`
+	// Kinds lists what the message carries (text, embed, image, sticker,
+	// voice, ...); see MessageKinds. Used by message filters.
+	Kinds     []string  `json:"kinds,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
+	IsBot     bool      `json:"is_bot"`
 
 	// ReplyToID is the ID of the message being replied to (from MessageReference)
 	ReplyToID string `json:"reply_to_id"`
@@ -54,6 +57,7 @@ func FromDiscordgo(m *discordgo.MessageCreate) DiscordMessage {
 		Content:     m.Content,
 		ImageURLs:   extractImageURLsFromMessage(m.Message),
 		Embeds:      SummarizeEmbeds(m.Embeds),
+		Kinds:       MessageKinds(m.Message),
 		Timestamp:   m.Timestamp,
 		IsBot:       m.Author.Bot,
 	}

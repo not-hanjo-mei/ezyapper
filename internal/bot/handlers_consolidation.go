@@ -60,7 +60,7 @@ func (b *Bot) triggerChannelConsolidationDepth(ctx context.Context, channelID st
 				b.finishChannelConsolidation(channelID)
 				return
 			}
-			channelMessages = fetchedMessages
+			channelMessages = b.filterMessages(fetchedMessages)
 		}
 
 		if len(channelMessages) == 0 {

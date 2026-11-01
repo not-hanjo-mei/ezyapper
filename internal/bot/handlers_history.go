@@ -105,6 +105,7 @@ func (p recentImageEnrichment) allows(messageID string) bool {
 // tightly bounded on-demand enrichment for the most recent image message when the
 // user replied to that message or mentioned an image.
 func (b *Bot) buildConversationHistoryText(ctx context.Context, messages []*types.DiscordMessage, currentMsgID, botID string, enrichment recentImageEnrichment, mentions []*discordgo.User, channelMappings []ChannelMapping) string {
+	messages = b.filterMessages(messages)
 	if len(messages) == 0 {
 		return ""
 	}
