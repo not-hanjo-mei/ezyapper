@@ -100,7 +100,7 @@ func TestDecisionParseResponseInvalidJSON(t *testing.T) {
 
 func TestBuildPromptsWithInfo(t *testing.T) {
 	d := &DecisionService{
-		config: &config.DecisionConfig{SystemPrompt: "You are {BotName}."},
+		config: &config.DecisionConfig{SystemPrompt: "You are EZyapper."},
 	}
 
 	systemPrompt, userPrompt := d.buildPromptsWithInfo(

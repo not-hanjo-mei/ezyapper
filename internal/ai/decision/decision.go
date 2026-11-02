@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -201,8 +202,12 @@ func (d *DecisionService) buildPromptsWithInfo(botName string, msgInfo MessageIn
 	var userPrompt strings.Builder
 
 	if len(recentMessages) > 0 {
+		// Discord returns history newest first; the model reads a
+		// conversation top to bottom, so render it oldest first.
+		ordered := slices.Clone(recentMessages)
+		slices.SortStableFunc(ordered, func(a, b ContextMessage) int { return a.Timestamp.Compare(b.Timestamp) })
 		userPrompt.WriteString("<context>\n")
-		for _, msg := range recentMessages {
+		for _, msg := range ordered {
 			timeStr := msg.Timestamp.UTC().Format(time.RFC3339)
 			fmt.Fprintf(&userPrompt, "\"%s\"{UserID=%s,Time=%s}: \"%s\"\n", msg.AuthorName, msg.AuthorID, timeStr, msg.Content)
 		}
@@ -216,9 +221,10 @@ func (d *DecisionService) buildPromptsWithInfo(botName string, msgInfo MessageIn
 	}
 	userPrompt.WriteString("</currentMessage>")
 
-	systemPrompt := strings.ReplaceAll(d.config.SystemPrompt, "{BotName}", botName)
-
-	return systemPrompt, userPrompt.String()
+	// The system prompt is sent unchanged (static, cacheable); the bot's name
+	// is written literally in it.
+	_ = botName
+	return d.config.SystemPrompt, userPrompt.String()
 }
 
 func (d *DecisionService) parseResponse(content string) (*DecisionResult, error) {
