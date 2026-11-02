@@ -108,19 +108,26 @@ type consolidationManager interface {
 }
 
 type Bot struct {
-	session         *discordgo.Session
-	ctx             context.Context
-	cancel          context.CancelFunc
-	configStore     *atomic.Value // stores *config.Config
-	memoryStore     memory.MemoryStore
-	profileStore    memory.ProfileStore
-	consolidation   consolidationManager
-	discordClient   *memory.ShortTermClient
-	toolRegistry    *tools.ToolRegistry
-	pluginManager   *plugin.Manager
-	mcpManager      *mcp.MCPManager
-	decider         decision.Decider
-	rateLimiter     *ratelimit.Limiter
+	// session is the live Discord session. A token hot reload replaces it
+	// (see reload.go), so every use goes through sess().
+	session       atomic.Pointer[discordgo.Session]
+	ctx           context.Context
+	cancel        context.CancelFunc
+	configStore   *atomic.Value // stores *config.Config
+	memoryStore   memory.MemoryStore
+	profileStore  memory.ProfileStore
+	consolidation consolidationManager
+	discordClient *memory.ShortTermClient
+	toolRegistry  *tools.ToolRegistry
+	pluginManager *plugin.Manager
+	// mcpManager and decider are replaced by config hot reload; read them
+	// with getMCPManager / getDecider (guarded by mu).
+	mcpManager *mcp.MCPManager
+	// mcpToolNames are the registry names of the registered MCP tools, so
+	// an MCP reload can drop tools of servers that went away.
+	mcpToolNames map[string]struct{}
+	decider      decision.Decider
+	rateLimiter  *ratelimit.Limiter
 	// cutoffs hides channel history older than a /clear-context call.
 	cutoffs contextCutoffs
 	// contextWindow keeps the anchored history window per channel.
@@ -128,7 +135,9 @@ type Bot struct {
 	visionDescriber *vision.VisionDescriber
 	pluginToolNames map[string]struct{}
 
-	mu               sync.RWMutex
+	mu sync.RWMutex
+	// reconnectMu serializes Discord session swaps with Start/Stop.
+	reconnectMu      sync.Mutex
 	pluginRegisterMu sync.Mutex
 	wg               sync.WaitGroup
 
@@ -168,29 +177,16 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 	if !ok {
 		return nil, fmt.Errorf("failed to load config from config store")
 	}
-	session, err := discordgo.New("Bot " + cfg.Discord.Token)
+	session, err := newDiscordSession(cfg.Discord.Token)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Discord session: %w", err)
+		return nil, err
 	}
-
-	session.Identify.Intents = discordgo.IntentsGuilds |
-		discordgo.IntentsGuildMessages |
-		discordgo.IntentsMessageContent |
-		discordgo.IntentsGuildMessageReactions |
-		discordgo.IntentsGuildMembers
-
-	// Enable state caching for member search
-	session.StateEnabled = true
-	session.State.TrackMembers = true
 
 	toolRegistry := tools.NewToolRegistry()
 
 	pluginManager := pluginMgr
 
 	mcpManager := mcp.NewMCPManager(cfg.MCP.Servers)
-
-	// Create Discord client for short-term context
-	discordClient := memory.NewShortTermClient(NewDiscordMessageFetcher(session), cfg.Memory.MaxPaginatedLimit)
 
 	var decider decision.Decider
 	if cfg.Decision.Enabled {
@@ -208,17 +204,16 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 	rootCtx, rootCancel := context.WithCancel(context.Background())
 	bot := &Bot{
 		contextWindow:            newContextWindow(),
-		session:                  session,
 		ctx:                      rootCtx,
 		cancel:                   rootCancel,
 		configStore:              cfgStore,
 		memoryStore:              memoryStore,
 		profileStore:             profileStore,
 		consolidation:            conMgr,
-		discordClient:            discordClient,
 		toolRegistry:             toolRegistry,
 		pluginManager:            pluginManager,
 		mcpManager:               mcpManager,
+		mcpToolNames:             make(map[string]struct{}),
 		decider:                  decider,
 		rateLimiter:              limiter,
 		visionDescriber:          nil,
@@ -229,7 +224,11 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 		processingMessages:       make(map[string]*ProcessingMessage),
 	}
 
-	discordTools := tools.NewDiscordTools(session)
+	bot.session.Store(session)
+	// The short-term fetcher and the Discord tools resolve the session per
+	// call, so they follow a token reconnect.
+	bot.discordClient = memory.NewShortTermClient(NewDiscordMessageFetcherFunc(bot.sess), cfg.Memory.MaxPaginatedLimit)
+	discordTools := tools.NewDiscordToolsFunc(bot.sess)
 	discordTools.RegisterTools(toolRegistry)
 
 	bot.registerPluginTools()
@@ -238,7 +237,7 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 		return nil, fmt.Errorf("failed to apply runtime config: %w", err)
 	}
 
-	bot.registerHandlers()
+	bot.registerHandlers(session)
 
 	return bot, nil
 }
@@ -247,20 +246,25 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 func (b *Bot) Start(ctx context.Context) error {
 	logger.Info("[bot] Starting Discord bot...")
 
-	if err := b.session.Open(); err != nil {
+	b.reconnectMu.Lock()
+	s := b.sess()
+	err := s.Open()
+	b.reconnectMu.Unlock()
+	if err != nil {
 		return fmt.Errorf("failed to open Discord connection: %w", err)
 	}
 
 	logger.Infof("[bot] Bot connected as: %s#%s",
-		b.session.State.User.Username,
-		b.session.State.User.Discriminator)
+		s.State.User.Username,
+		s.State.User.Discriminator)
 
 	// Connect to MCP servers and register tools
 	if b.cfg().MCP.Enabled {
-		if err := b.mcpManager.Connect(ctx); err != nil {
+		m := b.getMCPManager()
+		if err := m.Connect(ctx); err != nil {
 			logger.Warnf("[bot] Failed to connect to MCP servers: %v", err)
 		} else {
-			b.registerMCPTools(ctx)
+			b.registerMCPTools(ctx, m)
 		}
 	}
 
@@ -280,13 +284,15 @@ func (b *Bot) Stop() error {
 
 	b.cancel()
 
-	if b.mcpManager != nil {
-		if err := b.mcpManager.Close(); err != nil {
+	if m := b.getMCPManager(); m != nil {
+		if err := m.Close(); err != nil {
 			logger.Warnf("[bot] Error closing MCP connections: %v", err)
 		}
 	}
 
-	if err := b.session.Close(); err != nil {
+	b.reconnectMu.Lock()
+	defer b.reconnectMu.Unlock()
+	if err := b.sess().Close(); err != nil {
 		return fmt.Errorf("failed to close Discord connection: %w", err)
 	}
 
@@ -321,26 +327,51 @@ func (b *Bot) Shutdown(ctx context.Context) error {
 	}
 }
 
-// registerMCPTools fetches and registers MCP tools from connected servers
-func (b *Bot) registerMCPTools(ctx context.Context) {
-	mcpTools, err := b.mcpManager.GetAllTools(ctx)
-	if err != nil {
-		logger.Warnf("[bot] Failed to get MCP tools: %v", err)
-		return
+// registerMCPTools fetches the tools of m's connected servers, registers
+// them, and unregisters MCP tools that are no longer offered (m == nil
+// removes them all). Handlers are bound to m: a manager replaced by hot
+// reload is closed after a grace period, and its in-flight calls finish on
+// it.
+func (b *Bot) registerMCPTools(ctx context.Context, m *mcp.MCPManager) {
+	var mcpTools []mcp.MCPTool
+	if m != nil {
+		var err error
+		mcpTools, err = m.GetAllTools(ctx)
+		if err != nil {
+			logger.Warnf("[bot] Failed to get MCP tools: %v", err)
+		}
 	}
+	b.installMCPTools(m, mcpTools)
+}
 
+// installMCPTools registers tools (listed from m) and drops MCP tools that
+// are not in the list.
+func (b *Bot) installMCPTools(m *mcp.MCPManager, mcpTools []mcp.MCPTool) {
+	next := make(map[string]struct{}, len(mcpTools))
 	perServer := make(map[string]int)
 	for _, tool := range mcpTools {
 		mcpTool := tool
 		perServer[mcpTool.ServerName]++
+		name := fmt.Sprintf("%s_%s", mcpTool.ServerName, mcpTool.Tool.Name)
+		next[name] = struct{}{}
 		b.toolRegistry.Register(&tools.Tool{
-			Name:        fmt.Sprintf("%s_%s", mcpTool.ServerName, mcpTool.Tool.Name),
+			Name:        name,
 			Description: fmt.Sprintf("[%s] %s", mcpTool.ServerName, mcpTool.Tool.Description),
 			Parameters:  mcpTool.Tool.InputSchema,
 			Handler: func(ctx context.Context, args map[string]any) (string, error) {
-				return b.mcpManager.CallTool(ctx, mcpTool.ServerName, mcpTool.Tool.Name, args)
+				return m.CallTool(ctx, mcpTool.ServerName, mcpTool.Tool.Name, args)
 			},
 		})
+	}
+
+	b.mu.Lock()
+	previous := b.mcpToolNames
+	b.mcpToolNames = next
+	b.mu.Unlock()
+	for old := range previous {
+		if _, ok := next[old]; !ok {
+			b.toolRegistry.Unregister(old)
+		}
 	}
 
 	for server, count := range perServer {
@@ -349,9 +380,49 @@ func (b *Bot) registerMCPTools(ctx context.Context) {
 	logger.Infof("[bot] Registered %d MCP tools from %d external servers", len(mcpTools), len(perServer))
 }
 
-// GetSession returns the Discord session
+// getMCPManager returns the current MCP manager.
+func (b *Bot) getMCPManager() *mcp.MCPManager {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.mcpManager
+}
+
+// getDecider returns the current reply decider (nil when decision is off).
+func (b *Bot) getDecider() decision.Decider {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.decider
+}
+
+// GetSession returns the current Discord session. A token hot reload
+// replaces it, so callers must not cache the result.
 func (b *Bot) GetSession() *discordgo.Session {
-	return b.session
+	return b.sess()
+}
+
+// sess returns the current Discord session (nil for a bare Bot in tests).
+func (b *Bot) sess() *discordgo.Session {
+	return b.session.Load()
+}
+
+// newDiscordSession builds a session with the intents and state settings the
+// bot relies on. Used at startup and for token reconnects.
+func newDiscordSession(token string) (*discordgo.Session, error) {
+	session, err := discordgo.New("Bot " + token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Discord session: %w", err)
+	}
+
+	session.Identify.Intents = discordgo.IntentsGuilds |
+		discordgo.IntentsGuildMessages |
+		discordgo.IntentsMessageContent |
+		discordgo.IntentsGuildMessageReactions |
+		discordgo.IntentsGuildMembers
+
+	// Enable state caching for member search
+	session.StateEnabled = true
+	session.State.TrackMembers = true
+	return session, nil
 }
 
 // GetChannelName returns the name of a Discord channel, or the channelID if not found.
@@ -387,10 +458,10 @@ func (b *Bot) GetGuildName(guildID string) string {
 // GetGuild retrieves guild information
 func (b *Bot) GetGuild(guildID string) (*discordgo.Guild, error) {
 	// Try state cache first
-	guild, err := b.session.State.Guild(guildID)
+	guild, err := b.sess().State.Guild(guildID)
 	if err != nil {
 		// Fall back to API
-		guild, err = b.session.Guild(guildID)
+		guild, err = b.sess().Guild(guildID)
 		if err != nil {
 			return nil, err
 		}
@@ -401,10 +472,10 @@ func (b *Bot) GetGuild(guildID string) (*discordgo.Guild, error) {
 // GetChannel retrieves channel information
 func (b *Bot) GetChannel(channelID string) (*discordgo.Channel, error) {
 	// Try state cache first
-	channel, err := b.session.State.Channel(channelID)
+	channel, err := b.sess().State.Channel(channelID)
 	if err != nil {
 		// Fall back to API
-		channel, err = b.session.Channel(channelID)
+		channel, err = b.sess().Channel(channelID)
 		if err != nil {
 			return nil, err
 		}
@@ -415,10 +486,10 @@ func (b *Bot) GetChannel(channelID string) (*discordgo.Channel, error) {
 // GetMember retrieves guild member information
 func (b *Bot) GetMember(guildID, userID string) (*discordgo.Member, error) {
 	// Try state cache first
-	member, err := b.session.State.Member(guildID, userID)
+	member, err := b.sess().State.Member(guildID, userID)
 	if err != nil {
 		// Fall back to API
-		member, err = b.session.GuildMember(guildID, userID)
+		member, err = b.sess().GuildMember(guildID, userID)
 		if err != nil {
 			return nil, err
 		}
@@ -429,7 +500,7 @@ func (b *Bot) GetMember(guildID, userID string) (*discordgo.Member, error) {
 // IsBotMentioned checks if the bot is mentioned in a message
 func (b *Bot) IsBotMentioned(m *discordgo.MessageCreate) bool {
 	for _, mention := range m.Mentions {
-		if mention.ID == b.session.State.User.ID {
+		if mention.ID == b.sess().State.User.ID {
 			return true
 		}
 	}
@@ -669,7 +740,7 @@ type respondOptions struct {
 }
 
 func (b *Bot) shouldRespond(ctx context.Context, m *discordgo.MessageCreate, recentMessages []*types.DiscordMessage, opts respondOptions) (bool, string) {
-	if m.Author.ID == b.session.State.User.ID {
+	if m.Author.ID == b.sess().State.User.ID {
 		return false, "own message"
 	}
 
@@ -700,11 +771,11 @@ func (b *Bot) shouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 		return true, "mentioned"
 	}
 
-	if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil && m.ReferencedMessage.Author.ID == b.session.State.User.ID {
+	if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil && m.ReferencedMessage.Author.ID == b.sess().State.User.ID {
 		return true, "reply to bot"
 	}
 
-	if b.decider != nil && b.cfg().Decision.Enabled {
+	if decider := b.getDecider(); decider != nil && b.cfg().Decision.Enabled {
 		// Timeout*(retry_count+1) for attempts + one Timeout unit as overhead/slack (schema and network share retry_count).
 		timeoutSec, retryCount := b.cfg().Decision.RequestBudget()
 		totalTimeout := time.Duration(timeoutSec) * time.Second * time.Duration(retryCount+2)
@@ -727,7 +798,7 @@ func (b *Bot) shouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 		}
 
 		provider := b.cfg().Decision.EffectiveProvider()
-		result, err := b.decider.ShouldRespondWithInfo(decisionCtx, b.cfg().Discord.BotName, msgInfo, imageCount, decisionMessages)
+		result, err := decider.ShouldRespondWithInfo(decisionCtx, b.cfg().Discord.BotName, msgInfo, imageCount, decisionMessages)
 		if err != nil {
 			logger.Warnf("[bot] decision service failed: %v, using fallback", err)
 			return b.ShouldRandomReply(), fmt.Sprintf("%s decision failed, fallback", provider)
@@ -1055,7 +1126,7 @@ func (b *Bot) isFilteredOut(msg *types.DiscordMessage) (bool, string) {
 	if own := b.cfg().Discord.OwnBotID; own != "" && msg.AuthorID == own {
 		return false, ""
 	}
-	if b.session != nil && b.session.State != nil && b.session.State.User != nil && msg.AuthorID == b.session.State.User.ID {
+	if b.sess() != nil && b.sess().State != nil && b.sess().State.User != nil && msg.AuthorID == b.sess().State.User.ID {
 		return false, ""
 	}
 	action, rule := f.Decide(filter.SubjectOf(msg))

@@ -163,11 +163,11 @@ func newEditTestBot(t *testing.T) (*Bot, *discordgo.Session) {
 	session := &discordgo.Session{State: state}
 	b := &Bot{
 		configStore:          cfgStore,
-		session:              session,
 		rateLimiter:          ratelimit.NewLimiter(1, 60*time.Second, 60*time.Second),
 		processingMessages:   map[string]*ProcessingMessage{},
 		channelMessageBuffer: map[string][]*types.DiscordMessage{},
 	}
+	b.session.Store(session)
 	return b, session
 }
 
