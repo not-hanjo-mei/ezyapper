@@ -17,6 +17,7 @@ import (
 type fakeRPCPlugin struct {
 	mu      sync.Mutex
 	tools   []ToolSpec
+	prompt  ContextBlock
 	pending []string // notifications to emit before the next reply
 }
 
@@ -48,6 +49,8 @@ func (f *fakeRPCPlugin) serve(r io.Reader, w io.Writer) {
 			result = f.tools
 		case "on_message":
 			result = true
+		case "system_prompt":
+			result = f.prompt
 		}
 		f.mu.Unlock()
 		raw, _ := json.Marshal(result)
@@ -190,5 +193,22 @@ func TestReloadFromDir_DisabledUnloadsAndNotifies(t *testing.T) {
 	}
 	if handlerCalls.Load() != 1 {
 		t.Fatalf("handler calls = %d, want 1", handlerCalls.Load())
+	}
+}
+
+func TestToolsChangedNotification_RefreshesSystemPrompt(t *testing.T) {
+	pm := NewManager(1000, 5, 5, 5, 5, 5, 5, 3, 60)
+	f := &fakeRPCPlugin{tools: []ToolSpec{{Name: "t"}}}
+	client := startFakePlugin(t, pm, "fake", f)
+	if len(pm.SystemPromptBlocks()) != 0 {
+		t.Fatal("unexpected initial prompt section")
+	}
+	f.mu.Lock()
+	f.prompt = ContextBlock{Tag: "clock", Content: "Timezone is now UTC+9"}
+	f.mu.Unlock()
+	pm.refreshTools(client)
+	blocks := pm.SystemPromptBlocks()
+	if len(blocks) != 1 || blocks[0].Content != "Timezone is now UTC+9" {
+		t.Fatalf("system prompt section not refreshed: %+v", blocks)
 	}
 }

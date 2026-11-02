@@ -107,9 +107,10 @@ func (pm *Manager) ReloadFromDir(ctx context.Context, dir string, enabled bool) 
 	return nil
 }
 
-// refreshTools re-queries list_tools on the plugin that owns client and
-// publishes the new list. It runs when the plugin sends a tools_changed
-// notification, e.g. after its own config hot reload.
+// refreshTools re-queries list_tools and system_prompt on the plugin that
+// owns client and publishes both. It runs when the plugin sends a
+// tools_changed notification, e.g. after its own config hot reload, which
+// may change its tool timeouts or the prompt section it contributes.
 func (pm *Manager) refreshTools(client *stdioJSONRPCClient) {
 	tools, err := listPluginToolsJSONRPC(client, &pm.wg, time.Duration(pm.st().RPCTimeoutSec)*time.Second)
 	if err != nil {
@@ -123,6 +124,18 @@ func (pm *Manager) refreshTools(client *stdioJSONRPCClient) {
 		}
 	}
 
+	var systemPrompt *ContextBlock
+	keepPrompt := false
+	var sp ContextBlock
+	if err := callJSONRPCWithTimeout(client, &pm.wg, "system_prompt", map[string]any{}, &sp, time.Duration(pm.st().RPCTimeoutSec)*time.Second); err != nil {
+		if !isMethodNotFoundPluginError(err) {
+			logger.Warnf("[plugin] %s: tools_changed received but system_prompt failed, keeping the previous section: %v", client.label(), err)
+			keepPrompt = true
+		}
+	} else if clean, ok := sanitizeContextBlock(sp); ok {
+		systemPrompt = &clean
+	}
+
 	pm.mu.Lock()
 	var owner *Client
 	for _, p := range pm.plugins {
@@ -133,6 +146,9 @@ func (pm *Manager) refreshTools(client *stdioJSONRPCClient) {
 	}
 	if owner != nil {
 		owner.tools = tools
+		if !keepPrompt {
+			owner.systemPrompt = systemPrompt
+		}
 	}
 	pm.mu.Unlock()
 
