@@ -45,6 +45,14 @@ func NewSessionStore(ttlMin int, cleanupIntervalMin int) *SessionStore {
 		ttl:             time.Duration(ttlMin) * time.Minute,
 		cleanupInterval: time.Duration(cleanupIntervalMin) * time.Minute,
 	}
+	if store.cleanupInterval <= 0 {
+		// The dashboard is disabled (its session settings are only
+		// required when enabled): time.NewTicker panics on a zero
+		// interval. Enabling it later via hot reload builds a new store.
+		store.stopped = true
+		close(store.stopCh)
+		return store
+	}
 	go store.cleanupLoop()
 	return store
 }
