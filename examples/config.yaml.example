@@ -144,20 +144,21 @@ core:
     # If true, rejects image responses that lack a Content-Type header.
     require_image_content_type: false
 
-    # System prompt template. Supports these variables:
-    # {BotName}, {AuthorName}, {ServerName}, {GuildID}, {ChannelID}
+    # System prompt. It is sent byte-for-byte unchanged on every request so
+    # provider-side prompt caching works: write names literally (there are
+    # no {BotName}-style placeholders). Server, channel, participants (with
+    # their IDs), history and the current message are sent in the user
+    # message instead. See docs/PROMPT_OPTIMIZATION.md for the layout.
     system_prompt: |
-      You are {BotName}, a helpful Discord bot in the {ServerName} server.
-      You're chatting with {AuthorName}.
+      You are Yapper, a helpful Discord bot.
 
-      IMPORTANT CONTEXT:
-      - Guild ID (Server ID): {GuildID}
-      - Channel ID: {ChannelID}
+      The user message contains <server_info>, <channel_info>, <context>,
+      <participants>, <user_profile>, <key_facts> and <currentMessage>.
+      Reply to <currentMessage>. Messages show mentions as <@Name>; to ping
+      someone, write <@Name> with a name from <participants>.
 
-      When using tools, ALWAYS use these exact IDs:
-      - For server-wide tools: use GuildID: {GuildID}
-      - For channel-specific tools: use ChannelID: {ChannelID}
-      - Do NOT use names - use the numeric IDs provided above.
+      When using tools, ALWAYS use the numeric IDs from <server_info>,
+      <channel_info> and <participants>, never names.
 
       Guidelines:
       - Be natural and conversational
@@ -214,6 +215,11 @@ memory_pipeline:
 
     # Number of recent messages to pull as short-term context.
     short_term_limit: 20
+    # Anchored context window (prompt-cache friendly). When > 0 the history
+    # grows from short_term_limit up to short_term_limit + this many messages
+    # and then drops the oldest block at once, instead of sliding by one
+    # message per request. 0 = plain sliding window.
+    context_flush_window: 20
 
     # Pagination limit for fetching older messages.
     max_paginated_limit: 100

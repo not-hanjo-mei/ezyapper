@@ -5,7 +5,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"ezyapper/internal/ai"
 	"ezyapper/internal/config"
@@ -73,137 +72,6 @@ func TestShouldSendGenerationFallback_Cancelled(t *testing.T) {
 	// context.Canceled wraps context.Canceled which should pass errors.Is check too
 	if shouldSendGenerationFallback(context.Canceled) {
 		t.Fatal("expected false for Canceled (only DeadlineExceeded)")
-	}
-}
-
-func TestFormatMessageXML_Basic(t *testing.T) {
-	result := formatMessageXML("Alice", "Alice", "123", "hello", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), "", "")
-	if !strings.Contains(result, "Alice") {
-		t.Fatalf("expected Alice in output: %s", result)
-	}
-	if !strings.Contains(result, "ID:123") {
-		t.Fatalf("expected ID:123 in output: %s", result)
-	}
-	if !strings.Contains(result, "hello") {
-		t.Fatalf("expected hello in output: %s", result)
-	}
-}
-
-func TestFormatMessageXML_WithReply(t *testing.T) {
-	result := formatMessageXML("Alice", "Alice", "123", "hi", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), "Bob", "")
-	if !strings.Contains(result, "replying to @Bob") {
-		t.Fatalf("expected reply mention in output: %s", result)
-	}
-}
-
-func TestFormatMessageXML_ReplyToDeleted(t *testing.T) {
-	result := formatMessageXML("Alice", "Alice", "123", "hi", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), "(deleted message)", "")
-	if !strings.Contains(result, "replying to deleted message") {
-		t.Fatalf("expected 'replying to deleted message' in output: %s", result)
-	}
-	if strings.Contains(result, "@(deleted message)") {
-		t.Fatalf("should not have @ prefix for deleted message: %s", result)
-	}
-}
-
-func TestBuildDynamicContext_Empty(t *testing.T) {
-	b := &Bot{}
-	profile := &memory.Profile{
-		Traits:      []string{},
-		Facts:       make(map[string]string),
-		Preferences: make(map[string]string),
-	}
-	result := b.buildDynamicContext("Alice", profile, nil, nil)
-	if !strings.Contains(result, "User profile") {
-		t.Fatalf("expected 'User profile' in output: %s", result)
-	}
-}
-
-func TestBuildDynamicContext_WithDisplayName(t *testing.T) {
-	b := &Bot{}
-	profile := &memory.Profile{
-		DisplayName: "AliceInWonder",
-		Traits:      []string{},
-		Facts:       make(map[string]string),
-		Preferences: make(map[string]string),
-	}
-	result := b.buildDynamicContext("Alice", profile, nil, nil)
-	if !strings.Contains(result, "AliceInWonder") {
-		t.Fatalf("expected display name in output: %s", result)
-	}
-}
-
-func TestBuildDynamicContext_WithTraits(t *testing.T) {
-	b := &Bot{}
-	profile := &memory.Profile{
-		Traits:      []string{"friendly", "helpful"},
-		Facts:       make(map[string]string),
-		Preferences: make(map[string]string),
-	}
-	result := b.buildDynamicContext("Alice", profile, nil, nil)
-	if !strings.Contains(result, "friendly") {
-		t.Fatalf("expected traits in output: %s", result)
-	}
-}
-
-func TestBuildDynamicContext_WithFacts(t *testing.T) {
-	b := &Bot{}
-	profile := &memory.Profile{
-		Traits:      []string{},
-		Facts:       map[string]string{"name": "Alice", "job": "engineer"},
-		Preferences: make(map[string]string),
-	}
-	result := b.buildDynamicContext("Alice", profile, nil, nil)
-	if !strings.Contains(result, "name: Alice") {
-		t.Fatalf("expected facts in output: %s", result)
-	}
-	if !strings.Contains(result, "job: engineer") {
-		t.Fatalf("expected job fact: %s", result)
-	}
-}
-
-func TestBuildDynamicContext_WithPreferences(t *testing.T) {
-	b := &Bot{}
-	profile := &memory.Profile{
-		Traits:      []string{},
-		Facts:       make(map[string]string),
-		Preferences: map[string]string{"color": "blue"},
-	}
-	result := b.buildDynamicContext("Alice", profile, nil, nil)
-	if !strings.Contains(result, "color: blue") {
-		t.Fatalf("expected preferences in output: %s", result)
-	}
-}
-
-func TestBuildDynamicContext_WithMemories(t *testing.T) {
-	cfg := &config.Config{
-		Memory: config.MemoryConfig{
-			DecayRates: config.DecayRatesConfig{
-				Fact:     0.01,
-				Episode:  0.03,
-				Interest: 0.02,
-				Summary:  0.05,
-			},
-		},
-	}
-	cfgStore := &atomic.Value{}
-	cfgStore.Store(cfg)
-	b := &Bot{configStore: cfgStore}
-	profile := &memory.Profile{
-		Traits:      []string{},
-		Facts:       make(map[string]string),
-		Preferences: make(map[string]string),
-	}
-	memories := []*memory.Record{
-		{Content: "User likes pizza"},
-		{Content: "User dislikes coffee"},
-	}
-	result := b.buildDynamicContext("Alice", profile, memories, nil)
-	if !strings.Contains(result, "likes pizza") {
-		t.Fatalf("expected memory in output: %s", result)
-	}
-	if !strings.Contains(result, "dislikes coffee") {
-		t.Fatalf("expected second memory in output: %s", result)
 	}
 }
 
@@ -332,43 +200,6 @@ func TestGenerateResponse_ContextCancelled(t *testing.T) {
 	}
 }
 
-func TestFormatSystemPrompt_Basic(t *testing.T) {
-	cfg := &config.Config{
-		AI: config.AIConfig{
-			LLMConfig: config.LLMConfig{
-				Model: "gpt-4",
-			},
-			SystemPrompt: "You are {BotName} in {ServerName}",
-			Vision:       config.VisionConfig{Mode: config.VisionModeTextOnly},
-		},
-		Discord: config.DiscordConfig{
-			OtherBotPolicy:  config.OtherBotIgnore,
-			Token:           "token",
-			BotName:         "TestBot",
-			ReplyPercentage: 0.1,
-			CooldownSeconds: 5,
-		},
-		Embedding: config.EmbeddingConfig{
-			Model:  "embed",
-			APIKey: "key",
-		},
-		Qdrant: config.QdrantConfig{Host: "localhost", Port: 6334},
-	}
-	cfgStore := &atomic.Value{}
-	cfgStore.Store(cfg)
-
-	b := &Bot{configStore: cfgStore}
-
-	result := b.cfg().FormatSystemPrompt("Alice", "TestServer", "guild-1", "ch-1")
-	if !strings.Contains(result, "TestBot") {
-		t.Fatalf("expected bot name in prompt: %s", result)
-	}
-	if !strings.Contains(result, "TestServer") {
-		t.Fatalf("expected server name in prompt: %s", result)
-	}
-}
-
-// Test the utility functions from handlers_response that don't need AI client
 func TestModeContext_Fields(t *testing.T) {
 	mc := ModeContext{
 		AIClient:        nil,

@@ -531,28 +531,6 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 		t.Error("Expected error for invalid temperature, got nil")
 	}
 }
-func TestFormatSystemPrompt(t *testing.T) {
-	cfg := &Config{
-		Discord: DiscordConfig{
-			BotName:        "TestBot",
-			OtherBotPolicy: OtherBotFull,
-		},
-	}
-	cfg.AI.SystemPrompt = "Hello {AuthorName}, I'm {BotName} in {ServerName} on {CurrentDate}"
-	result := cfg.FormatSystemPrompt("Alice", "MyServer", "123456789", "987654321")
-	if result == "" {
-		t.Error("Expected formatted prompt, got empty string")
-	}
-	if strings.Contains(result, "{AuthorName}") {
-		t.Error("{AuthorName} was not replaced")
-	}
-	if strings.Contains(result, "{BotName}") {
-		t.Error("{BotName} was not replaced")
-	}
-	if strings.Contains(result, "{ServerName}") {
-		t.Error("{ServerName} was not replaced")
-	}
-}
 func TestValidate_MissingVisionMode(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{

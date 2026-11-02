@@ -122,7 +122,9 @@ type Bot struct {
 	decisionService *decision.DecisionService
 	rateLimiter     *ratelimit.Limiter
 	// cutoffs hides channel history older than a /clear-context call.
-	cutoffs         contextCutoffs
+	cutoffs contextCutoffs
+	// contextWindow keeps the anchored history window per channel.
+	contextWindow   *contextWindow
 	visionDescriber *vision.VisionDescriber
 	pluginToolNames map[string]struct{}
 
@@ -205,6 +207,7 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 
 	rootCtx, rootCancel := context.WithCancel(context.Background())
 	bot := &Bot{
+		contextWindow:            newContextWindow(),
 		session:                  session,
 		ctx:                      rootCtx,
 		cancel:                   rootCancel,

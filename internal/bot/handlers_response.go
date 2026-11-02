@@ -11,6 +11,7 @@ import (
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
+	"ezyapper/internal/plugin"
 	"ezyapper/internal/types"
 
 	"github.com/bwmarrin/discordgo"
@@ -32,6 +33,10 @@ type ModeContext struct {
 	MessageID       string
 	GuildName       string
 	Mentions        []*discordgo.User
+	// Current is the message being answered, in canonical form.
+	Current types.DiscordMessage
+	// InjectedContext holds prompt blocks plugins added in after_decision.
+	InjectedContext []plugin.ContextBlock
 }
 
 // GenerateContext bundles request and image parameters for response generation.
@@ -53,206 +58,149 @@ func extractReplyInfo(m *discordgo.MessageCreate) (username string, content stri
 	return "(deleted message)", ""
 }
 
-// generateResponse generates an AI response for a message
+// generateResponse generates an AI response for a message.
 func (b *Bot) generateResponse(ctx context.Context, mc ModeContext, gc GenerateContext, recentMessages []*types.DiscordMessage, memories []*memory.Record, profile *memory.Profile) (string, error) {
-	// Check if context is cancelled before starting
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
 
-	// Build static system prompt (cacheable - does not change between requests)
-	// This includes persona definition and mention guidelines
-	systemPrompt := b.cfg().FormatSystemPrompt(mc.Username, mc.GuildName, mc.GuildID, mc.ChannelID)
+	systemPrompt := b.systemPrompt()
 
-	// Build dynamic user context (not cacheable - changes every request)
-	// This is placed in the user message to preserve prompt caching of the system prompt
-	dynamicContext := b.buildDynamicContext(mc.Username, profile, memories, recentMessages)
-
-	logger.Debugf("[prompt] system prompt length: %d chars (static)", len(systemPrompt))
-	logger.Debugf("[prompt] dynamic context length: %d chars", len(dynamicContext))
-
-	// Get current bot ID
 	var botID string
 	if b.session != nil && b.session.State != nil && b.session.State.User != nil {
 		botID = b.session.State.User.ID
 	}
 
-	// Build channel mappings from state cache for resolving <#ID> mentions
-	channelMappings := make([]ChannelMapping, 0)
-	if b.session != nil && b.session.State != nil {
-		for _, guild := range b.session.State.Guilds {
-			for _, ch := range guild.Channels {
-				channelMappings = append(channelMappings, ChannelMapping{ID: ch.ID, Name: ch.Name})
-			}
-		}
-	}
+	// Historical images: cached descriptions, plus bounded on-demand
+	// enrichment of the image message the user replied to.
+	history := b.enrichHistory(ctx, b.filterMessages(recentMessages), mc.MessageID, planRecentImageEnrichment(mc.UserContent, mc.ReplyToID))
 
-	// Build conversation history as formatted text to include in UserContext.
-	// Keep historical image enrichment fast by default, but allow limited on-demand
-	// enrichment when the user likely references recent images.
-	conversationHistory := b.buildConversationHistoryText(
-		ctx,
-		recentMessages,
-		mc.MessageID,
-		botID,
-		planRecentImageEnrichment(mc.UserContent, mc.ReplyToID),
-		mc.Mentions,
-		channelMappings,
-	)
+	current := mc.Current
+	current.Content = mc.UserContent
+	current.Embeds = nil // already folded into UserContent
 
-	// Combine dynamic context with conversation history
-	fullContext := dynamicContext
-	if conversationHistory != "" {
-		fullContext = conversationHistory + "\n\n" + dynamicContext
-	}
-
-	logger.Debugf("[prompt] system prompt length: %d chars (static)", len(systemPrompt))
-	logger.Debugf("[prompt] full context length: %d chars", len(fullContext))
-
-	// Build request - Messages will only contain current user message
-	req := ai.ChatCompletionRequest{
-		SystemPrompt: systemPrompt,
-		Messages:     []openai.ChatCompletionMessage{},
-		UserContext:  fullContext,
-	}
-
-	var response string
-	var err error
-
-	logger.Infof("[vision] using mode: %s", b.cfg().AI.Vision.Mode)
-
+	var imageURLs []string
 	switch b.cfg().AI.Vision.Mode {
-	case config.VisionModeTextOnly:
-		logger.Debugf("[vision] text-only mode - skipping image extraction")
-		response, err = b.handleTextOnlyMode(ctx, mc, req)
-
 	case config.VisionModeHybrid:
-		logger.Debugf("[vision] hybrid mode - describing images with vision model, then using text model with tools")
-		// Use cached image descriptions if available (from processMessage)
-		response, err = b.handleHybridMode(ctx, mc, req, gc.ImageURLs, gc.ImageDescriptions)
-
+		current.Content += b.describeCurrentImages(ctx, gc)
 	case config.VisionModeMultimodal:
-		logger.Debugf("[vision] multimodal mode - using single model for both vision and tools")
-		response, err = b.handleMultimodalMode(ctx, mc, req, gc.ImageURLs)
-
+		imageURLs = gc.ImageURLs
+	case config.VisionModeTextOnly:
 	default:
 		return "", fmt.Errorf("unknown vision mode: %s", b.cfg().AI.Vision.Mode)
 	}
 
-	if err != nil {
-		return "", err
-	}
+	in := b.basePromptInput(mc, botID)
+	in.History = history
+	in.Current = &current
+	in.MentionedUsers = mc.Mentions
+	in.PluginBlocks = mc.InjectedContext
+	in.Profile = profile
+	in.Memories = b.renderMemories(memories)
+	userPrompt := buildUserPrompt(in)
 
-	return response, nil
+	logger.Debugf("[prompt] system prompt: %d chars (static), user prompt: %d chars", len(systemPrompt), len(userPrompt))
+	logger.Infof("[vision] using mode: %s", b.cfg().AI.Vision.Mode)
+
+	req := ai.ChatCompletionRequest{SystemPrompt: systemPrompt, Messages: []openai.ChatCompletionMessage{}}
+	var response string
+	if len(imageURLs) > 0 {
+		resp, err := mc.AIClient.CreateVisionCompletionWithTools(ctx, systemPrompt, "", userPrompt, imageURLs, nil, b.createToolHandler())
+		if err != nil {
+			return "", err
+		}
+		response = resp.Content
+	} else {
+		var err error
+		response, err = b.completeTextWithTools(ctx, mc.AIClient, req, userPrompt)
+		if err != nil {
+			return "", err
+		}
+	}
+	// The prompt shows mentions as <@DisplayName>; turn the ones the model
+	// copied back into real pings.
+	return mentionsToIDs(response, collectParticipants(in)), nil
 }
 
-// completeTextWithTools completes chat with tool support
+// systemPrompt returns the static system prompt: the configured instructions
+// plus static plugin sections. It is byte-identical across requests.
+func (b *Bot) systemPrompt() string {
+	var blocks []plugin.ContextBlock
+	if b.pluginManager != nil {
+		blocks = b.pluginManager.SystemPromptBlocks()
+	}
+	return SystemPromptFor(b.cfg().AI.SystemPrompt, blocks)
+}
+
+// basePromptInput fills server/channel info and channel names from the
+// session state cache.
+func (b *Bot) basePromptInput(mc ModeContext, botID string) promptInput {
+	in := promptInput{GuildID: mc.GuildID, GuildName: mc.GuildName, ChannelID: mc.ChannelID, BotID: botID, ChannelNames: map[string]string{}}
+	if b.session == nil || b.session.State == nil {
+		return in
+	}
+	if g, err := b.session.State.Guild(mc.GuildID); err == nil && g != nil {
+		if in.GuildName == "" {
+			in.GuildName = g.Name
+		}
+		in.GuildDescription = g.Description
+		for _, ch := range g.Channels {
+			in.ChannelNames[ch.ID] = ch.Name
+		}
+	}
+	if ch, err := b.session.State.Channel(mc.ChannelID); err == nil && ch != nil {
+		in.ChannelName = ch.Name
+		in.ChannelTopic = ch.Topic
+	}
+	return in
+}
+
+// renderMemories renders retrieved memories as <key_facts>/<recent_memories>.
+func (b *Bot) renderMemories(memories []*memory.Record) string {
+	if len(memories) == 0 {
+		return ""
+	}
+	cfg := b.cfg().Memory
+	logger.Debugf("[memory] adding %d memories to the prompt", len(memories))
+	return memory.FormatMemoriesForContext(memories, cfg.MemoryStrengthMultiplier, time.Now(), cfg.Retrieval.MaxMentionedMemories, cfg.Retrieval.MaxChannelMemories)
+}
+
+// describeCurrentImages returns " [Image N: description]" suffixes for the
+// current message's images (hybrid mode), using cached descriptions first.
+func (b *Bot) describeCurrentImages(ctx context.Context, gc GenerateContext) string {
+	if len(gc.ImageURLs) == 0 {
+		return ""
+	}
+	descriptions := gc.ImageDescriptions
+	if len(descriptions) == 0 {
+		describer := b.getVisionDescriber()
+		if describer == nil {
+			logger.Warnf("[hybrid] vision describer unavailable, continuing without image descriptions")
+			return ""
+		}
+		var err error
+		descriptions, err = describer.DescribeImages(ctx, gc.ImageURLs)
+		if err != nil {
+			logger.Warnf("[response] Failed to describe images: %v", err)
+			return ""
+		}
+	}
+	var sb strings.Builder
+	for i, d := range descriptions {
+		fmt.Fprintf(&sb, " [Image %d: %s]", i+1, d)
+	}
+	return sb.String()
+}
+
+// completeTextWithTools completes chat with tool support.
 func (b *Bot) completeTextWithTools(ctx context.Context, aiClient *ai.Client, req ai.ChatCompletionRequest, content string) (string, error) {
 	req.Messages = append(req.Messages, openai.ChatCompletionMessage{
 		Role:    openai.ChatMessageRoleUser,
 		Content: content,
 	})
-	req.UserContext = "" // Clear so CreateChatCompletion doesn't add it again
+	req.UserContext = ""
 
 	resp, err := aiClient.CreateChatCompletionWithTools(ctx, req, b.createToolHandler())
-	if err != nil {
-		return "", err
-	}
-	return resp.Content, nil
-}
-
-// handleTextOnlyMode handles text-only mode (no image processing)
-func (b *Bot) handleTextOnlyMode(ctx context.Context, mc ModeContext, req ai.ChatCompletionRequest) (string, error) {
-	// Build final content with XML formatting:
-	// UserContext contains <context> + dynamic context
-	// Current message wrapped in <currentMessage>
-	var fullContent strings.Builder
-	if req.UserContext != "" {
-		fullContent.WriteString(req.UserContext)
-		fullContent.WriteString("\n\n")
-	}
-	fullContent.WriteString("<currentMessage>\n")
-	fullContent.WriteString(formatMessageXML(mc.DisplayName, mc.Username, mc.UserID, mc.UserContent, time.Now(), mc.ReplyToUsername, mc.ReplyToContent))
-	fullContent.WriteString("\n</currentMessage>")
-
-	return b.completeTextWithTools(ctx, mc.AIClient, req, fullContent.String())
-}
-
-// handleHybridMode handles hybrid mode (vision description + text model)
-func (b *Bot) handleHybridMode(ctx context.Context, mc ModeContext, req ai.ChatCompletionRequest, imageURLs []string, cachedDescriptions []string) (string, error) {
-	// Build full message content with XML formatting
-	// UserContext contains <context> + dynamic context
-	// Current message wrapped in <currentMessage>
-	var fullContent strings.Builder
-	if req.UserContext != "" {
-		fullContent.WriteString(req.UserContext)
-		fullContent.WriteString("\n\n")
-	}
-	fullContent.WriteString("<currentMessage>\n")
-
-	// Build current message content (may include image descriptions)
-	var currentMsgContent strings.Builder
-	currentMsgContent.WriteString(mc.UserContent)
-
-	if len(imageURLs) == 0 {
-		// No images - format and send
-		fullContent.WriteString(formatMessageXML(mc.DisplayName, mc.Username, mc.UserID, currentMsgContent.String(), time.Now(), mc.ReplyToUsername, mc.ReplyToContent))
-		fullContent.WriteString("\n</currentMessage>")
-		return b.completeTextWithTools(ctx, mc.AIClient, req, fullContent.String())
-	}
-
-	descriptions := make([]string, 0, max(len(cachedDescriptions), len(imageURLs)))
-	if len(cachedDescriptions) > 0 {
-		// Use cached descriptions to avoid redundant API calls
-		descriptions = cachedDescriptions
-		logger.Debugf("[hybrid] using cached image descriptions count=%d", len(descriptions))
-	} else {
-		visionDescriber := b.getVisionDescriber()
-		if visionDescriber == nil {
-			logger.Warnf("[hybrid] vision describer unavailable, continuing without image descriptions")
-			fullContent.WriteString(formatMessageXML(mc.DisplayName, mc.Username, mc.UserID, currentMsgContent.String(), time.Now(), mc.ReplyToUsername, mc.ReplyToContent))
-			fullContent.WriteString("\n</currentMessage>")
-			return b.completeTextWithTools(ctx, mc.AIClient, req, fullContent.String())
-		}
-
-		// No cache available, call vision API
-		var err error
-		descriptions, err = visionDescriber.DescribeImages(ctx, imageURLs)
-		if err != nil {
-			logger.Warnf("[response] Failed to describe images: %v", err)
-			// Description failed - format without image descriptions
-			fullContent.WriteString(formatMessageXML(mc.DisplayName, mc.Username, mc.UserID, currentMsgContent.String(), time.Now(), mc.ReplyToUsername, mc.ReplyToContent))
-			fullContent.WriteString("\n</currentMessage>")
-			return b.completeTextWithTools(ctx, mc.AIClient, req, fullContent.String())
-		}
-		logger.Debugf("[hybrid] generated fresh image descriptions count=%d", len(descriptions))
-	}
-
-	// Add image descriptions to current message content
-	for i, desc := range descriptions {
-		fmt.Fprintf(&currentMsgContent, " [Image %d: %s]", i+1, desc)
-	}
-
-	fullContent.WriteString(formatMessageXML(mc.DisplayName, mc.Username, mc.UserID, currentMsgContent.String(), time.Now(), mc.ReplyToUsername, mc.ReplyToContent))
-	fullContent.WriteString("\n</currentMessage>")
-
-	return b.completeTextWithTools(ctx, mc.AIClient, req, fullContent.String())
-}
-
-// handleMultimodalMode handles multimodal mode (single model for vision + tools)
-func (b *Bot) handleMultimodalMode(ctx context.Context, mc ModeContext, req ai.ChatCompletionRequest, imageURLs []string) (string, error) {
-	// Wrap user content in XML format for multimodal mode
-	wrappedContent := "<currentMessage>\n" + formatMessageXML(mc.DisplayName, mc.Username, mc.UserID, mc.UserContent, time.Now(), mc.ReplyToUsername, mc.ReplyToContent) + "\n</currentMessage>"
-
-	resp, err := mc.AIClient.CreateVisionCompletionWithTools(
-		ctx,
-		req.SystemPrompt,
-		req.UserContext,
-		wrappedContent,
-		imageURLs,
-		req.Messages,
-		b.createToolHandler(),
-	)
 	if err != nil {
 		return "", err
 	}

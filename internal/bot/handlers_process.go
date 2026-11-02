@@ -87,7 +87,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 	})
 	defer cancelTyping()
 
-	mc, gc := b.buildModeContexts(m, displayName, guildName, imageURLs, imageDescriptions)
+	mc, gc := b.buildModeContexts(m, pm, displayName, guildName, imageURLs, imageDescriptions)
 
 	response, err := b.generateResponse(ctx, mc, gc, recentMessages, memories, profile)
 	if err != nil {
@@ -183,6 +183,7 @@ func (b *Bot) extractMessageImages(ctx context.Context, m *discordgo.MessageCrea
 			msg.ReplyToID = m.MessageReference.MessageID
 			if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
 				msg.ReplyToUsername = m.ReferencedMessage.Author.Username
+				msg.ReplyToAuthorID = m.ReferencedMessage.Author.ID
 				content := m.ReferencedMessage.Content
 				msg.ReplyToContent = content
 			} else {
@@ -309,6 +310,9 @@ func (b *Bot) fetchProfileAndDisplayName(ctx context.Context, m *discordgo.Messa
 		profile = nil
 	}
 	displayName = m.Author.GlobalName
+	if m.Member != nil && m.Member.Nick != "" {
+		displayName = m.Member.Nick
+	}
 	if displayName == "" {
 		displayName = m.Author.Username
 	}
@@ -318,7 +322,7 @@ func (b *Bot) fetchProfileAndDisplayName(ctx context.Context, m *discordgo.Messa
 	return profile, displayName
 }
 
-func (b *Bot) buildModeContexts(m *discordgo.MessageCreate, displayName, guildName string, imageURLs, imageDescriptions []string) (ModeContext, GenerateContext) {
+func (b *Bot) buildModeContexts(m *discordgo.MessageCreate, pm *ProcessingMessage, displayName, guildName string, imageURLs, imageDescriptions []string) (ModeContext, GenerateContext) {
 	replyToUsername, replyToContent := extractReplyInfo(m)
 	replyToID := ""
 	if m.MessageReference != nil {
@@ -338,6 +342,12 @@ func (b *Bot) buildModeContexts(m *discordgo.MessageCreate, displayName, guildNa
 		MessageID:       m.ID,
 		GuildName:       guildName,
 		Mentions:        m.Mentions,
+		Current:         types.FromDiscordgo(m),
+	}
+	if pm != nil {
+		pm.mu.RLock()
+		mc.InjectedContext = pm.InjectedContext
+		pm.mu.RUnlock()
 	}
 	gc := GenerateContext{
 		ImageURLs:         imageURLs,

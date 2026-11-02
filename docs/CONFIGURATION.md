@@ -107,7 +107,7 @@ The main chat model. All sub-fields here are required.
 | `retry_count` | int (>0) | Retries for transient API errors. |
 | `timeout` | int (>0, seconds) | Per-request timeout. The pipeline timeout is auto-derived from this. |
 | `extra_params` | map | Optional. Forwarded to the API via reflection. Unknown keys log a warning at runtime. |
-| `system_prompt` | string | The system prompt template. Supports `{BotName}`, `{AuthorName}`, `{ServerName}`, `{GuildID}`, `{ChannelID}`. |
+| `system_prompt` | string | The static system prompt. Sent unchanged on every request (no placeholders); see [System prompt](#system-prompt). |
 | `max_tool_iterations` | int (>0) | Cap on tool-calling loops per turn. Prevents infinite tool-call cycles. |
 | `max_image_bytes` | int (>0) | Maximum bytes for an image fetched from Discord CDN. |
 | `require_image_content_type` | bool | If true, image responses without a `Content-Type` header are rejected. |
@@ -141,7 +141,7 @@ The optional LLM-based reply classifier. When enabled, every non-trivial message
 | `model` | string | enabled | Decision model (use a fast one). |
 | `api_base_url` | string | enabled | |
 | `api_key` | string | enabled | |
-| `system_prompt` | string | enabled | Decision instructions. Supports `{BotName}`. Must instruct the model to return strict JSON. |
+| `system_prompt` | string | enabled | Decision instructions (no placeholders; write the bot name literally). Must instruct the model to return strict JSON. |
 | `max_tokens` | int (>0) | enabled | |
 | `temperature` | float (0.0–2.0) | enabled | Low values (0.0–0.3) recommended. |
 | `retry_count` | int (≥0) | enabled | |
@@ -179,6 +179,7 @@ The biggest subsection. Skim it in two passes — first the basics, then the mai
 |-------|------|-------|
 | `consolidation_interval` | int (>0) | Trigger consolidation every N bot-handled messages. |
 | `short_term_limit` | int (>0) | Recent Discord messages to fetch for short-term context. |
+| `context_flush_window` | int (>=0, optional) | Anchored window: history grows up to `short_term_limit` + this many messages, then the oldest block is dropped at once so the prompt prefix stays cacheable between flushes. `0` (default) = sliding window. See [PROMPT_OPTIMIZATION.md](PROMPT_OPTIMIZATION.md). |
 | `max_paginated_limit` | int (>0) | Max page size when paginating older messages. |
 | `max_mentioned_users_per_memory` | int (≥0) | Cap on mentioned users tracked per memory entry. |
 | `memory_strength_multiplier` | float (>0, ≤100) | Importance scoring multiplier. Presets: `0.0001` extreme, `0.1` goldfish, `1.0` human, `>1.0` elephant. |
@@ -531,19 +532,18 @@ Just make sure `qdrant.vector_size` matches whatever your embedding model produc
 
 ---
 
-## System Prompt Variables
+## System Prompt
 
-`core.ai.system_prompt` and `core.decision.system_prompt` support these:
+`core.ai.system_prompt` and `core.decision.system_prompt` are sent exactly as
+written. The old `{BotName}`, `{AuthorName}`, `{ServerName}`, `{GuildID}` and
+`{ChannelID}` placeholders were removed so the system prompt stays
+byte-identical across requests and provider prompt caches can reuse it; a
+config that still contains one fails validation with a message naming the
+field. Write the bot's name literally. Per-request facts (server and channel
+name and ID, participants with their IDs, history, the current message) are
+in the user message — see [PROMPT_OPTIMIZATION.md](PROMPT_OPTIMIZATION.md).
 
-| Variable | Replaced with |
-|----------|---------------|
-| `{BotName}` | `core.discord.bot_name` |
-| `{AuthorName}` | The current message author's display name |
-| `{ServerName}` | The Discord server (guild) name |
-| `{GuildID}` | Guild ID |
-| `{ChannelID}` | Channel ID |
-
-For dates and times, use the `get_current_datetime` tool from the `datetime` plugin instead of templating `{Time}` into the prompt — embedding a timestamp invalidates provider-side prompt caches every minute. See [PROMPT_OPTIMIZATION.md](PROMPT_OPTIMIZATION.md).
+For dates and times, use the `get_current_datetime` tool from the `datetime` plugin instead of putting a timestamp into the prompt. Message timestamps are already in the user message.
 
 ---
 

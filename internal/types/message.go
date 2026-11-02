@@ -33,6 +33,8 @@ type DiscordMessage struct {
 
 	// ReplyToID is the ID of the message being replied to (from MessageReference)
 	ReplyToID string `json:"reply_to_id"`
+	// ReplyToAuthorID is the user ID of the author of the replied-to message
+	ReplyToAuthorID string `json:"reply_to_author_id,omitempty"`
 	// ReplyToUsername is the username of the author of the replied-to message
 	ReplyToUsername string `json:"reply_to_username"`
 	// ReplyToContent is the content of the replied-to message
@@ -43,6 +45,9 @@ type DiscordMessage struct {
 // filling all canonical fields including reply metadata and image URLs.
 func FromDiscordgo(m *discordgo.MessageCreate) DiscordMessage {
 	displayName := m.Author.GlobalName
+	if m.Member != nil && m.Member.Nick != "" {
+		displayName = m.Member.Nick
+	}
 	if displayName == "" {
 		displayName = m.Author.Username
 	}
@@ -66,6 +71,7 @@ func FromDiscordgo(m *discordgo.MessageCreate) DiscordMessage {
 		msg.ReplyToID = m.MessageReference.MessageID
 		if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
 			msg.ReplyToUsername = m.ReferencedMessage.Author.Username
+			msg.ReplyToAuthorID = m.ReferencedMessage.Author.ID
 			content := m.ReferencedMessage.Content
 			msg.ReplyToContent = content
 		} else {

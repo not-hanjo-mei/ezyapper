@@ -115,6 +115,7 @@ func (b *Bot) onInteractionCreate(s *discordgo.Session, i *discordgo.Interaction
 // model and cancels replies still being generated there.
 func (b *Bot) clearChannelContext(channelID string) {
 	b.cutoffs.set(channelID, time.Now())
+	b.contextWindow.reset(channelID)
 
 	b.processingMu.Lock()
 	var cancels []func()
@@ -142,9 +143,11 @@ func interactionUserID(i *discordgo.InteractionCreate) string {
 // fetchContextMessages fetches recent channel history for context and hides
 // messages older than a /clear-context cutoff.
 func (b *Bot) fetchContextMessages(ctx context.Context, channelID string, limit int) ([]*types.DiscordMessage, error) {
-	msgs, err := b.discordClient.FetchRecentMessages(ctx, channelID, limit)
+	flush := b.cfg().Memory.ContextFlushWindow
+	msgs, err := b.discordClient.FetchRecentMessages(ctx, channelID, fetchSize(limit, flush))
 	if err != nil {
 		return nil, err
 	}
-	return b.applyContextCutoff(channelID, msgs), nil
+	msgs = b.applyContextCutoff(channelID, msgs)
+	return b.contextWindow.apply(channelID, msgs, limit, flush), nil
 }

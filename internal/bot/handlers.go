@@ -96,6 +96,7 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		msg.ReplyToID = m.MessageReference.MessageID
 		if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
 			msg.ReplyToUsername = m.ReferencedMessage.Author.Username
+			msg.ReplyToAuthorID = m.ReferencedMessage.Author.ID
 			msg.ReplyToContent = m.ReferencedMessage.Content
 		} else {
 			msg.ReplyToUsername = "(deleted message)"

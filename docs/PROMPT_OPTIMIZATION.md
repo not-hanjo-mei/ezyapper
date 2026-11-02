@@ -1,118 +1,64 @@
-# Prompt Optimization
+# Prompt Layout and Caching
 
-This document describes the prompt caching optimizations implemented in EZyapper to reduce API costs and improve response times.
+LLM providers cache the longest common *prefix* of consecutive requests.
+EZyapper orders the request so that prefix is as long as possible.
 
-## Overview
+## System prompt (static)
 
-EZyapper maximizes provider-side caching by:
+```
+<instruction>
+{core.ai.system_prompt}
+</instruction>
 
-1. **Static/Dynamic Content Separation** - Keep the system prompt stable and move dynamic context to the user message
-2. **Stable Tool Ordering** - Alphabetically sorted tools for consistent cache keys
-3. **Tool Schema Caching** - Pre-computed schemas to avoid rebuild overhead
-4. **Prompt Length Logging** - Debug logs to validate static vs dynamic sizing
-
-## How It Works
-
-### Static vs Dynamic Content
-
-System prompt (cached):
-- Bot persona and rules
-- Static guidelines
-- Tool schemas (alphabetically sorted)
-
-User message (not cached):
-- Dynamic context (profile, memories, recent messages)
-- Original user message
-
-### Tool Registry Caching
-
-**File:** `internal/ai/tools/tools.go`
-
-Tool schemas are sorted and cached once at registration. `GetTools()` returns a copy to keep ordering stable across requests.
-
-### Static/Dynamic Separation
-
-**Files:** `internal/bot/handlers_response.go`, `internal/bot/handlers_context.go`
-
-```go
-systemPrompt := b.cfg().FormatSystemPrompt(...)
-dynamicContext := b.buildDynamicContext(...)
-
-req := ai.ChatCompletionRequest{
-    SystemPrompt: systemPrompt,
-    Messages:     history,
-    UserContext:  dynamicContext,
-}
+<{tag}>              one section per plugin implementing SystemPromptProvider
+...                  (queried once at plugin load)
+</{tag}>
 ```
 
-### System Prompt Formatting
+It contains nothing that varies per request: no names, IDs or times. It is
+byte-identical for every request of a running bot, so it is always cached.
 
-**File:** `internal/config/config.go`
+## User prompt (one message)
 
-`FormatSystemPrompt` replaces `{BotName}`, `{AuthorName}`, `{ServerName}`, `{GuildID}`, and `{ChannelID}` in the template.
+Sections are ordered from "changes least" to "changes most":
 
-## Configuration
-
-No additional configuration required. Optimizations are automatic.
-
-Enable debug logs:
-
-```yaml
-operations:
-  logging:
-    level: "debug"
+```
+<server_info>        server name, ID, description        stable per channel
+<channel_info>       channel name, ID, topic             stable per channel
+<context>            history, oldest first               append-only (see below)
+<participants>       Name (@username, ID:id) — role      changes when someone new speaks
+<{plugin tag}>       AfterDecision plugin blocks          per reply
+<user_profile>       traits, interests, facts, preferences of the author
+<key_facts>          retrieved memories
+<recent_memories>
+<currentMessage>     the message being answered
 ```
 
-Relevant logs:
-- `[prompt] system prompt length` (static)
-- `[prompt] dynamic context length` (per request)
-- `[prompt] full context length` (when user context is inlined)
+Each message is one line:
 
-## Best Practices
-
-1. **Keep system prompt stable** - Avoid adding timestamps or random content
-2. **Use tool descriptions consistently** - Don't change tool schemas between requests
-3. **Keep dynamic content in `UserContext`** - Avoid putting it in the system prompt
-
-## Troubleshooting
-
-If cache benefits seem low:
-
-1. Ensure the system prompt is stable across requests
-2. Verify tool schemas are registered once and not mutated
-3. Confirm dynamic context is appended via `UserContext`
-
-## API Reference
-
-### ToolRegistry
-
-```go
-// Get cached tool schema
-func (r *ToolRegistry) GetTools() []openai.Tool
-
-// Get schema hash for cache key tracking
-func (r *ToolRegistry) GetSchemaHash() string
+```
+[2026-11-01T05:20:11Z] [User] [reply to Bob: "text"] Alice Mana: "content"
 ```
 
-### ChatCompletionRequest
+- The timestamp is the Discord message timestamp (UTC), also for the current message.
+- Roles are `User`, `Bot` (another bot) and `Assistant` (this bot).
+- User mentions are shown as `<@DisplayName>` and channel mentions as `#name`.
+  When the model writes `<@Name>` for an unambiguous participant, it is
+  converted back to a real `<@id>` ping before sending.
+- Text is not HTML-escaped.
+- Image descriptions (hybrid vision) are appended as `[Image N: ...]`.
 
-```go
-type ChatCompletionRequest struct {
-    SystemPrompt string                           // Static (cached)
-    Messages     []openai.ChatCompletionMessage
-    Tools        []openai.Tool
-    UserContext  string                           // Dynamic (not cached)
-}
-```
+## Anchored context window
 
-### Config.FormatSystemPrompt
+With `memory_pipeline.memory.context_flush_window` > 0 the history window does not slide
+by one message per request (which would change the first line of `<context>`
+and break the cache every time). It is anchored at its oldest message and only
+grows until it holds `short_term_limit + context_flush_window` messages; then
+the oldest `context_flush_window` (or more) messages are dropped at once and a
+new anchor is set. Between flushes every request shares the previous
+request's prefix up to the end of the old context.
 
-```go
-func (c *Config) FormatSystemPrompt(authorName, serverName, guildID, channelID string) string
-```
+## Checking the real request
 
-## See Also
-
-- [Architecture Overview](ARCHITECTURE.md)
-- [Configuration Reference](CONFIGURATION.md)
-- [AGENTS.md](../AGENTS.md) - Internal code structure
+Set `EZYAPPER_CAPTURE_DIR` to capture the exact JSON sent to the providers
+(see DEPLOYMENT.md).

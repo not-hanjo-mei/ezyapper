@@ -199,8 +199,9 @@ A typical user message in a non-blacklisted, non-rate-limited channel:
          - channel-scoped memories
       c. Merge + dedup by ID; PostProcessResults applies scoring weights
       d. Profile fetch (display name, traits, facts) for richer context
-      e. Build dynamic context (profile + memories + recent messages)
-      f. FormatSystemPrompt with {BotName}/{AuthorName}/{ServerName}/{GuildID}/{ChannelID}
+      e. Build the static system prompt (instructions + static plugin sections)
+      f. Build the user prompt: server, channel, context, participants,
+         plugin blocks, user profile, key facts, current message
       g. generateResponse → vision-mode handler:
            text_only: text model + tools
            hybrid:    cached/described images injected as text → text model + tools

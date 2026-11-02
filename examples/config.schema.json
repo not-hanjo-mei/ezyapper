@@ -160,6 +160,7 @@
           "properties": {
             "consolidation_interval": { "type": "integer", "minimum": 1 },
             "short_term_limit":       { "type": "integer", "minimum": 1, "maximum": 500 },
+            "context_flush_window":   { "type": "integer", "minimum": 0, "maximum": 500 },
             "max_paginated_limit":    { "type": "integer", "minimum": 1 },
             "retrieval": {
               "type": "object",

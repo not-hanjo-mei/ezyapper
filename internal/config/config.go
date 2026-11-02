@@ -145,8 +145,13 @@ type LongTermMemoryConfig struct {
 }
 
 type MemoryConfig struct {
-	ConsolidationInterval      int                  `mapstructure:"consolidation_interval" yaml:"consolidation_interval"`
-	ShortTermLimit             int                  `mapstructure:"short_term_limit" yaml:"short_term_limit"`
+	ConsolidationInterval int `mapstructure:"consolidation_interval" yaml:"consolidation_interval"`
+	ShortTermLimit        int `mapstructure:"short_term_limit" yaml:"short_term_limit"`
+	// ContextFlushWindow enables the anchored context window when > 0: the
+	// history grows from short_term_limit up to short_term_limit+this many
+	// messages, then drops the oldest block at once (prompt-cache friendly).
+	// 0 keeps the plain sliding window.
+	ContextFlushWindow         int                  `mapstructure:"context_flush_window" yaml:"context_flush_window"`
 	MaxPaginatedLimit          int                  `mapstructure:"max_paginated_limit" yaml:"max_paginated_limit"`
 	Retrieval                  RetrievalConfig      `mapstructure:"retrieval" yaml:"retrieval"`
 	Consolidation              ConsolidationConfig  `mapstructure:"consolidation" yaml:"consolidation"`
@@ -507,6 +512,9 @@ func validateQdrant(cfg *Config, errs *[]string) {
 func validateMemory(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Memory.ConsolidationInterval, "memory_pipeline.memory.consolidation_interval", errs)
 	requirePositive(cfg.Memory.ShortTermLimit, "memory_pipeline.memory.short_term_limit", errs)
+	if cfg.Memory.ContextFlushWindow < 0 {
+		*errs = append(*errs, "memory_pipeline.memory.context_flush_window must be >= 0")
+	}
 	requirePositive(cfg.Memory.MaxPaginatedLimit, "memory_pipeline.memory.max_paginated_limit", errs)
 	if cfg.Memory.Retrieval.TopK < 0 {
 		*errs = append(*errs, "memory_pipeline.memory.retrieval.top_k must be greater than or equal to 0")
@@ -743,6 +751,7 @@ func validateSystem(cfg *Config, errs *[]string) {
 
 func validate(cfg *Config) error {
 	errs := []string{}
+	rejectRemovedPlaceholders(cfg, &errs)
 	validateCore(cfg, &errs)
 	validateAI(cfg, &errs)
 	validateVision(cfg, &errs)
@@ -785,24 +794,6 @@ func validateMessageFilters(cfg *Config, errs *[]string) {
 // Validate checks runtime config consistency and required fields.
 func Validate(cfg *Config) error {
 	return validate(cfg)
-}
-
-func (c *Config) FormatSystemPrompt(authorName, serverName, guildID, channelID string) string {
-	prompt := c.AI.SystemPrompt
-
-	replacements := map[string]string{
-		"{BotName}":    c.Discord.BotName,
-		"{AuthorName}": authorName,
-		"{ServerName}": serverName,
-		"{GuildID}":    guildID,
-		"{ChannelID}":  channelID,
-	}
-
-	for placeholder, value := range replacements {
-		prompt = strings.ReplaceAll(prompt, placeholder, value)
-	}
-
-	return prompt
 }
 
 func filtersForSave(f filter.Config) *filter.Config {
@@ -910,4 +901,21 @@ func expectedEmbeddingVectorSize(model string) int {
 	default:
 		return 0
 	}
+}
+
+// removedPromptPlaceholders were substituted into prompts by older versions.
+// Prompts are now static (for prompt caching): names are written literally
+// and per-request facts (author, server, channel) are in the user prompt.
+var removedPromptPlaceholders = []string{"{BotName}", "{AuthorName}", "{ServerName}", "{GuildID}", "{ChannelID}"}
+
+func rejectRemovedPlaceholders(cfg *Config, errs *[]string) {
+	check := func(field, prompt string) {
+		for _, ph := range removedPromptPlaceholders {
+			if strings.Contains(prompt, ph) {
+				*errs = append(*errs, fmt.Sprintf("%s contains %s, which is no longer substituted: write the value literally (server, channel and author details are sent in the user prompt)", field, ph))
+			}
+		}
+	}
+	check("core.ai.system_prompt", cfg.AI.SystemPrompt)
+	check("core.decision.system_prompt", cfg.Decision.SystemPrompt)
 }
