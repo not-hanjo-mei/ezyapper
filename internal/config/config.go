@@ -63,11 +63,70 @@ type LLMConfig struct {
 	ExtraParams map[string]any `mapstructure:"extra_params" yaml:"extra_params"`
 }
 
-// DecisionConfig holds LLM-based reply decision settings
+// DecisionProvider selects the backend that decides whether to reply.
+type DecisionProvider string
+
+const (
+	// DecisionProviderLLM asks an OpenAI-compatible chat model for a JSON
+	// verdict. It is the default when core.decision.provider is absent so
+	// configs written before the provider field existed keep working.
+	DecisionProviderLLM DecisionProvider = "llm"
+	// DecisionProviderSystemOne asks a System One decision model (TypeSafe
+	// Jev) a yes/no "noul" question and thresholds the returned P(yes).
+	DecisionProviderSystemOne DecisionProvider = "system_one"
+)
+
+// DecisionConfig holds reply decision settings. The embedded LLMConfig and
+// SystemPrompt belong to the "llm" provider; SystemOne holds the settings of
+// the "system_one" provider. Only the selected provider's fields are
+// validated, so both blocks can stay in the file while switching providers.
 type DecisionConfig struct {
 	LLMConfig    `mapstructure:",squash"`
-	Enabled      bool   `mapstructure:"enabled" yaml:"enabled"`
-	SystemPrompt string `mapstructure:"system_prompt" yaml:"system_prompt"`
+	Enabled      bool             `mapstructure:"enabled" yaml:"enabled"`
+	Provider     DecisionProvider `mapstructure:"provider" yaml:"provider,omitempty"`
+	SystemPrompt string           `mapstructure:"system_prompt" yaml:"system_prompt"`
+	SystemOne    SystemOneConfig  `mapstructure:"system_one" yaml:"system_one,omitempty"`
+}
+
+// EffectiveProvider returns the configured provider, treating an absent
+// value as DecisionProviderLLM.
+func (d DecisionConfig) EffectiveProvider() DecisionProvider {
+	if d.Provider == "" {
+		return DecisionProviderLLM
+	}
+	return d.Provider
+}
+
+// RequestBudget returns the per-attempt timeout (seconds) and retry count of
+// the selected provider, so callers can size the overall decision deadline
+// without knowing which provider is active.
+func (d DecisionConfig) RequestBudget() (timeoutSec, retryCount int) {
+	if d.EffectiveProvider() == DecisionProviderSystemOne {
+		return d.SystemOne.Timeout, d.SystemOne.RetryCount
+	}
+	return d.Timeout, d.RetryCount
+}
+
+// SystemOneConfig configures the System One (TypeSafe Jev) decision
+// provider. Instructions and criteria are sent verbatim: no placeholder such
+// as {BotName} is substituted, so write the bot's name literally.
+type SystemOneConfig struct {
+	APIBaseURL string `mapstructure:"api_base_url" yaml:"api_base_url"`
+	APIKey     string `mapstructure:"api_key" yaml:"api_key"`
+	Model      string `mapstructure:"model" yaml:"model"`
+	Timeout    int    `mapstructure:"timeout" yaml:"timeout"`
+	RetryCount int    `mapstructure:"retry_count" yaml:"retry_count"`
+	// Threshold is the minimum P(yes) at which the bot replies, in (0, 1].
+	Threshold float64 `mapstructure:"threshold" yaml:"threshold"`
+	// Instructions is the yes/no question asked about the state.
+	Instructions string `mapstructure:"instructions" yaml:"instructions"`
+	// CriteriaTrue / CriteriaFalse optionally describe what a yes and a no
+	// mean. Set both or neither.
+	CriteriaTrue  string `mapstructure:"criteria_true" yaml:"criteria_true,omitempty"`
+	CriteriaFalse string `mapstructure:"criteria_false" yaml:"criteria_false,omitempty"`
+	// MaxStateBytes caps the JSON-encoded state; the oldest context messages
+	// are dropped first to stay within it.
+	MaxStateBytes int `mapstructure:"max_state_bytes" yaml:"max_state_bytes"`
 }
 
 // RateLimitConfig holds per-user rate limiting window settings.
@@ -698,25 +757,62 @@ func validateConsolidation(cfg *Config, errs *[]string) {
 }
 
 func validateDecision(cfg *Config, errs *[]string) {
-	if !cfg.Decision.Enabled {
+	d := &cfg.Decision
+	// A misspelled provider is reported even while the decision is disabled,
+	// so flipping enabled on later does not surface a surprise.
+	switch d.Provider {
+	case "", DecisionProviderLLM, DecisionProviderSystemOne:
+	default:
+		*errs = append(*errs, fmt.Sprintf("core.decision.provider %q is invalid (must be one of: llm, system_one)", d.Provider))
 		return
 	}
-	requireNonEmpty(cfg.Decision.Model, "core.decision.model", errs)
-	requireNonEmpty(cfg.Decision.APIBaseURL, "core.decision.api_base_url", errs)
-	requireNonEmpty(cfg.Decision.APIKey, "core.decision.api_key", errs)
-	requireNonEmpty(cfg.Decision.SystemPrompt, "core.decision.system_prompt", errs)
-	if cfg.Decision.MaxTokens <= 0 {
+	if !d.Enabled {
+		return
+	}
+	if d.EffectiveProvider() == DecisionProviderSystemOne {
+		validateSystemOneDecision(&d.SystemOne, errs)
+		return
+	}
+	requireNonEmpty(d.Model, "core.decision.model", errs)
+	requireNonEmpty(d.APIBaseURL, "core.decision.api_base_url", errs)
+	requireNonEmpty(d.APIKey, "core.decision.api_key", errs)
+	requireNonEmpty(d.SystemPrompt, "core.decision.system_prompt", errs)
+	if d.MaxTokens <= 0 {
 		*errs = append(*errs, "core.decision.max_tokens must be greater than 0 when decision is enabled")
 	}
-	if cfg.Decision.Temperature < 0 || cfg.Decision.Temperature > 2 {
+	if d.Temperature < 0 || d.Temperature > 2 {
 		*errs = append(*errs, "core.decision.temperature must be between 0 and 2")
 	}
-	if cfg.Decision.Timeout <= 0 {
+	if d.Timeout <= 0 {
 		*errs = append(*errs, "core.decision.timeout must be greater than 0 when decision is enabled")
 	}
-	if cfg.Decision.RetryCount < 0 {
+	if d.RetryCount < 0 {
 		*errs = append(*errs, "core.decision.retry_count must be greater than or equal to 0")
 	}
+}
+
+func validateSystemOneDecision(s *SystemOneConfig, errs *[]string) {
+	const p = "core.decision.system_one."
+	requireNonEmpty(s.APIBaseURL, p+"api_base_url", errs)
+	requireNonEmpty(s.APIKey, p+"api_key", errs)
+	requireNonEmpty(s.Model, p+"model", errs)
+	if strings.TrimSpace(s.Instructions) == "" {
+		*errs = append(*errs, p+"instructions is required")
+	}
+	requirePositive(s.Timeout, p+"timeout", errs)
+	if s.RetryCount < 0 {
+		*errs = append(*errs, p+"retry_count must be greater than or equal to 0")
+	}
+	// 0 would mean "always reply", which is what disabling the decision and
+	// setting reply_percentage to 1 already does; rejecting it also catches a
+	// forgotten threshold (the zero value).
+	if s.Threshold <= 0 || s.Threshold > 1 {
+		*errs = append(*errs, p+"threshold must be greater than 0 and at most 1")
+	}
+	if (strings.TrimSpace(s.CriteriaTrue) == "") != (strings.TrimSpace(s.CriteriaFalse) == "") {
+		*errs = append(*errs, p+"criteria_true and criteria_false must be set together")
+	}
+	requirePositive(s.MaxStateBytes, p+"max_state_bytes", errs)
 }
 
 func validateSystem(cfg *Config, errs *[]string) {
