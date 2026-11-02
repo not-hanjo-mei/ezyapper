@@ -81,7 +81,7 @@ const (
 // the "system_one" provider. Only the selected provider's fields are
 // validated, so both blocks can stay in the file while switching providers.
 type DecisionConfig struct {
-	LLMConfig    `mapstructure:",squash"`
+	LLMConfig    `mapstructure:",squash" yaml:",inline"`
 	Enabled      bool             `mapstructure:"enabled" yaml:"enabled"`
 	Provider     DecisionProvider `mapstructure:"provider" yaml:"provider,omitempty"`
 	SystemPrompt string           `mapstructure:"system_prompt" yaml:"system_prompt"`
@@ -178,7 +178,7 @@ type ClearCommandConfig struct {
 
 // AIConfig holds AI/LLM settings for chat
 type AIConfig struct {
-	LLMConfig `mapstructure:",squash"`
+	LLMConfig `mapstructure:",squash" yaml:",inline"`
 	// Modalities configures image, audio and video handling (optional).
 	Modalities ModalitiesConfig `mapstructure:"modalities" yaml:"modalities"`
 	// Vision is the deprecated pre-modalities block. It is only read: Load
@@ -250,7 +250,7 @@ type MemoryConfig struct {
 }
 
 type ConsolidationConfig struct {
-	LLMConfig         `mapstructure:",squash"`
+	LLMConfig         `mapstructure:",squash" yaml:",inline"`
 	Enabled           bool         `mapstructure:"enabled" yaml:"enabled"`
 	Vision            VisionConfig `mapstructure:"vision" yaml:"vision"`
 	SystemPrompt      string       `mapstructure:"system_prompt" yaml:"system_prompt"`

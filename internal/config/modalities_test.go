@@ -311,3 +311,30 @@ func TestValidateModalities(t *testing.T) {
 		t.Fatalf("a direct modality without override shares the other's model: %s", e)
 	}
 }
+
+func TestSave_RoundTripsModalities(t *testing.T) {
+	cfg, err := loadModalitiesYAML(t, `    vision:
+      mode: "hybrid"
+      model: "vm"
+`)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	data, err := os.ReadFile(cfg.configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "\n    vision:") {
+		t.Fatalf("saved config must not contain the legacy vision block:\n%s", data)
+	}
+	again, err := Load(cfg.configPath)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if !again.AI.Modalities.Image.Enabled || again.AI.Modalities.Image.Model != "vm" || again.AI.Modalities.Image.Mode != ImageModeDescribe {
+		t.Fatalf("modalities lost in round trip: %+v", again.AI.Modalities.Image)
+	}
+}
