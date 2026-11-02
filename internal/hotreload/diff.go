@@ -116,10 +116,7 @@ func diffValue(path string, a, b reflect.Value, out *[]string) {
 			diffValue(sub, a.Field(i), b.Field(i), out)
 		}
 	case reflect.Slice, reflect.Map:
-		if a.Len() == 0 && b.Len() == 0 {
-			return
-		}
-		if !reflect.DeepEqual(a.Interface(), b.Interface()) {
+		if !equalValues(a, b) {
 			*out = append(*out, path)
 		}
 	case reflect.Pointer, reflect.Interface:
@@ -152,4 +149,57 @@ func fieldKey(f reflect.StructField) string {
 		return ""
 	}
 	return strings.ToLower(f.Name)
+}
+
+// equalValues is reflect.DeepEqual with nil and empty slices/maps treated
+// as equal at every depth (a server entry without args loads with nil Args
+// from one file and an empty list from another).
+func equalValues(a, b reflect.Value) bool {
+	if !a.IsValid() || !b.IsValid() {
+		return a.IsValid() == b.IsValid()
+	}
+	if a.Type() != b.Type() {
+		return false
+	}
+	switch a.Kind() {
+	case reflect.Slice, reflect.Array:
+		if a.Len() != b.Len() {
+			return false
+		}
+		for i := 0; i < a.Len(); i++ {
+			if !equalValues(a.Index(i), b.Index(i)) {
+				return false
+			}
+		}
+		return true
+	case reflect.Map:
+		if a.Len() != b.Len() {
+			return false
+		}
+		iter := a.MapRange()
+		for iter.Next() {
+			bv := b.MapIndex(iter.Key())
+			if !bv.IsValid() || !equalValues(iter.Value(), bv) {
+				return false
+			}
+		}
+		return true
+	case reflect.Struct:
+		for i := 0; i < a.NumField(); i++ {
+			if !a.Type().Field(i).IsExported() {
+				continue
+			}
+			if !equalValues(a.Field(i), b.Field(i)) {
+				return false
+			}
+		}
+		return true
+	case reflect.Pointer, reflect.Interface:
+		if a.IsNil() || b.IsNil() {
+			return a.IsNil() == b.IsNil()
+		}
+		return equalValues(a.Elem(), b.Elem())
+	default:
+		return reflect.DeepEqual(a.Interface(), b.Interface())
+	}
 }

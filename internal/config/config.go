@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 
 	"ezyapper/internal/filter"
@@ -946,77 +947,42 @@ func filtersForSave(f filter.Config) *filter.Config {
 	return &f
 }
 
+// Save writes the config to the file it was loaded from, in the file's
+// sectioned layout. Keys are derived from the mapstructure tags Load reads,
+// so the written file loads back to the same config (see fileNode).
 func (c *Config) Save() error {
 	if c.configPath == "" {
 		return fmt.Errorf("config path not set")
 	}
 
-	fileData := struct {
-		Core struct {
-			Discord  DiscordConfig  `yaml:"discord"`
-			AI       AIConfig       `yaml:"ai"`
-			Decision DecisionConfig `yaml:"decision"`
-		} `yaml:"core"`
-		MemoryPipe struct {
-			Embedding EmbeddingConfig `yaml:"embedding"`
-			Memory    MemoryConfig    `yaml:"memory"`
-			Qdrant    QdrantConfig    `yaml:"qdrant"`
-		} `yaml:"memory_pipeline"`
-		Access struct {
-			Blacklist BlacklistConfig `yaml:"blacklist"`
-			Whitelist WhitelistConfig `yaml:"whitelist"`
-			Filters   *filter.Config  `yaml:"message_filters,omitempty"`
-		} `yaml:"access_control"`
-		Operations struct {
-			Web     WebConfig        `yaml:"web"`
-			Logging LoggingConfig    `yaml:"logging"`
-			Plugins PluginsConfig    `yaml:"plugins"`
-			MCP     MCPConfig        `yaml:"mcp"`
-			Runtime OperationsConfig `yaml:"runtime"`
-		} `yaml:"operations"`
-	}{
-		Core: struct {
-			Discord  DiscordConfig  `yaml:"discord"`
-			AI       AIConfig       `yaml:"ai"`
-			Decision DecisionConfig `yaml:"decision"`
-		}{
-			Discord:  c.Discord,
-			AI:       c.AI,
-			Decision: c.Decision,
-		},
-		MemoryPipe: struct {
-			Embedding EmbeddingConfig `yaml:"embedding"`
-			Memory    MemoryConfig    `yaml:"memory"`
-			Qdrant    QdrantConfig    `yaml:"qdrant"`
-		}{
-			Embedding: c.Embedding,
-			Memory:    c.Memory,
-			Qdrant:    c.Qdrant,
-		},
-		Access: struct {
-			Blacklist BlacklistConfig `yaml:"blacklist"`
-			Whitelist WhitelistConfig `yaml:"whitelist"`
-			Filters   *filter.Config  `yaml:"message_filters,omitempty"`
-		}{
-			Blacklist: c.Blacklist,
-			Whitelist: c.Whitelist,
-			Filters:   filtersForSave(c.MessageFilters),
-		},
-		Operations: struct {
-			Web     WebConfig        `yaml:"web"`
-			Logging LoggingConfig    `yaml:"logging"`
-			Plugins PluginsConfig    `yaml:"plugins"`
-			MCP     MCPConfig        `yaml:"mcp"`
-			Runtime OperationsConfig `yaml:"runtime"`
-		}{
-			Web:     c.Web,
-			Logging: c.Logging,
-			Plugins: c.Plugins,
-			MCP:     c.MCP,
-			Runtime: c.Operations,
-		},
+	type entry struct {
+		key string
+		val any
 	}
-	data, err := yaml.Marshal(fileData)
+	section := func(entries ...entry) *yaml.Node {
+		n := &yaml.Node{Kind: yaml.MappingNode}
+		for _, e := range entries {
+			if e.val == nil {
+				continue
+			}
+			n.Content = append(n.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: e.key}, fileNode(reflect.ValueOf(e.val)))
+		}
+		return n
+	}
+	var filters any
+	if f := filtersForSave(c.MessageFilters); f != nil {
+		filters = *f
+	}
+	root := &yaml.Node{Kind: yaml.MappingNode}
+	add := func(key string, n *yaml.Node) {
+		root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: key}, n)
+	}
+	add("core", section(entry{"discord", c.Discord}, entry{"ai", c.AI}, entry{"decision", c.Decision}))
+	add("memory_pipeline", section(entry{"embedding", c.Embedding}, entry{"memory", c.Memory}, entry{"qdrant", c.Qdrant}))
+	add("access_control", section(entry{"blacklist", c.Blacklist}, entry{"whitelist", c.Whitelist}, entry{"message_filters", filters}))
+	add("operations", section(entry{"web", c.Web}, entry{"logging", c.Logging}, entry{"plugins", c.Plugins}, entry{"mcp", c.MCP}, entry{"runtime", c.Operations}))
+
+	data, err := yaml.Marshal(&yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{root}})
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
@@ -1026,6 +992,83 @@ func (c *Config) Save() error {
 	}
 
 	return nil
+}
+
+// fileNode encodes v the way Load decodes it: struct keys come from the
+// mapstructure tags and ",squash" embedded structs are written inline.
+//
+// Marshalling the structs with their yaml tags did not round-trip: the
+// embedded LLMConfig has no yaml tag, so yaml.v3 nested it under an
+// "llmconfig" key, and the dashboard's Save produced a file whose
+// api_key/model/... Load could no longer see (the next start or hot
+// reload then failed validation). Inlining it with yaml tags is not enough
+// either, because VisionConfig has its own "model" key next to the
+// embedded one. Fields after a squashed struct override its keys, matching
+// how mapstructure fills both from the same key.
+func fileNode(v reflect.Value) *yaml.Node {
+	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
+		if v.IsNil() {
+			return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!null", Value: "null"}
+		}
+		v = v.Elem()
+	}
+	switch v.Kind() {
+	case reflect.Struct:
+		n := &yaml.Node{Kind: yaml.MappingNode}
+		appendStructFields(n, v)
+		return n
+	case reflect.Slice, reflect.Array:
+		n := &yaml.Node{Kind: yaml.SequenceNode}
+		if v.Len() == 0 {
+			n.Style = yaml.FlowStyle
+		}
+		for i := 0; i < v.Len(); i++ {
+			n.Content = append(n.Content, fileNode(v.Index(i)))
+		}
+		return n
+	default:
+		n := &yaml.Node{}
+		if err := n.Encode(v.Interface()); err != nil {
+			return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!null", Value: "null"}
+		}
+		return n
+	}
+}
+
+func appendStructFields(n *yaml.Node, v reflect.Value) {
+	t := v.Type()
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if !f.IsExported() {
+			continue
+		}
+		name, opts, _ := strings.Cut(f.Tag.Get("mapstructure"), ",")
+		if strings.Contains(opts, "squash") {
+			appendStructFields(n, v.Field(i))
+			continue
+		}
+		if name == "-" {
+			continue
+		}
+		if name == "" {
+			name = strings.ToLower(f.Name)
+		}
+		if strings.Contains(f.Tag.Get("yaml"), "omitempty") && v.Field(i).IsZero() {
+			continue
+		}
+		val := fileNode(v.Field(i))
+		replaced := false
+		for k := 0; k+1 < len(n.Content); k += 2 {
+			if n.Content[k].Value == name {
+				n.Content[k+1] = val
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			n.Content = append(n.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: name}, val)
+		}
+	}
 }
 
 const (

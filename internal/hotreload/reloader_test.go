@@ -337,3 +337,26 @@ func TestWatcherComponent_DisablesWatching(t *testing.T) {
 	}
 	t.Fatal("watcher still running after hot_reload.enabled was switched off")
 }
+
+// A dashboard save writes the file, which the watcher then reloads. The
+// written file must load back to the same config, otherwise every save
+// triggers a second reload (or, as before Save was fixed, a failed one).
+func TestSaveLoadRoundTripHasNoDiff(t *testing.T) {
+	cfg := baseConfig(t)
+	cfg.Decision.Provider = config.DecisionProviderSystemOne
+	cfg.Decision.SystemOne = config.SystemOneConfig{APIBaseURL: "http://jev", APIKey: "k", Model: "m", Timeout: 5, RetryCount: 1, Threshold: 0.5, Instructions: "q", MaxStateBytes: 1000}
+	cfg.MCP.Servers = []config.MCPServer{{Name: "s", Type: "http", URL: "http://x", Headers: map[string]string{"authorization": "Bearer t"}}}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	cfg.SetPath(path)
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	back, err := config.Load(path)
+	if err != nil {
+		data, _ := os.ReadFile(path)
+		t.Fatalf("saved file does not load: %v\n%s", err, data)
+	}
+	if d := Diff(cfg, back); len(d) != 0 {
+		t.Fatalf("save/load round trip changed: %v", d)
+	}
+}
