@@ -45,3 +45,23 @@ func TestRecorderCapturesRequestAndRedactsKeys(t *testing.T) {
 		t.Fatal("authorization header must be redacted")
 	}
 }
+
+func TestWrapSetsUserAgent(t *testing.T) {
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Header.Get("User-Agent"))
+	}))
+	defer srv.Close()
+	c := Wrap(&http.Client{}, "t")
+	if _, err := c.Get(srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
+	req.Header.Set("User-Agent", "custom/1")
+	if _, err := c.Do(req); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != UserAgent || got[1] != "custom/1" {
+		t.Fatalf("user agents = %v", got)
+	}
+}

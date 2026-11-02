@@ -92,12 +92,44 @@ func (r *Recorder) write(e Entry) {
 
 // Wrap returns an http.Client whose transport records through the default
 // recorder. When capture is disabled the client is returned unchanged.
+//
+// Wrap also gives every request an explicit User-Agent (UserAgent) unless
+// the caller set one. Go's default "Go-http-client/x" is blocked outright by
+// Cloudflare-fronted OpenAI-compatible gateways (error 1010), which made
+// model and embedding calls fail with 403 on such endpoints.
 func Wrap(c *http.Client, label string) *http.Client {
+	if c == nil {
+		return c
+	}
+	c = withUserAgent(c)
 	rec := Default()
-	if rec == nil || c == nil {
+	if rec == nil {
 		return c
 	}
 	return rec.WrapClient(c, label)
+}
+
+// UserAgent is sent on outgoing model/API requests that do not set their own.
+const UserAgent = "EZyapper/1.0 (+https://github.com/not-hanjo-mei/ezyapper)"
+
+func withUserAgent(c *http.Client) *http.Client {
+	cp := *c
+	base := cp.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	cp.Transport = uaTransport{base: base}
+	return &cp
+}
+
+type uaTransport struct{ base http.RoundTripper }
+
+func (t uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if ua := req.Header.Get("User-Agent"); ua == "" || strings.HasPrefix(ua, "Go-http-client") {
+		req = req.Clone(req.Context())
+		req.Header.Set("User-Agent", UserAgent)
+	}
+	return t.base.RoundTrip(req)
 }
 
 // WrapClient returns a copy of c that records through r.
