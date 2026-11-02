@@ -110,7 +110,9 @@
                     "prompt":           { "type": "string" },
                     "max_items":        { "type": "integer", "minimum": 0 },
                     "max_bytes":        { "type": "integer", "minimum": 0 },
-                    "max_duration_sec": { "type": "integer", "minimum": 0 }
+                    "max_duration_sec": { "type": "integer", "minimum": 0 },
+                    "transcode":        { "type": "string", "enum": ["", "mp3", "wav"] },
+                    "part_type":        { "type": "string", "enum": ["audio_url", "input_audio"] }
                   }
                 },
                 "video": {
@@ -132,7 +134,9 @@
                     "max_items":        { "type": "integer", "minimum": 0 },
                     "max_bytes":        { "type": "integer", "minimum": 0 },
                     "max_duration_sec": { "type": "integer", "minimum": 0 },
-                    "transport":        { "type": "string", "enum": ["base64", "url"] }
+                    "transport":        { "type": "string", "enum": ["base64", "url"] },
+                    "transcode":        { "type": "boolean" },
+                    "max_height":       { "type": "integer", "minimum": 0 }
                   }
                 },
                 "sticker": {
@@ -154,7 +158,8 @@
                     "cache_ttl_min":     { "type": "integer", "minimum": 0 },
                     "cache_max_entries": { "type": "integer", "minimum": 0 }
                   }
-                }
+                },
+                "ffmpeg_path": { "type": "string" }
               }
             },
             "vision": {

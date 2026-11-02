@@ -38,6 +38,10 @@ History messages reuse cached descriptions/transcripts. A model call for a histo
 
 `max_items` caps media per message; `max_bytes` and `max_duration_sec` skip oversized audio/video (the duration is known for Discord voice messages). Images use `core.ai.max_image_bytes`. Skipped media still shows a placeholder line so the model knows it was there.
 
+## ffmpeg
+
+Optional. Only `audio.transcode` (mp3/wav, e.g. for an ASR endpoint that rejects ogg/opus, or for `part_type: input_audio`) and `video.transcode` (trim + downscale) use it. When one of them is enabled and ffmpeg is missing, the bot refuses to start with a clear error instead of failing on the first message.
+
 ## Migrating from `core.ai.vision`
 
 The old block still loads, with a warning, and is mapped onto `core.ai.modalities.image`:

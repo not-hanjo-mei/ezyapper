@@ -155,3 +155,24 @@ func TestLiveStickerVision(t *testing.T) {
 	}
 	t.Logf("sticker (%s): %q", time.Since(start).Round(time.Millisecond), got)
 }
+
+// TestLiveDirectAudioInputAudio sends the ogg voice clip transcoded to mp3
+// as an input_audio part (needs ffmpeg).
+func TestLiveDirectAudioInputAudio(t *testing.T) {
+	cfg, base := liveSetup(t)
+	realFFmpeg(t)
+	dir := os.Getenv("EZYAPPER_LIVE_MEDIA_DIR")
+	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDirect, Transcode: "mp3", PartType: config.AudioPartInput}
+	cfg.AI.Modalities.ApplyDefaults()
+	p := New(cfg, nil, nil)
+	part, err := p.AudioPart(context.Background(), liveAttachment(t, base, dir, "a.ogg", types.MediaVoice, "audio/ogg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	text, err := p.base.DescribeMedia(context.Background(), "Transcribe what is said in this audio.", part)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("input_audio mp3 from ogg (%s): %q", time.Since(start).Round(time.Millisecond), text)
+}

@@ -156,6 +156,8 @@ The system prompt stays byte-identical: everything media-related is in the user 
 | `max_items` | int (≥0) | `2` | |
 | `max_bytes` | int (≥0) | 25 MiB | Larger attachments are skipped. |
 | `max_duration_sec` | int (≥0) | `600` | Checked when Discord reports a duration (voice messages). |
+| `transcode` | enum | (empty) | `mp3` or `wav`: convert with ffmpeg (mono, 16 kHz) before sending. Only needed for an ASR endpoint that rejects ogg/opus voice messages, or for `part_type: input_audio`. Requires ffmpeg. |
+| `part_type` | enum | `audio_url` | Direct mode: `audio_url` (data URI, any format the model accepts) or `input_audio` (OpenAI format, mp3/wav only, so `transcode` is required). |
 
 **`video`**
 
@@ -168,6 +170,12 @@ The system prompt stays byte-identical: everything media-related is in the user 
 | `max_bytes` | int (≥0) | 50 MiB | |
 | `max_duration_sec` | int (≥0) | `120` | Checked when Discord reports a duration. |
 | `transport` | enum | `base64` | `base64` (data URI) or `url` (provider fetches the CDN URL; slower on some gateways). |
+| `transcode` | bool | `false` | Re-encode with ffmpeg before sending (H.264/AAC mp4): trimmed to `max_duration_sec` instead of skipping longer videos, scaled down to `max_height`. Needs `transport: base64`. Requires ffmpeg. |
+| `max_height` | int (≥0) | `480` | Used by `transcode`. |
+
+**ffmpeg**
+
+ffmpeg is an optional dependency. It is only needed by `audio.transcode` and `video.transcode`; nothing else calls it, and without those options the bot never looks for it. When an enabled modality uses one of them, the bot checks at startup (and on a WebUI config reload) that the binary exists and `ffmpeg -version` runs; if not, it refuses to start with an error naming the options that need it. `core.ai.modalities.ffmpeg_path` sets the binary (default `ffmpeg` from `PATH`).
 
 **`sticker`**
 

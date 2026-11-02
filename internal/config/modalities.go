@@ -68,6 +68,18 @@ const (
 	StickerModeVision StickerMode = "vision"
 )
 
+// AudioPartType selects the content part used for direct audio.
+type AudioPartType string
+
+const (
+	// AudioPartURL sends an audio_url part with a data URI (any format the
+	// model accepts; ogg/opus voice messages work on tested gateways).
+	AudioPartURL AudioPartType = "audio_url"
+	// AudioPartInput sends the OpenAI input_audio part, which only takes
+	// mp3 or wav, so it needs audio.transcode.
+	AudioPartInput AudioPartType = "input_audio"
+)
+
 // MediaTransport selects how media is handed to a model.
 type MediaTransport string
 
@@ -88,6 +100,7 @@ const (
 	DefaultStickerMaxItems    = 3
 	DefaultStickerCacheTTL    = 1440 // minutes
 	DefaultStickerCacheMax    = 1000
+	DefaultVideoMaxHeight     = 480
 	DefaultImageMaxItems      = 4
 	DefaultAudioMaxItems      = 2
 	DefaultVideoMaxItems      = 1
@@ -173,6 +186,13 @@ type AudioModalityConfig struct {
 	MaxItems       int    `mapstructure:"max_items" yaml:"max_items,omitempty"`
 	MaxBytes       int    `mapstructure:"max_bytes" yaml:"max_bytes,omitempty"`
 	MaxDurationSec int    `mapstructure:"max_duration_sec" yaml:"max_duration_sec,omitempty"`
+	// Transcode converts audio with ffmpeg before it is sent ("mp3" or
+	// "wav"; empty sends it as is). Needed for an ASR endpoint that rejects
+	// ogg/opus voice messages, and for part_type input_audio.
+	Transcode string `mapstructure:"transcode" yaml:"transcode,omitempty"`
+	// PartType is the direct-mode content part: audio_url (default) or
+	// input_audio.
+	PartType AudioPartType `mapstructure:"part_type" yaml:"part_type,omitempty"`
 }
 
 // VideoModalityConfig configures video attachments.
@@ -185,6 +205,11 @@ type VideoModalityConfig struct {
 	MaxBytes       int            `mapstructure:"max_bytes" yaml:"max_bytes,omitempty"`
 	MaxDurationSec int            `mapstructure:"max_duration_sec" yaml:"max_duration_sec,omitempty"`
 	Transport      MediaTransport `mapstructure:"transport" yaml:"transport,omitempty"`
+	// Transcode re-encodes videos with ffmpeg before they are sent: trimmed
+	// to max_duration_sec (instead of skipping longer ones when Discord
+	// reports a duration) and scaled down to max_height, H.264/AAC mp4.
+	Transcode bool `mapstructure:"transcode" yaml:"transcode,omitempty"`
+	MaxHeight int  `mapstructure:"max_height" yaml:"max_height,omitempty"`
 }
 
 // StickerModalityConfig configures stickers. In vision mode the endpoint
@@ -238,6 +263,22 @@ type ModalitiesConfig struct {
 	Audio   AudioModalityConfig   `mapstructure:"audio" yaml:"audio"`
 	Video   VideoModalityConfig   `mapstructure:"video" yaml:"video"`
 	Sticker StickerModalityConfig `mapstructure:"sticker" yaml:"sticker"`
+	// FFmpegPath is the ffmpeg binary (default: "ffmpeg" from PATH). ffmpeg
+	// is optional; it is only needed by audio.transcode and video.transcode.
+	FFmpegPath string `mapstructure:"ffmpeg_path" yaml:"ffmpeg_path,omitempty"`
+}
+
+// FFmpegRequirements lists the enabled options that need ffmpeg (empty when
+// nothing does, in which case ffmpeg is never looked up).
+func (m ModalitiesConfig) FFmpegRequirements() []string {
+	var out []string
+	if m.Audio.Enabled && m.Audio.Transcode != "" {
+		out = append(out, "core.ai.modalities.audio.transcode="+m.Audio.Transcode)
+	}
+	if m.Video.Enabled && m.Video.Transcode {
+		out = append(out, "core.ai.modalities.video.transcode=true")
+	}
+	return out
 }
 
 // AnyEnabled reports whether any non-text modality is on.
@@ -292,6 +333,9 @@ func (m *ModalitiesConfig) ApplyDefaults() {
 	if au.MaxDurationSec == 0 {
 		au.MaxDurationSec = DefaultAudioMaxDuration
 	}
+	if au.PartType == "" {
+		au.PartType = AudioPartURL
+	}
 
 	v := &m.Video
 	if v.Mode == "" {
@@ -311,6 +355,9 @@ func (m *ModalitiesConfig) ApplyDefaults() {
 	}
 	if v.Transport == "" {
 		v.Transport = TransportBase64
+	}
+	if v.MaxHeight == 0 {
+		v.MaxHeight = DefaultVideoMaxHeight
 	}
 
 	st := &m.Sticker
@@ -442,6 +489,20 @@ func validateModalities(cfg *Config, errs *[]string) {
 	nonNegative(p+"audio.max_items", au.MaxItems)
 	nonNegative(p+"audio.max_bytes", au.MaxBytes)
 	nonNegative(p+"audio.max_duration_sec", au.MaxDurationSec)
+	switch au.Transcode {
+	case "", "mp3", "wav":
+	default:
+		*errs = append(*errs, fmt.Sprintf(p+"audio.transcode %q is invalid (must be one of: mp3, wav, or empty)", au.Transcode))
+	}
+	switch au.PartType {
+	case AudioPartURL:
+	case AudioPartInput:
+		if au.Transcode == "" {
+			*errs = append(*errs, p+"audio.part_type input_audio only accepts mp3 or wav: set "+p+"audio.transcode to mp3 or wav")
+		}
+	default:
+		*errs = append(*errs, fmt.Sprintf(p+"audio.part_type %q is invalid (must be one of: audio_url, input_audio)", au.PartType))
+	}
 	if au.Enabled {
 		checkModel(p+"audio.", au.ModalityModel, au.Mode == AudioModeASR)
 	}
@@ -454,6 +515,10 @@ func validateModalities(cfg *Config, errs *[]string) {
 	nonNegative(p+"video.max_bytes", v.MaxBytes)
 	nonNegative(p+"video.max_duration_sec", v.MaxDurationSec)
 	checkTransport(p+"video.transport", v.Transport)
+	nonNegative(p+"video.max_height", v.MaxHeight)
+	if v.Transcode && v.Transport == TransportURL {
+		*errs = append(*errs, p+"video.transcode needs transport base64 (a transcoded video has no URL)")
+	}
 	if v.Enabled {
 		checkModel(p+"video.", v.ModalityModel, true)
 	}

@@ -2,7 +2,9 @@ package media
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"path"
 	"strings"
 	"time"
 
@@ -36,6 +38,10 @@ type Processor struct {
 	stickerLookup StickerLookup
 	stickerCache  *Cache
 
+	// ffmpeg is the ffmpeg binary for transcode options (checked at
+	// startup by CheckFFmpeg when one is enabled).
+	ffmpeg string
+
 	maxImageBytes int64
 	cache         *Cache
 }
@@ -51,6 +57,7 @@ func New(cfg *config.Config, registry *tools.ToolRegistry, cache *Cache) *Proces
 		mods:          mods,
 		maxImageBytes: int64(cfg.AI.MaxImageBytes),
 		cache:         cache,
+		ffmpeg:        ffmpegBinary(mods),
 	}
 	base := cfg.AI
 	p.base = ai.NewClient(&base, registry)
@@ -202,7 +209,14 @@ func (p *Processor) Transcribe(ctx context.Context, a types.MediaAttachment) (st
 	if err != nil {
 		return "", err
 	}
-	text, err := p.asr.Transcribe(ctx, a.Filename, ct, data)
+	filename := a.Filename
+	if au.Transcode != "" {
+		if data, ct, err = transcodeAudio(ctx, p.ffmpeg, data, audioFilename(a.Filename, a.ContentType), au.Transcode); err != nil {
+			return "", err
+		}
+		filename = strings.TrimSuffix(filename, path.Ext(filename)) + "." + au.Transcode
+	}
+	text, err := p.asr.Transcribe(ctx, filename, ct, data)
 	if err != nil {
 		return "", err
 	}
@@ -222,13 +236,26 @@ func (p *Processor) AudioPart(ctx context.Context, a types.MediaAttachment) (ai.
 	if err != nil {
 		return ai.MediaPart{}, err
 	}
+	if au.Transcode != "" {
+		if data, ct, err = transcodeAudio(ctx, p.ffmpeg, data, audioFilename(a.Filename, a.ContentType), au.Transcode); err != nil {
+			return ai.MediaPart{}, err
+		}
+	}
+	if au.PartType == config.AudioPartInput {
+		// Validation guarantees transcode is mp3 or wav here.
+		return ai.MediaPart{Kind: ai.PartInputAudio, Data: base64.StdEncoding.EncodeToString(data), Format: au.Transcode}, nil
+	}
 	return ai.MediaPart{Kind: ai.PartAudioURL, URL: ai.DataURI(ct, data)}, nil
 }
 
 // VideoPart returns a video attachment as a video_url part.
 func (p *Processor) VideoPart(ctx context.Context, a types.MediaAttachment) (ai.MediaPart, error) {
 	v := p.mods.Video
-	if err := checkLimits(a, v.MaxBytes, v.MaxDurationSec); err != nil {
+	maxDuration := v.MaxDurationSec
+	if v.Transcode {
+		maxDuration = 0 // longer videos are trimmed instead of skipped
+	}
+	if err := checkLimits(a, v.MaxBytes, maxDuration); err != nil {
 		return ai.MediaPart{}, err
 	}
 	if v.Transport == config.TransportURL {
@@ -237,6 +264,16 @@ func (p *Processor) VideoPart(ctx context.Context, a types.MediaAttachment) (ai.
 	data, ct, err := p.fetchAttachment(ctx, a, v.MaxBytes, "video/")
 	if err != nil {
 		return ai.MediaPart{}, err
+	}
+	if v.Transcode {
+		name := a.Filename
+		if name == "" {
+			name = "video.mp4"
+		}
+		if data, err = transcodeVideo(ctx, p.ffmpeg, data, name, v.MaxDurationSec, v.MaxHeight); err != nil {
+			return ai.MediaPart{}, err
+		}
+		ct = "video/mp4"
 	}
 	return ai.MediaPart{Kind: ai.PartVideoURL, URL: ai.DataURI(ct, data)}, nil
 }

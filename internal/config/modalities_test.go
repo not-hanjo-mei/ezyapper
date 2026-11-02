@@ -357,3 +357,25 @@ func TestValidateStickerModality(t *testing.T) {
 		t.Fatalf("bad mode: %s", e)
 	}
 }
+
+func TestValidateFFmpegOptions(t *testing.T) {
+	if e := modalityErrors(ModalitiesConfig{Audio: AudioModalityConfig{Transcode: "flac"}}); !strings.Contains(e, "audio.transcode") {
+		t.Fatalf("bad transcode: %s", e)
+	}
+	if e := modalityErrors(ModalitiesConfig{Audio: AudioModalityConfig{PartType: AudioPartInput}}); !strings.Contains(e, "input_audio only accepts mp3 or wav") {
+		t.Fatalf("input_audio without transcode: %s", e)
+	}
+	if e := modalityErrors(ModalitiesConfig{Audio: AudioModalityConfig{PartType: AudioPartInput, Transcode: "wav"}}); e != "" {
+		t.Fatalf("input_audio with transcode: %s", e)
+	}
+	if e := modalityErrors(ModalitiesConfig{Video: VideoModalityConfig{Transcode: true, Transport: TransportURL}}); !strings.Contains(e, "video.transcode needs transport base64") {
+		t.Fatalf("transcode+url: %s", e)
+	}
+	m := ModalitiesConfig{Audio: AudioModalityConfig{Enabled: true, Transcode: "mp3"}, Video: VideoModalityConfig{Transcode: true}}
+	if got := m.FFmpegRequirements(); len(got) != 1 || got[0] != "core.ai.modalities.audio.transcode=mp3" {
+		t.Fatalf("only enabled modalities require ffmpeg: %v", got)
+	}
+	if got := (ModalitiesConfig{}).FFmpegRequirements(); len(got) != 0 {
+		t.Fatalf("default config needs no ffmpeg: %v", got)
+	}
+}

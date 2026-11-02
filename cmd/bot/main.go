@@ -35,6 +35,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// ffmpeg is optional, but an enabled option that needs it must not
+	// fail on the first message: refuse to start instead.
+	if _, err := media.CheckFFmpeg(context.Background(), cfg.AI.Modalities); err != nil {
+		fmt.Fprintf(os.Stderr, "Refusing to start: %v\n", err)
+		os.Exit(1)
+	}
+
 	if err := logger.Init(logger.Config{
 		Level:      cfg.Logging.Level,
 		File:       cfg.Logging.File,

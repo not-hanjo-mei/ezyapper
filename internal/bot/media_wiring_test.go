@@ -13,6 +13,7 @@ import (
 	"ezyapper/internal/ai"
 	"ezyapper/internal/config"
 	"ezyapper/internal/media"
+	"ezyapper/internal/ratelimit"
 	"ezyapper/internal/types"
 )
 
@@ -110,5 +111,21 @@ func TestStickersInCurrentAndHistory(t *testing.T) {
 	out := b.enrichHistory(context.Background(), []*types.DiscordMessage{&hist}, "cur", planRecentImageEnrichment("", ""))
 	if out[0].Content != "hi\n[Sticker: wave — waves hello]" {
 		t.Fatalf("history = %q", out[0].Content)
+	}
+}
+
+// A config reload that enables an ffmpeg option without ffmpeg is refused
+// (the WebUI then keeps the old config), like startup.
+func TestApplyRuntimeConfig_RefusesMissingFFmpeg(t *testing.T) {
+	b, _ := mediaTestBot(t, config.ModalitiesConfig{})
+	cfg := *b.cfg()
+	cfg.AI.Modalities.FFmpegPath = "/nonexistent/ffmpeg"
+	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeASR, Transcode: "mp3", ModalityModel: config.ModalityModel{Model: "asr"}}
+	b.configStore.Store(&cfg)
+	b.rateLimiter = ratelimit.NewLimiter(1, time.Second, time.Second)
+	b.ctx = context.Background()
+	err := b.ApplyRuntimeConfig()
+	if err == nil || !strings.Contains(err.Error(), "ffmpeg is required by core.ai.modalities.audio.transcode=mp3") {
+		t.Fatalf("expected ffmpeg refusal, got %v", err)
 	}
 }

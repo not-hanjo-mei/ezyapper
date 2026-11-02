@@ -130,6 +130,13 @@ core:
         max_items: 2
         max_bytes: 26214400        # 25 MiB
         max_duration_sec: 600      # checked when Discord reports a duration (voice messages)
+        # Optional ffmpeg conversion before sending: "mp3" or "wav" (empty =
+        # send as is). Only needed for an ASR endpoint that rejects ogg/opus
+        # voice messages, or for part_type input_audio. Requires ffmpeg.
+        ## transcode: ""
+        # Direct-mode content part: audio_url (data URI, default) or
+        # input_audio (OpenAI format; mp3/wav only, so it needs transcode).
+        ## part_type: "audio_url"
 
       video:
         enabled: false
@@ -142,6 +149,15 @@ core:
         max_bytes: 52428800        # 50 MiB
         max_duration_sec: 120
         transport: "base64"
+        # Re-encode with ffmpeg before sending: trim to max_duration_sec
+        # (instead of skipping longer videos) and scale down to max_height.
+        # Requires ffmpeg and transport base64.
+        ## transcode: false
+        ## max_height: 480
+
+      # ffmpeg is optional. If an enabled option needs it (audio.transcode,
+      # video.transcode) and it is missing, the bot refuses to start.
+      ## ffmpeg_path: "ffmpeg"
 
       sticker:
         enabled: false

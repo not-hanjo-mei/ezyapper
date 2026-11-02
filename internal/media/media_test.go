@@ -322,3 +322,33 @@ func TestCacheTTLAndBound(t *testing.T) {
 		t.Fatal("entry must expire after the TTL")
 	}
 }
+
+func serveBytes(t *testing.T, files map[string][]byte, ct string) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, ok := files[r.URL.Path]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", ct)
+		_, _ = w.Write(b)
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+func serveASR(t *testing.T, seen func(filename, contentType string)) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, h, err := r.FormFile("file")
+		if err != nil {
+			t.Errorf("file: %v", err)
+			return
+		}
+		seen(h.Filename, h.Header.Get("Content-Type"))
+		_, _ = io.WriteString(w, `{"text":"ok"}`)
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
