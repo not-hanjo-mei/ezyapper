@@ -555,3 +555,13 @@ operations:
 
     # Interval for periodic cleanup tasks (minutes).
     cleanup_interval_min: 5
+
+    # Config hot reload: watch this file and apply changes on save without a
+    # restart. Invalid edits are rejected (errors logged) and the running
+    # config is kept. Fields that need a new connection (Discord token,
+    # Qdrant address, embedding endpoint, web port, MCP servers, plugins dir)
+    # are reconnected automatically. See docs/CONFIGURATION.md "Hot reload".
+    hot_reload:
+      enabled: true
+      # Quiet period after the last file event before reloading (50-60000 ms).
+      debounce_ms: 500

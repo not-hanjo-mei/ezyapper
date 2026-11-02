@@ -467,7 +467,21 @@
           "required": ["shutdown_timeout_sec", "cleanup_interval_min"],
           "properties": {
             "shutdown_timeout_sec": { "type": "integer", "minimum": 1 },
-            "cleanup_interval_min": { "type": "integer", "minimum": 1 }
+            "cleanup_interval_min": { "type": "integer", "minimum": 1 },
+            "hot_reload": {
+              "type": "object",
+              "additionalProperties": false,
+              "allOf": [
+                {
+                  "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+                  "then": { "required": ["debounce_ms"] }
+                }
+              ],
+              "properties": {
+                "enabled":     { "type": "boolean" },
+                "debounce_ms": { "type": "integer", "minimum": 0, "maximum": 60000 }
+              }
+            }
           }
         }
       }

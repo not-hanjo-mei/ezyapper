@@ -30,6 +30,12 @@ func validChannelType(t string) bool {
 }
 
 func ChannelsHandler(cfgStore *atomic.Value, discordInfo DiscordInfoProvider, ts *TemplateSet) http.HandlerFunc {
+	return ChannelsHandlerWithApplier(cfgStore, discordInfo, ts, nil)
+}
+
+// ChannelsHandlerWithApplier is ChannelsHandler whose list edits go through
+// applier (see ConfigHandler).
+func ChannelsHandlerWithApplier(cfgStore *atomic.Value, discordInfo DiscordInfoProvider, ts *TemplateSet, applier ConfigApplier) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 
@@ -38,16 +44,16 @@ func ChannelsHandler(cfgStore *atomic.Value, discordInfo DiscordInfoProvider, ts
 			handleChannelsGET(w, r, cfgStore, discordInfo, ts)
 
 		case r.Method == http.MethodPost && path == "/channels/blacklist/add":
-			handleChannelsPOST(w, r, cfgStore, ts, "blacklist", true)
+			handleChannelsPOST(w, r, cfgStore, applier, ts, "blacklist", true)
 
 		case r.Method == http.MethodPost && path == "/channels/blacklist/remove":
-			handleChannelsPOST(w, r, cfgStore, ts, "blacklist", false)
+			handleChannelsPOST(w, r, cfgStore, applier, ts, "blacklist", false)
 
 		case r.Method == http.MethodPost && path == "/channels/whitelist/add":
-			handleChannelsPOST(w, r, cfgStore, ts, "whitelist", true)
+			handleChannelsPOST(w, r, cfgStore, applier, ts, "whitelist", true)
 
 		case r.Method == http.MethodPost && path == "/channels/whitelist/remove":
-			handleChannelsPOST(w, r, cfgStore, ts, "whitelist", false)
+			handleChannelsPOST(w, r, cfgStore, applier, ts, "whitelist", false)
 
 		default:
 			http.Error(w, "Not found", http.StatusNotFound)
@@ -121,7 +127,7 @@ func resolveName(id, entryType string, info DiscordInfoProvider) string {
 	}
 }
 
-func handleChannelsPOST(w http.ResponseWriter, r *http.Request, cfgStore *atomic.Value, ts *TemplateSet, list string, add bool) {
+func handleChannelsPOST(w http.ResponseWriter, r *http.Request, cfgStore *atomic.Value, applier ConfigApplier, ts *TemplateSet, list string, add bool) {
 	if err := r.ParseForm(); err != nil {
 		renderChannelsError(w, r, cfgStore, ts, "Failed to parse form data")
 		return
@@ -167,6 +173,11 @@ func handleChannelsPOST(w http.ResponseWriter, r *http.Request, cfgStore *atomic
 		}
 	}
 
+	// The copy shares its slices with the live config; edit a private copy
+	// so the live config (and the diff hot reload computes against it) is
+	// never mutated in place.
+	*target = slices.Clone(*target)
+
 	if add {
 		if slices.Contains(*target, entryID) {
 			renderChannelsError(w, r, cfgStore, ts, "Entry already exists")
@@ -182,12 +193,10 @@ func handleChannelsPOST(w http.ResponseWriter, r *http.Request, cfgStore *atomic
 		*target = append((*target)[:idx], (*target)[idx+1:]...)
 	}
 
-	if err := newCfg.Save(); err != nil {
-		renderChannelsError(w, r, cfgStore, ts, "Failed to save config: "+err.Error())
+	if err := commitConfig(r.Context(), cfgStore, applier, oldCfg, &newCfg); err != nil {
+		renderChannelsError(w, r, cfgStore, ts, err.Error())
 		return
 	}
-
-	cfgStore.Store(&newCfg)
 
 	action := "added to"
 	if !add {

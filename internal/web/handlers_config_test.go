@@ -513,8 +513,61 @@ func TestConfigHandler_ValidMemorySettingsPersisted(t *testing.T) {
 
 type failingRuntimeApplier struct{}
 
-func (f failingRuntimeApplier) ApplyRuntimeConfig() error {
+func (f failingRuntimeApplier) ApplyConfig(context.Context, *config.Config) error {
 	return fmt.Errorf("simulated runtime apply failure")
+}
+
+// storingApplier applies by storing, like the hot reload coordinator does
+// after a successful prepare, and records what it was given.
+type storingApplier struct {
+	store   *atomic.Value
+	applied []*config.Config
+}
+
+func (a *storingApplier) ApplyConfig(_ context.Context, next *config.Config) error {
+	a.applied = append(a.applied, next)
+	a.store.Store(next)
+	return nil
+}
+
+func TestConfigHandler_POST_GoesThroughApplierThenSaves(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte(testConfigYAML), 0644); err != nil {
+		t.Fatalf("write test config: %v", err)
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load test config: %v", err)
+	}
+	var store atomic.Value
+	store.Store(cfg)
+	applier := &storingApplier{store: &store}
+	handler := ConfigHandler(&store, testConfigTemplate(), applier)
+
+	form := url.Values{"bot_name": {"AppliedBot"}}
+	req := httptest.NewRequest(http.MethodPost, "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = requestWithCSRF(req)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(applier.applied) != 1 || applier.applied[0].Discord.BotName != "AppliedBot" {
+		t.Fatalf("applier not used: %+v", applier.applied)
+	}
+	saved, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("reload saved config: %v", err)
+	}
+	if saved.Discord.BotName != "AppliedBot" {
+		t.Errorf("saved bot_name = %q", saved.Discord.BotName)
+	}
+	if cfg.Discord.BotName != "TestBot" {
+		t.Error("the previous config object must not be mutated")
+	}
 }
 
 func TestConfigHandler_POST_ParseErrorsReported(t *testing.T) {

@@ -12,14 +12,52 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func (b *Bot) registerHandlers() {
-	b.session.AddHandler(b.onReady)
-	b.session.AddHandler(b.onMessageCreate)
-	b.session.AddHandler(b.onMessageUpdate)
-	b.session.AddHandler(b.onMessageDelete)
-	b.session.AddHandler(b.onGuildJoin)
-	b.session.AddHandler(b.onGuildLeave)
-	b.session.AddHandler(b.onInteractionCreate)
+// registerHandlers attaches the bot's event handlers to s. It runs for the
+// startup session and again for the session a token hot reload opens.
+//
+// While a reconnect is in progress two sessions are connected for a moment
+// (the new one is opened before the old one is closed, so a bad token never
+// takes the bot offline). Message and guild events are therefore only
+// handled when they come from the current session; otherwise the same
+// message could be answered twice. Ready is always handled: it registers the
+// slash command and presence on the session that sent it.
+func (b *Bot) registerHandlers(s *discordgo.Session) {
+	s.AddHandler(b.onReady)
+	s.AddHandler(func(s *discordgo.Session, e *discordgo.MessageCreate) {
+		if b.isCurrentSession(s) {
+			b.onMessageCreate(s, e)
+		}
+	})
+	s.AddHandler(func(s *discordgo.Session, e *discordgo.MessageUpdate) {
+		if b.isCurrentSession(s) {
+			b.onMessageUpdate(s, e)
+		}
+	})
+	s.AddHandler(func(s *discordgo.Session, e *discordgo.MessageDelete) {
+		if b.isCurrentSession(s) {
+			b.onMessageDelete(s, e)
+		}
+	})
+	s.AddHandler(func(s *discordgo.Session, e *discordgo.GuildCreate) {
+		if b.isCurrentSession(s) {
+			b.onGuildJoin(s, e)
+		}
+	})
+	s.AddHandler(func(s *discordgo.Session, e *discordgo.GuildDelete) {
+		if b.isCurrentSession(s) {
+			b.onGuildLeave(s, e)
+		}
+	})
+	s.AddHandler(func(s *discordgo.Session, e *discordgo.InteractionCreate) {
+		if b.isCurrentSession(s) {
+			b.onInteractionCreate(s, e)
+		}
+	})
+}
+
+// isCurrentSession reports whether s is the live session.
+func (b *Bot) isCurrentSession(s *discordgo.Session) bool {
+	return s != nil && s == b.sess()
 }
 
 func (b *Bot) onReady(s *discordgo.Session, r *discordgo.Ready) {

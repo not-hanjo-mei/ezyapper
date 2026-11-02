@@ -9,6 +9,7 @@ require (
 )
 
 require (
+	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/gorilla/websocket v1.5.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	go.uber.org/multierr v1.10.0 // indirect

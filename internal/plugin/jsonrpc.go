@@ -20,10 +20,13 @@ type jsonRPCRequest struct {
 }
 
 type jsonRPCResponse struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      int64           `json:"id"`
-	Result  json.RawMessage `json:"result,omitempty"`
-	Error   *jsonRPCError   `json:"error,omitempty"`
+	JSONRPC string `json:"jsonrpc"`
+	ID      int64  `json:"id"`
+	// Method is set only on notifications the plugin sends unprompted
+	// (currently tools_changed); responses never carry it.
+	Method string          `json:"method,omitempty"`
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  *jsonRPCError   `json:"error,omitempty"`
 }
 
 type jsonRPCError struct {
@@ -44,7 +47,19 @@ type stdioJSONRPCClient struct {
 	dead   atomic.Bool
 	// deadReason records why the transport was marked dead, for logs.
 	deadReason atomic.Value
+	// onNotify handles plugin->host notifications. It is set before the
+	// first call and invoked on its own goroutine, because it may call
+	// back into this client (which is locked while a call reads).
+	onNotify func(method string)
 }
+
+// NotificationToolsChanged is the notification a plugin sends when its tool
+// list changed (typically after reloading its own config). The host then
+// re-queries list_tools. The transport is request/response over stdio, so
+// the host reads the notification at its next exchange with the plugin:
+// every incoming Discord message reaches each plugin via on_message, so in
+// practice the refresh happens on the next message.
+const NotificationToolsChanged = "tools_changed"
 
 // markDead flags the transport as unusable and records why.
 func (c *stdioJSONRPCClient) markDead(reason string) {
@@ -154,6 +169,14 @@ func (c *stdioJSONRPCClient) Call(method string, params any, reply any) error {
 			// manager restarts it instead of failing every later call.
 			c.markDead(fmt.Sprintf("read failed during %s: %v", method, err))
 			return fmt.Errorf("jsonrpc client is dead: failed to read jsonrpc response for %s: %w", method, err)
+		}
+
+		if resp.Method != "" {
+			// A notification, not the reply we wait for.
+			if c.onNotify != nil {
+				go c.onNotify(resp.Method)
+			}
+			continue
 		}
 
 		if resp.ID != id {

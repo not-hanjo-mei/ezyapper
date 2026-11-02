@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 
 	"ezyapper/internal/logger"
 	"ezyapper/internal/types"
@@ -20,13 +21,22 @@ type MessageFetcher interface {
 // ShortTermClient provides access to Discord messages for short-term context.
 // It delegates actual API calls to a MessageFetcher implementation.
 type ShortTermClient struct {
-	fetcher           MessageFetcher
-	maxPaginatedLimit int
+	fetcher MessageFetcher
+	// maxPaginatedLimit is atomic so config hot reload can change it.
+	maxPaginatedLimit atomic.Int64
 }
 
 // NewShortTermClient creates a new short-term context client.
 func NewShortTermClient(fetcher MessageFetcher, maxPaginatedLimit int) *ShortTermClient {
-	return &ShortTermClient{fetcher: fetcher, maxPaginatedLimit: maxPaginatedLimit}
+	c := &ShortTermClient{fetcher: fetcher}
+	c.maxPaginatedLimit.Store(int64(maxPaginatedLimit))
+	return c
+}
+
+// SetMaxPaginatedLimit changes the recommended maximum fetch size
+// (memory_pipeline.memory.max_paginated_limit) at runtime.
+func (c *ShortTermClient) SetMaxPaginatedLimit(n int) {
+	c.maxPaginatedLimit.Store(int64(n))
 }
 
 // validateLimit validates the requested limit and caps it.
@@ -43,7 +53,7 @@ func validateLimit(limit int, maxPaginatedLimit int, funcName string) (int, erro
 
 // FetchRecentMessages fetches recent messages from a channel.
 func (c *ShortTermClient) FetchRecentMessages(ctx context.Context, channelID string, limit int) ([]*DiscordMessage, error) {
-	limit, err := validateLimit(limit, c.maxPaginatedLimit, "FetchRecentMessages")
+	limit, err := validateLimit(limit, int(c.maxPaginatedLimit.Load()), "FetchRecentMessages")
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +72,7 @@ func (c *ShortTermClient) FetchRecentMessages(ctx context.Context, channelID str
 
 // FetchChannelMessages fetches all messages from a channel for batch consolidation.
 func (c *ShortTermClient) FetchChannelMessages(ctx context.Context, channelID string, limit int) ([]*DiscordMessage, error) {
-	limit, err := validateLimit(limit, c.maxPaginatedLimit, "FetchChannelMessages")
+	limit, err := validateLimit(limit, int(c.maxPaginatedLimit.Load()), "FetchChannelMessages")
 	if err != nil {
 		return nil, err
 	}

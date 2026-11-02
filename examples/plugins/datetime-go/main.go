@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"ezyapper/internal/plugin"
+	"ezyapper/internal/plugin/pluginconfig"
 	pluginserver "ezyapper/internal/plugin/server"
 	"ezyapper/internal/types"
 
@@ -17,7 +18,8 @@ import (
 )
 
 type DateTimePlugin struct {
-	config DateTimeConfig
+	// config is swapped when the config file is edited (see watchConfig).
+	config *pluginconfig.Value[DateTimeConfig]
 }
 
 type DateTimeConfig struct {
@@ -168,7 +170,7 @@ func (p *DateTimePlugin) ListTools() ([]plugin.ToolSpec, error) {
 		{
 			Name:        "get_current_datetime",
 			Description: "Get the current date and time",
-			TimeoutMs:   p.config.GetCurrentDatetimeMs,
+			TimeoutMs:   p.config.Load().GetCurrentDatetimeMs,
 			Parameters: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -182,11 +184,11 @@ func (p *DateTimePlugin) ExecuteTool(name string, args map[string]interface{}) (
 		return "", fmt.Errorf("unknown tool: %s", name)
 	}
 
-	now := time.Now().In(p.config.Location)
+	now := time.Now().In(p.config.Load().Location)
 	result := map[string]interface{}{
 		"date":         now.Format("2006-01-02"),
 		"time":         now.Format("15:04:05"),
-		"timezone":     p.config.TimezoneLabel,
+		"timezone":     p.config.Load().TimezoneLabel,
 		"weekday":      now.Weekday().String(),
 		"unix_seconds": now.Unix(),
 	}
@@ -204,9 +206,34 @@ func main() {
 		os.Exit(1)
 	}
 
-	p := &DateTimePlugin{config: config}
+	p := &DateTimePlugin{config: pluginconfig.NewValue(config)}
+	w := watchConfig(p)
+	defer w.Close()
+
 	if err := pluginserver.Serve(p); err != nil {
 		fmt.Fprintf(os.Stderr, "[DATETIME] Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// watchConfig reloads the config file when it is saved: the new file is
+// fully validated before it replaces the running config, and the host is
+// told to re-read tools and the system prompt section (tool timeouts or
+// prompt text may have changed). An invalid file is logged and ignored.
+func watchConfig(p *DateTimePlugin) *pluginconfig.Watcher {
+	w, err := pluginconfig.Watch(pluginConfigPath(), pluginconfig.Options{Name: "DATETIME"}, func() error {
+		next, err := loadDateTimeConfig()
+		if err != nil {
+			return err
+		}
+		p.config.Store(next)
+		if err := pluginserver.NotifyToolsChanged(); err != nil {
+			fmt.Fprintf(os.Stderr, "[DATETIME] config reloaded but the host could not be notified: %v\n", err)
+		}
+		return nil
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[DATETIME] config hot reload unavailable: %v\n", err)
+	}
+	return w
 }

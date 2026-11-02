@@ -1265,7 +1265,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := pluginserver.Serve(p); err != nil {
+	r := &reloadingPlugin{}
+	r.cur.Store(p)
+	w := r.watch()
+	defer w.Close()
+
+	if err := pluginserver.Serve(r); err != nil {
 		fmt.Fprintf(os.Stderr, "[OPENAI-TTS] Error: %v\n", err)
 		os.Exit(1)
 	}

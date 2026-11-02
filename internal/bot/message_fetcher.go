@@ -41,6 +41,20 @@ func NewDiscordMessageFetcher(session *discordgo.Session) *DiscordMessageFetcher
 	return &DiscordMessageFetcher{session: session, sleep: sleepCtx}
 }
 
+// NewDiscordMessageFetcherFunc creates a fetcher that resolves the session
+// on every request, so it follows a Discord reconnect (hot-reloaded token)
+// that replaced the session.
+func NewDiscordMessageFetcherFunc(get func() *discordgo.Session) *DiscordMessageFetcher {
+	return &DiscordMessageFetcher{session: sessionFunc(get), sleep: sleepCtx}
+}
+
+// sessionFunc adapts a session getter to channelMessagesAPI.
+type sessionFunc func() *discordgo.Session
+
+func (f sessionFunc) ChannelMessages(channelID string, limit int, beforeID, afterID, aroundID string, options ...discordgo.RequestOption) ([]*discordgo.Message, error) {
+	return f().ChannelMessages(channelID, limit, beforeID, afterID, aroundID, options...)
+}
+
 func sleepCtx(ctx context.Context, d time.Duration) error {
 	t := time.NewTimer(d)
 	defer t.Stop()

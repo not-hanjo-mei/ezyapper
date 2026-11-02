@@ -12,6 +12,8 @@ import (
 	"os"
 	"runtime/debug"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"ezyapper/internal/plugin"
 	"ezyapper/internal/types"
@@ -53,7 +55,47 @@ func decodeJSONRPCParams(raw any, target any) error {
 	return json.Unmarshal(encoded, target)
 }
 
-func WriteJSONRPCResponse(enc *json.Encoder, id int64, result any, err error) error {
+// lockedEncoder serialises writes to the plugin's stdout, which the request
+// loop and NotifyToolsChanged (called from a config watcher goroutine)
+// share. Interleaved writes would corrupt the frame stream.
+type lockedEncoder struct {
+	mu  sync.Mutex
+	enc *json.Encoder
+}
+
+func (l *lockedEncoder) Encode(v any) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.enc.Encode(v)
+}
+
+// active is the encoder of the running ServeIO loop (one per plugin
+// process), used by NotifyToolsChanged.
+var active atomic.Pointer[lockedEncoder]
+
+type jsonRPCNotification struct {
+	JSONRPC string `json:"jsonrpc"`
+	Method  string `json:"method"`
+}
+
+// ErrNotServing is returned by NotifyToolsChanged when no Serve loop runs.
+var ErrNotServing = errors.New("plugin server is not running")
+
+// NotifyToolsChanged tells the host that this plugin's tool list changed,
+// so the host re-queries list_tools and updates the tools offered to the
+// model. Call it after a config reload that may add, remove or rename
+// tools. The host picks the notification up at its next exchange with the
+// plugin (normally the next Discord message, via on_message). It is safe to
+// call from any goroutine.
+func NotifyToolsChanged() error {
+	enc := active.Load()
+	if enc == nil {
+		return ErrNotServing
+	}
+	return enc.Encode(jsonRPCNotification{JSONRPC: "2.0", Method: plugin.NotificationToolsChanged})
+}
+
+func WriteJSONRPCResponse(enc interface{ Encode(any) error }, id int64, result any, err error) error {
 	resp := jsonRPCResponse{
 		JSONRPC: "2.0",
 		ID:      id,
@@ -211,7 +253,9 @@ func ServeIO(impl plugin.Interface, r io.Reader, w io.Writer, logw io.Writer) er
 	}
 
 	decoder := plugin.NewFrameDecoder(r)
-	encoder := json.NewEncoder(w)
+	encoder := &lockedEncoder{enc: json.NewEncoder(w)}
+	active.Store(encoder)
+	defer active.CompareAndSwap(encoder, nil)
 
 	for {
 		var req jsonRPCRequest

@@ -67,8 +67,8 @@ func (b *Bot) generateResponse(ctx context.Context, mc ModeContext, gc GenerateC
 	systemPrompt := b.systemPrompt()
 
 	var botID string
-	if b.session != nil && b.session.State != nil && b.session.State.User != nil {
-		botID = b.session.State.User.ID
+	if b.sess() != nil && b.sess().State != nil && b.sess().State.User != nil {
+		botID = b.sess().State.User.ID
 	}
 
 	// Historical images: cached descriptions, plus bounded on-demand
@@ -136,10 +136,10 @@ func (b *Bot) systemPrompt() string {
 // session state cache.
 func (b *Bot) basePromptInput(mc ModeContext, botID string) promptInput {
 	in := promptInput{GuildID: mc.GuildID, GuildName: mc.GuildName, ChannelID: mc.ChannelID, BotID: botID, ChannelNames: map[string]string{}}
-	if b.session == nil || b.session.State == nil {
+	if b.sess() == nil || b.sess().State == nil {
 		return in
 	}
-	if g, err := b.session.State.Guild(mc.GuildID); err == nil && g != nil {
+	if g, err := b.sess().State.Guild(mc.GuildID); err == nil && g != nil {
 		if in.GuildName == "" {
 			in.GuildName = g.Name
 		}
@@ -148,7 +148,7 @@ func (b *Bot) basePromptInput(mc ModeContext, botID string) promptInput {
 			in.ChannelNames[ch.ID] = ch.Name
 		}
 	}
-	if ch, err := b.session.State.Channel(mc.ChannelID); err == nil && ch != nil {
+	if ch, err := b.sess().State.Channel(mc.ChannelID); err == nil && ch != nil {
 		in.ChannelName = ch.Name
 		in.ChannelTopic = ch.Topic
 	}
