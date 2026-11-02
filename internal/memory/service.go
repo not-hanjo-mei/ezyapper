@@ -107,7 +107,9 @@ type MemoryService struct {
 	qdrant       *QdrantClient
 	consolidator *Consolidator
 	embedder     Embedder
-	config       *ServiceConfig
+	// swEmbedder is embedder as its swappable type (same object).
+	swEmbedder *SwappableEmbedder
+	config     *ServiceConfig
 
 	// Message counters for consolidation triggering (user-level for backward compat)
 	messageCounters map[string]int
@@ -205,9 +207,15 @@ func NewService(cfg *ServiceConfig, qdrantCfg *config.QdrantConfig, qdrantClient
 		return nil, fmt.Errorf("consolidation config is required")
 	}
 
+	// One swappable embedder shared by search and consolidation, so a hot
+	// reload of memory_pipeline.embedding reaches both at once.
+	swEmbedder := NewSwappableEmbedder(embedder)
+	embedder = swEmbedder
+
 	service := &MemoryService{
 		qdrant:                qdrantClient,
-		embedder:              embedder,
+		embedder:              swEmbedder,
+		swEmbedder:            swEmbedder,
 		config:                cfg,
 		messageCounters:       make(map[string]int),
 		channelCounters:       make(map[string]int),
@@ -748,4 +756,12 @@ func (s *MemoryService) Close() error {
 	s.wg.Wait()
 	s.embedder.Stop()
 	return s.qdrant.Close()
+}
+
+// SwapEmbedder replaces the embedder used for search and consolidation and
+// stops the previous one.
+func (s *MemoryService) SwapEmbedder(e Embedder) {
+	if s.swEmbedder != nil {
+		s.swEmbedder.Swap(e)
+	}
 }
