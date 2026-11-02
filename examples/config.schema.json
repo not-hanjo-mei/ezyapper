@@ -134,6 +134,26 @@
                     "max_duration_sec": { "type": "integer", "minimum": 0 },
                     "transport":        { "type": "string", "enum": ["base64", "url"] }
                   }
+                },
+                "sticker": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled":           { "type": "boolean" },
+                    "mode":              { "type": "string", "enum": ["text", "vision"] },
+                    "model":             { "type": "string" },
+                    "api_base_url":      { "type": "string" },
+                    "api_key":           { "type": "string" },
+                    "timeout":           { "type": "integer", "minimum": 0 },
+                    "max_tokens":        { "type": "integer", "minimum": 1 },
+                    "temperature":       { "type": "number", "minimum": 0, "maximum": 2 },
+                    "retry_count":       { "type": "integer", "minimum": 0 },
+                    "extra_params":      { "type": "object" },
+                    "prompt":            { "type": "string" },
+                    "max_items":         { "type": "integer", "minimum": 0 },
+                    "cache_ttl_min":     { "type": "integer", "minimum": 0 },
+                    "cache_max_entries": { "type": "integer", "minimum": 0 }
+                  }
                 }
               }
             },

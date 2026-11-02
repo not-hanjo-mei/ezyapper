@@ -143,6 +143,20 @@ core:
         max_duration_sec: 120
         transport: "base64"
 
+      sticker:
+        enabled: false
+        # text:   "[Sticker: name — description (tags: ...)]" from Discord, no model call.
+        # vision: a vision model describes the sticker image once per sticker
+        #         ID (custom guild stickers included). Lottie stickers cannot
+        #         be rendered and fall back to text.
+        mode: "text"
+        # Vision model fields fall back to modalities.image, then core.ai.
+        ## model: "gpt-4o"
+        ## prompt: "Describe this Discord sticker in one short sentence: ..."
+        max_items: 3
+        cache_ttl_min: 1440        # sticker details/descriptions cached by sticker ID
+        cache_max_entries: 1000
+
     # ── Response tuning ──
     # Token limit for main chat completion responses.
     max_tokens: 4096

@@ -169,6 +169,18 @@ The system prompt stays byte-identical: everything media-related is in the user 
 | `max_duration_sec` | int (≥0) | `120` | Checked when Discord reports a duration. |
 | `transport` | enum | `base64` | `base64` (data URI) or `url` (provider fetches the CDN URL; slower on some gateways). |
 
+**`sticker`**
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `enabled` | bool | `false` | |
+| `mode` | enum | `text` | `text`: `[Sticker: name — description (tags: ...)]` from Discord (one `GET /stickers/{id}` per sticker, cached; no model call). `vision`: a vision model describes the sticker image (`media.discordapp.net/stickers/{id}.png`/`.gif`), once per sticker ID; custom guild stickers included. Lottie stickers cannot be rendered and always use text. In history, a sticker without a cached description falls back to text (no model call). |
+| model fields | | | In vision mode, empty fields fall back to `modalities.image`, then `core.ai`. Vision mode needs a model from one of them. |
+| `prompt` | string | built-in | Vision prompt. |
+| `max_items` | int (≥0) | `3` | |
+| `cache_ttl_min` | int (≥0) | `1440` | Sticker details and descriptions are cached by sticker ID (not by URL). |
+| `cache_max_entries` | int (≥0) | `1000` | |
+
 Example (one OpenAI-compatible gateway for chat, vision and video; a separate ASR service):
 
 ```yaml

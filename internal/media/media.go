@@ -31,6 +31,11 @@ type Processor struct {
 	// modality names its own model; nil means the base client.
 	replyClient *ai.Client
 
+	// stickerClient describes sticker images (sticker mode vision).
+	stickerClient *ai.Client
+	stickerLookup StickerLookup
+	stickerCache  *Cache
+
 	maxImageBytes int64
 	cache         *Cache
 }
@@ -69,6 +74,10 @@ func New(cfg *config.Config, registry *tools.ToolRegistry, cache *Cache) *Proces
 			Timeout:    time.Duration(ac.Timeout) * time.Second,
 			RetryCount: ac.RetryCount,
 		})
+	}
+	if mods.Sticker.Enabled && mods.Sticker.Mode == config.StickerModeVision {
+		sc := mods.StickerVisionModel().Resolve(cfg.AI)
+		p.stickerClient = ai.NewClient(&sc, tools.NewToolRegistry())
 	}
 	for _, name := range []string{"image", "audio"} {
 		mm, ok := mods.DirectModalities()[name]

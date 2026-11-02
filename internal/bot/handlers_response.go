@@ -173,6 +173,7 @@ func (b *Bot) annotateCurrent(ctx context.Context, current types.DiscordMessage,
 			parts = append(parts, part)
 		}
 	}
+	content += p.AnnotateStickers(ctx, &current, true)
 	ann := p.AnnotateAV(ctx, &current, media.AnnotateOptions{Current: true})
 	content += ann.Text
 	parts = append(parts, ann.Parts...)

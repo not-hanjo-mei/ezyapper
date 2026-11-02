@@ -166,6 +166,9 @@ func (b *Bot) enrichHistory(ctx context.Context, messages []*types.DiscordMessag
 			}
 		}
 
+		if proc != nil && len(msg.Stickers) > 0 {
+			extra.WriteString(proc.AnnotateStickers(ctx, msg, false))
+		}
 		if proc != nil && len(msg.Media) > 0 {
 			ann := proc.AnnotateAV(ctx, msg, media.AnnotateOptions{
 				ComputeAudio: i == mostRecentAudioIndex && enrichment.allowsKind("audio", msg.ID),

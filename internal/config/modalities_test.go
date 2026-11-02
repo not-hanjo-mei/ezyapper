@@ -338,3 +338,22 @@ func TestSave_RoundTripsModalities(t *testing.T) {
 		t.Fatalf("modalities lost in round trip: %+v", again.AI.Modalities.Image)
 	}
 }
+
+func TestValidateStickerModality(t *testing.T) {
+	if e := modalityErrors(ModalitiesConfig{Sticker: StickerModalityConfig{Enabled: true}}); e != "" {
+		t.Fatalf("text mode needs no model: %s", e)
+	}
+	if e := modalityErrors(ModalitiesConfig{Sticker: StickerModalityConfig{Enabled: true, Mode: StickerModeVision}}); !strings.Contains(e, "sticker.model is required") {
+		t.Fatalf("vision without any model: %s", e)
+	}
+	withImage := ModalitiesConfig{Sticker: StickerModalityConfig{Enabled: true, Mode: StickerModeVision}, Image: ImageModalityConfig{ModalityModel: ModalityModel{Model: "vm", APIKey: "ik"}}}
+	if e := modalityErrors(withImage); e != "" {
+		t.Fatalf("sticker vision may borrow the image model: %s", e)
+	}
+	if mm := withImage.StickerVisionModel(); mm.Model != "vm" || mm.APIKey != "ik" {
+		t.Fatalf("fallback: %+v", mm)
+	}
+	if e := modalityErrors(ModalitiesConfig{Sticker: StickerModalityConfig{Mode: "ocr"}}); !strings.Contains(e, "sticker.mode") {
+		t.Fatalf("bad mode: %s", e)
+	}
+}

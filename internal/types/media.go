@@ -66,3 +66,34 @@ func ExtractMedia(msg *discordgo.Message) []MediaAttachment {
 	}
 	return out
 }
+
+// Sticker format types (Discord sticker format_type).
+const (
+	StickerPNG    = 1
+	StickerAPNG   = 2
+	StickerLottie = 3
+	StickerGIF    = 4
+)
+
+// StickerRef is a sticker sent with a message (Discord sticker item). Its
+// description and tags need a separate lookup by ID.
+type StickerRef struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	FormatType int    `json:"format_type"`
+}
+
+// ExtractStickers returns the stickers of a message.
+func ExtractStickers(msg *discordgo.Message) []StickerRef {
+	if msg == nil {
+		return nil
+	}
+	var out []StickerRef
+	for _, s := range msg.StickerItems {
+		if s == nil {
+			continue
+		}
+		out = append(out, StickerRef{ID: s.ID, Name: s.Name, FormatType: int(s.FormatType)})
+	}
+	return out
+}

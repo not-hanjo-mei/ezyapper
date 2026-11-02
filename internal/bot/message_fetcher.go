@@ -213,6 +213,7 @@ func (f *DiscordMessageFetcher) convertMessage(msg *discordgo.Message) types.Dis
 		Content:   msg.Content,
 		ImageURLs: extractImageURLs(msg, 0),
 		Media:     types.ExtractMedia(msg),
+		Stickers:  types.ExtractStickers(msg),
 		Embeds:    types.SummarizeEmbeds(msg.Embeds),
 		Kinds:     types.MessageKinds(msg),
 		Timestamp: msg.Timestamp,

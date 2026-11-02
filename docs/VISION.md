@@ -1,4 +1,4 @@
-# Media Modalities (images, audio, video)
+# Media Modalities (images, audio, video, stickers)
 
 Text is always handled by the base model (`core.ai`). Images, audio and video are optional modalities configured under `core.ai.modalities`, each with its own on/off switch and its own model. Field reference: [CONFIGURATION.md](CONFIGURATION.md#coreaimodalities-optional).
 
@@ -11,6 +11,8 @@ Text is always handled by the base model (`core.ai`). Images, audio and video ar
 | audio | `asr` | Speech is transcribed by an `/audio/transcriptions` endpoint; `[Audio N transcript (...): ...]` is added. | 1 per audio (cached) |
 | audio | `direct` | Audio is sent as an `audio_url` data URI part in the reply request (ogg/opus voice messages work as is). | none |
 | video | `describe` | A video-capable model describes each video (`video_url` part); `[Video N (...): ...]` is added. | 1 per video (cached) |
+| sticker | `text` | `[Sticker: name — description (tags: ...)]` from Discord's sticker details. | none (1 Discord API call per sticker, cached) |
+| sticker | `vision` | A vision model describes the sticker image: `[Sticker: name — ...]`. Lottie stickers fall back to text. | 1 per sticker ID (cached) |
 
 Choosing:
 

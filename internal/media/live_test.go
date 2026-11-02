@@ -134,3 +134,24 @@ func TestLiveImageDescribe(t *testing.T) {
 	}
 	t.Logf("image (%s): %q", time.Since(start).Round(time.Millisecond), got[0])
 }
+
+// TestLiveStickerVision describes a real sticker from the Discord media
+// host. Set EZYAPPER_LIVE_STICKER_ID to a PNG/APNG/GIF sticker ID.
+func TestLiveStickerVision(t *testing.T) {
+	cfg, _ := liveSetup(t)
+	id := os.Getenv("EZYAPPER_LIVE_STICKER_ID")
+	if id == "" {
+		t.Skip("set EZYAPPER_LIVE_STICKER_ID")
+	}
+	cfg.AI.Modalities.Image.Model = cfg.AI.Model
+	cfg.AI.Modalities.Sticker = config.StickerModalityConfig{Enabled: true, Mode: config.StickerModeVision}
+	cfg.AI.Modalities.ApplyDefaults()
+	p := New(cfg, nil, nil)
+	p.SetStickers(nil, NewCache(time.Hour, 10))
+	start := time.Now()
+	got := p.AnnotateStickers(context.Background(), &types.DiscordMessage{Stickers: []types.StickerRef{{ID: id, Name: "live", FormatType: types.StickerPNG}}}, true)
+	if !strings.Contains(got, "[Sticker: live — ") {
+		t.Fatalf("no vision description: %q", got)
+	}
+	t.Logf("sticker (%s): %q", time.Since(start).Round(time.Millisecond), got)
+}

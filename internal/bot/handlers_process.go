@@ -177,6 +177,7 @@ func (b *Bot) extractMessageImages(ctx context.Context, m *discordgo.MessageCrea
 			ImageURLs:         imageURLs,
 			ImageDescriptions: imageDescriptions,
 			Media:             types.ExtractMedia(m.Message),
+			Stickers:          types.ExtractStickers(m.Message),
 			Timestamp:         m.Timestamp,
 			IsBot:             m.Author.Bot,
 		}

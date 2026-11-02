@@ -25,3 +25,4 @@
   - `asr`: transcribe via ASR API (e.g., OpenAI Whisper), feed text to base model
   - `direct`: send audio directly to multimodal LLM
 - [x] Add video modality support.
+- [x] Add sticker support (`text`: name/description/tags, `vision`: describe the image once per sticker ID).

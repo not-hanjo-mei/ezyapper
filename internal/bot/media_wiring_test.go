@@ -94,3 +94,21 @@ func TestEnrichHistory_AllModalitiesOffIsNoop(t *testing.T) {
 		t.Fatal("history must be returned unchanged when no modality is enabled")
 	}
 }
+
+func TestStickersInCurrentAndHistory(t *testing.T) {
+	b, _ := mediaTestBot(t, config.ModalitiesConfig{Sticker: config.StickerModalityConfig{Enabled: true}})
+	b.media.SetStickers(func(ctx context.Context, id string) (media.StickerInfo, error) {
+		return media.StickerInfo{Name: "wave", Description: "waves hello"}, nil
+	}, media.NewCache(time.Hour, 10))
+	msg := types.DiscordMessage{ID: "cur", Content: "hi", Stickers: []types.StickerRef{{ID: "1", Name: "wave", FormatType: types.StickerPNG}}}
+	content, parts := b.annotateCurrent(context.Background(), msg, GenerateContext{})
+	if content != "hi\n[Sticker: wave — waves hello]" || len(parts) != 0 {
+		t.Fatalf("current = %q", content)
+	}
+	hist := msg
+	hist.ID = "old"
+	out := b.enrichHistory(context.Background(), []*types.DiscordMessage{&hist}, "cur", planRecentImageEnrichment("", ""))
+	if out[0].Content != "hi\n[Sticker: wave — waves hello]" {
+		t.Fatalf("history = %q", out[0].Content)
+	}
+}
