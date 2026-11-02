@@ -431,7 +431,12 @@ func main() {
 		fmt.Fprintf(os.Stderr, "[EMOTE] Config: data_dir=%s, auto_steal=%v\n", p.config.DataDir, p.config.AutoStealEnabled)
 	}
 
-	if err := pluginserver.Serve(p); err != nil {
+	r := &reloadingPlugin{}
+	r.cur.Store(p)
+	w := r.watch()
+	defer w.Close()
+
+	if err := pluginserver.Serve(r); err != nil {
 		fmt.Fprintf(os.Stderr, "[EMOTE] Error: %v\n", err)
 		os.Exit(1)
 	}

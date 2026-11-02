@@ -11,6 +11,7 @@ require (
 require (
 	github.com/bwmarrin/discordgo v0.29.0 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
+	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/gorilla/websocket v1.5.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect

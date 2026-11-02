@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"ezyapper/internal/plugin"
+	"ezyapper/internal/plugin/pluginconfig"
 	pluginserver "ezyapper/internal/plugin/server"
 	"ezyapper/internal/types"
 
@@ -86,7 +87,8 @@ func loadConfig() (Config, error) {
 }
 
 type SystemSpecPlugin struct {
-	config Config
+	// config is swapped when the config file is edited (see watchConfig).
+	config *pluginconfig.Value[Config]
 }
 
 func (p *SystemSpecPlugin) Info() (plugin.Info, error) {
@@ -112,7 +114,7 @@ func (p *SystemSpecPlugin) ListTools() ([]plugin.ToolSpec, error) {
 		{
 			Name:        "get_system_spec",
 			Description: "Get CPU model, thread count, max frequency, and total memory",
-			TimeoutMs:   p.config.GetSystemSpecMs,
+			TimeoutMs:   p.config.Load().GetSystemSpecMs,
 			Parameters: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -178,9 +180,34 @@ func main() {
 		os.Exit(1)
 	}
 
-	p := &SystemSpecPlugin{config: cfg}
+	p := &SystemSpecPlugin{config: pluginconfig.NewValue(cfg)}
+	w := watchConfig(p)
+	defer w.Close()
+
 	if err := pluginserver.Serve(p); err != nil {
 		fmt.Fprintf(os.Stderr, "[SYSTEMSPEC] Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// watchConfig reloads the config file when it is saved: the new file is
+// fully validated before it replaces the running config, and the host is
+// told to re-read tools and the system prompt section (tool timeouts or
+// prompt text may have changed). An invalid file is logged and ignored.
+func watchConfig(p *SystemSpecPlugin) *pluginconfig.Watcher {
+	w, err := pluginconfig.Watch(pluginConfigPath(), pluginconfig.Options{Name: "SYSTEMSPEC"}, func() error {
+		next, err := loadConfig()
+		if err != nil {
+			return err
+		}
+		p.config.Store(next)
+		if err := pluginserver.NotifyToolsChanged(); err != nil {
+			fmt.Fprintf(os.Stderr, "[SYSTEMSPEC] config reloaded but the host could not be notified: %v\n", err)
+		}
+		return nil
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[SYSTEMSPEC] config hot reload unavailable: %v\n", err)
+	}
+	return w
 }
