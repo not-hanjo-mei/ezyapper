@@ -57,6 +57,11 @@ GOOS=freebsd GOARCH=arm64 go build -o ezyapper-freebsd-arm64 ./cmd/bot
 
 # Android / Termux (pure-Go static binary)
 GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -o ezyapper-android-arm64 ./cmd/bot
+# 32-bit ARM Android: Go requires cgo (external linking) for android/arm,
+# so use the Android NDK's clang:
+CGO_ENABLED=1 GOOS=android GOARCH=arm GOARM=7 \
+  CC=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang \
+  go build -o ezyapper-android-arm ./cmd/bot
 
 # Niche Linux archs (mipsle, mips64le, loong64)
 GOOS=linux GOARCH=mipsle    go build -o ezyapper-linux-mipsle    ./cmd/bot

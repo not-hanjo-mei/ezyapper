@@ -110,7 +110,10 @@ jobs:
             goarm: ""
             artifact_name: ezyapper-freebsd-386
             binary_name: ezyapper-freebsd-386
-          # android (arm64 + armv7 — for Termux; static pure-Go binaries)
+          # android (arm64 + armv7 — for Termux). arm64 is a static pure-Go
+          # binary. Go only supports android/arm with external (cgo) linking,
+          # so armv7 is linked with the Android NDK clang preinstalled on
+          # GitHub's ubuntu runners (API 21 = Android 5.0, Go's minimum).
           - goos: android
             goarch: arm64
             goarm: ""
@@ -121,6 +124,7 @@ jobs:
             goarm: "7"
             artifact_name: ezyapper-android-arm
             binary_name: ezyapper-android-arm
+            ndk_cc: armv7a-linux-androideabi21-clang
 
     steps:
       - name: Checkout
@@ -138,7 +142,20 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           GOARM: ${{ matrix.goarm }}
-        run: go build -trimpath -o "${{ matrix.binary_name }}" ./cmd/bot
+          NDK_CC: ${{ matrix.ndk_cc }}
+        run: |
+          if [ -n "$NDK_CC" ]; then
+            ndk="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_HOME:-}}"
+            if [ -z "$ndk" ] || [ ! -d "$ndk" ]; then
+              echo "Android NDK not found on runner (ANDROID_NDK_LATEST_HOME unset)" >&2
+              exit 1
+            fi
+            export CGO_ENABLED=1
+            export CC="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/$NDK_CC"
+            "$CC" --version
+          fi
+          go build -trimpath -o "${{ matrix.binary_name }}" ./cmd/bot
+          file "${{ matrix.binary_name }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
