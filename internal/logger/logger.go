@@ -300,3 +300,12 @@ func With(fields ...any) *Logger {
 func Named(name string) *Logger {
 	return L().Named(name)
 }
+
+// ValidateLevel reports whether level is a valid log level name.
+func ValidateLevel(level string) error {
+	var l zapcore.Level
+	if err := l.UnmarshalText([]byte(level)); err != nil {
+		return fmt.Errorf("invalid log level %q: %w", level, err)
+	}
+	return nil
+}

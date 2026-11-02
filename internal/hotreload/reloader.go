@@ -84,6 +84,14 @@ func New(store *atomic.Value, comps ...Component) *Reloader {
 	}
 }
 
+// Register appends components (prepared and committed after the existing
+// ones). Call it before the first Apply.
+func (r *Reloader) Register(comps ...Component) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.comps = append(r.comps, comps...)
+}
+
 // Current returns the live config.
 func (r *Reloader) Current() *config.Config {
 	c, _ := r.store.Load().(*config.Config)

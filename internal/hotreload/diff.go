@@ -203,3 +203,9 @@ func equalValues(a, b reflect.Value) bool {
 		return reflect.DeepEqual(a.Interface(), b.Interface())
 	}
 }
+
+// Equal reports whether a and b are deeply equal, treating nil and empty
+// slices/maps as equal.
+func Equal(a, b any) bool {
+	return equalValues(reflect.ValueOf(a), reflect.ValueOf(b))
+}
