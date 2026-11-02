@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"ezyapper/internal/logger"
-
 	"github.com/qdrant/go-client/qdrant"
 )
 
@@ -49,67 +47,30 @@ func stringIsNumeric(s string) bool {
 	return true
 }
 
-// SearchHybrid performs hybrid search with RRF fusion of dense + sparse.
+// SearchHybrid performs hybrid search with RRF fusion of dense + sparse on
+// the vector tier and hydrates the hits from the source tier.
 func (qc *QdrantClient) SearchHybrid(ctx context.Context, userID string, embedding []float32, sparseIndices []uint32, sparseValues []float32, opts *SearchOptions, rrfK int) ([]*Record, error) {
 	if opts == nil {
 		return nil, fmt.Errorf("search options are required")
 	}
-	limit := uint64(opts.TopK)
 
 	filter := &qdrant.Filter{
-		Must: []*qdrant.Condition{qdrant.NewMatch("user_id", userID)},
-	}
-	if len(opts.MemoryTypes) > 0 {
-		conditions := make([]*qdrant.Condition, len(opts.MemoryTypes))
-		for i, mt := range opts.MemoryTypes {
-			conditions[i] = qdrant.NewMatch("memory_type", mt)
-		}
-		filter.Should = conditions
-	}
-
-	// Build prefetch queries
-	prefetch := []*qdrant.PrefetchQuery{
-		{
-			Query: qdrant.NewQuery(embedding...),
-			Using: qdrant.PtrOf(""),
-			Limit: qdrant.PtrOf(uint64(opts.TopK * 2)),
-		},
-	}
-
-	// Add sparse prefetch if we have sparse vectors
-	if len(sparseIndices) > 0 {
-		prefetch = append(prefetch, &qdrant.PrefetchQuery{
-			Query: qdrant.NewQuerySparse(sparseIndices, sparseValues),
-			Using: qdrant.PtrOf("bm25_keywords"),
-			Limit: qdrant.PtrOf(uint64(opts.TopK)),
-		})
-	}
-
-	results, err := qc.client.Query(ctx, &qdrant.QueryPoints{
-		CollectionName: CollectionMemories,
-		Prefetch:       prefetch,
-		Query:          qdrant.NewQueryFusion(qdrant.Fusion_RRF),
-		Filter:         filter,
-		Limit:          &limit,
-		WithPayload:    qdrant.NewWithPayload(true),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("hybrid search: %w", err)
+		Must:   []*qdrant.Condition{qdrant.NewMatch("user_id", userID)},
+		Should: memoryTypeShould(opts.MemoryTypes),
 	}
 
 	_ = rrfK // reserved for future RRF parameterization
 
-	memories := make([]*Record, 0, len(results))
-	for _, result := range results {
-		if result.Score < float32(opts.MinScore) {
-			continue
-		}
-		memory, err := qc.payloadToMemory(result.Payload, result.Id.GetUuid())
-		if err != nil {
-			logger.Warnf("[qdrant] hybrid search: convert payload %s: %v", result.Id.GetUuid(), err)
-			continue
-		}
-		memories = append(memories, memory)
+	memories, err := qc.searchAndHydrate(ctx, &vectorQuery{
+		Dense:         embedding,
+		SparseIndices: sparseIndices,
+		SparseValues:  sparseValues,
+		Hybrid:        true,
+		Filter:        filter,
+		Limit:         uint64(opts.TopK),
+	}, opts.MinScore)
+	if err != nil {
+		return nil, fmt.Errorf("hybrid search: %w", err)
 	}
 	return memories, nil
 }

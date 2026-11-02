@@ -127,6 +127,9 @@ type MemoryService struct {
 	wg          sync.WaitGroup
 
 	maintenance *MaintenanceWorker
+
+	// syncCancel stops the background vector sync on Close.
+	syncCancel context.CancelFunc
 }
 
 // ServiceConfig holds configuration parameters for the memory service.
@@ -217,10 +220,21 @@ func NewService(cfg *ServiceConfig, qdrantCfg *config.QdrantConfig, qdrantClient
 
 	service.startAccessWorker()
 
+	// Tier preparation and repair need a backing store; they are skipped for
+	// a bare &QdrantClient{} as used by unit tests.
+	if qdrantClient.store != nil {
+		// Copy a pre-split "memories" collection into the source tier before
+		// anything reads memories. This blocks startup on purpose: serving
+		// before the copy finished would make existing memories invisible.
+		if _, err := qdrantClient.MigrateLegacy(context.Background(), embedder); err != nil {
+			service.stopAccessWorker()
+			return nil, fmt.Errorf("migrate legacy memories: %w", err)
+		}
+	}
+
 	// Best-effort cleanup of damaged points left by previous OverwritePayload
-	// bug. Skipped when the gRPC client is nil (e.g. in unit tests using a
-	// bare &QdrantClient{}). Failure logs a warning but does not block startup.
-	if qdrantClient.client != nil {
+	// bug. Failure logs a warning but does not block startup.
+	if qdrantClient.store != nil {
 		repairCtx, repairCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		deleted, userIDs, repairErr := qdrantClient.RepairOrDeleteDamagedMemories(repairCtx, repairScanLimit)
 		repairCancel()
@@ -229,6 +243,10 @@ func NewService(cfg *ServiceConfig, qdrantCfg *config.QdrantConfig, qdrantClient
 		} else if deleted > 0 {
 			logger.Infof("[memory] startup repair: deleted %d damaged points, affected users: %v", deleted, userIDs)
 		}
+	}
+
+	if qdrantClient.store != nil {
+		service.startVectorSync()
 	}
 
 	logger.Info("[memory] Memory service initialized")
@@ -594,12 +612,12 @@ func (s *MemoryService) GetStats(ctx context.Context) (*GlobalStats, error) {
 }
 
 func (s *MemoryService) CountMemories(ctx context.Context) (int64, error) {
-	count, err := s.qdrant.CountCollection(ctx, CollectionMemories)
+	count, err := s.qdrant.CountMemories(ctx)
 	return int64(count), err
 }
 
 func (s *MemoryService) CountProfiles(ctx context.Context) (int64, error) {
-	count, err := s.qdrant.CountCollection(ctx, CollectionProfiles)
+	count, err := s.qdrant.CountProfiles(ctx)
 	return int64(count), err
 }
 
@@ -678,6 +696,32 @@ func (s *MemoryService) startAccessWorker() {
 	}()
 }
 
+// startVectorSync fills the current vector collection from the source tier
+// in the background (re-embedding records that have no vector for the
+// configured model). Until it finishes, semantic search only sees records
+// that already have a vector; reads by ID or user are unaffected.
+func (s *MemoryService) startVectorSync() {
+	ctx, cancel := context.WithCancel(context.Background())
+	s.syncCancel = cancel
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		if _, err := s.qdrant.SyncVectors(ctx, s.embedder); err != nil {
+			if ctx.Err() != nil {
+				logger.Infof("[memory] vector sync interrupted by shutdown; it resumes on next start")
+				return
+			}
+			logger.Errorf("[memory] vector sync failed (it is retried on next start): %v", err)
+		}
+	}()
+}
+
+// stopAccessWorker stops the access worker during a failed construction.
+func (s *MemoryService) stopAccessWorker() {
+	close(s.done)
+	s.wg.Wait()
+}
+
 func (s *MemoryService) StartMaintenance(ctx context.Context) error {
 	if s.maintenance != nil {
 		return fmt.Errorf("maintenance already started")
@@ -696,6 +740,9 @@ func (s *MemoryService) StopMaintenance() {
 func (s *MemoryService) Close() error {
 	if s.maintenance != nil {
 		s.maintenance.Stop()
+	}
+	if s.syncCancel != nil {
+		s.syncCancel()
 	}
 	close(s.done)
 	s.wg.Wait()
