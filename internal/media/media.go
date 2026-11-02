@@ -188,7 +188,28 @@ func (p *Processor) fetchAttachment(ctx context.Context, a types.MediaAttachment
 	if baseContentType(a.ContentType) != "" {
 		ct = a.ContentType // Discord's type is more precise than the CDN's
 	}
-	return data, ct, nil
+	return data, normalizeMediaType(ct), nil
+}
+
+// mediaTypeAliases maps non-standard content types Discord reports (an
+// uploaded .mp3 arrives as "audio/mpeg3") to the registered ones models
+// and transcription endpoints recognize.
+var mediaTypeAliases = map[string]string{
+	"audio/mpeg3":  "audio/mpeg",
+	"audio/x-mpeg": "audio/mpeg",
+	"audio/mp3":    "audio/mpeg",
+	"audio/x-mp3":  "audio/mpeg",
+	"audio/x-wav":  "audio/wav",
+	"audio/wave":   "audio/wav",
+	"audio/x-m4a":  "audio/mp4",
+	"audio/x-flac": "audio/flac",
+}
+
+func normalizeMediaType(ct string) string {
+	if alias, ok := mediaTypeAliases[strings.ToLower(baseContentType(ct))]; ok {
+		return alias
+	}
+	return ct
 }
 
 // Transcribe returns the transcript of an audio attachment (asr mode),

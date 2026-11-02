@@ -129,3 +129,16 @@ func TestApplyRuntimeConfig_RefusesMissingFFmpeg(t *testing.T) {
 		t.Fatalf("expected ffmpeg refusal, got %v", err)
 	}
 }
+
+func TestAnnotateCurrent_DirectImageMarker(t *testing.T) {
+	img := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = io.WriteString(w, "png")
+	}))
+	defer img.Close()
+	b, _ := mediaTestBot(t, config.ModalitiesConfig{Image: config.ImageModalityConfig{Enabled: true, Mode: config.ImageModeDirect}})
+	content, parts := b.annotateCurrent(context.Background(), types.DiscordMessage{ID: "c", Content: "look"}, GenerateContext{ImageURLs: []string{img.URL + "/a.png"}})
+	if content != "look\n[Image 1: attached]" || len(parts) != 1 || parts[0].URL != "data:image/png;base64,cG5n" {
+		t.Fatalf("content=%q parts=%+v", content, parts)
+	}
+}

@@ -352,3 +352,20 @@ func serveASR(t *testing.T, seen func(filename, contentType string)) string {
 	t.Cleanup(srv.Close)
 	return srv.URL
 }
+
+// Discord reports uploaded .mp3 files as audio/mpeg3, which models do not
+// recognize in a data URI; it is normalized to audio/mpeg.
+func TestAudioPartNormalizesDiscordContentType(t *testing.T) {
+	files := serveBytes(t, map[string][]byte{"/a.mp3": []byte("ID3")}, "audio/mpeg")
+	cfg := baseConfig("http://unused.invalid")
+	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDirect}
+	cfg.AI.Modalities.ApplyDefaults()
+	p := New(cfg, nil, nil)
+	part, err := p.AudioPart(context.Background(), types.MediaAttachment{ID: "a", Kind: types.MediaAudio, URL: files + "/a.mp3", ContentType: "audio/mpeg3"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(part.URL, "data:audio/mpeg;base64,") {
+		t.Fatalf("url = %.40s", part.URL)
+	}
+}

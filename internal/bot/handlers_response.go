@@ -164,13 +164,17 @@ func (b *Bot) annotateCurrent(ctx context.Context, current types.DiscordMessage,
 	case p.ImageDescribeEnabled():
 		content += b.describeCurrentImages(ctx, gc)
 	case p.ImageDirectEnabled():
-		for _, u := range gc.ImageURLs {
+		// A marker per attached image tells the model which message the
+		// media parts belong to (they follow the whole prompt text).
+		for i, u := range gc.ImageURLs {
 			part, err := p.ImagePart(ctx, u)
 			if err != nil {
 				logger.Warnf("[media] image not sent: %v", err)
+				content += fmt.Sprintf("\n[Image %d: not processed: %v]", i+1, err)
 				continue
 			}
 			parts = append(parts, part)
+			content += fmt.Sprintf("\n[Image %d: attached]", i+1)
 		}
 	}
 	content += p.AnnotateStickers(ctx, &current, true)
