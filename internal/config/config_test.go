@@ -531,206 +531,6 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 		t.Error("Expected error for invalid temperature, got nil")
 	}
 }
-func TestValidate_MissingVisionMode(t *testing.T) {
-	cfg := &Config{
-		Discord: DiscordConfig{
-			Token:                      "test",
-			BotName:                    "TestBot",
-			OtherBotPolicy:             OtherBotFull,
-			ReplyPercentage:            0.15,
-			CooldownSeconds:            5,
-			MaxResponsesPerMin:         10,
-			ConsolidationTimeoutSec:    300,
-			TypingIndicatorIntervalSec: 5,
-			LongResponseDelayMs:        500,
-			ImageCacheTTLMin:           60,
-			ImageCacheMaxEntries:       100,
-			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
-		},
-		AI: AIConfig{
-			LLMConfig: LLMConfig{
-				APIBaseURL:  "https://api.openai.com/v1",
-				APIKey:      "test",
-				Model:       "gpt-4o-mini",
-				MaxTokens:   1024,
-				Temperature: 0.8,
-			},
-			Vision:            VisionConfig{Model: "gpt-4o"},
-			SystemPrompt:      "test",
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
-		},
-		Embedding: EmbeddingConfig{
-			Model: "text-embedding-3-small",
-		},
-		Memory: MemoryConfig{
-			ConsolidationInterval: 50,
-			ShortTermLimit:        20,
-			MaxPaginatedLimit:     100,
-
-			Retrieval: RetrievalConfig{
-				TopK:                   5,
-				MinScore:               0.75,
-				IncludeChannelMemories: true,
-				MaxMentionedMemories:   3,
-				MaxChannelMemories:     5,
-			},
-			Consolidation: ConsolidationConfig{
-				Enabled:           true,
-				MemorySearchLimit: 20,
-			},
-			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
-			MaxMentionedUsersPerMemory: 3,
-			MemoryStrengthMultiplier:   1.0,
-		},
-		Qdrant: QdrantConfig{
-			Host:       "localhost",
-			Port:       6334,
-			VectorSize: 1536,
-		},
-		Web: WebConfig{
-			Port:                      8080,
-			Username:                  "admin",
-			Password:                  "test",
-			Enabled:                   true,
-			MemoriesPageLimit:         50,
-			SessionTTLMin:             30,
-			SessionCleanupIntervalMin: 5,
-			StatsQueryTimeoutSec:      5,
-			LogDefaultLines:           100,
-			LogMaxLines:               1000,
-			LogMaxReadBytes:           1048576,
-		},
-		Logging: LoggingConfig{
-			Level:      "info",
-			File:       "logs/test.log",
-			MaxSize:    100,
-			MaxBackups: 3,
-			MaxAge:     30,
-		},
-		Plugins: PluginsConfig{
-			Enabled:              true,
-			PluginsDir:           "plugins",
-			StartupTimeoutSec:    90,
-			RPCTimeoutSec:        5,
-			BeforeSendTimeoutSec: 180,
-			CommandTimeoutSec:    45,
-			ShutdownTimeoutSec:   5,
-			DisableTimeoutSec:    2,
-			MaxRestarts:          3,
-			RestartCooldownSec:   300,
-		},
-		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
-	}
-	err := validate(cfg)
-	if err == nil {
-		t.Error("Expected error for missing vision.mode, got nil")
-	}
-	if !strings.Contains(err.Error(), "core.ai.vision.mode is required") {
-		t.Errorf("Expected error about vision.mode, got: %v", err)
-	}
-}
-func TestValidate_MissingVisionDescriptionPrompt(t *testing.T) {
-	cfg := &Config{
-		Discord: DiscordConfig{
-			Token:                      "test",
-			BotName:                    "TestBot",
-			OtherBotPolicy:             OtherBotFull,
-			ReplyPercentage:            0.15,
-			CooldownSeconds:            5,
-			MaxResponsesPerMin:         10,
-			ConsolidationTimeoutSec:    300,
-			TypingIndicatorIntervalSec: 5,
-			LongResponseDelayMs:        500,
-			ImageCacheTTLMin:           60,
-			ImageCacheMaxEntries:       100,
-			RateLimit:                  RateLimitConfig{ResetPeriodSeconds: 60},
-		},
-		AI: AIConfig{
-			LLMConfig: LLMConfig{
-				APIBaseURL:  "https://api.openai.com/v1",
-				APIKey:      "test",
-				Model:       "gpt-4o-mini",
-				MaxTokens:   1024,
-				Temperature: 0.8,
-			},
-			SystemPrompt: "test",
-			Vision: VisionConfig{
-				Model:             "gpt-4o",
-				Mode:              VisionModeHybrid,
-				DescriptionPrompt: "",
-			},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
-		},
-		Embedding: EmbeddingConfig{
-			Model: "text-embedding-3-small",
-		},
-		Memory: MemoryConfig{
-			ConsolidationInterval: 50,
-			ShortTermLimit:        20,
-			MaxPaginatedLimit:     100,
-
-			Retrieval: RetrievalConfig{
-				TopK:                   5,
-				MinScore:               0.75,
-				IncludeChannelMemories: true,
-				MaxMentionedMemories:   3,
-				MaxChannelMemories:     5,
-			},
-			Consolidation: ConsolidationConfig{
-				Enabled:           true,
-				MemorySearchLimit: 20,
-			},
-			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
-			MaxMentionedUsersPerMemory: 3,
-			MemoryStrengthMultiplier:   1.0,
-		},
-		Qdrant: QdrantConfig{
-			Host:       "localhost",
-			Port:       6334,
-			VectorSize: 1536,
-		},
-		Web: WebConfig{
-			Port:                      8080,
-			Username:                  "admin",
-			Password:                  "test",
-			Enabled:                   true,
-			MemoriesPageLimit:         50,
-			SessionTTLMin:             30,
-			SessionCleanupIntervalMin: 5,
-			StatsQueryTimeoutSec:      5,
-			LogDefaultLines:           100,
-			LogMaxLines:               1000,
-			LogMaxReadBytes:           1048576,
-		},
-		Logging: LoggingConfig{
-			Level:      "info",
-			File:       "logs/test.log",
-			MaxSize:    100,
-			MaxBackups: 3,
-			MaxAge:     30,
-		},
-		Plugins: PluginsConfig{
-			Enabled:              true,
-			PluginsDir:           "plugins",
-			StartupTimeoutSec:    90,
-			RPCTimeoutSec:        5,
-			BeforeSendTimeoutSec: 180,
-			CommandTimeoutSec:    45,
-			ShutdownTimeoutSec:   5,
-			DisableTimeoutSec:    2,
-			MaxRestarts:          3,
-			RestartCooldownSec:   300,
-		},
-		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
-	}
-	err := validate(cfg)
-	if err == nil {
-		t.Error("Expected error for missing vision.description_prompt in hybrid mode, got nil")
-	}
-	if !strings.Contains(err.Error(), "core.ai.vision.description_prompt is required") {
-		t.Errorf("Expected error about vision.description_prompt, got: %v", err)
-	}
-}
 func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{
@@ -761,7 +561,7 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 			SystemPrompt: "test",
 			Vision: VisionConfig{
 				Model: "gpt-4o",
-				Mode:  VisionModeTextOnly,
+				Mode:  "text_only",
 			},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
@@ -871,7 +671,7 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 				Timeout:     1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
@@ -934,7 +734,7 @@ func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T
 				Timeout:     1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
@@ -1000,7 +800,7 @@ func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 				Timeout:     1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 0, Timeout: 1},
@@ -1043,7 +843,7 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 				Timeout:     1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
@@ -1239,7 +1039,7 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 				Timeout:     1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
@@ -1315,7 +1115,7 @@ func TestValidate_ConsolidationEnabled_RequiresOwnBotID(t *testing.T) {
 				Timeout:     1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
@@ -1359,7 +1159,7 @@ func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 				Timeout:     1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
@@ -1422,7 +1222,7 @@ func TestValidate_TopKEnabled_RequiresOwnBotID(t *testing.T) {
 				Timeout:     1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 0, Timeout: 1},
@@ -1465,7 +1265,7 @@ func TestValidate_MemoryDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 				Timeout:     1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
@@ -1527,7 +1327,7 @@ func TestValidate_ConsolidationEnabled_WithCoreAIFallback(t *testing.T) {
 				Timeout:     1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5,
 			MaxImageBytes:     10485760,
 		},
@@ -1597,7 +1397,7 @@ func TestValidate_ConsolidationEnabled_BothEmpty(t *testing.T) {
 				Timeout:     1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5,
 			MaxImageBytes:     10485760,
 		},
@@ -1676,7 +1476,7 @@ func TestValidateAI_MissingTimeout(t *testing.T) {
 				RetryCount:  1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
@@ -1739,7 +1539,7 @@ func TestValidateAI_MissingMaxToolIterations(t *testing.T) {
 				Timeout:     1,
 			},
 			SystemPrompt:  "sp",
-			Vision:        VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:        VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxImageBytes: 10485760,
 			// MaxToolIterations intentionally omitted
 		},
@@ -1787,7 +1587,7 @@ func TestValidate_VisionMaxTokensNegative(t *testing.T) {
 			Vision: VisionConfig{
 				LLMConfig:         LLMConfig{MaxTokens: -1},
 				Model:             "vm",
-				Mode:              VisionModeHybrid,
+				Mode:              "hybrid",
 				DescriptionPrompt: "desc",
 			},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
@@ -1814,7 +1614,9 @@ func TestValidate_VisionMaxTokensNegative(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error for negative ai.vision.max_tokens")
 	}
-	if !strings.Contains(err.Error(), "core.ai.vision.max_tokens must be greater than 0") {
+	// The deprecated block is mapped onto modalities.image, so the error
+	// names the new key.
+	if !strings.Contains(err.Error(), "core.ai.modalities.image.max_tokens must be greater than 0") {
 		t.Fatalf("expected ai.vision.max_tokens error, got: %v", err)
 	}
 }
@@ -1833,7 +1635,7 @@ func TestValidate_EmbeddingTimeoutZero(t *testing.T) {
 				Timeout:     1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 0},
@@ -1877,7 +1679,7 @@ func TestValidate_OtherBotPolicy_Missing(t *testing.T) {
 				Timeout:     1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
@@ -1917,7 +1719,7 @@ func TestValidate_OtherBotPolicy_Invalid(t *testing.T) {
 				Timeout:     1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
@@ -1957,7 +1759,7 @@ func TestValidate_MCP_HTTP_RequiresURL(t *testing.T) {
 				Timeout:     1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
@@ -1998,7 +1800,7 @@ func TestValidate_MCP_InvalidType(t *testing.T) {
 				Timeout:     1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{},
@@ -2270,7 +2072,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsNegative(t *testing.T) {
 				Timeout:     1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
@@ -2322,7 +2124,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
 				Timeout:     1,
 			},
 			SystemPrompt:      "sp",
-			Vision:            VisionConfig{Model: "vm", Mode: VisionModeTextOnly},
+			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5, MaxImageBytes: 10485760,
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},

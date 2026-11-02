@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"ezyapper/internal/ai"
-	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
+	"ezyapper/internal/media"
 	"ezyapper/internal/memory"
 	"ezyapper/internal/plugin"
 	"ezyapper/internal/types"
@@ -71,24 +71,16 @@ func (b *Bot) generateResponse(ctx context.Context, mc ModeContext, gc GenerateC
 		botID = b.session.State.User.ID
 	}
 
-	// Historical images: cached descriptions, plus bounded on-demand
-	// enrichment of the image message the user replied to.
+	// Historical media: cached descriptions/transcripts, plus bounded
+	// on-demand enrichment of the media message the user replied to.
 	history := b.enrichHistory(ctx, b.filterMessages(recentMessages), mc.MessageID, planRecentImageEnrichment(mc.UserContent, mc.ReplyToID))
 
 	current := mc.Current
 	current.Content = mc.UserContent
 	current.Embeds = nil // already folded into UserContent
 
-	var imageURLs []string
-	switch b.cfg().AI.Vision.Mode {
-	case config.VisionModeHybrid:
-		current.Content += b.describeCurrentImages(ctx, gc)
-	case config.VisionModeMultimodal:
-		imageURLs = gc.ImageURLs
-	case config.VisionModeTextOnly:
-	default:
-		return "", fmt.Errorf("unknown vision mode: %s", b.cfg().AI.Vision.Mode)
-	}
+	content, parts := b.annotateCurrent(ctx, current, gc)
+	current.Content = content
 
 	in := b.basePromptInput(mc, botID)
 	in.History = history
@@ -100,22 +92,15 @@ func (b *Bot) generateResponse(ctx context.Context, mc ModeContext, gc GenerateC
 	userPrompt := buildUserPrompt(in)
 
 	logger.Debugf("[prompt] system prompt: %d chars (static), user prompt: %d chars", len(systemPrompt), len(userPrompt))
-	logger.Infof("[vision] using mode: %s", b.cfg().AI.Vision.Mode)
 
-	req := ai.ChatCompletionRequest{SystemPrompt: systemPrompt, Messages: []openai.ChatCompletionMessage{}}
-	var response string
-	if len(imageURLs) > 0 {
-		resp, err := mc.AIClient.CreateVisionCompletionWithTools(ctx, systemPrompt, "", userPrompt, imageURLs, nil, b.createToolHandler())
-		if err != nil {
-			return "", err
-		}
-		response = resp.Content
-	} else {
-		var err error
-		response, err = b.completeTextWithTools(ctx, mc.AIClient, req, userPrompt)
-		if err != nil {
-			return "", err
-		}
+	client := mc.AIClient
+	if p := b.mediaProcessor(); p != nil {
+		client = p.ReplyClient(mc.AIClient, len(parts) > 0)
+	}
+	req := ai.ChatCompletionRequest{SystemPrompt: systemPrompt, Messages: []openai.ChatCompletionMessage{}, MediaParts: parts}
+	response, err := b.completeTextWithTools(ctx, client, req, userPrompt)
+	if err != nil {
+		return "", err
 	}
 	// The prompt shows mentions as <@DisplayName>; turn the ones the model
 	// copied back into real pings.
@@ -165,17 +150,49 @@ func (b *Bot) renderMemories(memories []*memory.Record) string {
 	return memory.FormatMemoriesForContext(memories, cfg.MemoryStrengthMultiplier, time.Now(), cfg.Retrieval.MaxMentionedMemories, cfg.Retrieval.MaxChannelMemories)
 }
 
+// annotateCurrent applies the enabled modalities to the message being
+// answered. It returns the content with description/transcript lines added
+// and the media parts to send in direct modes.
+func (b *Bot) annotateCurrent(ctx context.Context, current types.DiscordMessage, gc GenerateContext) (string, []ai.MediaPart) {
+	content := current.Content
+	p := b.mediaProcessor()
+	if p == nil {
+		return content, nil
+	}
+	var parts []ai.MediaPart
+	switch {
+	case p.ImageDescribeEnabled():
+		content += b.describeCurrentImages(ctx, gc)
+	case p.ImageDirectEnabled():
+		for _, u := range gc.ImageURLs {
+			part, err := p.ImagePart(ctx, u)
+			if err != nil {
+				logger.Warnf("[media] image not sent: %v", err)
+				continue
+			}
+			parts = append(parts, part)
+		}
+	}
+	ann := p.AnnotateAV(ctx, &current, media.AnnotateOptions{Current: true})
+	content += ann.Text
+	parts = append(parts, ann.Parts...)
+	if len(parts) > 0 {
+		logger.Infof("[media] sending %d media part(s) directly with the reply request", len(parts))
+	}
+	return content, parts
+}
+
 // describeCurrentImages returns " [Image N: description]" suffixes for the
-// current message's images (hybrid mode), using cached descriptions first.
+// current message's images (describe mode), using cached descriptions first.
 func (b *Bot) describeCurrentImages(ctx context.Context, gc GenerateContext) string {
 	if len(gc.ImageURLs) == 0 {
 		return ""
 	}
 	descriptions := gc.ImageDescriptions
 	if len(descriptions) == 0 {
-		describer := b.getVisionDescriber()
+		describer := b.imageDescriber()
 		if describer == nil {
-			logger.Warnf("[hybrid] vision describer unavailable, continuing without image descriptions")
+			logger.Warnf("[media] image describer unavailable, continuing without image descriptions")
 			return ""
 		}
 		var err error

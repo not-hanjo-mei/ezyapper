@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 // --- Helpers ---
 
 func defaultAIConfig() *config.AIConfig {
-	return &config.AIConfig{LLMConfig: config.LLMConfig{APIKey: "test-key", APIBaseURL: "https://api.example.com", Model: "gpt-4", MaxTokens: 100, Temperature: 0.7, RetryCount: 2, Timeout: 30}, Vision: config.VisionConfig{Model: "gpt-4-vision"}, MaxToolIterations: 5,
+	return &config.AIConfig{LLMConfig: config.LLMConfig{APIKey: "test-key", APIBaseURL: "https://api.example.com", Model: "gpt-4", MaxTokens: 100, Temperature: 0.7, RetryCount: 2, Timeout: 30}, MaxToolIterations: 5,
 		MaxImageBytes:           10485760,
 		RequireImageContentType: true}
 }
@@ -448,7 +448,7 @@ func TestApplyExtraParams_Method(t *testing.T) {
 
 func TestProcessMessages_VisionBase64Disabled(t *testing.T) {
 	cfg := defaultAIConfig()
-	cfg.Vision.Base64 = false
+	cfg.Modalities.Image.Transport = config.TransportURL
 	c := testClient(cfg)
 
 	messages := []openai.ChatCompletionMessage{
@@ -468,7 +468,7 @@ func TestProcessMessages_VisionBase64Disabled(t *testing.T) {
 
 func TestProcessMessages_VisionBase64Enabled_NoMultiContent(t *testing.T) {
 	cfg := defaultAIConfig()
-	cfg.Vision.Base64 = true
+	cfg.Modalities.Image.Transport = config.TransportBase64
 	c := testClient(cfg)
 
 	messages := []openai.ChatCompletionMessage{
@@ -486,7 +486,7 @@ func TestProcessMessages_VisionBase64Enabled_NoMultiContent(t *testing.T) {
 
 func TestProcessMessages_VisionBase64Enabled_DataURIAlready(t *testing.T) {
 	cfg := defaultAIConfig()
-	cfg.Vision.Base64 = true
+	cfg.Modalities.Image.Transport = config.TransportBase64
 	c := testClient(cfg)
 
 	messages := []openai.ChatCompletionMessage{
@@ -523,7 +523,7 @@ func TestProcessMessages_VisionBase64Enabled_ConvertsURL(t *testing.T) {
 	defer server.Close()
 
 	cfg := defaultAIConfig()
-	cfg.Vision.Base64 = true
+	cfg.Modalities.Image.Transport = config.TransportBase64
 	c := testClient(cfg)
 	// Give the client a fresh httpClient that has a reasonable timeout
 	c.httpClient = server.Client()
@@ -562,7 +562,7 @@ func TestProcessMessages_DownloadError(t *testing.T) {
 	defer server.Close()
 
 	cfg := defaultAIConfig()
-	cfg.Vision.Base64 = true
+	cfg.Modalities.Image.Transport = config.TransportBase64
 	c := testClient(cfg)
 	c.httpClient = server.Client()
 
@@ -817,130 +817,6 @@ func TestDownloadImageToBase64_Error(t *testing.T) {
 	c.httpClient = server.Client()
 
 	_, err := c.downloadImageToBase64(context.Background(), server.URL+"/missing.png")
-	if err == nil {
-		t.Error("expected error for download failure")
-	}
-}
-
-// --- buildVisionParts ---
-
-func TestBuildVisionParts_EmptyAll(t *testing.T) {
-	c := testClient(defaultAIConfig())
-	parts, err := c.buildVisionParts(context.Background(), "", nil)
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-	if len(parts) != 0 {
-		t.Errorf("expected 0 parts, got %d", len(parts))
-	}
-}
-
-func TestBuildVisionParts_TextOnly(t *testing.T) {
-	c := testClient(defaultAIConfig())
-	parts, err := c.buildVisionParts(context.Background(), "describe this", nil)
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-	if len(parts) != 1 {
-		t.Fatalf("expected 1 part, got %d", len(parts))
-	}
-	if parts[0].Type != openai.ChatMessagePartTypeText {
-		t.Error("expected text part")
-	}
-	if parts[0].Text != "describe this" {
-		t.Errorf("expected 'describe this', got '%s'", parts[0].Text)
-	}
-}
-
-func TestBuildVisionParts_DataURImage(t *testing.T) {
-	c := testClient(defaultAIConfig())
-	dataURI := "data:image/png;base64,iVBORw0KGgo="
-	parts, err := c.buildVisionParts(context.Background(), "look", []string{dataURI})
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-	// 1 text + 1 image = 2 parts
-	if len(parts) != 2 {
-		t.Fatalf("expected 2 parts, got %d", len(parts))
-	}
-	if parts[1].ImageURL == nil {
-		t.Fatal("expected ImageURL to be set")
-	}
-	if parts[1].ImageURL.URL != dataURI {
-		t.Errorf("expected data URI unchanged, got %s", parts[1].ImageURL.URL)
-	}
-}
-
-func TestBuildVisionParts_ConvertsURLWhenVisionBase64(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		w.Write([]byte{0x89, 0x50, 0x4E, 0x47})
-	}))
-	defer server.Close()
-
-	cfg := defaultAIConfig()
-	cfg.Vision.Base64 = true
-	c := testClient(cfg)
-	c.httpClient = server.Client()
-
-	parts, err := c.buildVisionParts(context.Background(), "look", []string{server.URL + "/img.png"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(parts) != 2 {
-		t.Fatalf("expected 2 parts, got %d", len(parts))
-	}
-	if !strings.HasPrefix(parts[1].ImageURL.URL, "data:image/png;base64,") {
-		t.Errorf("expected converted data URI, got: %s", parts[1].ImageURL.URL[:min(len(parts[1].ImageURL.URL), 50)])
-	}
-}
-
-func TestBuildVisionParts_SkipsConversionWhenVisionBase64False(t *testing.T) {
-	cfg := defaultAIConfig()
-	cfg.Vision.Base64 = false
-	c := testClient(cfg)
-
-	externalURL := "https://example.com/img.png"
-	parts, err := c.buildVisionParts(context.Background(), "look", []string{externalURL})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(parts) != 2 {
-		t.Fatalf("expected 2 parts, got %d", len(parts))
-	}
-	if parts[1].ImageURL.URL != externalURL {
-		t.Errorf("expected original URL, got %s", parts[1].ImageURL.URL)
-	}
-}
-
-func TestBuildVisionParts_NoTextOnlyImages(t *testing.T) {
-	c := testClient(defaultAIConfig())
-	dataURI := "data:image/png;base64,iVBORw0KGgo="
-	parts, err := c.buildVisionParts(context.Background(), "", []string{dataURI})
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-	// No text part, only image
-	if len(parts) != 1 {
-		t.Fatalf("expected 1 part, got %d", len(parts))
-	}
-	if parts[0].Type != openai.ChatMessagePartTypeImageURL {
-		t.Error("expected image part")
-	}
-}
-
-func TestBuildVisionParts_DownloadError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "not found", http.StatusNotFound)
-	}))
-	defer server.Close()
-
-	cfg := defaultAIConfig()
-	cfg.Vision.Base64 = true
-	c := testClient(cfg)
-	c.httpClient = server.Client()
-
-	_, err := c.buildVisionParts(context.Background(), "look", []string{server.URL + "/missing.png"})
 	if err == nil {
 		t.Error("expected error for download failure")
 	}
@@ -1307,54 +1183,6 @@ func TestCreateChatCompletionWithTools_WithToolCalls(t *testing.T) {
 	}
 }
 
-// --- CreateVisionCompletion ---
-
-func TestCreateVisionCompletion_Success(t *testing.T) {
-	server, c := setupOpenAIMock(t, func(w http.ResponseWriter, r *http.Request) {
-		writeChatCompletionResponse(w, "I see a cat", nil)
-	})
-	defer server.Close()
-
-	result, err := c.CreateVisionCompletion(context.Background(), "system prompt", "what is this?", []string{"data:image/png;base64,iVBORw0KGgo="})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != "I see a cat" {
-		t.Errorf("expected 'I see a cat', got '%s'", result)
-	}
-}
-
-func TestCreateVisionCompletion_NoChoices(t *testing.T) {
-	server, c := setupOpenAIMock(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{"id":"chatcmpl-123","object":"chat.completion","created":1234567890,"model":"gpt-4","choices":[],"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}`)
-	})
-	defer server.Close()
-
-	_, err := c.CreateVisionCompletion(context.Background(), "system", "what?", []string{"data:image/png;base64,iVBORw0KGgo="})
-	if err == nil {
-		t.Error("expected error for no choices")
-	}
-}
-
-func TestCreateVisionCompletion_BuildError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "not found", http.StatusNotFound)
-	}))
-	defer server.Close()
-
-	cfg := defaultAIConfig()
-	cfg.Vision.Base64 = true
-	c := testClient(cfg)
-	c.config.APIBaseURL = server.URL
-	c.httpClient = server.Client()
-
-	_, err := c.CreateVisionCompletion(context.Background(), "system", "what?", []string{server.URL + "/missing.png"})
-	if err == nil {
-		t.Error("expected error for image download failure")
-	}
-}
-
 // --- CreateEmbedding ---
 
 func TestCreateEmbedding_Success(t *testing.T) {
@@ -1394,135 +1222,6 @@ func TestCreateEmbedding_NoData(t *testing.T) {
 	_, err := c.CreateEmbedding(context.Background(), "text", "text-embedding-3")
 	if err == nil {
 		t.Error("expected error for no embedding data")
-	}
-}
-
-// --- CreateVisionCompletionWithTools ---
-
-func TestCreateVisionCompletionWithTools_Success(t *testing.T) {
-	server, c := setupOpenAIMock(t, func(w http.ResponseWriter, r *http.Request) {
-		writeChatCompletionResponse(w, "vision tools response", nil)
-	})
-	defer server.Close()
-
-	c.toolRegistry.Register(&tools.Tool{
-		Name:        "look",
-		Description: "look at image",
-		Handler: func(ctx context.Context, args map[string]any) (string, error) {
-			return "result", nil
-		},
-	})
-
-	handler := func(ctx context.Context, tc openai.ToolCall) (string, error) {
-		return "tool result", nil
-	}
-
-	resp, err := c.CreateVisionCompletionWithTools(context.Background(),
-		"system prompt",
-		"ctx: user is Bob",
-		"what is this?",
-		[]string{"data:image/png;base64,iVBORw0KGgo="},
-		nil, // no history
-		handler,
-	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.Content != "vision tools response" {
-		t.Errorf("expected 'vision tools response', got '%s'", resp.Content)
-	}
-}
-
-func TestCreateVisionCompletionWithTools_BuildError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "not found", http.StatusNotFound)
-	}))
-	defer server.Close()
-
-	cfg := defaultAIConfig()
-	cfg.Vision.Base64 = true
-	c := testClient(cfg)
-	c.config.APIBaseURL = server.URL
-	c.httpClient = server.Client()
-
-	c.toolRegistry.Register(&tools.Tool{
-		Name: "tool1",
-		Handler: func(ctx context.Context, args map[string]any) (string, error) {
-			return "", nil
-		},
-	})
-
-	handler := func(ctx context.Context, tc openai.ToolCall) (string, error) {
-		return "", nil
-	}
-
-	_, err := c.CreateVisionCompletionWithTools(context.Background(),
-		"sys", "ctx", "what?",
-		[]string{server.URL + "/missing.png"},
-		nil, handler,
-	)
-	if err == nil {
-		t.Error("expected error for download failure")
-	}
-}
-
-func TestCreateVisionCompletionWithTools_NoChoices(t *testing.T) {
-	server, c := setupOpenAIMock(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{"id":"chatcmpl-123","object":"chat.completion","created":1234567890,"model":"gpt-4","choices":[],"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}`)
-	})
-	defer server.Close()
-
-	handler := func(ctx context.Context, tc openai.ToolCall) (string, error) {
-		return "", nil
-	}
-
-	_, err := c.CreateVisionCompletionWithTools(context.Background(),
-		"sys", "ctx", "what?",
-		[]string{"data:image/png;base64,iVBORw0KGgo="},
-		nil, handler,
-	)
-	if err == nil {
-		t.Error("expected error for no choices")
-	}
-}
-
-func TestCreateVisionCompletionWithTools_ToolIteration(t *testing.T) {
-	callCount := 0
-	server, c := setupOpenAIMock(t, func(w http.ResponseWriter, r *http.Request) {
-		if callCount == 0 {
-			callCount++
-			// Return tool call
-			w.Header().Set("Content-Type", "application/json")
-			io.WriteString(w, `{"id":"v-1","object":"chat.completion","created":1,"model":"gpt-4","choices":[{"index":0,"message":{"role":"assistant","content":"","tool_calls":[{"id":"call_v_1","type":"function","function":{"name":"tool1","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`)
-			return
-		}
-		writeChatCompletionResponse(w, "final vision+tools", nil)
-	})
-	defer server.Close()
-
-	c.toolRegistry.Register(&tools.Tool{
-		Name:        "tool1",
-		Description: "tool one",
-		Handler: func(ctx context.Context, args map[string]any) (string, error) {
-			return "tool1 result", nil
-		},
-	})
-
-	handler := func(ctx context.Context, tc openai.ToolCall) (string, error) {
-		return "tool1 result", nil
-	}
-
-	resp, err := c.CreateVisionCompletionWithTools(context.Background(),
-		"sys", "ctx", "run tool",
-		[]string{"data:image/png;base64,iVBORw0KGgo="},
-		nil, handler,
-	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.Content != "final vision+tools" {
-		t.Errorf("expected 'final vision+tools', got '%s'", resp.Content)
 	}
 }
 
@@ -1662,7 +1361,7 @@ func TestApplyExtraParamsToStruct_LogitBiasMap(t *testing.T) {
 
 func TestProcessMessages_VisionBase64False_SkipsURL(t *testing.T) {
 	cfg := defaultAIConfig()
-	cfg.Vision.Base64 = false
+	cfg.Modalities.Image.Transport = config.TransportURL
 	c := testClient(cfg)
 
 	extURL := "https://cdn.example.com/image.png"

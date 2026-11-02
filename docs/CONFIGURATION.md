@@ -53,7 +53,7 @@ Every field can be overridden by an environment variable. Prefix `EZYAPPER_`, th
 ```
 core.discord.token                            → EZYAPPER_CORE_DISCORD_TOKEN
 core.ai.api_key                               → EZYAPPER_CORE_AI_API_KEY
-core.ai.vision.mode                           → EZYAPPER_CORE_AI_VISION_MODE
+core.ai.modalities.audio.enabled              → EZYAPPER_CORE_AI_MODALITIES_AUDIO_ENABLED
 memory_pipeline.embedding.model               → EZYAPPER_MEMORY_PIPELINE_EMBEDDING_MODEL
 memory_pipeline.qdrant.host                   → EZYAPPER_MEMORY_PIPELINE_QDRANT_HOST
 memory_pipeline.memory.retrieval.top_k        → EZYAPPER_MEMORY_PIPELINE_MEMORY_RETRIEVAL_TOP_K
@@ -112,24 +112,91 @@ The main chat model. All sub-fields here are required.
 | `max_image_bytes` | int (>0) | Maximum bytes for an image fetched from Discord CDN. |
 | `require_image_content_type` | bool | If true, image responses without a `Content-Type` header are rejected. |
 
-#### `core.ai.vision`
+#### `core.ai.modalities` (optional)
 
-| Field | Type | Required when | Notes |
-|-------|------|---------------|-------|
-| `mode` | enum | always | `"text_only"` / `"hybrid"` / `"multimodal"`. See [VISION.md](VISION.md). |
-| `model` | string | mode ≠ text_only | Vision model. |
-| `description_prompt` | string | mode = hybrid | Prompt fed to the vision model for image descriptions. |
-| `base64` | bool | always | If false, images are sent as URLs (may not work with local endpoints — emits a startup warning). |
-| `max_images` | int (>0) | always | Max images processed per message. |
-| `api_base_url` | string | mode ≠ text_only | Defaults to `core.ai.api_base_url` if empty. |
-| `api_key` | string | mode ≠ text_only | Defaults to `core.ai.api_key` if empty. |
-| `max_tokens` | int (>0) | mode ≠ text_only | Defaults to `core.ai.max_tokens` if empty. |
-| `temperature` | float (0.0–2.0) | mode ≠ text_only | |
-| `retry_count` | int (>0) | mode ≠ text_only | |
-| `timeout` | int (>0) | mode ≠ text_only | |
-| `extra_params` | map | optional | |
+Text is always on: `core.ai` is the base model that reasons and writes every reply. Image, audio and video are optional, each with its own `enabled` switch and its own model. The whole block, and every field in it, is optional: a config without it loads with all three modalities off.
 
-The "defaults to `core.ai.X` if empty" pattern means you can leave the fields blank to inherit, or override them per-component to route vision through a different (cheaper) endpoint or model.
+Every modality accepts these endpoint fields. Left empty (or 0) they fall back to the matching `core.ai` value, so a modality on the same gateway only needs `enabled` and `model`.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `model` | string | The modality's model. Required by `describe` / `asr` modes. |
+| `api_base_url`, `api_key` | string | Fall back to `core.ai`. |
+| `timeout` | int (≥0, s) | Per-request timeout. Falls back to `core.ai.timeout`. |
+| `max_tokens` | int (>0) | Falls back to `core.ai.max_tokens`. Reasoning models describing video need a lot (≈12000) or they return no content. |
+| `temperature` | float (0–2) | Falls back to `core.ai.temperature`. |
+| `retry_count` | int (≥0) | Falls back to `core.ai.retry_count`. |
+| `extra_params` | map | Replaces `core.ai.extra_params` for this modality. |
+
+Two ways media reaches the base model:
+
+- **describe / asr**: a dedicated model turns the media into text, added to the message in the user prompt: `[Image 1: ...]`, `[Audio 1 transcript (voice message, 4s): ...]`, `[Video 1 (clip.mp4): ...]`. Results are cached by attachment ID (TTL and size from `core.discord.image_cache_ttl_min` / `image_cache_max_entries`), so the same media is processed once. For the message being answered, media is always processed; history messages use cached results, and at most one history message per kind is processed on demand: the most recent one, and only when the user replied to it or mentions it (e.g. "image", "voice", "video").
+- **direct**: the media itself is sent as content parts in the reply request (`image_url`, `audio_url` data URI). The reply is written by `core.ai.model`, or by the modality's `model` when set (that model then also handles tools). Image and audio in direct mode share one request, so if both name a model it must be the same one. Only the message being answered carries media parts; history shows a placeholder such as `[Audio 1: voice message, 4s]`.
+
+The system prompt stays byte-identical: everything media-related is in the user prompt.
+
+**`image`**
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `enabled` | bool | `false` | |
+| `mode` | enum | `describe` | `describe` (vision model writes a description) or `direct` (images sent to the reply model). |
+| `prompt` | string | built-in | Description prompt (describe mode). |
+| `max_items` | int (≥0) | `4` | Images processed per message. |
+| `transport` | enum | `base64` | `base64` downloads the image (limit `core.ai.max_image_bytes`) and inlines it as a data URI; `url` passes the Discord CDN URL. |
+
+**`audio`** (audio attachments and Discord voice messages)
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `enabled` | bool | `false` | |
+| `mode` | enum | `asr` | `asr`: speech-to-text via an OpenAI-compatible `POST {api_base_url}/audio/transcriptions` (multipart `file` + `model`), e.g. Whisper. `direct`: the audio is sent to an audio-capable model as an `audio_url` data URI (works with ogg/opus voice messages as is). |
+| `language` | string | | Optional ISO-639-1 hint (asr). |
+| `prompt` | string | | Optional vocabulary/spelling hint (asr). |
+| `max_items` | int (≥0) | `2` | |
+| `max_bytes` | int (≥0) | 25 MiB | Larger attachments are skipped. |
+| `max_duration_sec` | int (≥0) | `600` | Checked when Discord reports a duration (voice messages). |
+
+**`video`**
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `enabled` | bool | `false` | |
+| `mode` | enum | `describe` | The only mode: a video-capable model (`video_url` parts) describes each video. |
+| `prompt` | string | built-in | |
+| `max_items` | int (≥0) | `1` | |
+| `max_bytes` | int (≥0) | 50 MiB | |
+| `max_duration_sec` | int (≥0) | `120` | Checked when Discord reports a duration. |
+| `transport` | enum | `base64` | `base64` (data URI) or `url` (provider fetches the CDN URL; slower on some gateways). |
+
+Example (one OpenAI-compatible gateway for chat, vision and video; a separate ASR service):
+
+```yaml
+core:
+  ai:
+    api_base_url: "https://gateway.example/v1"
+    api_key: "..."
+    model: "my-chat-model"
+    modalities:
+      image:
+        enabled: true
+        mode: describe
+        model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+      audio:
+        enabled: true
+        mode: asr
+        model: "IFM/Jais-ASR"
+        api_base_url: "https://api.ifm.ai/v1"
+        api_key: "..."
+      video:
+        enabled: true
+        model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+        max_tokens: 12000
+```
+
+#### `core.ai.vision` (deprecated)
+
+The pre-modalities block still loads and is mapped onto `core.ai.modalities.image` with a startup warning: `text_only` → image off, `hybrid` → `describe`, `multimodal` → `direct` (with `vision.model` answering turns that carry images, as before). `model`, `description_prompt` (→ `prompt`), `max_images` (→ `max_items`), `base64` (→ `transport`), and the endpoint fields carry over. When `core.ai.modalities` is present, `core.ai.vision` is ignored. Saving the config from the WebUI writes the new block.
 
 ### `core.decision`
 
@@ -239,7 +306,7 @@ The biggest subsection. Skim it in two passes — first the basics, then the mai
 | `retrieval.max_mentioned_memories` | int (≥0) | Memories that mention the sender (0 = use top_k). |
 | `retrieval.max_channel_memories` | int (≥0) | Memories scoped to current channel (0 = use top_k). |
 
-**`consolidation`** — same inheritance rules as the vision sub-config.
+**`consolidation`** — empty fields inherit from `core.ai`.
 
 | Field | Type | Required when | Notes |
 |-------|------|---------------|-------|
@@ -254,7 +321,7 @@ The biggest subsection. Skim it in two passes — first the basics, then the mai
 | `consolidation.extra_params` | map | optional | |
 | `consolidation.system_prompt` | string | enabled | The extraction prompt. Templates for each `other_bot_policy` value live in `examples/config.yaml.example` — start from one of those. |
 | `consolidation.memory_search_limit` | int (>0) | always | How many existing memories to load for dedup during consolidation. Validated even when consolidation is disabled. |
-| `consolidation.vision.*` | submap | optional | Mirrors `core.ai.vision.*`. Inherits anything left empty. Use this to route consolidation vision through a cheaper model. |
+| `consolidation.vision.*` | submap | optional | `model`, `api_base_url`, `api_key`, `max_tokens`, `temperature`, `retry_count`, `timeout`, `description_prompt`: overrides for describing images during consolidation. Anything left empty inherits from `core.ai.modalities.image` (then `core.ai`). Only used when the image modality is enabled. |
 
 **Maintenance**
 
@@ -479,9 +546,9 @@ core:
     api_base_url: "https://api.openai.com/v1"
     api_key: "sk-..."
     model: "gpt-4o-mini"
-    vision:
-      mode: "multimodal"
-      model: "gpt-4o"
+    modalities:
+      image: { enabled: true, mode: direct, model: "gpt-4o" }
+      audio: { enabled: true, mode: asr, model: "whisper-1" }
 ```
 
 **DeepSeek**
@@ -492,11 +559,9 @@ core:
     api_base_url: "https://api.deepseek.com/v1"
     api_key: "sk-..."
     model: "deepseek-chat"
-    vision:
-      mode: "text_only"
 ```
 
-DeepSeek doesn't currently ship a vision model on its OpenAI-compatible surface; pair it with `text_only` or wire `core.ai.vision` to a different provider.
+DeepSeek doesn't currently ship a vision model on its OpenAI-compatible surface; leave the modalities off or point `core.ai.modalities.image` (mode `describe`) at a different provider.
 
 **Qwen (Alibaba Cloud)**
 
@@ -506,9 +571,8 @@ core:
     api_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
     api_key: "sk-..."
     model: "qwen-plus"
-    vision:
-      mode: "multimodal"
-      model: "qwen-vl-plus"
+    modalities:
+      image: { enabled: true, mode: describe, model: "qwen-vl-plus" }
 ```
 
 **Azure OpenAI**
@@ -529,12 +593,9 @@ core:
     api_base_url: "http://localhost:1234/v1"
     api_key: "not-needed"
     model: "local-model"
-    vision:
-      mode: "text_only"
-      base64: false
 ```
 
-Set `vision.base64: false` when the local endpoint can't fetch URLs from outside its network.
+If you enable a modality against a local endpoint, keep `transport: base64` (the default): a local server usually cannot fetch Discord CDN URLs itself.
 
 ---
 

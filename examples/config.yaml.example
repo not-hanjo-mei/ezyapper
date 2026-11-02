@@ -88,37 +88,60 @@ core:
     # Main text model.
     model: "gpt-4o-mini"
 
-    # ── Vision processing ──
-    vision:
-      # Model used for multimodal/hybrid vision path.
-      # Required when vision.mode is not text_only.
-      model: "gpt-4o"
+    # ── Modalities (optional) ──
+    # Text is always on: the model above reasons and writes every reply.
+    # Image, audio and video are optional, each with its own switch and model.
+    # Endpoint fields left empty (api_base_url, api_key, timeout, max_tokens,
+    # temperature, retry_count, extra_params) fall back to the core.ai values.
+    # "describe"/"asr" modes turn media into text lines on the message in the
+    # user prompt ("[Image 1: ...]", "[Audio 1 transcript (...): ...]",
+    # "[Video 1 (...): ...]"), cached by attachment ID. "direct" mode sends
+    # the media itself in the reply request (the base model, or the
+    # modality's model when set, must accept it).
+    # The old core.ai.vision block still loads (text_only=off,
+    # hybrid=describe, multimodal=direct) but is deprecated.
+    modalities:
+      image:
+        enabled: false
+        # describe: a vision model writes a description for the base model.
+        # direct:   images are sent in the reply request.
+        mode: "describe"
+        model: "gpt-4o"            # required for describe
+        # prompt: "Describe this image in 1-2 sentences. Be compact but informative. Transcribe any visible text."
+        max_items: 4               # images per message
+        transport: "base64"        # base64 (inline data URI) or url (provider fetches the CDN URL)
+        ## api_base_url: ""
+        ## api_key: ""
+        ## max_tokens: 1024
+        ## timeout: 30
 
-      # Whether to fetch images and send them as base64 payloads.
-      # Set false to send images as URLs (may not work with local endpoints).
-      base64: true
+      audio:
+        enabled: false
+        # asr:    transcribe speech with an OpenAI-compatible
+        #         /audio/transcriptions endpoint (e.g. Whisper).
+        # direct: send the audio (audio_url data URI) to an audio-capable
+        #         model in the reply request.
+        mode: "asr"
+        model: "whisper-1"         # required for asr
+        ## api_base_url: "https://api.openai.com/v1"
+        ## api_key: ""
+        ## language: "en"          # optional ISO-639-1 hint (asr)
+        ## prompt: ""              # optional vocabulary hint (asr)
+        max_items: 2
+        max_bytes: 26214400        # 25 MiB
+        max_duration_sec: 600      # checked when Discord reports a duration (voice messages)
 
-      # Max images to process per message.
-      max_images: 4
-
-      # text_only: ignore images
-      # hybrid: describe image -> send text to main model
-      # multimodal: send images directly to model
-      mode: "text_only"
-
-      # Prompt used to describe images in "hybrid" mode.
-      # Required when mode is "hybrid".
-      # description_prompt: "Describe this image in 1-2 sentences. Be compact but informative."
-
-      # ── Optional: separate vision endpoint ──
-      # Leave empty to inherit from ai.api_base_url / ai.api_key above.
-      ## api_base_url: "https://api.openai.com/v1"
-      ## api_key: "YOUR_API_KEY"
-      ## max_tokens: 1024
-      ## temperature: 0.8
-      ## retry_count: 3
-      ## timeout: 30
-      ## extra_params: {}
+      video:
+        enabled: false
+        mode: "describe"           # the only video mode
+        model: "gpt-4o"            # required; must accept video_url parts
+        # Reasoning models need room: with too few tokens they return no content.
+        ## max_tokens: 12000
+        ## prompt: "Describe this video in 2-4 sentences: ..."
+        max_items: 1
+        max_bytes: 52428800        # 50 MiB
+        max_duration_sec: 120
+        transport: "base64"
 
     # ── Response tuning ──
     # Token limit for main chat completion responses.
@@ -303,12 +326,12 @@ memory_pipeline:
       ## retry_count: 5
       ## timeout: 30
 
-      # ── Optional: separate vision settings for consolidation ──
-      # All fields below inherit from core.ai.vision when left empty.
+      # ── Optional: separate image-description model for consolidation ──
+      # Used only when core.ai.modalities.image is enabled; fields left
+      # empty inherit from core.ai.modalities.image (then core.ai).
       ## vision:
       ##   model: "gpt-4o"
-      ##   base64: true
-      ##   max_images: 4
+      ##   description_prompt: ""
       ##   api_base_url: ""    # optional, inherits from core.ai if empty
       ##   api_key: ""         # optional, inherits from core.ai if empty
       ##   max_tokens: 1024

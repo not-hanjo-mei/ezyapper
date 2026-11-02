@@ -15,13 +15,13 @@
 
 ## Multimodal Support
 
-- [ ] Remove legacy VisionMode (text_only/hybrid/multimodal).
-- [ ] Refactor to per-modality model config with individual on/off switches:
+- [x] Remove legacy VisionMode (text_only/hybrid/multimodal). (`core.ai.vision` still loads, mapped onto `core.ai.modalities.image`.)
+- [x] Refactor to per-modality model config with individual on/off switches (`core.ai.modalities`):
   - `text`: always enabled, base model for reasoning/response
   - `image`: optional, describes images via dedicated model
   - `audio`: optional, transcribes audio via dedicated model
   - `video`: optional, describes video via dedicated model
-- [ ] Add audio modality support (2 modes):
+- [x] Add audio modality support (2 modes):
   - `asr`: transcribe via ASR API (e.g., OpenAI Whisper), feed text to base model
-  - `modality`: send audio directly to multimodal LLM
-- [ ] Add video modality support.
+  - `direct`: send audio directly to multimodal LLM
+- [x] Add video modality support.

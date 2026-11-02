@@ -12,14 +12,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"ezyapper/internal/ai"
 	"ezyapper/internal/ai/decision"
 	"ezyapper/internal/ai/mcp"
 	"ezyapper/internal/ai/tools"
-	"ezyapper/internal/ai/vision"
 	"ezyapper/internal/config"
 	"ezyapper/internal/filter"
 	"ezyapper/internal/logger"
+	"ezyapper/internal/media"
 	"ezyapper/internal/memory"
 	"ezyapper/internal/plugin"
 	"ezyapper/internal/ratelimit"
@@ -108,24 +107,27 @@ type consolidationManager interface {
 }
 
 type Bot struct {
-	session         *discordgo.Session
-	ctx             context.Context
-	cancel          context.CancelFunc
-	configStore     *atomic.Value // stores *config.Config
-	memoryStore     memory.MemoryStore
-	profileStore    memory.ProfileStore
-	consolidation   consolidationManager
-	discordClient   *memory.ShortTermClient
-	toolRegistry    *tools.ToolRegistry
-	pluginManager   *plugin.Manager
-	mcpManager      *mcp.MCPManager
-	decider         decision.Decider
-	rateLimiter     *ratelimit.Limiter
+	session       *discordgo.Session
+	ctx           context.Context
+	cancel        context.CancelFunc
+	configStore   *atomic.Value // stores *config.Config
+	memoryStore   memory.MemoryStore
+	profileStore  memory.ProfileStore
+	consolidation consolidationManager
+	discordClient *memory.ShortTermClient
+	toolRegistry  *tools.ToolRegistry
+	pluginManager *plugin.Manager
+	mcpManager    *mcp.MCPManager
+	decider       decision.Decider
+	rateLimiter   *ratelimit.Limiter
 	// cutoffs hides channel history older than a /clear-context call.
 	cutoffs contextCutoffs
 	// contextWindow keeps the anchored history window per channel.
-	contextWindow   *contextWindow
-	visionDescriber *vision.VisionDescriber
+	contextWindow *contextWindow
+	// media handles the image/audio/video modalities of the current config;
+	// rebuilt by ApplyRuntimeConfig. mediaCache outlives rebuilds.
+	media           *media.Processor
+	mediaCache      *media.Cache
 	pluginToolNames map[string]struct{}
 
 	mu               sync.RWMutex
@@ -221,7 +223,7 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 		mcpManager:               mcpManager,
 		decider:                  decider,
 		rateLimiter:              limiter,
-		visionDescriber:          nil,
+		mediaCache:               media.NewCache(time.Duration(cfg.Discord.ImageCacheTTLMin)*time.Minute, cfg.Discord.ImageCacheMaxEntries),
 		pluginToolNames:          make(map[string]struct{}),
 		channelMessageBuffer:     make(map[string][]*types.DiscordMessage),
 		channelConsolidating:     make(map[string]bool),
@@ -530,34 +532,36 @@ func (b *Bot) ApplyRuntimeConfig() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if b.cfg().AI.Vision.Mode != config.VisionModeHybrid {
-		b.visionDescriber = nil
+	cfg := b.cfg()
+	b.mediaCache.SetLimits(time.Duration(cfg.Discord.ImageCacheTTLMin)*time.Minute, cfg.Discord.ImageCacheMaxEntries)
+	if !cfg.AI.Modalities.AnyEnabled() {
+		b.media = nil
 		return nil
 	}
-
-	visionAIConfig := b.cfg().AI
-	if b.cfg().AI.Vision.APIBaseURL != "" {
-		visionAIConfig.APIBaseURL = b.cfg().AI.Vision.APIBaseURL
-	}
-	if b.cfg().AI.Vision.APIKey != "" {
-		visionAIConfig.APIKey = b.cfg().AI.Vision.APIKey
-	}
-	if b.cfg().AI.Vision.RetryCount > 0 {
-		visionAIConfig.RetryCount = b.cfg().AI.Vision.RetryCount
-	}
-	if b.cfg().AI.Vision.Timeout > 0 {
-		visionAIConfig.Timeout = b.cfg().AI.Vision.Timeout
-	}
-
-	clientWrapper := ai.NewClient(&visionAIConfig, b.toolRegistry)
-	b.visionDescriber = vision.NewVisionDescriber(clientWrapper, &b.cfg().AI.Vision, &visionAIConfig)
+	b.media = media.New(cfg, b.toolRegistry, b.mediaCache)
 	return nil
 }
 
-func (b *Bot) getVisionDescriber() *vision.VisionDescriber {
+// mediaProcessor returns the modality processor, or nil when no modality
+// besides text is enabled.
+func (b *Bot) mediaProcessor() *media.Processor {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	return b.visionDescriber
+	return b.media
+}
+
+// imageDescriber returns the image describer, or nil when images are not
+// described (image modality off).
+func (b *Bot) imageDescriber() imageDescriber {
+	if d := b.mediaProcessor().ImageDescriber(); d != nil {
+		return d
+	}
+	return nil
+}
+
+// imageDescriber describes images (implemented by media.Processor).
+type imageDescriber interface {
+	DescribeImages(ctx context.Context, imageURLs []string) ([]string, error)
 }
 
 // RefreshPluginTools reloads plugin tool registrations into the AI tool registry.
@@ -711,7 +715,10 @@ func (b *Bot) shouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 		decisionCtx, cancel := context.WithTimeout(ctx, totalTimeout)
 		defer cancel()
 
-		imageCount := len(extractImageURLs(m.Message, b.cfg().AI.Vision.MaxImages))
+		imageCount := 0
+		if img := b.cfg().AI.Modalities.Image; img.Enabled {
+			imageCount = len(extractImageURLs(m.Message, img.MaxItems))
+		}
 		decisionMessages := b.getRecentMessagesForDecision(m.ID, recentMessages)
 
 		msgInfo := decision.MessageInfo{
@@ -785,6 +792,7 @@ func (b *Bot) CleanupCache() {
 	b.historicalImageDescCacheMu.Lock()
 	b.pruneHistoricalImageDescCacheLocked()
 	b.historicalImageDescCacheMu.Unlock()
+	b.mediaCache.Prune()
 }
 
 // registerProcessingMessage registers a new message being processed

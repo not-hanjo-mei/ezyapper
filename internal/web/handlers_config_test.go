@@ -275,13 +275,13 @@ func TestConfigHandler_POST_InvalidReplyPercentage(t *testing.T) {
 	}
 }
 
-func TestConfigHandler_POST_InvalidVisionMode(t *testing.T) {
+func TestConfigHandler_POST_InvalidImageMode(t *testing.T) {
 	store := newConfigStore(t)
 	tmpl := testConfigTemplate()
 	handler := ConfigHandler(store, tmpl, nil)
 
 	form := url.Values{
-		"vision_mode": {"invalid_mode"},
+		"image_mode": {"invalid_mode"},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/config", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -295,8 +295,8 @@ func TestConfigHandler_POST_InvalidVisionMode(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "vision.mode") {
-		t.Error("expected error message to mention vision.mode")
+	if !strings.Contains(body, "image.mode") {
+		t.Error("expected error message to mention image.mode")
 	}
 }
 

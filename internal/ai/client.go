@@ -57,6 +57,9 @@ type ChatCompletionRequest struct {
 	Messages     []openai.ChatCompletionMessage
 	Tools        []openai.Tool
 	UserContext  string // Dynamic context appended to user message (for prompt caching)
+	// MediaParts are attached to the user message (images, audio, video in
+	// direct mode). See spliceMediaParts.
+	MediaParts []MediaPart
 }
 
 // ChatCompletionResponse represents a chat completion response
@@ -68,9 +71,10 @@ type ChatCompletionResponse struct {
 	Usage            openai.Usage
 }
 
-// processMessages converts image URLs to base64 if VisionBase64 is enabled
+// processMessages converts image_url parts to base64 data URIs when the
+// image transport is base64.
 func (c *Client) processMessages(ctx context.Context, messages []openai.ChatCompletionMessage) ([]openai.ChatCompletionMessage, error) {
-	if !c.config.Vision.Base64 {
+	if c.config.Modalities.Image.Transport != config.TransportBase64 {
 		return messages, nil
 	}
 
@@ -105,22 +109,6 @@ func (c *Client) processMessages(ctx context.Context, messages []openai.ChatComp
 	}
 
 	return processed, nil
-}
-
-// visionMaxTokens returns the vision-specific MaxTokens, falling back to AI config.
-func (c *Client) visionMaxTokens() int {
-	if c.config.Vision.MaxTokens > 0 {
-		return c.config.Vision.MaxTokens
-	}
-	return c.config.MaxTokens
-}
-
-// visionTemperature returns the vision-specific temperature, falling back to AI config.
-func (c *Client) visionTemperature() float32 {
-	if c.config.Vision.Temperature > 0 {
-		return c.config.Vision.Temperature
-	}
-	return c.config.Temperature
 }
 
 func (c *Client) closeIdleConnections() {
@@ -185,38 +173,6 @@ func (c *Client) createEmbeddingWithRetry(ctx context.Context, req openai.Embedd
 		retry.WithMaxDelay(30*time.Second),
 		retry.WithErrorClassifier(IsRetryableError),
 	)
-}
-
-func (c *Client) buildVisionParts(ctx context.Context, textPrompt string, imageURLs []string) ([]openai.ChatMessagePart, error) {
-	parts := make([]openai.ChatMessagePart, 0, len(imageURLs)+1)
-
-	if textPrompt != "" {
-		parts = append(parts, openai.ChatMessagePart{
-			Type: openai.ChatMessagePartTypeText,
-			Text: textPrompt,
-		})
-	}
-
-	for _, url := range imageURLs {
-		finalURL := url
-		if !strings.HasPrefix(url, "data:image") && c.config.Vision.Base64 {
-			base64Data, err := c.downloadImageToBase64(ctx, url)
-			if err != nil {
-				return nil, fmt.Errorf("failed to convert image to base64: %w", err)
-			}
-			finalURL = base64Data
-		}
-
-		parts = append(parts, openai.ChatMessagePart{
-			Type: openai.ChatMessagePartTypeImageURL,
-			ImageURL: &openai.ChatMessageImageURL{
-				URL:    finalURL,
-				Detail: openai.ImageURLDetailAuto,
-			},
-		})
-	}
-
-	return parts, nil
 }
 
 func (c *Client) buildChatRequest(ctx context.Context, req ChatCompletionRequest) (openai.ChatCompletionRequest, error) {
@@ -290,7 +246,12 @@ func (c *Client) CreateChatCompletion(ctx context.Context, req ChatCompletionReq
 	logger.Debugf("  System prompt length: %d", len(req.SystemPrompt))
 	logger.Debugf("  Tools: %d", len(chatReq.Tools))
 
-	resp, err := c.CreateChatCompletionWithRetry(ctx, chatReq, "llm completion")
+	var resp openai.ChatCompletionResponse
+	if len(req.MediaParts) > 0 {
+		resp, err = c.createChatCompletionWithMediaRetry(ctx, chatReq, req.MediaParts, "llm completion")
+	} else {
+		resp, err = c.CreateChatCompletionWithRetry(ctx, chatReq, "llm completion")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +263,12 @@ func (c *Client) createChatCompletionOnce(ctx context.Context, req ChatCompletio
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.CreateChatCompletionOnce(ctx, chatReq, "llm completion")
+	var resp openai.ChatCompletionResponse
+	if len(req.MediaParts) > 0 {
+		resp, err = c.createChatCompletionWithMediaOnce(ctx, chatReq, req.MediaParts, "llm completion")
+	} else {
+		resp, err = c.CreateChatCompletionOnce(ctx, chatReq, "llm completion")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -558,45 +524,6 @@ func isPrivateIP(ip net.IP) bool {
 		ip.IsPrivate()
 }
 
-// CreateVisionCompletion creates a vision completion for image analysis
-func (c *Client) CreateVisionCompletion(ctx context.Context, systemPrompt, textPrompt string, imageURLs []string) (string, error) {
-	parts, err := c.buildVisionParts(ctx, textPrompt, imageURLs)
-	if err != nil {
-		return "", err
-	}
-
-	// Build messages
-	messages := []openai.ChatCompletionMessage{
-		{
-			Role:    openai.ChatMessageRoleSystem,
-			Content: systemPrompt,
-		},
-		{
-			Role:         openai.ChatMessageRoleUser,
-			MultiContent: parts,
-		},
-	}
-
-	// Make API call with vision model and retry logic
-	visionReq := openai.ChatCompletionRequest{
-		Model:       c.config.Vision.Model,
-		Messages:    messages,
-		MaxTokens:   c.visionMaxTokens(),
-		Temperature: c.visionTemperature(),
-	}
-
-	resp, err := c.CreateChatCompletionWithRetry(ctx, visionReq, "vision completion")
-	if err != nil {
-		return "", err
-	}
-
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("no response choices returned")
-	}
-
-	return resp.Choices[0].Message.Content, nil
-}
-
 type toolLoopResponse struct {
 	content          string
 	reasoningContent string
@@ -769,73 +696,6 @@ func (c *Client) CreateChatCompletionWithTools(ctx context.Context, req ChatComp
 	}
 
 	return c.executeToolLoop(ctx, req.Messages, request, toolHandler, "tool")
-}
-
-// CreateVisionCompletionWithTools creates a chat completion with vision and tool support (multimodal mode)
-func (c *Client) CreateVisionCompletionWithTools(ctx context.Context, systemPrompt, userContext, textPrompt string, imageURLs []string, history []openai.ChatCompletionMessage, toolHandler ToolHandler) (*ChatCompletionResponse, error) {
-	// Get available tools
-	tools := c.toolRegistry.GetTools()
-
-	// Build text content with UserContext prepended
-	var textContent strings.Builder
-	if userContext != "" {
-		textContent.WriteString(userContext)
-		textContent.WriteString("\n\n")
-	}
-	if textPrompt != "" {
-		textContent.WriteString(textPrompt)
-	}
-
-	parts, err := c.buildVisionParts(ctx, textContent.String(), imageURLs)
-	if err != nil {
-		return nil, err
-	}
-
-	processedHistory, err := c.processMessages(ctx, history)
-	if err != nil {
-		return nil, fmt.Errorf("failed to process history messages: %w", err)
-	}
-
-	messages := make([]openai.ChatCompletionMessage, 0, len(processedHistory)+2)
-	messages = append(messages, openai.ChatCompletionMessage{
-		Role:    openai.ChatMessageRoleSystem,
-		Content: systemPrompt,
-	})
-	messages = append(messages, processedHistory...)
-	messages = append(messages, openai.ChatCompletionMessage{
-		Role:         openai.ChatMessageRoleUser,
-		MultiContent: parts,
-	})
-
-	chatReq := openai.ChatCompletionRequest{
-		Model:       c.config.Vision.Model,
-		Messages:    messages,
-		MaxTokens:   c.visionMaxTokens(),
-		Temperature: c.visionTemperature(),
-		Tools:       tools,
-	}
-
-	request := func(ctx context.Context, msgs []openai.ChatCompletionMessage) (*toolLoopResponse, error) {
-		reqCopy := chatReq
-		reqCopy.Messages = msgs
-		reqCopy.Tools = tools
-		next, err := c.CreateChatCompletionOnce(ctx, reqCopy, "vision+tools")
-		if err != nil {
-			return nil, fmt.Errorf("tool iteration failed: %w", err)
-		}
-		if len(next.Choices) == 0 {
-			return nil, fmt.Errorf("no response choices returned after tool call")
-		}
-		return &toolLoopResponse{
-			content:          next.Choices[0].Message.Content,
-			reasoningContent: next.Choices[0].Message.ReasoningContent,
-			toolCalls:        next.Choices[0].Message.ToolCalls,
-			finishReason:     string(next.Choices[0].FinishReason),
-			usage:            next.Usage,
-		}, nil
-	}
-
-	return c.executeToolLoop(ctx, messages, request, toolHandler, "vision tool")
 }
 
 // ToolHandler is a function that handles tool calls

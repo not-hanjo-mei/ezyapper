@@ -81,7 +81,6 @@ func TestHandleTextOnlyMode_NoContext(t *testing.T) {
 			LLMConfig: config.LLMConfig{
 				Model: "gpt-4",
 			},
-			Vision: config.VisionConfig{Mode: config.VisionModeTextOnly},
 		},
 		Discord: config.DiscordConfig{
 			OtherBotPolicy:  config.OtherBotIgnore,
@@ -116,55 +115,12 @@ func TestHandleTextOnlyMode_NoContext(t *testing.T) {
 	_ = req
 }
 
-func TestGenerateResponse_UnknownVisionMode(t *testing.T) {
-	cfg := &config.Config{
-		AI: config.AIConfig{
-			LLMConfig: config.LLMConfig{
-				Model: "gpt-4",
-			},
-			Vision: config.VisionConfig{Mode: "invalid_mode"},
-		},
-		Discord: config.DiscordConfig{
-			OtherBotPolicy:  config.OtherBotIgnore,
-			Token:           "token",
-			BotName:         "Bot",
-			ReplyPercentage: 0.1,
-			CooldownSeconds: 5,
-		},
-		Embedding: config.EmbeddingConfig{
-			Model:  "embed",
-			APIKey: "key",
-		},
-		Qdrant: config.QdrantConfig{Host: "localhost", Port: 6334},
-	}
-	cfgStore := &atomic.Value{}
-	cfgStore.Store(cfg)
-
-	b := &Bot{configStore: cfgStore}
-
-	mc := ModeContext{
-		UserContent: "test",
-		Username:    "Alice",
-		UserID:      "123",
-	}
-	gc := GenerateContext{}
-
-	_, err := b.generateResponse(context.Background(), mc, gc, nil, nil, &memory.Profile{})
-	if err == nil {
-		t.Fatal("expected error for unknown vision mode")
-	}
-	if !strings.Contains(err.Error(), "unknown vision mode") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
 func TestGenerateResponse_ContextCancelled(t *testing.T) {
 	cfg := &config.Config{
 		AI: config.AIConfig{
 			LLMConfig: config.LLMConfig{
 				Model: "gpt-4",
 			},
-			Vision: config.VisionConfig{Mode: config.VisionModeTextOnly},
 		},
 		Discord: config.DiscordConfig{
 			OtherBotPolicy:  config.OtherBotIgnore,
@@ -251,7 +207,6 @@ func TestLongResponseChunking_Basic(t *testing.T) {
 			LLMConfig: config.LLMConfig{
 				Model: "gpt-4",
 			},
-			Vision: config.VisionConfig{Mode: config.VisionModeTextOnly},
 		},
 		Embedding: config.EmbeddingConfig{
 			Model:  "embed",
@@ -376,7 +331,6 @@ func TestRunBeforeSendPluginHooks_NilManager(t *testing.T) {
 			LLMConfig: config.LLMConfig{
 				Model: "gpt-4",
 			},
-			Vision: config.VisionConfig{Mode: config.VisionModeTextOnly},
 		},
 		Embedding: config.EmbeddingConfig{
 			Model:  "embed",

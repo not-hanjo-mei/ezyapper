@@ -1,236 +1,49 @@
-# Vision Modes
+# Media Modalities (images, audio, video)
 
-EZyapper supports three different vision modes to balance cost, speed, and functionality. Configure via `core.ai.vision.mode` in `config.yaml`.
+Text is always handled by the base model (`core.ai`). Images, audio and video are optional modalities configured under `core.ai.modalities`, each with its own on/off switch and its own model. Field reference: [CONFIGURATION.md](CONFIGURATION.md#coreaimodalities-optional).
 
-## Overview
+## Modes
 
-| Mode | Images | Tools | API Calls | Cost | Use Case |
-|------|--------|-------|-----------|------|----------|
-| `text_only` | Ignored | Yes | 1 | Lowest | Budget, speed |
-| `hybrid` | Described | Yes | 2 | Medium | Tool-heavy workflows |
-| `multimodal` | Direct | Yes | 1 | Higher | Visual reasoning |
+| Modality | Mode | What happens | Extra model calls |
+|----------|------|--------------|-------------------|
+| image | `describe` | A vision model describes each image; `[Image N: ...]` is added to the message. | 1 per image (cached) |
+| image | `direct` | Images are sent as `image_url` parts in the reply request. | none |
+| audio | `asr` | Speech is transcribed by an `/audio/transcriptions` endpoint; `[Audio N transcript (...): ...]` is added. | 1 per audio (cached) |
+| audio | `direct` | Audio is sent as an `audio_url` data URI part in the reply request (ogg/opus voice messages work as is). | none |
+| video | `describe` | A video-capable model describes each video (`video_url` part); `[Video N (...): ...]` is added. | 1 per video (cached) |
 
-## Mode Details
+Choosing:
 
-### Text-Only Mode
+- **describe / asr** keep the base model text-only and cheap, and the result is reused on later turns (cached by attachment ID, which survives Discord re-signing CDN URLs). The base model only sees a description, not the media.
+- **direct** lets the reply model see or hear the media itself, but the base model (or the modality's `model`, which then writes the reply and runs tools) must accept that input, and every reply that carries media pays for it. Direct media is only sent with the message being answered; history shows a placeholder.
 
-**Configuration:**
-```yaml
-core:
-  ai:
-    vision:
-      mode: "text_only"
+## Prompt layout
+
+Everything media-related goes into the user prompt; the system prompt is byte-identical on every request. A current message with a voice message in `asr` mode looks like:
+
+```
+<currentMessage>
+[Mon 2026-11-02 9:20 AM (UTC+08:00)] [User] Alice: "what do you think?
+[Audio 1 transcript (voice message, 4s): should we meet at noon]"
+</currentMessage>
 ```
 
-**Behavior:**
-- Completely ignores all images
-- No API calls to vision model
-- Fastest response time
-- Lowest cost
-- Images from short-term context are URL text only
+## History enrichment
 
-**When to Use:**
-- Budget constraints
-- Speed is priority
-- Visual content is not important
+History messages reuse cached descriptions/transcripts. A model call for a history message happens only for the most recent message of that kind, and only when the user replied to it or mentions it ("image", "photo", "voice", "audio", "video", "clip", ...). This keeps a busy channel from re-describing media on every reply.
 
-**Data Flow:**
-```
-Discord Message with Image -> Skip Image Extraction -> Text Model + Tools -> Response
-```
+## Limits
 
-### Hybrid Mode
+`max_items` caps media per message; `max_bytes` and `max_duration_sec` skip oversized audio/video (the duration is known for Discord voice messages). Images use `core.ai.max_image_bytes`. Skipped media still shows a placeholder line so the model knows it was there.
 
-**Configuration:**
-```yaml
-core:
-  ai:
-    vision:
-      mode: "hybrid"
-      description_prompt: "Describe this image in 1-2 sentences."
-      max_images: 4
-```
+## Migrating from `core.ai.vision`
 
-**Behavior:**
-- Uses vision model to describe images
-- Inserts descriptions into text model's context
-- Two API calls (vision + main)
-- Text model can use all tools (Discord/MCP)
+The old block still loads, with a warning, and is mapped onto `core.ai.modalities.image`:
 
-**When to Use:**
-- Need tool support with image understanding
-- Budget is a concern (use cheaper text model for main AI)
-- Want to preserve image context for tool execution
+| Old `vision.mode` | New |
+|-------------------|-----|
+| `text_only` | `image.enabled: false` |
+| `hybrid` | `image.enabled: true`, `mode: describe` |
+| `multimodal` | `image.enabled: true`, `mode: direct` (`vision.model` still answers turns with images) |
 
-**Data Flow:**
-```
-Discord Message with Image
-  -> Vision Model (gpt-4o)
-  -> Image Description ("A photo of a black cat")
-  -> Text Model (gpt-4o-mini) + Tools
-  -> Response with tool execution
-```
-
-**Example Response:**
-```
-User: [Image attachment] Look at this and tell me about it
-Bot: I see that's a photo of a black cat sitting on a couch. 
-    Based on the channel activity, you shared it earlier today.
-    [Uses get_recent_messages tool to verify]
-```
-
-### Multimodal Mode
-
-**Configuration:**
-```yaml
-core:
-  ai:
-    vision:
-      mode: "multimodal"
-      max_images: 4
-```
-
-**Behavior:**
-- Single model handles both vision and tools
-- Direct image input (no description intermediate)
-- One API call
-- Tools can operate with visual context
-
-**When to Use:**
-- Visual reasoning requires tool execution
-- Visual complexity is high
-- Budget allows expensive multimodal model
-
-**Data Flow:**
-```
-Discord Message with Image
-  -> Multimodal Model (gpt-4o) with Tools
-  -> Response (can execute tools with image understanding)
-```
-
-**Example Response:**
-```
-User: [Image of code] What's wrong with this?
-Bot: The issue is missing a closing brace on line 42. 
-    I can see the function starts at line 35 and the loop ends at line 40, 
-    but there's no closing brace for the function itself. 
-    The syntax error will prevent the code from compiling.
-```
-
-## Configuration Options
-
-### Required Fields
-
-| Option | Description |
-|--------|-------------|
-| `core.ai.vision.mode` | Vision mode to use (required: text_only, hybrid, or multimodal) |
-| `core.ai.vision.max_images` | Maximum images per message (required, must be > 0) |
-| `core.ai.vision.description_prompt` | Prompt for hybrid mode (required only when mode is "hybrid") |
-
-### Environment Variables
-
-| Variable | Config Path |
-|----------|-------------|
-| `EZYAPPER_CORE_AI_VISION_MODEL` | `core.ai.vision.model` |
-| `EZYAPPER_CORE_AI_VISION_MODE` | `core.ai.vision.mode` (e.g. `text_only`) |
-| `EZYAPPER_CORE_AI_VISION_MAX_IMAGES` | `core.ai.vision.max_images` |
-| `EZYAPPER_CORE_AI_VISION_DESCRIPTION_PROMPT` | `core.ai.vision.description_prompt` |
-
-## Decision System Integration
-
-The decision service (if enabled) is **image-aware** and considers images when deciding whether to respond.
-
-**Decision Prompt Includes:**
-- Number of images attached to message
-- Context: Visual content with N image(s) attached
-
-**Decision Rules Enhanced:**
-- Respond when user shares relevant image
-- Respond when image requires analysis or comment
-- See: `internal/ai/decision/decision.go`
-
-## Memory System Integration
-
-**Current Behavior:**
-- Images are **automatically described** during memory consolidation
-- Vision model generates text descriptions of all images
-- Descriptions are included in the conversation analysis
-- Memories extracted will reference image content (e.g., "User showed their pet cat")
-- Only text descriptions stored - actual image URLs are not preserved
-
-**How It Works:**
-1. During consolidation, each message is processed
-2. If message contains images, vision model describes them
-3. Descriptions appended as: `[Image N: description]`
-4. LLM analyzes full context including image descriptions
-5. Extracted memories include visual context from images
-
-## Performance Comparison
-
-| Metric | text_only | hybrid | multimodal |
-|--------|-----------|-------|------------|
-| API Calls | 1 | 2 | 1 |
-| Latency | Low | Medium | Medium |
-| Cost per Image | $0 | vision | vision model |
-| Tool Support | Full | Full | Full |
-| Visual Fidelity | None | Low | High |
-
-## Best Practices
-
-### Choosing a Mode
-
-1. **Start with `multimodal`**
-   - Easiest to configure
-   - Best experience for visual understanding
-   - Tools work with images
-
-2. **Switch to `hybrid` for cost savings**
-   - Main text model can be cheaper (e.g., gpt-4o-mini vs gpt-4o)
-   - Still get tool support
-   - Accept slight latency increase
-
-3. **Use `text_only` for budget**
-   - Skip vision model entirely
-   - Fastest responses
-   - Best for CPU-only or cost-constrained environments
-
-### Model Recommendations
-
-| Mode | Vision Model | Main Model |
-|------|-------------|------------|
-| `text_only` | Any (not used) | Any text model |
-| `hybrid` | `gpt-4o` (vision) | `gpt-4o-mini` (chat+tools) |
-| `multimodal` | `gpt-4o` | `gpt-4o` (combined) |
-
-### Common Providers
-
-| Provider | Recommended for Mode | Reason |
-|----------|-------------------|--------|
-| OpenAI | All modes | Native support for both |
-| DeepSeek | `text_only`, `hybrid` | Cost-effective chat, no vision model |
-| Qwen | `text_only`, `hybrid` | Good Chinese AI, no vision model |
-| Azure OpenAI | `multimodal` | Enterprise multimodal support |
-| Local (Ollama) | `text_only` | CPU/GPU local LLMs |
-
-## Troubleshooting
-
-### Bot ignores images
-- Check `core.ai.vision.mode` is not set to `text_only`
-- Verify `core.ai.vision_model` is configured
-- Check logs for vision API errors
-
-### Slow responses with images
-- Try switching to `text_only` mode
-- Consider reducing `core.ai.vision.max_images`
-- Use faster vision model if available
-
-### Tools not seeing images
-- Hybrid mode: Tools only receive descriptions (not raw images)
-- Multimodal mode: Tools receive full visual context
-- Log vision model usage to confirm images are being sent
-
-### Consolidation misses image context
-- Long-term memories are text-only — images aren't stored as binary
-- During consolidation, images attached to messages are described by the vision model first; descriptions feed into memory extraction (so memories CAN reference image content via text)
-- For chat-time context, images live only in short-term Discord context (`short_term_limit`, default 20)
-- Bump `memory_pipeline.memory.short_term_limit` if image URLs disappear from context too quickly
+`description_prompt` → `prompt`, `max_images` → `max_items`, `base64` → `transport` (`base64`/`url`); endpoint fields carry over. If `core.ai.modalities` is present, `core.ai.vision` is ignored.

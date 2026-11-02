@@ -12,10 +12,10 @@ import (
 
 	"ezyapper/internal/ai"
 	"ezyapper/internal/ai/tools"
-	"ezyapper/internal/ai/vision"
 	"ezyapper/internal/bot"
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
+	"ezyapper/internal/media"
 	"ezyapper/internal/memory"
 	"ezyapper/internal/plugin"
 	"ezyapper/internal/web"
@@ -181,7 +181,6 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 			MaxTokens:   cfg.AI.MaxTokens,
 			Temperature: cfg.AI.Temperature,
 		},
-		Vision: cfg.AI.Vision,
 	}
 	if cfg.Memory.Consolidation.APIBaseURL != "" {
 		consolidationConfig.APIBaseURL = cfg.Memory.Consolidation.APIBaseURL
@@ -208,9 +207,12 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 	consolidationConfig.ExtraParams = cfg.Memory.Consolidation.ExtraParams
 	consolidationAIClient := ai.NewClient(consolidationConfig, tools.NewToolRegistry())
 
-	visionConfig, visionAIConfig := buildConsolidationVisionConfig(cfg, consolidationConfig)
-	visionClient := ai.NewClient(visionAIConfig, tools.NewToolRegistry())
-	visionDescriber := vision.NewVisionDescriber(visionClient, visionConfig, visionAIConfig)
+	// Images in consolidated messages are described by the image modality,
+	// optionally routed to another model by consolidation.vision.
+	var imageDescriber memory.ImageDescriber
+	if d := media.New(buildConsolidationVisionConfig(cfg), nil, nil).ImageDescriber(); d != nil {
+		imageDescriber = d
+	}
 
 	embedder, err := memory.NewAIEmbedder(embedderClient, cfg.Embedding.Model)
 	if err != nil {
@@ -261,7 +263,7 @@ func initMemoryService(cfg *config.Config) (memory.Service, error) {
 		},
 	}
 
-	return memory.NewService(memoryCfg, &cfg.Qdrant, qdrantClient, embedder, consolidationAIClient, visionDescriber)
+	return memory.NewService(memoryCfg, &cfg.Qdrant, qdrantClient, embedder, consolidationAIClient, imageDescriber)
 }
 
 func buildEmbeddingAIConfig(cfg *config.Config) *config.AIConfig {
@@ -300,37 +302,34 @@ func runCleanupRoutine(ctx context.Context, cfg *config.Config, discordBot *bot.
 	}
 }
 
-func buildConsolidationVisionConfig(cfg *config.Config, baseConfig *config.AIConfig) (*config.VisionConfig, *config.AIConfig) {
-	visionConfig := cfg.AI.Vision
-	visionAIConfig := *baseConfig
-
-	if cfg.Memory.Consolidation.Vision.Model != "" {
-		visionAIConfig.Vision.Model = cfg.Memory.Consolidation.Vision.Model
+func buildConsolidationVisionConfig(cfg *config.Config) *config.Config {
+	out := *cfg
+	img := cfg.AI.Modalities.Image
+	o := cfg.Memory.Consolidation.Vision
+	if o.Model != "" {
+		img.Model = o.Model
 	}
-	if cfg.Memory.Consolidation.Vision.APIBaseURL != "" {
-		visionAIConfig.APIBaseURL = cfg.Memory.Consolidation.Vision.APIBaseURL
+	if o.APIBaseURL != "" {
+		img.APIBaseURL = o.APIBaseURL
 	}
-	if cfg.Memory.Consolidation.Vision.APIKey != "" {
-		visionAIConfig.APIKey = cfg.Memory.Consolidation.Vision.APIKey
+	if o.APIKey != "" {
+		img.APIKey = o.APIKey
 	}
-	if cfg.Memory.Consolidation.Vision.MaxTokens > 0 {
-		visionAIConfig.MaxTokens = cfg.Memory.Consolidation.Vision.MaxTokens
+	if o.MaxTokens > 0 {
+		img.MaxTokens = o.MaxTokens
 	}
-	if cfg.Memory.Consolidation.Vision.Temperature > 0 {
-		visionAIConfig.Temperature = cfg.Memory.Consolidation.Vision.Temperature
+	if o.Temperature > 0 {
+		img.Temperature = o.Temperature
 	}
-	if cfg.Memory.Consolidation.Vision.RetryCount > 0 {
-		visionAIConfig.RetryCount = cfg.Memory.Consolidation.Vision.RetryCount
+	if o.RetryCount > 0 {
+		img.RetryCount = o.RetryCount
 	}
-	if cfg.Memory.Consolidation.Vision.Timeout > 0 {
-		visionAIConfig.Timeout = cfg.Memory.Consolidation.Vision.Timeout
+	if o.Timeout > 0 {
+		img.Timeout = o.Timeout
 	}
-
-	// VisionBase64 is a boolean override that is always applied (not zero-dependent)
-	visionAIConfig.Vision.Base64 = cfg.Memory.Consolidation.Vision.Base64
-
-	// Copy extra params from consolidation vision config (if any specific ones are set)
-	// Note: VisionConfig.ExtraParams is applied in VisionDescriber, not here
-
-	return &visionConfig, &visionAIConfig
+	if o.DescriptionPrompt != "" {
+		img.Prompt = o.DescriptionPrompt
+	}
+	out.AI.Modalities.Image = img
+	return &out
 }
