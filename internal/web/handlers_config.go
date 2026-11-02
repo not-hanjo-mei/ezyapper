@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -11,7 +12,10 @@ import (
 	"ezyapper/internal/config"
 )
 
-func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier RuntimeConfigApplier) http.HandlerFunc {
+// ConfigHandler renders and saves the settings page. With an applier the new
+// config is applied through it (hot reload: prepare, commit or roll back)
+// before it is written to disk; without one it is only stored.
+func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, applier ConfigApplier) http.HandlerFunc {
 	var configMu sync.Mutex
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -55,21 +59,8 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 				return
 			}
 
-			// Store new config first so ApplyRuntimeConfig reads the updated values
-			cfgStore.Store(&newCfg)
-
-			if runtimeApplier != nil {
-				if err := runtimeApplier.ApplyRuntimeConfig(); err != nil {
-					// Revert to old config on runtime apply failure
-					cfgStore.Store(oldCfg)
-					renderConfigError(w, r, ts, cfgStore, "Failed to apply runtime config: "+err.Error())
-					return
-				}
-			}
-
-			if err := newCfg.Save(); err != nil {
-				cfgStore.Store(oldCfg)
-				renderConfigError(w, r, ts, cfgStore, "Failed to save config: "+err.Error())
+			if err := commitConfig(r.Context(), cfgStore, applier, oldCfg, &newCfg); err != nil {
+				renderConfigError(w, r, ts, cfgStore, err.Error())
 				return
 			}
 
@@ -208,4 +199,29 @@ func renderConfigError(w http.ResponseWriter, r *http.Request, ts *TemplateSet, 
 		Data:     cfg,
 		NavItems: navItems,
 	})
+}
+
+// commitConfig makes next live and writes it to disk. With an applier,
+// next is applied first (a failure leaves the running config untouched);
+// if writing the file then fails, old is applied again so the running
+// state matches the file. Without an applier next is only stored.
+func commitConfig(ctx context.Context, cfgStore *atomic.Value, applier ConfigApplier, old, next *config.Config) error {
+	if applier != nil {
+		if err := applier.ApplyConfig(ctx, next); err != nil {
+			return fmt.Errorf("Failed to apply config: %w", err)
+		}
+	} else {
+		cfgStore.Store(next)
+	}
+	if err := next.Save(); err != nil {
+		if applier != nil {
+			if rerr := applier.ApplyConfig(ctx, old); rerr != nil {
+				return fmt.Errorf("Failed to save config: %v (and restoring the previous config failed: %v)", err, rerr)
+			}
+		} else {
+			cfgStore.Store(old)
+		}
+		return fmt.Errorf("Failed to save config: %w", err)
+	}
+	return nil
 }

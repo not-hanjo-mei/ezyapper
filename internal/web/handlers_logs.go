@@ -14,6 +14,9 @@ import (
 
 // LogsHandler returns an http.HandlerFunc for GET /logs that renders the
 // log viewer page. Query param ?lines=N controls line count.
+// LogsHandler serves the tail of the log file. An empty logFilePath reads
+// operations.logging.file from the live config on each request, so the page
+// follows a hot-reloaded log file.
 func LogsHandler(logFilePath string, cfgStore *atomic.Value, ts *TemplateSet) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -37,7 +40,11 @@ func LogsHandler(logFilePath string, cfgStore *atomic.Value, ts *TemplateSet) ht
 			}
 		}
 
-		logContent, totalLines, err := readLogTail(logFilePath, lines, cfg.Web.LogMaxReadBytes)
+		path := logFilePath
+		if path == "" {
+			path = cfg.Logging.File
+		}
+		logContent, totalLines, err := readLogTail(path, lines, cfg.Web.LogMaxReadBytes)
 		var stats, displayContent string
 		if err != nil {
 			displayContent = err.Error()
