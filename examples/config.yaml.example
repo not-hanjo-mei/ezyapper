@@ -418,7 +418,8 @@ memory_pipeline:
     # Optional API key for cloud/secured Qdrant instances.
     ## api_key: "YOUR_QDRANT_API_KEY"
 
-    # Vector dimensions. Must match your embedding model:
+    # Vector dimensions. Must match your embedding model. Changing the model
+    # is safe: memories are re-embedded into a new per-model collection.
     # text-embedding-3-small / text-embedding-ada-002 -> 1536
     # text-embedding-3-large                         -> 3072
     vector_size: 1536

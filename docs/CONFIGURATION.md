@@ -308,7 +308,7 @@ The maintenance worker runs cron-style; these settings shape its behavior.
 | MiniLM, M3E variants | 384–1024 |
 | BGE | 1024 |
 
-If you switch embedding models to one with a different dimension, you must delete the existing Qdrant collections — they're created with a fixed size. See "Switching embedding models" at the bottom of this doc.
+Switching embedding models is safe: memories are re-embedded automatically into a new per-model vector collection. See "Switching embedding models" at the bottom of this doc.
 
 ---
 
@@ -636,22 +636,24 @@ memory_pipeline:
 
 ## Switching Embedding Models
 
-Qdrant collections lock in a vector size at creation. To switch from a 1536-dim model to a 3072-dim one (or vice versa), drop the collections first:
+Update `embedding.model` and `qdrant.vector_size` and restart. Do **not**
+delete collections: memory text and metadata live in `memories_source`, which
+does not depend on the model. On startup the bot creates
+`memories_vec_<model>_<dim>` for the new model and re-embeds every memory into
+it in the background (resumable; progress is logged). Semantic search covers
+more memories as the job proceeds.
+
+The previous model's vector collection is kept so you can switch back without
+re-embedding. Delete it when you no longer need it:
 
 ```bash
-# Default Qdrant REST port is 6333 (gRPC is 6334)
-curl -X DELETE http://localhost:6333/collections/memories
-curl -X DELETE http://localhost:6333/collections/profiles
-curl -X DELETE http://localhost:6333/collections/relationships
-
-# Authenticated:
-curl -X DELETE https://your-cluster.qdrant.io:6333/collections/memories \
+curl -X DELETE http://localhost:6333/collections/memories_vec_text_embedding_3_small_1536 \
   -H "api-key: your-api-key"
 ```
 
-Then update `embedding.model` and `qdrant.vector_size`, restart the bot. Collections will be recreated automatically.
-
-> Heads up: this deletes all stored memories, profiles, and relationships. Snapshot first if you care about that data.
+Deleting `memories_source` deletes all memories. The old single-collection
+`memories` (from versions before the two-tier store) is migrated automatically
+and can be deleted once the bot has started successfully with this version.
 
 ---
 

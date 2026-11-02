@@ -119,13 +119,33 @@ Event handlers live in `handlers*.go` files split by concern:
 
 ### `internal/memory` — Vector Store + Consolidation
 
-Backed by Qdrant via gRPC. Three collections, all using cosine distance with a configurable vector size that must match your embedding model:
+Backed by Qdrant via gRPC. Long-term memory is stored in two tiers so that
+changing the embedding model never loses data:
 
 | Collection | Purpose | Notable |
 |------------|---------|---------|
-| `memories` | Long-term facts/episodes/interests/summaries per user | HNSW + Int8 scalar quantization, sparse `bm25_keywords` for hybrid retrieval, payload indexes on `user_id`, `memory_type`, `created_at`, `content` (text), `mentioned_user_ids`, `mentioned_channel_ids`, `channel_id` |
-| `profiles` | One vector per user — display name, traits, facts, preferences, interests, message/memory counters, timestamps | |
-| `relationships` | User-to-user mention/reply/reaction links, deterministic UUID v5 IDs so they're stable across restarts | Indexes on `user_a`, `user_b`, `type`, `weight` |
+| `memories_source` | **Source of truth.** One point per memory with the text and every metadata field (user, guild, channel, type, keywords, confidence, importance, timestamps, access counts, decay). | No vectors at all; independent of the embedding model. |
+| `memories_vec_<model>_<dim>` | Vector tier for the current embedding model, e.g. `memories_vec_baai_bge_m3_1024`. Same point IDs; holds the dense vector, the sparse `bm25_keywords` vector and only the payload fields search filters on (user, guild, channel, type, mentioned users/channels). | HNSW + Int8 scalar quantization. Long model names are shortened with a hash suffix. |
+| `profiles` | One point per user — display name, traits, facts, preferences, interests, counters, timestamps | Not searched by vector; new installs create it without vectors. |
+| `relationships` | User-to-user mention/reply/reaction links, deterministic UUID v5 IDs | Indexes on `user_a`, `user_b`, `type`, `weight`; no vectors on new installs. |
+
+Search queries the vector tier, then loads the full records from the source
+tier by ID in ranked order (vector points without a record are cleaned up).
+Writes and deletes hit the source tier first, then the vector tier.
+
+**Changing the embedding model:** on startup, if the vector collection for the
+configured model does not exist or is missing records, a background job
+re-embeds the source records into it (pages of 128, at most 4 concurrent
+embedding requests, resumable, only missing records). Until it finishes,
+semantic search only sees records that already have vectors. Vector
+collections of other models are left in place; delete them manually when no
+longer needed.
+
+**Migration from the single `memories` collection:** if it exists and the
+source tier is empty, startup copies its payloads (same IDs) into the source
+tier, resuming if interrupted. Its vectors are reused only when the dimension
+matches and re-embedding a sample reproduces them; otherwise they are
+re-embedded. The old collection is never modified.
 
 Highlights:
 
@@ -248,7 +268,7 @@ Synchronization:
 - **Embeddings are batched implicitly** via the Qdrant access-update worker, but generation itself is per-call. Heavy chats with retrieval enabled push load onto your embedding endpoint — pick a fast/cheap model.
 - **Tool schemas are cached and SHA-256 hashed** so prompt caches on provider side stay warm. Don't mutate tool definitions at runtime.
 - **System prompt is static, dynamic context lives in user message** so the static prefix is cache-friendly. See [PROMPT_OPTIMIZATION.md](PROMPT_OPTIMIZATION.md).
-- **Qdrant vector size is fixed at collection creation.** Switching embedding models means deleting the collections — the bot will recreate them at startup with the new size.
+- **Switching embedding models re-embeds in the background.** Memory text lives in the model-independent source tier, so nothing is lost; the new model's vector collection fills up after startup.
 - **Maintenance is deliberate, not aggressive.** `max_maintenance_llm_calls_per_day` caps the consolidation/summarize budget so memory upkeep doesn't blow your AI budget.
 
 ---
