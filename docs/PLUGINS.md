@@ -234,7 +234,7 @@ The host probes `info` once at startup. If the plugin doesn't respond within `st
 
 | Notification | Meaning |
 |--------------|---------|
-| `tools_changed` | The plugin's tool list changed (typically after it reloaded its own config). The host re-queries `list_tools`, validates the result (an invalid list is rejected and the previous one kept) and re-registers the plugin's tools with the model. |
+| `tools_changed` | The plugin's tool list or system prompt section changed (typically after it reloaded its own config). The host re-queries `list_tools` and `system_prompt`, validates the result (an invalid tool list is rejected and the previous one kept; a failing `system_prompt` keeps the previous section) and re-registers the plugin's tools with the model. |
 
 A notification is a JSON-RPC message with a `method` and **no** `id`:
 
@@ -243,6 +243,33 @@ A notification is a JSON-RPC message with a `method` and **no** `id`:
 ```
 
 The transport is strictly request/response, so the host reads a notification during its next exchange with the plugin. Every incoming Discord message reaches each plugin through `on_message`, so in practice the refresh lands with the next message. This was chosen over periodic `list_tools` polling (constant traffic for a rare event, plus a new config knob) and over a background reader on the plugin's stdout (a larger change to a transport that is shared with request timeouts and restarts). Go plugins call `server.NotifyToolsChanged()`, which is safe from any goroutine because the server serialises all writes to stdout.
+
+### Config hot reload
+
+A plugin owns its config file and reloads it itself; the host is not involved. Go plugins use `internal/plugin/pluginconfig`:
+
+```go
+cfg := pluginconfig.NewValue(initialConfig) // read with cfg.Load()
+
+w, err := pluginconfig.Watch(pluginconfig.Path(), pluginconfig.Options{Name: "MYPLUGIN"}, func() error {
+    next, err := loadConfig() // read AND validate; build anything derived from it
+    if err != nil {
+        return err // logged to stderr, the previous config stays live
+    }
+    cfg.Store(next)
+    _ = server.NotifyToolsChanged() // tool specs or the system prompt section may have changed
+    return nil
+})
+if err == nil {
+    defer w.Close()
+}
+```
+
+`Watch` debounces file events and handles editors that save by renaming a temporary file. When the config feeds clients or state built at startup (HTTP clients, fetched tool lists, data directories), build a complete new instance and swap it in only if that succeeded; `kimi-tools-go`, `openai-tts-go` and `emote-go` do this with a small `reloadingPlugin` wrapper. On `tools_changed` the host re-reads both `list_tools` and `system_prompt`.
+
+Environment knobs: `EZYAPPER_PLUGIN_CONFIG_WATCH=off` disables watching, `EZYAPPER_PLUGIN_CONFIG_DEBOUNCE_MS` changes the debounce (default 500).
+
+All Go example plugins (`antispam`, `clank-o-meter`, `datetime`, `emote`, `kimi-tools`, `openai-tts`, `systemspec`) reload their config on save. The Zig, Java and C examples read their config at startup only.
 
 ### Implementing in Go
 

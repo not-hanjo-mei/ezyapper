@@ -9,8 +9,8 @@ EZyapper is configured via a single YAML file (default: `config.yaml`). Pass a c
 > [!CAUTION]
 > **Strict config — no defaults.** Every required field must be set. Missing one and the bot refuses to start. Validation errors are batched: if you have ten missing fields, you'll see all ten in one go.
 
-> [!IMPORTANT]
-> **No hot-reload.** Config edits require a restart. The WebUI's `/config` page applies updates to the running process and persists them, but anything read once at startup (e.g., the Discord session) won't pick up the change until you restart.
+> [!TIP]
+> **Hot reload.** With `operations.runtime.hot_reload.enabled: true` the bot watches its config file and applies every change on save, without a restart: the Discord token, models, prompts, the decision provider, Qdrant, MCP servers and the dashboard port included. A file that does not validate, or a change that cannot be applied (bad token, unreachable server, port in use), is rejected as a whole and the bot keeps running on the previous config. See [Hot reload](#hot-reload).
 
 > [!WARNING]
 > **WebUI is experimental.** Keep `operations.web.enabled: false` for production unless you're explicitly debugging.
@@ -466,6 +466,60 @@ operations:
 | `cleanup_interval_min` | int (>0) | Periodic cleanup ticker (rate limiter pruning, image cache eviction, etc.). |
 | `hot_reload.enabled` | bool | Watch the config file and apply changes on save without a restart. Default `false` when omitted. See [Hot reload](#hot-reload). |
 | `hot_reload.debounce_ms` | int (50-60000) | Required when `hot_reload.enabled` is true. Quiet period after the last file event before the file is re-read (editors emit several events per save). Must be `>= 0` when disabled. |
+---
+
+## Hot reload
+
+Enable it in `operations.runtime`:
+
+```yaml
+operations:
+  runtime:
+    hot_reload:
+      enabled: true
+      debounce_ms: 500
+```
+
+The bot then watches the file it was started with (`-c`, or the `config.yaml` it found). The parent directory is watched, so editors that save by writing a temporary file and renaming it (vim, VS Code, JetBrains, `sed -i`, Kubernetes ConfigMaps) are handled. After `debounce_ms` without further events the file is re-read.
+
+### What happens on save
+
+1. **Load and validate.** The whole file is parsed and validated exactly as at startup (environment overrides included). Any error rejects the reload; nothing changes.
+2. **Diff.** The new config is compared with the running one. The changed key paths are logged, for example `[hotreload] 2 config key(s) changed: core.ai.model, core.discord.token`. Values are never logged, so tokens, API keys, passwords and MCP headers stay out of the log. A save that changes nothing does nothing.
+3. **Prepare.** Every part of the bot affected by the change builds what it needs *next to* the running one: a new Discord session is opened, MCP servers are connected, a new memory service is built, the new dashboard port is bound, and so on. Nothing the bot is doing changes during this step.
+4. **Commit or roll back.** If everything prepared successfully, the new config is published and each part switches over (pointer swaps that cannot fail); the old Discord session, MCP connections and memory service are closed after the switch. If anything failed, everything prepared so far is discarded and the log says `config reload failed, keeping the previous configuration: <part>: <reason>`. Fix the file and save again.
+
+Saving from the WebUI `/config` page goes through the same steps; the file is written only after the change was applied.
+
+### What reloads in place
+
+| Change | How it is applied |
+|--------|-------------------|
+| `core.discord.token` | The token is checked against the Discord API, a new gateway session is opened with the bot's handlers attached, then swapped in and the old session closed. During the switch only events from the current session are handled, so no message is answered twice. A rejected token keeps the bot connected with the old one. |
+| Other `core.discord.*` (bot name, reply percentage, cooldowns, rate limits, other-bot policy, image cache, typing/long-response timing) | Read from the live config on every message; the rate limiter is updated immediately. |
+| `core.discord.clear_command` | Enabling registers `/clear-context`; disabling leaves the global command registered but refuses it. |
+| `core.ai.*` (model, endpoint, key, prompt, tool iterations, vision) | The chat client is built per request from the live config; the hybrid-vision describer is rebuilt. |
+| `core.decision.*` | The decision provider (`llm` or `system_one`) is rebuilt; a provider that cannot be built rejects the reload. |
+| `memory_pipeline.embedding.*` with the same `model` | A new embedding client is swapped into the running memory service. |
+| `memory_pipeline.embedding.model`, `memory_pipeline.qdrant.*`, `memory_pipeline.memory.*`, consolidation settings, memory on/off | A complete new memory service is built first (connects to Qdrant, prepares the collections). For a new embedding model its vector collection is selected and filled from the source tier in the background, as on a restart (see [Switching Embedding Models](#switching-embedding-models)). The old service finishes in-flight calls and is closed after 30 s. |
+| `access_control.*` | Read from the live config on every message. |
+| `operations.web.*` | The dashboard's routes are rebuilt and swapped under the running listener. A new port (or enabling it) is bound before the switch; a port in use rejects the reload. Changing the username, password or session lifetime signs everyone out. |
+| `operations.logging.*` | A level change is applied to the running logger; a new file or rotation settings open the new log file first (an unwritable path rejects the reload). |
+| `operations.plugins.*` timeouts and restart policy | Applied to the running plugin manager; calls already in flight keep their timeout. |
+| `operations.plugins.enabled` / `plugins_dir` | All plugins are stopped and the (new) directory is loaded. The directory must exist. |
+| `operations.mcp.*` | A new set of MCP connections is made and its tools listed; any server failing rejects the reload. Tools of removed servers are unregistered; the old connections are closed after 30 s so running tool calls finish. |
+| `operations.runtime.*` | `cleanup_interval_min` applies from the next tick, `shutdown_timeout_sec` at shutdown, `hot_reload.*` immediately (turning it off stops watching; the WebUI can turn it back on). |
+
+### Plugins
+
+Each plugin watches **its own** config file and reloads itself; the bot and the other plugins are not touched (see [PLUGINS.md](PLUGINS.md#config-hot-reload)). A plugin whose new file is invalid keeps its previous config and logs why.
+
+### Limitations
+
+- In-memory state tied to a rebuilt part starts fresh: rebuilding the memory service resets its per-user/channel consolidation counters; changing dashboard credentials signs everyone out; changing `plugins_dir` restarts all plugins.
+- Turning plugins on or changing `plugins_dir` happens after the new config was published: a plugin that fails to start is logged, the others keep running (plugins are processes and cannot run twice side by side to be prepared in advance).
+- The Discord gateway intents are fixed in code, so nothing in the config needs a reconnect except the token.
+- Hot reload watches only the config file. Environment variable overrides (`EZYAPPER_*`) are re-read with it, but changing an environment variable alone does not trigger a reload.
 
 ---
 
