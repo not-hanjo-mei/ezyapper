@@ -108,19 +108,19 @@ type consolidationManager interface {
 }
 
 type Bot struct {
-	session         *discordgo.Session
-	ctx             context.Context
-	cancel          context.CancelFunc
-	configStore     *atomic.Value // stores *config.Config
-	memoryStore     memory.MemoryStore
-	profileStore    memory.ProfileStore
-	consolidation   consolidationManager
-	discordClient   *memory.ShortTermClient
-	toolRegistry    *tools.ToolRegistry
-	pluginManager   *plugin.Manager
-	mcpManager      *mcp.MCPManager
-	decider         decision.Decider
-	rateLimiter     *ratelimit.Limiter
+	session       *discordgo.Session
+	ctx           context.Context
+	cancel        context.CancelFunc
+	configStore   *atomic.Value // stores *config.Config
+	memoryStore   memory.MemoryStore
+	profileStore  memory.ProfileStore
+	consolidation consolidationManager
+	discordClient *memory.ShortTermClient
+	toolRegistry  *tools.ToolRegistry
+	pluginManager *plugin.Manager
+	mcpManager    *mcp.MCPManager
+	decider       decision.Decider
+	rateLimiter   *ratelimit.Limiter
 	// cutoffs hides channel history older than a /clear-context call.
 	cutoffs contextCutoffs
 	// contextWindow keeps the anchored history window per channel.
