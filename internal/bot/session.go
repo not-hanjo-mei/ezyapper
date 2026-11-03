@@ -2,12 +2,14 @@
 package bot
 
 import (
+	"cmp"
 	"context"
 	crand "crypto/rand"
 	"encoding/json"
 	"fmt"
 	"math/big"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -146,10 +148,15 @@ type Bot struct {
 	pluginRegisterMu sync.Mutex
 	wg               sync.WaitGroup
 
-	channelMessageBuffer   map[string][]*types.DiscordMessage // Channel-level buffer for batch consolidation
-	channelBufferMu        sync.RWMutex
-	channelConsolidating   map[string]bool
-	channelConsolidationMu sync.Mutex
+	channelMessageBuffer map[string][]*types.DiscordMessage // Channel-level buffer for batch consolidation
+	// channelConsolidatedUpTo is, per channel, the ID of the newest message
+	// handed to consolidation. Older messages are not buffered again (the
+	// cold-start warm-up re-fetches recent history after every batch).
+	// Guarded by channelBufferMu.
+	channelConsolidatedUpTo map[string]string
+	channelBufferMu         sync.RWMutex
+	channelConsolidating    map[string]bool
+	channelConsolidationMu  sync.Mutex
 
 	// historicalImageDescCache stores image descriptions for historical messages
 	// fetched from Discord API to avoid repeated vision calls on the same messages.
@@ -1035,6 +1042,10 @@ func (b *Bot) addMessageToChannelBuffer(channelID string, msg *types.DiscordMess
 	b.channelBufferMu.Lock()
 	defer b.channelBufferMu.Unlock()
 
+	if mark := b.channelConsolidatedUpTo[channelID]; mark != "" && !snowflakeAfter(msg.ID, mark) {
+		return // already consolidated
+	}
+
 	existing := b.channelMessageBuffer[channelID]
 	for i := len(existing) - 1; i >= 0; i-- {
 		if existing[i] != nil && existing[i].ID == msg.ID {
@@ -1065,13 +1076,91 @@ func (b *Bot) updateChannelBufferContent(channelID, messageID, content string) {
 	}
 }
 
-func (b *Bot) getAndClearChannelMessageBuffer(channelID string) []*types.DiscordMessage {
+// takeChannelMessageBatch removes and returns the oldest max buffered
+// messages of a channel (all when max <= 0), in chronological order, and
+// records the newest one as consolidated. The rest stay buffered for the
+// next batch: the consolidator only reads max messages, so handing it more
+// silently dropped the newest ones.
+func (b *Bot) takeChannelMessageBatch(channelID string, max int) []*types.DiscordMessage {
 	b.channelBufferMu.Lock()
 	defer b.channelBufferMu.Unlock()
 
-	messages := b.channelMessageBuffer[channelID]
-	delete(b.channelMessageBuffer, channelID)
+	messages := sortChronological(b.channelMessageBuffer[channelID])
+	if max > 0 && len(messages) > max {
+		b.channelMessageBuffer[channelID] = messages[max:]
+		messages = messages[:max]
+	} else {
+		delete(b.channelMessageBuffer, channelID)
+	}
+	b.markConsolidatedLocked(channelID, messages)
 	return messages
+}
+
+// selectUnconsolidated keeps the messages newer than the channel's
+// consolidated mark, oldest first and at most max (max <= 0: all), and
+// records them as consolidated. Used for messages fetched from Discord when
+// the buffer is empty.
+func (b *Bot) selectUnconsolidated(channelID string, messages []*types.DiscordMessage, max int) []*types.DiscordMessage {
+	b.channelBufferMu.Lock()
+	defer b.channelBufferMu.Unlock()
+
+	mark := b.channelConsolidatedUpTo[channelID]
+	out := make([]*types.DiscordMessage, 0, len(messages))
+	for _, m := range sortChronological(messages) {
+		if m != nil && (mark == "" || snowflakeAfter(m.ID, mark)) {
+			out = append(out, m)
+		}
+	}
+	if max > 0 && len(out) > max {
+		out = out[:max]
+	}
+	b.markConsolidatedLocked(channelID, out)
+	return out
+}
+
+func (b *Bot) markConsolidatedLocked(channelID string, messages []*types.DiscordMessage) {
+	for _, m := range messages {
+		if m == nil {
+			continue
+		}
+		if b.channelConsolidatedUpTo == nil {
+			b.channelConsolidatedUpTo = map[string]string{}
+		}
+		if cur := b.channelConsolidatedUpTo[channelID]; cur == "" || snowflakeAfter(m.ID, cur) {
+			b.channelConsolidatedUpTo[channelID] = m.ID
+		}
+	}
+}
+
+// snowflakeAfter reports whether Discord ID a is newer than b. IDs that are
+// not snowflakes (tests) are never treated as older.
+func snowflakeAfter(a, b string) bool {
+	x, errA := strconv.ParseUint(a, 10, 64)
+	y, errB := strconv.ParseUint(b, 10, 64)
+	if errA != nil || errB != nil {
+		return true
+	}
+	return x > y
+}
+
+// sortChronological returns messages ordered by snowflake ID (oldest
+// first). Order is kept when IDs are not snowflakes.
+func sortChronological(messages []*types.DiscordMessage) []*types.DiscordMessage {
+	out := slices.Clone(messages)
+	for _, m := range out {
+		if m == nil {
+			return out
+		}
+		if _, err := strconv.ParseUint(m.ID, 10, 64); err != nil {
+			return out
+		}
+	}
+	slices.SortStableFunc(out, func(a, b *types.DiscordMessage) int {
+		x, _ := strconv.ParseUint(a.ID, 10, 64)
+		y, _ := strconv.ParseUint(b.ID, 10, 64)
+		return cmp.Compare(x, y)
+	})
+	return out
 }
 
 func (b *Bot) tryStartChannelConsolidation(channelID string) bool {
