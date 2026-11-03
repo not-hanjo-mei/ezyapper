@@ -131,20 +131,20 @@ func (p *Processor) DescribeImages(ctx context.Context, urls []string) ([]string
 	}
 	out := make([]string, 0, len(urls))
 	for _, u := range urls {
-		key := ImageCacheKey(u)
-		if d, ok := p.cache.Get(key); ok {
-			out = append(out, d)
-			continue
-		}
-		part, err := p.ImagePart(ctx, u)
+		d, err := p.cache.Do(ImageCacheKey(u), func() (string, error) {
+			part, err := p.ImagePart(ctx, u)
+			if err != nil {
+				return "", fmt.Errorf("failed to fetch image: %w", err)
+			}
+			d, err := p.imageClient.DescribeMedia(ctx, p.mods.Image.Prompt, part)
+			if err != nil {
+				return "", fmt.Errorf("failed to describe image: %w", err)
+			}
+			return d, nil
+		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to fetch image: %w", err)
+			return nil, err
 		}
-		d, err := p.imageClient.DescribeMedia(ctx, p.mods.Image.Prompt, part)
-		if err != nil {
-			return nil, fmt.Errorf("failed to describe image: %w", err)
-		}
-		p.cache.Set(key, d)
 		out = append(out, d)
 	}
 	return out, nil
@@ -209,31 +209,24 @@ func (p *Processor) Transcribe(ctx context.Context, a types.MediaAttachment) (st
 	if p.asr == nil {
 		return "", fmt.Errorf("audio asr is disabled")
 	}
-	key := "audio:" + a.ID
-	if v, ok := p.cache.Get(key); ok {
-		return v, nil
-	}
-	au := p.mods.Audio
-	if err := checkLimits(a, au.MaxBytes, au.MaxDurationSec); err != nil {
-		return "", err
-	}
-	data, ct, err := p.fetchAttachment(ctx, a, au.MaxBytes, "audio/")
-	if err != nil {
-		return "", err
-	}
-	filename := a.Filename
-	if au.Transcode != "" {
-		if data, ct, err = transcodeAudio(ctx, p.ffmpeg, data, audioFilename(a.Filename, a.ContentType), au.Transcode); err != nil {
+	return p.cache.Do("audio:"+a.ID, func() (string, error) {
+		au := p.mods.Audio
+		if err := checkLimits(a, au.MaxBytes, au.MaxDurationSec); err != nil {
 			return "", err
 		}
-		filename = strings.TrimSuffix(filename, path.Ext(filename)) + "." + au.Transcode
-	}
-	text, err := p.asr.Transcribe(ctx, filename, ct, data)
-	if err != nil {
-		return "", err
-	}
-	p.cache.Set(key, text)
-	return text, nil
+		data, ct, err := p.fetchAttachment(ctx, a, au.MaxBytes, "audio/")
+		if err != nil {
+			return "", err
+		}
+		filename := a.Filename
+		if au.Transcode != "" {
+			if data, ct, err = transcodeAudio(ctx, p.ffmpeg, data, audioFilename(a.Filename, a.ContentType), au.Transcode); err != nil {
+				return "", err
+			}
+			filename = strings.TrimSuffix(filename, path.Ext(filename)) + "." + au.Transcode
+		}
+		return p.asr.Transcribe(ctx, filename, ct, data)
+	})
 }
 
 // AudioPart returns an audio attachment as a content part for the audio
@@ -267,24 +260,17 @@ func (p *Processor) DescribeAudio(ctx context.Context, a types.MediaAttachment) 
 	if p.audioClient == nil {
 		return "", fmt.Errorf("audio describe is disabled")
 	}
-	key := "audio-describe:" + a.ID
-	if v, ok := p.cache.Get(key); ok {
-		return v, nil
-	}
-	part, err := p.AudioPart(ctx, a)
-	if err != nil {
-		return "", err
-	}
-	prompt := p.mods.Audio.Prompt
-	if strings.TrimSpace(prompt) == "" {
-		prompt = config.DefaultAudioPrompt
-	}
-	d, err := p.audioClient.DescribeMedia(ctx, prompt, part)
-	if err != nil {
-		return "", err
-	}
-	p.cache.Set(key, d)
-	return d, nil
+	return p.cache.Do("audio-describe:"+a.ID, func() (string, error) {
+		part, err := p.AudioPart(ctx, a)
+		if err != nil {
+			return "", err
+		}
+		prompt := p.mods.Audio.Prompt
+		if strings.TrimSpace(prompt) == "" {
+			prompt = config.DefaultAudioPrompt
+		}
+		return p.audioClient.DescribeMedia(ctx, prompt, part)
+	})
 }
 
 // VideoPart returns a video attachment as a video_url part for the video
@@ -324,20 +310,13 @@ func (p *Processor) DescribeVideo(ctx context.Context, a types.MediaAttachment) 
 	if p.videoClient == nil {
 		return "", fmt.Errorf("video modality is disabled")
 	}
-	key := "video:" + a.ID
-	if v, ok := p.cache.Get(key); ok {
-		return v, nil
-	}
-	part, err := p.VideoPart(ctx, a)
-	if err != nil {
-		return "", err
-	}
-	d, err := p.videoClient.DescribeMedia(ctx, p.mods.Video.Prompt, part)
-	if err != nil {
-		return "", err
-	}
-	p.cache.Set(key, d)
-	return d, nil
+	return p.cache.Do("video:"+a.ID, func() (string, error) {
+		part, err := p.VideoPart(ctx, a)
+		if err != nil {
+			return "", err
+		}
+		return p.videoClient.DescribeMedia(ctx, p.mods.Video.Prompt, part)
+	})
 }
 
 // Annotation is the result of processing a message's audio and video.
