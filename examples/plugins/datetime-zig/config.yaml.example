@@ -1,7 +1,8 @@
 # Datetime Zig plugin configuration
-# If omitted, plugin uses host system timezone metadata.
+# If this file is missing (or a key is left out), the plugin uses UTC with offset 0;
+# it does not read the host system timezone.
 
 # Fixed timezone label and offset.
 timezone: "Asia/Pyongyang"
 utc_offset_hours: 9
-# utc_offset_minutes: 540
+# utc_offset_minutes: 540   # use instead of utc_offset_hours; if both are set, the later line wins

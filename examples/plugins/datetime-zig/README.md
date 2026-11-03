@@ -79,11 +79,11 @@ Supported keys:
 
 - `timezone` (string): timezone label returned in tool output
 - `utc_offset_hours` (integer): fixed UTC offset in hours
-- `utc_offset_minutes` (integer): fixed UTC offset in minutes (higher priority than `utc_offset_hours`)
+- `utc_offset_minutes` (integer): fixed UTC offset in minutes (set only one of the two offset keys; if both are present, the one on the later line wins)
 
-Default behavior (when config file is missing):
+Default behavior (when the config file is missing, or a key is left out):
 
-- Uses host system timezone metadata provided by the plugin manager.
+- `timezone` is `UTC` and the offset is `0`. The host system timezone is not read.
 
 Example config:
 
@@ -100,6 +100,6 @@ If the file is invalid (for example a non-integer `utc_offset_hours`, or an empt
 
 ## Notes
 
-- By default, timezone follows the host system timezone.
+- Without a config file the plugin reports UTC, not the host system timezone.
 - You can pin a fixed timezone/offset with `config.yaml`.
 - This plugin is a command-manifest example and does not require a persistent plugin process.
