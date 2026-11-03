@@ -12,6 +12,7 @@ import (
 
 	"ezyapper/internal/ai/tools"
 	"ezyapper/internal/config"
+	"ezyapper/internal/httpcapture"
 
 	"github.com/sashabaranov/go-openai"
 )
@@ -232,5 +233,49 @@ func TestFetchMediaLimits(t *testing.T) {
 	}
 	if _, _, err := c.FetchMedia(context.Background(), srv.URL+"/a.ogg", 0, "video/"); err == nil {
 		t.Fatal("expected content type error")
+	}
+}
+
+type labelRecorder struct {
+	mu     sync.Mutex
+	labels []string
+}
+
+func (l *labelRecorder) RoundTrip(r *http.Request) (*http.Response, error) {
+	l.mu.Lock()
+	l.labels = append(l.labels, httpcapture.LabelFrom(r.Context()))
+	l.mu.Unlock()
+	return http.DefaultTransport.RoundTrip(r)
+}
+
+// Embedding requests and media downloads go through the core.ai client but
+// must not be labelled after the chat model in captures.
+func TestCaptureLabelsForEmbeddingAndDownload(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/embeddings") {
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"object":"list","data":[{"object":"embedding","index":0,"embedding":[0.1]}],"model":"emb"}`)
+			return
+		}
+		w.Header().Set("Content-Type", "audio/ogg")
+		w.Write([]byte("OggS"))
+	}))
+	defer srv.Close()
+
+	rec := &labelRecorder{}
+	cfg := &config.AIConfig{LLMConfig: config.LLMConfig{APIBaseURL: srv.URL, Model: "chat-model", RetryCount: 1, Timeout: 5}}
+	c := newClientWithHTTP(cfg, tools.NewToolRegistry(), &http.Client{Transport: rec})
+
+	if _, err := c.CreateEmbedding(context.Background(), "hello", "emb"); err != nil {
+		t.Fatal(err)
+	}
+	// srv.URL is http://127.0.0.1, which the media URL check allows.
+	if _, _, err := c.FetchMedia(context.Background(), srv.URL+"/a.ogg", 0, "audio/"); err != nil {
+		t.Fatal(err)
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if len(rec.labels) != 2 || rec.labels[0] != "embedding:emb" || rec.labels[1] != CaptureLabelDownload {
+		t.Fatalf("labels = %q", rec.labels)
 	}
 }

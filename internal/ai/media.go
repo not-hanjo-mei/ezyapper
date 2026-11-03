@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"ezyapper/internal/httpcapture"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/retry"
 
@@ -210,6 +211,10 @@ func (c *Client) DescribeMedia(ctx context.Context, prompt string, parts ...Medi
 	return content, nil
 }
 
+// CaptureLabelDownload labels media downloads in HTTP captures. They go
+// through an AI client's HTTP client but are not model calls.
+const CaptureLabelDownload = "download"
+
 // FetchMedia downloads a media URL (https only, no private addresses, no
 // redirects) and returns its bytes and content type. maxBytes <= 0 means no
 // limit. A content type not starting with typePrefix (e.g. "audio/") is
@@ -218,7 +223,7 @@ func (c *Client) FetchMedia(ctx context.Context, rawURL string, maxBytes int64, 
 	if err := validateImageURL(rawURL); err != nil {
 		return nil, "", fmt.Errorf("invalid media URL: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	req, err := http.NewRequestWithContext(httpcapture.WithLabel(ctx, CaptureLabelDownload), http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("create request: %w", err)
 	}

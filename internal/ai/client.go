@@ -38,7 +38,12 @@ type Client struct {
 func NewClient(cfg *config.AIConfig, toolRegistry *tools.ToolRegistry) *Client {
 	httpTimeout := time.Duration(cfg.Timeout) * time.Second
 	httpClient := httpcapture.Wrap(&http.Client{Timeout: httpTimeout}, "ai:"+cfg.Model)
+	return newClientWithHTTP(cfg, toolRegistry, httpClient)
+}
 
+// newClientWithHTTP builds a client on httpClient (tests inject one to see
+// the outgoing requests).
+func newClientWithHTTP(cfg *config.AIConfig, toolRegistry *tools.ToolRegistry, httpClient *http.Client) *Client {
 	// Create OpenAI config with custom base URL
 	openaiConfig := openai.DefaultConfig(cfg.APIKey)
 	openaiConfig.BaseURL = cfg.APIBaseURL
@@ -670,6 +675,9 @@ func (c *Client) CreateEmbedding(ctx context.Context, text string, model string)
 	// Apply extra parameters from config
 	applyExtraParamsToStruct(&req, c.config.ExtraParams, "[ai]")
 
+	// The client is labelled after core.ai.model in captures; an embedding
+	// request is a different call and is labelled after its own model.
+	ctx = httpcapture.WithLabel(ctx, "embedding:"+model)
 	resp, err := c.createEmbeddingWithRetry(ctx, req, "create embedding")
 	if err != nil {
 		return nil, err

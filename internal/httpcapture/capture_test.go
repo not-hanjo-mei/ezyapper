@@ -2,6 +2,7 @@ package httpcapture
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -63,5 +64,39 @@ func TestWrapSetsUserAgent(t *testing.T) {
 	}
 	if len(got) != 2 || got[0] != UserAgent || got[1] != "custom/1" {
 		t.Fatalf("user agents = %v", got)
+	}
+}
+
+func TestContextLabelOverridesClientLabel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	var buf bytes.Buffer
+	client := NewRecorder(&buf).WrapClient(&http.Client{}, "ai:chat-model")
+	for _, ctx := range []context.Context{context.Background(), WithLabel(context.Background(), "embedding:emb")} {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL, nil)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+	}
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("want 2 entries, got %d", len(lines))
+	}
+	var labels []string
+	for _, l := range lines {
+		var e Entry
+		if err := json.Unmarshal([]byte(l), &e); err != nil {
+			t.Fatal(err)
+		}
+		labels = append(labels, e.Label)
+	}
+	if labels[0] != "ai:chat-model" || labels[1] != "embedding:emb" {
+		t.Fatalf("labels = %v", labels)
 	}
 }

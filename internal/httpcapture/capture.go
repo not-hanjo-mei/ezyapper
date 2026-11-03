@@ -5,6 +5,7 @@ package httpcapture
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -132,6 +133,28 @@ func (t uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return t.base.RoundTrip(req)
 }
 
+type labelKey struct{}
+
+// WithLabel returns ctx carrying a capture label for the requests made with
+// it. It overrides the label the client was wrapped with, for clients that
+// make more than one kind of request (an AI client creates chat completions,
+// embeddings and media downloads).
+func WithLabel(ctx context.Context, label string) context.Context {
+	if label == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, labelKey{}, label)
+}
+
+// LabelFrom returns the label set by WithLabel, or "".
+func LabelFrom(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	l, _ := ctx.Value(labelKey{}).(string)
+	return l
+}
+
 // WrapClient returns a copy of c that records through r.
 func (r *Recorder) WrapClient(c *http.Client, label string) *http.Client {
 	cp := *c
@@ -151,7 +174,11 @@ type transport struct {
 
 func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	start := time.Now()
-	e := Entry{Time: start.UTC(), Label: t.label, Method: req.Method, URL: req.URL.String(), ReqHeaders: redact(req.Header)}
+	label := t.label
+	if l := LabelFrom(req.Context()); l != "" {
+		label = l
+	}
+	e := Entry{Time: start.UTC(), Label: label, Method: req.Method, URL: req.URL.String(), ReqHeaders: redact(req.Header)}
 
 	if req.Body != nil && req.Body != http.NoBody {
 		body, err := io.ReadAll(req.Body)
