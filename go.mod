@@ -7,6 +7,7 @@ toolchain go1.27.3
 require (
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/fsnotify/fsnotify v1.10.1
+	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/google/uuid v1.6.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/qdrant/go-client v1.20.1
@@ -20,7 +21,6 @@ require (
 )
 
 require (
-	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/gorilla/websocket v1.5.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect

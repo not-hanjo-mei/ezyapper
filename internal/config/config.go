@@ -2,6 +2,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -411,6 +412,22 @@ func Load(configPath string) (*Config, error) {
 		}
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
+	// Re-read the file viper found and parse that one snapshot twice: viper
+	// lowercases every key, and the yaml.v3 tree keeps the file's spelling
+	// for the maps whose keys are user data (see restoreKeyCase). Reading
+	// the bytes once keeps both views consistent while a hot-reloaded file
+	// is being rewritten.
+	data, err := os.ReadFile(v.ConfigFileUsed())
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+	if err := v.ReadConfig(bytes.NewReader(data)); err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+	var fileTree any
+	if err := yaml.Unmarshal(data, &fileTree); err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
 
 	var raw struct {
 		Core struct {
@@ -439,6 +456,7 @@ func Load(configPath string) (*Config, error) {
 	if err := v.Unmarshal(&raw); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+	restoreKeyCase(reflect.ValueOf(&raw).Elem(), fileTree)
 
 	raw.Core.AI.modalitiesSet = v.IsSet("core.ai.modalities")
 	for _, key := range removedKeys {

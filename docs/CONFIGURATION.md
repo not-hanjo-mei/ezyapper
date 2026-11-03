@@ -63,6 +63,10 @@ operations.plugins.plugins_dir                → EZYAPPER_OPERATIONS_PLUGINS_PL
 
 The full nested path is required — short forms like `EZYAPPER_DISCORD_TOKEN` (without `CORE_`) do **not** map to anything and are silently ignored.
 
+### Key case
+
+Config field names are case-insensitive (`Core:` and `core:` are the same key). Keys inside maps that hold your own data keep the case you write: `operations.mcp.servers[].env`, `operations.mcp.servers[].headers` and every `extra_params` block, at any depth (for example `extra_params.metadata.TraceID`). An environment variable can override an entry in such a map (`EZYAPPER_CORE_AI_EXTRA_PARAMS_METADATA_TRACEID`); the key keeps the spelling from the file. Two keys in one map that differ only in case (`Path` and `PATH`) are kept as two keys.
+
 ---
 
 ## `core`
@@ -106,7 +110,7 @@ The main chat model. All sub-fields here are required.
 | `temperature` | float (0.0–2.0) | Higher = more creative. |
 | `retry_count` | int (>0) | Retries for transient API errors. |
 | `timeout` | int (>0, seconds) | Per-request timeout. The pipeline timeout is auto-derived from this. |
-| `extra_params` | map | Optional. Forwarded to the API via reflection. Unknown keys log a warning at runtime. |
+| `extra_params` | map | Optional. Forwarded to the API via reflection. Unknown keys log a warning at runtime. Nested keys keep their case. |
 | `system_prompt` | string | The static system prompt. Sent unchanged on every request (no placeholders); see [System prompt](#system-prompt). |
 | `max_tool_iterations` | int (>0) | Cap on tool-calling loops per turn. Prevents infinite tool-call cycles. |
 | `max_image_bytes` | int (>0) | Maximum bytes for an image fetched from Discord CDN. |
@@ -526,11 +530,12 @@ Each `servers[]` entry:
 | Field | Type | Required when | Notes |
 |-------|------|---------------|-------|
 | `name` | string | mcp enabled | Identifier used in logs and tool routing. |
-| `type` | string | mcp enabled | `"stdio"` or `"sse"`. |
+| `type` | string | mcp enabled | `"stdio"`, `"sse"` or `"http"` (Streamable HTTP). |
 | `command` | string | type=stdio | Executable name or path. |
 | `args` | list | optional | Arguments. |
-| `env` | map | optional | Extra env vars passed to the subprocess (filtered for secrets). |
-| `url` | string | type=sse | Endpoint URL. |
+| `env` | map | optional | Env vars set for the subprocess, names exactly as written (`GITHUB_TOKEN` stays `GITHUB_TOKEN`). The bot's own environment is passed on with names containing TOKEN, SECRET, KEY, PASSWORD and similar removed; vars listed here are always set. |
+| `url` | string | type=sse, http | Endpoint URL. |
+| `headers` | map | optional, type=http | Headers sent with every request. Values are expanded with `$VAR` from the bot's environment. |
 
 ```yaml
 operations:
@@ -543,9 +548,15 @@ operations:
         args: ["-y", "@pinkpixel/datetime-mcp"]
         env:
           TZ: "UTC"
+          GITHUB_TOKEN: "ghp_..."
       - name: remote-tool
         type: sse
         url: "http://localhost:8080/sse"
+      - name: remote-http
+        type: http
+        url: "http://localhost:8080/mcp"
+        headers:
+          Authorization: "Bearer $ANYSEARCH_API_KEY"
 ```
 
 ### `operations.runtime`

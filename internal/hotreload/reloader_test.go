@@ -345,7 +345,11 @@ func TestSaveLoadRoundTripHasNoDiff(t *testing.T) {
 	cfg := baseConfig(t)
 	cfg.Decision.Provider = config.DecisionProviderSystemOne
 	cfg.Decision.SystemOne = config.SystemOneConfig{APIBaseURL: "http://jev", APIKey: "k", Model: "m", Timeout: 5, RetryCount: 1, Threshold: 0.5, Instructions: "q", MaxStateBytes: 1000}
-	cfg.MCP.Servers = []config.MCPServer{{Name: "s", Type: "http", URL: "http://x", Headers: map[string]string{"authorization": "Bearer t"}}}
+	cfg.MCP.Servers = []config.MCPServer{
+		{Name: "s", Type: "http", URL: "http://x", Headers: map[string]string{"Authorization": "Bearer t", "X-Api-Key": "k"}},
+		{Name: "e", Type: "stdio", Command: "/bin/true", Env: map[string]string{"GITHUB_TOKEN": "t", "MTest_Secret_Word": "w"}},
+	}
+	cfg.AI.ExtraParams = map[string]any{"metadata": map[string]any{"TraceID": "abc"}}
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	cfg.SetPath(path)
 	if err := cfg.Save(); err != nil {
