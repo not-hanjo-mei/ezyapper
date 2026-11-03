@@ -4,7 +4,7 @@ This guide covers a few common ways to run EZyapper. Pick whichever matches your
 
 ## Prerequisites
 
-- **Go 1.25+** (only needed if you build from source)
+- **Go 1.27+** (only needed if you build from source)
 - **Discord bot token** — from the [Discord Developer Portal](https://discord.com/developers/applications)
 - **OpenAI-compatible API key** (or local LLM endpoint)
 - **Qdrant vector database** — required if you want long-term memory. Bundled in the Docker Compose setup.
@@ -162,7 +162,7 @@ docker run -d \
 
 The image:
 
-- Base: `golang:1.25-alpine` (build) → `alpine:3.19` (runtime)
+- Base: `golang:1.27-alpine` (build) → `alpine:3.24` (runtime)
 - Runs as non-root `appuser`
 - Healthcheck: `wget /health` against the WebUI. **Note:** `/health` only responds when `operations.web.enabled: true`. If the WebUI is off, the healthcheck will mark the container unhealthy — switch to a different probe (e.g., `pgrep ezyapper`) or accept that signal.
 
