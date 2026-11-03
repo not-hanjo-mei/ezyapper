@@ -342,6 +342,51 @@ type AnnotateOptions struct {
 	ComputeAudio, ComputeVideo bool
 }
 
+// AVText returns the text an audio or video attachment was turned into: the
+// transcript (audio, asr mode; transcript is true) or the description (audio
+// in describe mode, video). Cached results are always used; a missing one is
+// only computed when compute is true. ok is false when the modality is
+// disabled, the attachment is not audio/video, or there is no result.
+func (p *Processor) AVText(ctx context.Context, a types.MediaAttachment, compute bool) (text string, transcript bool, ok bool) {
+	if p == nil {
+		return "", false, false
+	}
+	switch {
+	case a.IsAudio() && p.mods.Audio.Enabled:
+		describe := p.mods.Audio.Mode == config.AudioModeDescribe
+		key, run := "audio:"+a.ID, p.Transcribe
+		if describe {
+			key, run = "audio-describe:"+a.ID, p.DescribeAudio
+		}
+		if v, hit := p.cache.Get(key); hit {
+			return v, !describe, true
+		}
+		if !compute {
+			return "", !describe, false
+		}
+		v, err := run(ctx, a)
+		if err != nil {
+			logger.Warnf("[media] audio %s not processed: %v", a.ID, err)
+			return "", !describe, false
+		}
+		return v, !describe, true
+	case a.Kind == types.MediaVideo && p.mods.Video.Enabled:
+		if v, hit := p.cache.Get("video:" + a.ID); hit {
+			return v, false, true
+		}
+		if !compute {
+			return "", false, false
+		}
+		v, err := p.DescribeVideo(ctx, a)
+		if err != nil {
+			logger.Warnf("[media] video %s not described: %v", a.ID, err)
+			return "", false, false
+		}
+		return v, false, true
+	}
+	return "", false, false
+}
+
 // AnnotateAV returns text lines for the audio, voice and video attachments
 // of msg.
 // Cached results are always used; missing ones are only computed when opts
@@ -362,23 +407,9 @@ func (p *Processor) AnnotateAV(ctx context.Context, msg *types.DiscordMessage, o
 				continue
 			}
 			label := audioLabel(a)
-			describe := au.Mode == config.AudioModeDescribe
-			key, compute := "audio:"+a.ID, p.Transcribe
-			if describe {
-				key, compute = "audio-describe:"+a.ID, p.DescribeAudio
-			}
-			text, ok := p.cache.Get(key)
-			if !ok && (opts.Current || opts.ComputeAudio) {
-				var err error
-				text, err = compute(ctx, a)
-				if err != nil {
-					logger.Warnf("[media] audio %s not processed: %v", a.ID, err)
-				} else {
-					ok = true
-				}
-			}
+			text, transcript, ok := p.AVText(ctx, a, opts.Current || opts.ComputeAudio)
 			switch {
-			case ok && describe:
+			case ok && !transcript:
 				fmt.Fprintf(&sb, "\n[Audio %d (%s): %s]", audioN, label, oneLine(text))
 			case ok:
 				fmt.Fprintf(&sb, "\n[Audio %d transcript (%s): %s]", audioN, label, oneLine(text))
@@ -391,17 +422,7 @@ func (p *Processor) AnnotateAV(ctx context.Context, msg *types.DiscordMessage, o
 				continue
 			}
 			label := videoLabel(a)
-			text, ok := p.cache.Get("video:" + a.ID)
-			if !ok && (opts.Current || opts.ComputeVideo) {
-				var err error
-				text, err = p.DescribeVideo(ctx, a)
-				if err != nil {
-					logger.Warnf("[media] video %s not described: %v", a.ID, err)
-				} else {
-					ok = true
-				}
-			}
-			if ok {
+			if text, _, ok := p.AVText(ctx, a, opts.Current || opts.ComputeVideo); ok {
 				fmt.Fprintf(&sb, "\n[Video %d (%s): %s]", videoN, label, oneLine(text))
 			} else {
 				fmt.Fprintf(&sb, "\n[Video %d: %s]", videoN, label)
@@ -409,6 +430,55 @@ func (p *Processor) AnnotateAV(ctx context.Context, msg *types.DiscordMessage, o
 		}
 	}
 	out.Text = sb.String()
+	return out
+}
+
+// AnnotateForMemory returns msgs with the Text of their audio, voice and
+// video attachments filled, for memory consolidation. Results come from the
+// cache (by attachment ID) when the reply path already produced them; a
+// missing one is computed once and cached. The per-message max_items limits
+// apply. Messages without such media are returned as is; the others are
+// copies (the input is not modified).
+func (p *Processor) AnnotateForMemory(ctx context.Context, msgs []*types.DiscordMessage) []*types.DiscordMessage {
+	if p == nil || (!p.mods.Audio.Enabled && !p.mods.Video.Enabled) {
+		return msgs
+	}
+	out := make([]*types.DiscordMessage, len(msgs))
+	for i, msg := range msgs {
+		out[i] = msg
+		if msg == nil || len(msg.Media) == 0 {
+			continue
+		}
+		atts := make([]types.MediaAttachment, len(msg.Media))
+		copy(atts, msg.Media)
+		changed := false
+		audioN, videoN := 0, 0
+		for j, a := range atts {
+			switch {
+			case a.IsAudio() && p.mods.Audio.Enabled:
+				audioN++
+				if p.mods.Audio.MaxItems > 0 && audioN > p.mods.Audio.MaxItems {
+					continue
+				}
+			case a.Kind == types.MediaVideo && p.mods.Video.Enabled:
+				videoN++
+				if p.mods.Video.MaxItems > 0 && videoN > p.mods.Video.MaxItems {
+					continue
+				}
+			default:
+				continue
+			}
+			if text, transcript, ok := p.AVText(ctx, a, true); ok {
+				atts[j].Text, atts[j].Transcript = oneLine(text), transcript
+				changed = true
+			}
+		}
+		if changed {
+			cp := *msg
+			cp.Media = atts
+			out[i] = &cp
+		}
+	}
 	return out
 }
 

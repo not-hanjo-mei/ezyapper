@@ -80,6 +80,11 @@ func (b *Bot) triggerChannelConsolidationDepth(ctx context.Context, channelID st
 			}
 		}()
 
+		// Audio transcripts and video descriptions (cached by attachment ID
+		// from the reply path, computed once otherwise) go into the
+		// conversation the consolidation model reads.
+		channelMessages = b.mediaProcessor().AnnotateForMemory(consolidationCtx, channelMessages)
+
 		logger.Infof("[consolidation] starting batch for channel=%s with %d messages", channelID, len(channelMessages))
 		if err := b.consolidation.ConsolidateChannel(consolidationCtx, channelID, channelMessages); err != nil {
 			logger.Errorf("[consolidation] failed for channel=%s: %v", channelID, err)

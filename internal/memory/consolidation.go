@@ -15,6 +15,7 @@ import (
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/retry"
+	"ezyapper/internal/types"
 
 	"github.com/google/uuid"
 	openai "github.com/sashabaranov/go-openai"
@@ -205,39 +206,66 @@ func (c *Consolidator) buildConversationText(ctx context.Context, messages []*Di
 			logger.Debugf("[consolidation] message %d [%s]: %s (ID=%s)%s: %s", i+1, timeStr, msg.Username, msg.AuthorID, botMarker, msg.Content)
 		}
 
-		if len(msg.ImageURLs) > 0 && c.visionDescriber != nil {
-			descriptions := make([]string, 0, len(msg.ImageDescriptions))
+		imageCount += c.writeImageLines(ctx, &conversation, msg, i, userID)
+		writeMediaLines(&conversation, msg)
+	}
+	return conversation.String(), imageCount
+}
 
-			// Use cached descriptions if available (to avoid redundant API calls)
-			if len(msg.ImageDescriptions) > 0 {
-				descriptions = msg.ImageDescriptions
-				if userID != "" {
-					logger.Debugf("[consolidation] using cached image descriptions for user=%s message=%d count=%d", userID, i+1, len(descriptions))
-				}
+// writeImageLines writes "[Attached Image N: ...]" lines for msg's images and
+// returns how many it wrote. Descriptions the message already carries are
+// used as is; otherwise the describer is asked (it serves cached
+// descriptions by attachment ID before calling the model).
+func (c *Consolidator) writeImageLines(ctx context.Context, w *strings.Builder, msg *DiscordMessage, i int, userID string) int {
+	if len(msg.ImageURLs) == 0 {
+		return 0
+	}
+	descriptions := msg.ImageDescriptions
+	if len(descriptions) == 0 {
+		if c.visionDescriber == nil {
+			return 0
+		}
+		var err error
+		descriptions, err = c.visionDescriber.DescribeImages(ctx, msg.ImageURLs)
+		if err != nil {
+			if userID != "" {
+				logger.Warnf("[consolidation] failed to describe images for user=%s message=%d: %v", userID, i+1, err)
 			} else {
-				// No cache available, call vision API
-				var err error
-				descriptions, err = c.visionDescriber.DescribeImages(ctx, msg.ImageURLs)
-				if err != nil {
-					if userID != "" {
-						logger.Warnf("[consolidation] failed to describe images for user=%s message=%d: %v", userID, i+1, err)
-					} else {
-						logger.Warnf("[consolidation] failed to describe images for message %d: %v", i+1, err)
-					}
-					continue
-				}
-				if userID != "" {
-					logger.Debugf("[consolidation] generated fresh image descriptions for user=%s message=%d count=%d", userID, i+1, len(descriptions))
-				}
+				logger.Warnf("[consolidation] failed to describe images for message %d: %v", i+1, err)
 			}
+			return 0
+		}
+	}
+	for j, desc := range descriptions {
+		fmt.Fprintf(w, "  [Attached Image %d: %s]\n", j+1, desc)
+	}
+	return len(descriptions)
+}
 
-			for j, desc := range descriptions {
-				fmt.Fprintf(&conversation, "  [Attached Image %d: %s]\n", j+1, desc)
-				imageCount++
+// writeMediaLines writes the transcripts and descriptions of msg's audio,
+// voice and video attachments (filled by media.Processor.AnnotateForMemory)
+// as "[Attached Audio N transcript: ...]", "[Attached Audio N: ...]" and
+// "[Attached Video N: ...]" lines. Attachments without text are skipped.
+func writeMediaLines(w *strings.Builder, msg *DiscordMessage) {
+	audioN, videoN := 0, 0
+	for _, a := range msg.Media {
+		switch {
+		case a.IsAudio():
+			audioN++
+			switch {
+			case a.Text == "":
+			case a.Transcript:
+				fmt.Fprintf(w, "  [Attached Audio %d transcript: %s]\n", audioN, a.Text)
+			default:
+				fmt.Fprintf(w, "  [Attached Audio %d: %s]\n", audioN, a.Text)
+			}
+		case a.Kind == types.MediaVideo:
+			videoN++
+			if a.Text != "" {
+				fmt.Fprintf(w, "  [Attached Video %d: %s]\n", videoN, a.Text)
 			}
 		}
 	}
-	return conversation.String(), imageCount
 }
 
 // ProcessWithMessages consolidates memories for a user using the provided messages as context.
