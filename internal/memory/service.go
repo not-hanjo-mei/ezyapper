@@ -283,6 +283,12 @@ func (s *MemoryService) Search(ctx context.Context, userID string, query string,
 	}
 
 	logger.Debugf("[memory] searching for userID=%s query=%.50s topK=%d", userID, query, opts.TopK)
+	if strings.TrimSpace(query) == "" {
+		// Nothing to search with (a media-only message whose media gave no
+		// text); embedding "" fails with 400 on embedding APIs.
+		logger.Debugf("[memory] empty query for userID=%s, search skipped", userID)
+		return nil, nil
+	}
 
 	embedding, err := s.embedder.Embed(ctx, query)
 	if err != nil {
@@ -312,6 +318,10 @@ func (s *MemoryService) HybridSearch(ctx context.Context, userID string, query s
 		}
 	}
 
+	if strings.TrimSpace(query) == "" {
+		logger.Debugf("[memory] empty query for userID=%s, hybrid search skipped", userID)
+		return nil, nil
+	}
 	embedding, err := s.embedder.Embed(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate query embedding: %w", err)

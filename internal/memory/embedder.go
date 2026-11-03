@@ -2,9 +2,15 @@ package memory
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 )
+
+// ErrEmptyEmbeddingInput is returned for empty or whitespace-only text.
+// Embedding APIs reject it (400), so it is never sent.
+var ErrEmptyEmbeddingInput = errors.New("embedding input is empty")
 
 // embeddingClient is the subset of ai.Client methods used by AIEmbedder.
 type embeddingClient interface {
@@ -30,6 +36,9 @@ func NewAIEmbedder(client embeddingClient, model string) (*AIEmbedder, error) {
 
 // Embed generates an embedding for the given text
 func (e *AIEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
+	if strings.TrimSpace(text) == "" {
+		return nil, ErrEmptyEmbeddingInput
+	}
 	return e.client.CreateEmbedding(ctx, text, e.model)
 }
 

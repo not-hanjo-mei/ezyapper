@@ -2,11 +2,14 @@ package bot
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"ezyapper/internal/ai"
 	"ezyapper/internal/logger"
+	"ezyapper/internal/media"
 	"ezyapper/internal/memory"
 	"ezyapper/internal/types"
 
@@ -71,7 +74,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		return
 	}
 
-	memories := b.searchMemories(ctx, m, recentMessages)
+	memories := b.searchMemories(ctx, m, recentMessages, b.currentMediaText(ctx, m, imageDescriptions))
 
 	if b.cancelledBefore(ctx, pm, m.ID, "profile fetch") {
 		return
@@ -208,16 +211,51 @@ func (b *Bot) fetchRecentMessagesIfEmpty(ctx context.Context, channelID string, 
 	return recentMessages
 }
 
-func (b *Bot) searchMemories(ctx context.Context, m *discordgo.MessageCreate, recentMessages []*types.DiscordMessage) []*memory.Record {
+// currentMediaText returns the text the enabled modalities turn the media of
+// the message being answered into: image descriptions, sticker text, audio
+// transcripts and video descriptions. Results are cached by attachment (or
+// sticker) ID, so the reply prompt built later reuses them.
+func (b *Bot) currentMediaText(ctx context.Context, m *discordgo.MessageCreate, imageDescriptions []string) string {
+	var sb strings.Builder
+	for i, d := range imageDescriptions {
+		fmt.Fprintf(&sb, "\n[Image %d: %s]", i+1, d)
+	}
+	if p := b.mediaProcessor(); p != nil && m != nil && m.Message != nil && m.Author != nil {
+		cur := types.FromDiscordgo(m)
+		sb.WriteString(p.AnnotateStickers(ctx, &cur, true))
+		sb.WriteString(p.AnnotateAV(ctx, &cur, media.AnnotateOptions{Current: true}).Text)
+	}
+	return sb.String()
+}
+
+// memorySearchQuery builds the memory search query for the message being
+// answered: its content and recent context, plus the text of its media. A
+// voice message has no content, so without its transcript the query could be
+// empty, and embedding "" fails (400). An empty result means: skip the search.
+func memorySearchQuery(content, mediaText string, recentMessages []*types.DiscordMessage, ownBotID string) string {
+	query, _ := memory.BuildSearchQuery(content, recentMessages, ownBotID)
+	if t := strings.TrimSpace(mediaText); t != "" {
+		query = strings.TrimSpace(query + "\n" + t)
+	}
+	return strings.TrimSpace(query)
+}
+
+func (b *Bot) searchMemories(ctx context.Context, m *discordgo.MessageCreate, recentMessages []*types.DiscordMessage, mediaText string) []*memory.Record {
 	memories := []*memory.Record{}
 	if b.cfg().Memory.Retrieval.TopK > 0 {
-		query, _ := memory.BuildSearchQuery(m.Content, recentMessages, b.cfg().Discord.OwnBotID)
+		query := memorySearchQuery(m.Content, mediaText, recentMessages, b.cfg().Discord.OwnBotID)
+		if query == "" {
+			logger.Debugf("[processing] message %s has no text to search memories with, user memory search skipped", m.ID)
+		}
 
 		var wg sync.WaitGroup
 		var userMemories, mentionedMemories, channelMemories []*memory.Record
 
 		// 1. User memories (always)
 		wg.Go(func() {
+			if query == "" {
+				return
+			}
 			mems, searchErr := b.memoryStore.Search(ctx, m.Author.ID, query, nil)
 			if searchErr != nil {
 				logger.Warnf("[processing] Failed to search user memories: %v", searchErr)
