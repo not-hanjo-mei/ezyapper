@@ -94,10 +94,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -151,7 +151,7 @@ jobs:
           build_plugin examples/plugins/systemspec-go       systemspec-plugin
 
       - name: Upload Go plugin artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: go-plugins-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/go-plugins/${{ matrix.goos }}-${{ matrix.goarch }}

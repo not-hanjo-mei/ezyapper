@@ -109,10 +109,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
+        uses: mlugg/setup-zig@v2
         with:
           version: "0.16.0"
 
@@ -151,7 +151,7 @@ jobs:
           fi
 
       - name: Upload command plugin artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: command-plugins-${{ matrix.target_name }}
           path: dist/command-plugins/${{ matrix.target_name }}
