@@ -92,6 +92,12 @@ timezone: "Asia/Pyongyang"
 utc_offset_hours: 9
 ```
 
+## Config changes (no restart)
+
+This is a `command` plugin: the bot starts a new process for every tool call and passes the config path in `EZYAPPER_PLUGIN_CONFIG`, so `config.yaml` is read again on every call. Edit and save it and the next `get_current_datetime` call uses the new timezone/offset; the bot and other plugins are not restarted, and the plugin needs no file watcher.
+
+If the file is invalid (for example a non-integer `utc_offset_hours`, or an empty `timezone`), that call fails with `failed to load config: ...` on stderr, which shows up in the bot's log as `plugin command execution failed`. There is no previous config to fall back to in a fresh process; the plugin stays loaded and works again on the first call after the file is fixed.
+
 ## Notes
 
 - By default, timezone follows the host system timezone.
