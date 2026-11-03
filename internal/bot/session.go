@@ -176,8 +176,24 @@ type historicalImageDescCacheEntry struct {
 	cachedAt     time.Time
 }
 
+// Option configures New.
+type Option func(*Bot)
+
+// WithMediaCache makes the bot keep media results (image descriptions, audio
+// transcripts, video descriptions, by attachment ID) in cache. Pass the cache
+// the memory service's image describer uses, so consolidation reuses the
+// descriptions of the reply path instead of describing each image again.
+// Its limits follow core.discord.image_cache_*.
+func WithMediaCache(cache *media.Cache) Option {
+	return func(b *Bot) {
+		if cache != nil {
+			b.mediaCache = cache
+		}
+	}
+}
+
 // New creates a new Discord bot instance
-func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore memory.ProfileStore, conMgr consolidationManager, pluginMgr *plugin.Manager) (*Bot, error) {
+func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore memory.ProfileStore, conMgr consolidationManager, pluginMgr *plugin.Manager, opts ...Option) (*Bot, error) {
 	cfg, ok := cfgStore.Load().(*config.Config)
 	if !ok {
 		return nil, fmt.Errorf("failed to load config from config store")
@@ -228,6 +244,9 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 		channelConsolidating:     make(map[string]bool),
 		historicalImageDescCache: make(map[string]historicalImageDescCacheEntry),
 		processingMessages:       make(map[string]*ProcessingMessage),
+	}
+	for _, opt := range opts {
+		opt(bot)
 	}
 
 	bot.session.Store(session)

@@ -74,7 +74,10 @@ func memoryInputsFor(cfg *config.Config) memoryInputs {
 // BuildMemoryService builds the memory service for cfg: the no-op service
 // when memory is disabled, otherwise a Qdrant-backed service (which
 // connects, prepares the tiered collections and starts re-embedding).
-func BuildMemoryService(cfg *config.Config) (memory.Service, error) {
+// mediaCache is the bot's media cache (may be nil): the consolidation image
+// describer reads and fills it, so images the reply path described are not
+// described again.
+func BuildMemoryService(cfg *config.Config, mediaCache *media.Cache) (memory.Service, error) {
 	in := memoryInputsFor(cfg)
 	if !in.Enabled {
 		logger.Info("[main] Memory subsystem is disabled by config (retrieval.top_k=0 and consolidation.enabled=false)")
@@ -93,7 +96,7 @@ func BuildMemoryService(cfg *config.Config) (memory.Service, error) {
 	if in.ImageAI.Modalities.Image.Enabled {
 		imgCfg := &config.Config{}
 		imgCfg.AI = in.ImageAI
-		if d := media.New(imgCfg, nil).ImageDescriber(); d != nil {
+		if d := media.New(imgCfg, mediaCache).ImageDescriber(); d != nil {
 			imageDescriber = d
 		}
 	}
@@ -132,9 +135,12 @@ type MemoryComponent struct {
 	build func(*config.Config) (memory.Service, error)
 }
 
-// NewMemoryComponent returns the hot reload component for proxy.
-func NewMemoryComponent(proxy *memory.Swappable) *MemoryComponent {
-	return &MemoryComponent{Proxy: proxy, build: BuildMemoryService}
+// NewMemoryComponent returns the hot reload component for proxy. Rebuilt
+// services share mediaCache with the bot (see BuildMemoryService).
+func NewMemoryComponent(proxy *memory.Swappable, mediaCache *media.Cache) *MemoryComponent {
+	return &MemoryComponent{Proxy: proxy, build: func(cfg *config.Config) (memory.Service, error) {
+		return BuildMemoryService(cfg, mediaCache)
+	}}
 }
 
 func (*MemoryComponent) Name() string { return "memory" }

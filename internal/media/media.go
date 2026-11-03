@@ -112,8 +112,16 @@ func (p *Processor) ImagePart(ctx context.Context, url string) (ai.MediaPart, er
 	return ai.MediaPart{Kind: ai.PartImageURL, URL: ai.DataURI(ct, data)}, nil
 }
 
-// DescribeImages describes each image with the image model. It satisfies the
-// image describer interface used by memory consolidation.
+// ImageCacheKey is the cache key of an image description: the image's stable
+// key (for Discord CDN URLs the attachment path with its attachment ID, so a
+// re-signed URL still hits).
+func ImageCacheKey(url string) string { return "image:" + types.StableImageKey(url) }
+
+// DescribeImages describes each image with the image model. Descriptions are
+// cached by attachment (ImageCacheKey); the model is only called on a cache
+// miss, so the reply path and memory consolidation, sharing one cache,
+// describe each image once. It satisfies the image describer interface used
+// by memory consolidation.
 func (p *Processor) DescribeImages(ctx context.Context, urls []string) ([]string, error) {
 	if p == nil || p.imageClient == nil {
 		return nil, fmt.Errorf("image modality is disabled")
@@ -123,6 +131,11 @@ func (p *Processor) DescribeImages(ctx context.Context, urls []string) ([]string
 	}
 	out := make([]string, 0, len(urls))
 	for _, u := range urls {
+		key := ImageCacheKey(u)
+		if d, ok := p.cache.Get(key); ok {
+			out = append(out, d)
+			continue
+		}
 		part, err := p.ImagePart(ctx, u)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch image: %w", err)
@@ -131,6 +144,7 @@ func (p *Processor) DescribeImages(ctx context.Context, urls []string) ([]string
 		if err != nil {
 			return nil, fmt.Errorf("failed to describe image: %w", err)
 		}
+		p.cache.Set(key, d)
 		out = append(out, d)
 	}
 	return out, nil

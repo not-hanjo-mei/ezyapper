@@ -97,7 +97,7 @@ func TestInitMemoryService_DisabledBySwitchesUsesNoop(t *testing.T) {
 		},
 	}
 
-	svc, err := BuildMemoryService(cfg)
+	svc, err := BuildMemoryService(cfg, nil)
 	if err != nil {
 		t.Fatalf("BuildMemoryService returned error: %v", err)
 	}

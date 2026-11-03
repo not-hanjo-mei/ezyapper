@@ -50,7 +50,12 @@ func main() {
 
 	logger.Info("[main] Starting EZyapper")
 
-	memoryService, err := app.BuildMemoryService(cfg)
+	// One media cache (image descriptions, transcripts, video descriptions
+	// by attachment ID) shared by the bot and memory consolidation, so each
+	// attachment is turned into text once.
+	mediaCache := media.NewCache(time.Duration(cfg.Discord.ImageCacheTTLMin)*time.Minute, cfg.Discord.ImageCacheMaxEntries)
+
+	memoryService, err := app.BuildMemoryService(cfg, mediaCache)
 	if err != nil {
 		logger.Fatalf("[main] Failed to initialize memory service: %v", err)
 	}
@@ -82,7 +87,7 @@ func main() {
 	cfgStore.Store(cfg)
 	currentCfg := func() *config.Config { return cfgStore.Load().(*config.Config) }
 
-	discordBot, err := bot.New(cfgStore, memoryProxy, memoryProxy, memoryProxy, pluginManager)
+	discordBot, err := bot.New(cfgStore, memoryProxy, memoryProxy, memoryProxy, pluginManager, bot.WithMediaCache(mediaCache))
 	if err != nil {
 		logger.Fatalf("[main] Failed to create Discord bot: %v", err)
 	}
@@ -137,7 +142,7 @@ func main() {
 	// committed in the same order once all of them prepared.
 	reloader := hotreload.New(cfgStore,
 		app.LoggingComponent{},
-		app.NewMemoryComponent(memoryProxy),
+		app.NewMemoryComponent(memoryProxy, mediaCache),
 		discordBot,
 		app.PluginsComponent{Manager: pluginManager},
 		webServer,

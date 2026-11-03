@@ -54,7 +54,7 @@ func TestMemoryComponent_Decisions(t *testing.T) {
 	proxy := memory.NewSwappable(cur)
 	builds := 0
 	var built *countingService
-	mc := NewMemoryComponent(proxy)
+	mc := NewMemoryComponent(proxy, nil)
 	mc.build = func(*config.Config) (memory.Service, error) {
 		builds++
 		built = &countingService{}

@@ -78,3 +78,50 @@ func TestAnnotateForMemory_DisabledIsNoop(t *testing.T) {
 		t.Fatal("nil processor must pass messages through")
 	}
 }
+
+// The reply path and memory consolidation (its own processor, possibly
+// another vision model) share one cache: an image is described once.
+func TestDescribeImages_SharedCacheDescribesOnce(t *testing.T) {
+	var replyCalls, consCalls int32
+	replyVL := chatServer(t, "a red bike", &replyCalls, nil)
+	consVL := chatServer(t, "should not be asked", &consCalls, nil)
+	img := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("png"))
+	}))
+	defer img.Close()
+
+	cache := NewCache(time.Hour, 10)
+	mk := func(url string) *Processor {
+		cfg := baseConfig("http://unused.invalid")
+		cfg.AI.Modalities.Image = config.ImageModalityConfig{Enabled: true, Transport: config.TransportURL, ModalityModel: config.ModalityModel{Model: "vl", APIBaseURL: url}}
+		cfg.AI.Modalities.ApplyDefaults()
+		return New(cfg, cache)
+	}
+	reply, cons := mk(replyVL.URL), mk(consVL.URL)
+
+	// Discord CDN URLs are keyed by their attachment path, so a re-signed
+	// URL (new ex/hm query) still hits.
+	u1 := "https://cdn.discordapp.com/attachments/1/42/bike.png?ex=a&hm=b"
+	u2 := "https://cdn.discordapp.com/attachments/1/42/bike.png?ex=c&hm=d"
+	got, err := reply.DescribeImages(context.Background(), []string{u1})
+	if err != nil || len(got) != 1 || got[0] != "a red bike" {
+		t.Fatalf("reply: %v %v", got, err)
+	}
+	got, err = cons.DescribeImages(context.Background(), []string{u2})
+	if err != nil || len(got) != 1 || got[0] != "a red bike" {
+		t.Fatalf("consolidation: %v %v", got, err)
+	}
+	if replyCalls != 1 || consCalls != 0 {
+		t.Fatalf("reply calls=%d consolidation calls=%d, want 1 and 0", replyCalls, consCalls)
+	}
+
+	// A cache miss is described by the processor that missed.
+	other := img.URL + "/other.png"
+	if _, err := cons.DescribeImages(context.Background(), []string{other}); err != nil {
+		t.Fatal(err)
+	}
+	if consCalls != 1 {
+		t.Fatalf("consolidation calls=%d on a miss, want 1", consCalls)
+	}
+}

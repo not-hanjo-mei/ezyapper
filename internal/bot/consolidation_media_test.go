@@ -9,8 +9,10 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"ezyapper/internal/config"
+	"ezyapper/internal/media"
 	"ezyapper/internal/memory"
 	"ezyapper/internal/types"
 )
@@ -70,5 +72,18 @@ func TestChannelConsolidation_GetsAudioTranscript(t *testing.T) {
 	}
 	if asrCalls != 1 {
 		t.Fatalf("asr calls = %d, want the cached transcript reused", asrCalls)
+	}
+}
+
+func TestWithMediaCache(t *testing.T) {
+	shared := media.NewCache(time.Hour, 10)
+	b := &Bot{mediaCache: media.NewCache(time.Hour, 10)}
+	WithMediaCache(shared)(b)
+	if b.mediaCache != shared {
+		t.Fatal("WithMediaCache must install the shared cache")
+	}
+	WithMediaCache(nil)(b)
+	if b.mediaCache != shared {
+		t.Fatal("a nil cache must keep the current one")
 	}
 }
