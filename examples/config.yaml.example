@@ -192,9 +192,6 @@ core:
     # Max bytes for an image fetched from Discord CDN.
     max_image_bytes: 10485760
 
-    # If true, rejects image responses that lack a Content-Type header.
-    require_image_content_type: false
-
     # System prompt. It is sent byte-for-byte unchanged on every request so
     # provider-side prompt caching works: write names literally (there are
     # no {BotName}-style placeholders). Server, channel, participants (with

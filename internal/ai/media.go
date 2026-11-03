@@ -220,7 +220,7 @@ const CaptureLabelDownload = "download"
 // limit. A content type not starting with typePrefix (e.g. "audio/") is
 // rejected when typePrefix is not empty and the server sent one.
 func (c *Client) FetchMedia(ctx context.Context, rawURL string, maxBytes int64, typePrefix string) ([]byte, string, error) {
-	if err := validateImageURL(rawURL); err != nil {
+	if err := validateMediaURL(rawURL); err != nil {
 		return nil, "", fmt.Errorf("invalid media URL: %w", err)
 	}
 	req, err := http.NewRequestWithContext(httpcapture.WithLabel(ctx, CaptureLabelDownload), http.MethodGet, rawURL, nil)

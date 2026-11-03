@@ -3,11 +3,9 @@ package ai
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -362,79 +360,9 @@ func setFieldValue(field reflect.Value, value any) error {
 	return fmt.Errorf("cannot convert %T to %v", value, field.Type())
 }
 
-type imageDownloadOptions struct {
-	RequireImageContentType bool
-	MaxBytes                int64
-}
-
-func (c *Client) fetchImageAsDataURL(ctx context.Context, url string, opts imageDownloadOptions) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	httpClient := c.httpClient
-	if httpClient == nil {
-		timeout := 30 * time.Second
-		if c.config != nil && c.config.Timeout > 0 {
-			timeout = time.Duration(c.config.Timeout) * time.Second
-		}
-		logger.Warnf("[ai] fetchImageAsDataURL: httpClient is nil, this should not happen (check NewClient initialization)")
-		httpClient = &http.Client{Timeout: timeout}
-	}
-	// Create a copy with redirects disabled to prevent SSRF via redirect chains
-	imageClient := *httpClient
-	imageClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		return http.ErrUseLastResponse
-	}
-
-	resp, err := imageClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to download image: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to download image: status %d", resp.StatusCode)
-	}
-
-	contentType := resp.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "image/png"
-	}
-
-	if opts.RequireImageContentType && !strings.HasPrefix(contentType, "image/") {
-		return "", fmt.Errorf("invalid content type: %s", contentType)
-	}
-
-	if opts.MaxBytes > 0 && resp.ContentLength > opts.MaxBytes {
-		return "", fmt.Errorf("image too large: %d bytes", resp.ContentLength)
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read image data: %w", err)
-	}
-
-	if opts.MaxBytes > 0 && int64(len(data)) > opts.MaxBytes {
-		return "", fmt.Errorf("image too large: %d bytes", len(data))
-	}
-
-	base64Data := base64.StdEncoding.EncodeToString(data)
-	return fmt.Sprintf("data:%s;base64,%s", contentType, base64Data), nil
-}
-
-func (c *Client) downloadImageToBase64(ctx context.Context, url string) (string, error) {
-	if err := validateImageURL(url); err != nil {
-		return "", fmt.Errorf("invalid image URL: %w", err)
-	}
-	return c.fetchImageAsDataURL(ctx, url, imageDownloadOptions{
-		MaxBytes:                int64(c.config.MaxImageBytes),
-		RequireImageContentType: c.config.RequireImageContentType,
-	})
-}
-
-func validateImageURL(rawURL string) error {
+// validateMediaURL rejects media URLs that are not https or that resolve to
+// private or internal addresses (localhost is allowed for tests).
+func validateMediaURL(rawURL string) error {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return fmt.Errorf("parse URL: %w", err)
@@ -444,13 +372,13 @@ func validateImageURL(rawURL string) error {
 		if parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1" || parsed.Hostname() == "::1" {
 			return nil
 		}
-		return fmt.Errorf("only https URLs are allowed for images, got %q", parsed.Scheme)
+		return fmt.Errorf("only https URLs are allowed for media, got %q", parsed.Scheme)
 	}
 
 	host := parsed.Hostname()
 	if ip := net.ParseIP(host); ip != nil {
 		if isPrivateIP(ip) {
-			return fmt.Errorf("image URL resolves to private/internal IP address")
+			return fmt.Errorf("media URL resolves to private/internal IP address")
 		}
 		return nil
 	}
@@ -461,7 +389,7 @@ func validateImageURL(rawURL string) error {
 	}
 	for _, ip := range ips {
 		if isPrivateIP(ip) {
-			return fmt.Errorf("image URL resolves to private/internal IP (%s)", ip.String())
+			return fmt.Errorf("media URL resolves to private/internal IP (%s)", ip.String())
 		}
 	}
 	return nil
@@ -652,14 +580,6 @@ func (c *Client) CreateChatCompletionWithTools(ctx context.Context, req ChatComp
 
 // ToolHandler is a function that handles tool calls
 type ToolHandler func(ctx context.Context, toolCall openai.ToolCall) (string, error)
-
-// DownloadImage downloads an image and returns it as base64 data URL
-func (c *Client) DownloadImage(ctx context.Context, url string) (string, error) {
-	return c.fetchImageAsDataURL(ctx, url, imageDownloadOptions{
-		RequireImageContentType: c.config.RequireImageContentType,
-		MaxBytes:                int64(c.config.MaxImageBytes),
-	})
-}
 
 // CreateEmbedding creates an embedding for the given text
 func (c *Client) CreateEmbedding(ctx context.Context, text string, model string) ([]float32, error) {

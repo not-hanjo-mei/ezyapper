@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -393,5 +394,29 @@ func TestValidateFFmpegOptions(t *testing.T) {
 	}
 	if got := (ModalitiesConfig{}).FFmpegRequirements(); len(got) != 0 {
 		t.Fatalf("default config needs no ffmpeg: %v", got)
+	}
+}
+
+// core.ai.require_image_content_type was removed; an old config that still
+// sets it must load and get a deprecation warning.
+func TestLoad_RemovedRequireImageContentTypeWarns(t *testing.T) {
+	var buf bytes.Buffer
+	old := warningOutput
+	warningOutput = &buf
+	defer func() { warningOutput = old }()
+
+	if _, err := loadModalitiesYAML(t, "    require_image_content_type: true\n"); err != nil {
+		t.Fatalf("a config that still sets the removed key must load: %v", err)
+	}
+	if !strings.Contains(buf.String(), "core.ai.require_image_content_type is deprecated") {
+		t.Fatalf("missing deprecation warning, got %q", buf.String())
+	}
+
+	buf.Reset()
+	if _, err := loadModalitiesYAML(t, ""); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "require_image_content_type") {
+		t.Fatalf("no warning expected without the key, got %q", buf.String())
 	}
 }

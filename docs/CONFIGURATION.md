@@ -110,7 +110,8 @@ The main chat model. All sub-fields here are required.
 | `system_prompt` | string | The static system prompt. Sent unchanged on every request (no placeholders); see [System prompt](#system-prompt). |
 | `max_tool_iterations` | int (>0) | Cap on tool-calling loops per turn. Prevents infinite tool-call cycles. |
 | `max_image_bytes` | int (>0) | Maximum bytes for an image fetched from Discord CDN. |
-| `require_image_content_type` | bool | If true, image responses without a `Content-Type` header are rejected. |
+
+`core.ai.require_image_content_type` was removed: image downloads already reject responses whose `Content-Type` is not an image type. A config that still sets it loads and logs a deprecation warning.
 
 #### `core.ai.modalities` (optional)
 

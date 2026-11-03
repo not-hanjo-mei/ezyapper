@@ -63,7 +63,7 @@
             "timeout":        { "type": "integer", "minimum": 1 },
             "max_tool_iterations":        { "type": "integer", "minimum": 1 },
             "max_image_bytes":            { "type": "integer", "minimum": 1 },
-            "require_image_content_type": { "type": "boolean" },
+            "require_image_content_type": { "type": "boolean", "deprecated": true, "description": "Removed and ignored (a config that sets it logs a deprecation warning)." },
             "system_prompt":  { "type": "string" },
             "extra_params":   { "type": "object" },
             "modalities": {

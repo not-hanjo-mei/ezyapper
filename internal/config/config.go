@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"strings"
@@ -202,11 +203,10 @@ type AIConfig struct {
 	Modalities ModalitiesConfig `mapstructure:"modalities" yaml:"modalities"`
 	// Vision is the deprecated pre-modalities block. It is only read: Load
 	// maps it onto Modalities.Image and clears it (see mapLegacyVision).
-	Vision                  VisionConfig `mapstructure:"vision" yaml:"vision,omitempty"`
-	SystemPrompt            string       `mapstructure:"system_prompt" yaml:"system_prompt"`
-	MaxToolIterations       int          `mapstructure:"max_tool_iterations" yaml:"max_tool_iterations"`
-	MaxImageBytes           int          `mapstructure:"max_image_bytes" yaml:"max_image_bytes"`
-	RequireImageContentType bool         `mapstructure:"require_image_content_type" yaml:"require_image_content_type"`
+	Vision            VisionConfig `mapstructure:"vision" yaml:"vision,omitempty"`
+	SystemPrompt      string       `mapstructure:"system_prompt" yaml:"system_prompt"`
+	MaxToolIterations int          `mapstructure:"max_tool_iterations" yaml:"max_tool_iterations"`
+	MaxImageBytes     int          `mapstructure:"max_image_bytes" yaml:"max_image_bytes"`
 
 	// modalitiesSet records that core.ai.modalities was present in the file
 	// (even with only zero values), so the legacy vision block is ignored.
@@ -441,6 +441,11 @@ func Load(configPath string) (*Config, error) {
 	}
 
 	raw.Core.AI.modalitiesSet = v.IsSet("core.ai.modalities")
+	for _, key := range removedKeys {
+		if v.IsSet(key.path) {
+			fmt.Fprintf(warningOutput, "[config][WARNING] %s is deprecated and ignored: %s\n", key.path, key.why)
+		}
+	}
 	cfg := Config{
 		Discord:        raw.Core.Discord,
 		AI:             raw.Core.AI,
@@ -465,6 +470,16 @@ func Load(configPath string) (*Config, error) {
 	cfg.configPath = v.ConfigFileUsed()
 
 	return &cfg, nil
+}
+
+// warningOutput receives config warnings (Load runs before the logger is
+// set up). Tests replace it.
+var warningOutput io.Writer = os.Stderr
+
+// removedKeys are settings that no longer exist. A config that still sets
+// one loads (unknown keys are ignored) and gets a deprecation warning.
+var removedKeys = []struct{ path, why string }{
+	{"core.ai.require_image_content_type", "image downloads already reject non-image content types; remove the key"},
 }
 
 func requireNonEmpty(val string, path string, errs *[]string) {
@@ -853,7 +868,7 @@ func validate(cfg *Config) error {
 	validateCore(cfg, &errs)
 	validateAI(cfg, &errs)
 	if notice := mapLegacyVision(&cfg.AI, &errs); notice != "" {
-		fmt.Fprintf(os.Stderr, "[config][WARNING] %s\n", notice)
+		fmt.Fprintf(warningOutput, "[config][WARNING] %s\n", notice)
 	}
 	cfg.AI.Modalities.ApplyDefaults()
 	validateModalities(cfg, &errs)
