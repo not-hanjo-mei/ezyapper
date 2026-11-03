@@ -62,6 +62,8 @@ func TestManagerHelperProcess(t *testing.T) {
 
 		fmt.Fprint(os.Stdout, "ok")
 		os.Exit(0)
+	case "read-config":
+		os.Exit(helperReadConfig())
 	case "sleep":
 		time.Sleep(5 * time.Second)
 		fmt.Fprint(os.Stdout, "woke up")

@@ -602,7 +602,10 @@ Saving from the WebUI `/config` page goes through the same steps; the file is wr
 
 ### Plugins
 
-Each plugin watches **its own** config file and reloads itself; the bot and the other plugins are not touched (see [PLUGINS.md](PLUGINS.md#config-hot-reload)). A plugin whose new file is invalid keeps its previous config and logs why.
+Each plugin owns its config file; the bot and the other plugins are not touched when it changes.
+
+- **`jsonrpc` plugins** (all Go examples) watch their own config file and reload themselves on save. A plugin whose new file is invalid keeps its previous config and logs why. See [PLUGINS.md](PLUGINS.md#config-hot-reload).
+- **`command` plugins** (`datetime-zig`, `datetime-java`) are started fresh for every tool call and read `config.yaml` (from `EZYAPPER_PLUGIN_CONFIG`) each time, so the next call after a save uses the new values. A broken file fails only the calls made while it is broken (the error is in the bot's log); there is no previous config to keep. `clank-o-meter-zig` and `systemspec-c` have no config file. See [PLUGINS.md](PLUGINS.md#config-changes).
 
 ### Limitations
 

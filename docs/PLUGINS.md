@@ -269,7 +269,9 @@ if err == nil {
 
 Environment knobs: `EZYAPPER_PLUGIN_CONFIG_WATCH=off` disables watching, `EZYAPPER_PLUGIN_CONFIG_DEBOUNCE_MS` changes the debounce (default 500).
 
-All Go example plugins (`antispam`, `clank-o-meter`, `datetime`, `emote`, `kimi-tools`, `openai-tts`, `systemspec`) reload their config on save. The Zig, Java and C examples read their config at startup only.
+All Go example plugins (`antispam`, `clank-o-meter`, `datetime`, `emote`, `kimi-tools`, `openai-tts`, `systemspec`) reload their config on save.
+
+Command-runtime plugins need no watcher: the host starts a new process for every tool call, so a plugin that reads `EZYAPPER_PLUGIN_CONFIG` on each run picks up an edited `config.yaml` on the next call, without a restart. See [Config changes](#config-changes) under Command Runtime.
 
 ### Implementing in Go
 
@@ -326,9 +328,17 @@ Lifecycle:
 The host injects two environment variables into every plugin process:
 
 - `EZYAPPER_PLUGIN_PATH` — absolute path to the plugin's binary or directory.
-- `EZYAPPER_PLUGIN_CONFIG` — absolute path to a `config.yaml` next to the plugin (if one exists).
+- `EZYAPPER_PLUGIN_CONFIG` — absolute path of the plugin's `config.yaml` (always set; the file itself may not exist).
 
 All other env vars are filtered. Anything containing `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD`, `CREDENTIAL`, or `AUTH` is stripped before the subprocess starts. Plugins that need their own credentials should ship a `config.yaml` next to the binary and read it via `EZYAPPER_PLUGIN_CONFIG`.
+
+### Config changes
+
+Because every tool call is a fresh process, a command plugin reads its `config.yaml` again on every call. Edit and save the file and the next call uses the new values; the bot, the plugin's registration and other plugins are not touched. Nothing needs to watch the file.
+
+The difference from a `jsonrpc` plugin's hot reload: a fresh process has no previous config to fall back to. If the file is broken, the plugin exits non-zero, that call fails and its stderr appears in the bot's log (`plugin command execution failed: ...`); the plugin stays loaded and the first call after the file is fixed succeeds again.
+
+The manifest (`plugin.json`, including tool definitions and `timeout_ms`) is read when the plugin is loaded; changing it needs the plugin to be disabled and re-enabled (WebUI `/plugins`) or a plugin directory reload.
 
 ---
 
@@ -398,7 +408,7 @@ The repo ships eleven example plugins under `examples/plugins/`. Each has its ow
 |-----------|----------|-----------|
 | `clank-o-meter-zig` | Zig | Same surface as `clank-o-meter-go`, written in Zig |
 | `datetime-zig` | Zig | Same surface as `datetime-go` |
-| `datetime-java` | Java | Same surface, requires JRE 17+. Uses `java -jar` in the manifest. |
+| `datetime-java` | Java | Same surface, requires JRE 17+. Runs `java -cp ./datetime-java.jar DatetimeTool` from the manifest. |
 | `systemspec-c` | C | Same surface as `systemspec-go`, native APIs (links `advapi32` on Windows) |
 
 CI builds prebuilt binaries for all of these on the platforms it targets — see [DEPLOYMENT.md](DEPLOYMENT.md).
