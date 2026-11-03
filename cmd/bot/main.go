@@ -13,6 +13,7 @@ import (
 	"ezyapper/internal/app"
 	"ezyapper/internal/bot"
 	"ezyapper/internal/config"
+	"ezyapper/internal/discordvis"
 	"ezyapper/internal/hotreload"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/media"
@@ -97,11 +98,18 @@ func main() {
 	// replaces it.
 	discordAdapter := web.NewDiscordAdapter(
 		func(channelID string) string {
-			ch, err := discordBot.GetSession().State.Channel(channelID)
+			// Hidden channels fall back to the ID like unknown ones, so
+			// the dashboard never shows Discord's "___hidden___"
+			// placeholder and the configured entry stays visible.
+			st := discordBot.GetSession().State
+			ch, err := st.Channel(channelID)
 			if err != nil || ch == nil {
 				return channelID
 			}
-			return ch.Name
+			if name, ok := discordvis.Name(ch, discordvis.StatePermissions(st, discordvis.StateBotID(st))); ok {
+				return name
+			}
+			return channelID
 		},
 		func(guildID, userID string) string {
 			s := discordBot.GetSession()

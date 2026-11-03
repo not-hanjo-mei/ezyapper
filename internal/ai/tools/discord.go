@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"ezyapper/internal/discordvis"
 	"ezyapper/internal/logger"
 
 	"github.com/bwmarrin/discordgo"
@@ -199,15 +200,7 @@ func (d *DiscordTools) getChannelInfo(ctx context.Context, args map[string]any) 
 		return "", fmt.Errorf("failed to get channel: %w", err)
 	}
 
-	result := map[string]any{
-		"id":       channel.ID,
-		"name":     channel.Name,
-		"type":     int(channel.Type),
-		"topic":    channel.Topic,
-		"guild_id": channel.GuildID,
-	}
-
-	return marshalJSON(result)
+	return marshalJSON(channelInfoResult(channel, d.botPermissions()))
 }
 
 func (d *DiscordTools) getUserInfo(ctx context.Context, args map[string]any) (string, error) {
@@ -249,16 +242,56 @@ func (d *DiscordTools) listChannels(ctx context.Context, args map[string]any) (s
 		return "", fmt.Errorf("failed to get channels: %w", err)
 	}
 
-	result := make([]map[string]any, 0, len(channels))
-	for _, ch := range channels {
+	return marshalJSON(listChannelsResult(channels, d.botPermissions()))
+}
+
+// botPermissions computes the bot's channel permissions from the session
+// state, or returns nil when they cannot be computed (then only obfuscated
+// channels are hidden).
+func (d *DiscordTools) botPermissions() discordvis.PermissionFunc {
+	s := d.sess()
+	if s == nil || s.State == nil {
+		return nil
+	}
+	return discordvis.StatePermissions(s.State, discordvis.StateBotID(s.State))
+}
+
+// listChannelsResult lists the channels the bot can view. Channels Discord
+// obfuscates (CHANNEL_OBFUSCATED, "___hidden___") or that the bot lacks View
+// Channel on are left out, so the model never sees their names.
+func listChannelsResult(channels []*discordgo.Channel, perms discordvis.PermissionFunc) []map[string]any {
+	visible := discordvis.FilterVisible(channels, perms)
+	result := make([]map[string]any, 0, len(visible))
+	for _, ch := range visible {
 		result = append(result, map[string]any{
 			"id":   ch.ID,
 			"name": ch.Name,
 			"type": int(ch.Type),
 		})
 	}
+	return result
+}
 
-	return marshalJSON(result)
+// channelInfoResult describes a channel. For a channel hidden from the bot
+// only the ID, type and guild are returned, with the neutral name
+// "unknown-channel" and accessible=false.
+func channelInfoResult(ch *discordgo.Channel, perms discordvis.PermissionFunc) map[string]any {
+	if !discordvis.Visible(ch, perms) {
+		return map[string]any{
+			"id":         ch.ID,
+			"name":       discordvis.UnknownChannelName,
+			"type":       int(ch.Type),
+			"guild_id":   ch.GuildID,
+			"accessible": false,
+		}
+	}
+	return map[string]any{
+		"id":       ch.ID,
+		"name":     ch.Name,
+		"type":     int(ch.Type),
+		"topic":    ch.Topic,
+		"guild_id": ch.GuildID,
+	}
 }
 
 func (d *DiscordTools) getRecentMessages(ctx context.Context, args map[string]any) (string, error) {

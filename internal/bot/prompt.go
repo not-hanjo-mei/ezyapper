@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"ezyapper/internal/discordvis"
 	"ezyapper/internal/memory"
 	"ezyapper/internal/plugin"
 	"ezyapper/internal/types"
@@ -242,8 +243,12 @@ var (
 	channelMentionRe = regexp.MustCompile(`<#(\d+)>`)
 )
 
-// resolveMentions turns <@id> into <@DisplayName> and <#id> into #name for
-// known users and channels; unknown IDs are left untouched.
+// resolveMentions turns <@id> into <@DisplayName> for known users (unknown
+// user IDs are left untouched) and <#id> into #name. channels holds only the
+// channels the bot can view; a channel missing from it (hidden from the bot,
+// deleted, or in another server) renders as #unknown-channel, so neither
+// Discord's "___hidden___" placeholder nor a bare ID reaches the model. A nil
+// channels map means no channel info is available and leaves <#id> as is.
 func resolveMentions(content string, names map[string]string, channels map[string]string) string {
 	content = userMentionRe.ReplaceAllStringFunc(content, func(m string) string {
 		id := userMentionRe.FindStringSubmatch(m)[1]
@@ -252,13 +257,13 @@ func resolveMentions(content string, names map[string]string, channels map[strin
 		}
 		return m
 	})
-	if len(channels) > 0 {
+	if channels != nil {
 		content = channelMentionRe.ReplaceAllStringFunc(content, func(m string) string {
 			id := channelMentionRe.FindStringSubmatch(m)[1]
-			if n, ok := channels[id]; ok && n != "" {
+			if n, ok := channels[id]; ok && n != "" && n != discordvis.HiddenChannelName {
 				return "#" + n
 			}
-			return m
+			return discordvis.UnknownChannelMention
 		})
 	}
 	return content

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"ezyapper/internal/ai"
+	"ezyapper/internal/discordvis"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/media"
 	"ezyapper/internal/memory"
@@ -124,20 +125,37 @@ func (b *Bot) basePromptInput(mc ModeContext, botID string) promptInput {
 	if b.sess() == nil || b.sess().State == nil {
 		return in
 	}
+	perms := discordvis.StatePermissions(b.sess().State, botID)
 	if g, err := b.sess().State.Guild(mc.GuildID); err == nil && g != nil {
 		if in.GuildName == "" {
 			in.GuildName = g.Name
 		}
 		in.GuildDescription = g.Description
-		for _, ch := range g.Channels {
-			in.ChannelNames[ch.ID] = ch.Name
-		}
+		addVisibleChannelNames(in.ChannelNames, g.Channels, perms)
+		addVisibleChannelNames(in.ChannelNames, g.Threads, perms)
 	}
 	if ch, err := b.sess().State.Channel(mc.ChannelID); err == nil && ch != nil {
-		in.ChannelName = ch.Name
-		in.ChannelTopic = ch.Topic
+		// The bot normally sees the channel it answers in; if Discord sent it
+		// obfuscated, show neither the placeholder name nor the topic.
+		if discordvis.Visible(ch, perms) {
+			in.ChannelName = ch.Name
+			in.ChannelTopic = ch.Topic
+		} else {
+			in.ChannelName = discordvis.UnknownChannelName
+		}
 	}
 	return in
+}
+
+// addVisibleChannelNames records the names of the channels the bot can view.
+// Hidden channels are left out, so their <#id> mentions render as
+// #unknown-channel.
+func addVisibleChannelNames(dst map[string]string, channels []*discordgo.Channel, perms discordvis.PermissionFunc) {
+	for _, ch := range channels {
+		if name, ok := discordvis.Name(ch, perms); ok {
+			dst[ch.ID] = name
+		}
+	}
 }
 
 // renderMemories renders retrieved memories as <key_facts>/<recent_memories>.
