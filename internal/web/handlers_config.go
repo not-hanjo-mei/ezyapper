@@ -122,7 +122,6 @@ var configFormAppliers = []configFieldApplier{
 		return nil
 	}},
 	{formKey: "model", apply: func(c *config.Config, v string) error { c.AI.Model = v; return nil }},
-	{formKey: "vision_model", apply: func(c *config.Config, v string) error { c.AI.Vision.Model = v; return nil }},
 	{formKey: "max_tokens", apply: func(c *config.Config, v string) error {
 		tok, err := strconv.Atoi(v)
 		if err != nil {
@@ -141,8 +140,23 @@ var configFormAppliers = []configFieldApplier{
 		return nil
 	}},
 	{formKey: "system_prompt", apply: func(c *config.Config, v string) error { c.AI.SystemPrompt = v; return nil }},
-	{formKey: "vision_mode", apply: func(c *config.Config, v string) error { c.AI.Vision.Mode = config.VisionMode(v); return nil }},
-	{formKey: "vision_description_prompt", apply: func(c *config.Config, v string) error { c.AI.Vision.DescriptionPrompt = v; return nil }},
+	{formKey: "image_enabled", apply: boolApplier("image_enabled", func(c *config.Config, b bool) { c.AI.Modalities.Image.Enabled = b })},
+	{formKey: "image_mode", apply: func(c *config.Config, v string) error { c.AI.Modalities.Image.Mode = config.ImageMode(v); return nil }},
+	{formKey: "image_model", apply: func(c *config.Config, v string) error { c.AI.Modalities.Image.Model = v; return nil }},
+	{formKey: "image_prompt", apply: func(c *config.Config, v string) error { c.AI.Modalities.Image.Prompt = v; return nil }},
+	{formKey: "image_max_items", apply: func(c *config.Config, v string) error {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("image_max_items must be a whole number")
+		}
+		c.AI.Modalities.Image.MaxItems = n
+		return nil
+	}},
+	{formKey: "audio_enabled", apply: boolApplier("audio_enabled", func(c *config.Config, b bool) { c.AI.Modalities.Audio.Enabled = b })},
+	{formKey: "audio_mode", apply: func(c *config.Config, v string) error { c.AI.Modalities.Audio.Mode = config.AudioMode(v); return nil }},
+	{formKey: "audio_model", apply: func(c *config.Config, v string) error { c.AI.Modalities.Audio.Model = v; return nil }},
+	{formKey: "video_enabled", apply: boolApplier("video_enabled", func(c *config.Config, b bool) { c.AI.Modalities.Video.Enabled = b })},
+	{formKey: "video_model", apply: func(c *config.Config, v string) error { c.AI.Modalities.Video.Model = v; return nil }},
 	{formKey: "consolidation_interval", apply: func(c *config.Config, v string) error {
 		val, err := strconv.Atoi(v)
 		if err != nil {
@@ -175,6 +189,18 @@ var configFormAppliers = []configFieldApplier{
 		c.Memory.Retrieval.MinScore = val
 		return nil
 	}},
+}
+
+// boolApplier parses "true"/"false" select values.
+func boolApplier(key string, set func(*config.Config, bool)) func(*config.Config, string) error {
+	return func(c *config.Config, v string) error {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return fmt.Errorf("%s must be true or false", key)
+		}
+		set(c, b)
+		return nil
+	}
 }
 
 func renderConfigError(w http.ResponseWriter, r *http.Request, ts *TemplateSet, cfgStore *atomic.Value, message string) {

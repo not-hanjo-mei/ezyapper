@@ -9,10 +9,10 @@ import (
 
 	"ezyapper/internal/ai"
 	"ezyapper/internal/ai/tools"
-	"ezyapper/internal/ai/vision"
 	"ezyapper/internal/config"
 	"ezyapper/internal/hotreload"
 	"ezyapper/internal/logger"
+	"ezyapper/internal/media"
 	"ezyapper/internal/memory"
 )
 
@@ -22,13 +22,16 @@ import (
 // only reach it through a fallback (core.ai.api_key used when
 // memory_pipeline.embedding.api_key is empty, and so on).
 type memoryInputs struct {
-	Enabled          bool
-	EmbeddingModel   string
-	EmbeddingClient  config.AIConfig
-	Qdrant           config.QdrantConfig
-	Consolidation    config.AIConfig
-	Vision           config.VisionConfig
-	VisionClient     config.AIConfig
+	Enabled         bool
+	EmbeddingModel  string
+	EmbeddingClient config.AIConfig
+	Qdrant          config.QdrantConfig
+	Consolidation   config.AIConfig
+	// ImageAI is what describes images in consolidated messages: the core
+	// LLM settings plus the image modality, with consolidation.vision
+	// overrides applied. Only those fields are kept, so unrelated core.ai
+	// edits (the chat prompt, other modalities) do not rebuild memory.
+	ImageAI          config.AIConfig
 	Service          memory.ServiceConfig
 	ConsolidationCfg config.ConsolidationConfig
 }
@@ -61,8 +64,7 @@ func memoryInputsFor(cfg *config.Config) memoryInputs {
 	in.Qdrant = cfg.Qdrant
 	cons := buildConsolidationAIConfig(cfg)
 	in.Consolidation = *cons
-	vc, vai := buildConsolidationVisionConfig(cfg, cons)
-	in.Vision, in.VisionClient = *vc, *vai
+	in.ImageAI = buildConsolidationImageAI(cfg)
 	in.ConsolidationCfg = cfg.Memory.Consolidation
 	in.Service = buildServiceConfig(cfg)
 	in.Service.Consolidation = nil // compared through ConsolidationCfg
@@ -85,8 +87,16 @@ func BuildMemoryService(cfg *config.Config) (memory.Service, error) {
 	}
 
 	consolidationAIClient := ai.NewClient(&in.Consolidation, tools.NewToolRegistry())
-	visionClient := ai.NewClient(&in.VisionClient, tools.NewToolRegistry())
-	visionDescriber := vision.NewVisionDescriber(visionClient, &in.Vision, &in.VisionClient)
+	// Images in consolidated messages are described by the image modality,
+	// optionally routed to another model by consolidation.vision.
+	var imageDescriber memory.ImageDescriber
+	if in.ImageAI.Modalities.Image.Enabled {
+		imgCfg := &config.Config{}
+		imgCfg.AI = in.ImageAI
+		if d := media.New(imgCfg, nil, nil).ImageDescriber(); d != nil {
+			imageDescriber = d
+		}
+	}
 
 	qdrantClient, err := memory.NewQdrantClient(context.Background(), &in.Qdrant, in.EmbeddingModel)
 	if err != nil {
@@ -97,7 +107,7 @@ func BuildMemoryService(cfg *config.Config) (memory.Service, error) {
 	svcCfg := in.Service
 	cons := in.ConsolidationCfg
 	svcCfg.Consolidation = &cons
-	svc, err := memory.NewService(&svcCfg, &in.Qdrant, qdrantClient, embedder, consolidationAIClient, visionDescriber)
+	svc, err := memory.NewService(&svcCfg, &in.Qdrant, qdrantClient, embedder, consolidationAIClient, imageDescriber)
 	if err != nil {
 		embedder.Stop()
 		_ = qdrantClient.Close()
@@ -240,7 +250,6 @@ func buildConsolidationAIConfig(cfg *config.Config) *config.AIConfig {
 			MaxTokens:   cfg.AI.MaxTokens,
 			Temperature: cfg.AI.Temperature,
 		},
-		Vision: cfg.AI.Vision,
 	}
 	if cfg.Memory.Consolidation.APIBaseURL != "" {
 		consolidationConfig.APIBaseURL = cfg.Memory.Consolidation.APIBaseURL
@@ -288,34 +297,37 @@ func buildEmbeddingAIConfig(cfg *config.Config) *config.AIConfig {
 	return &embeddingCfg
 }
 
-func buildConsolidationVisionConfig(cfg *config.Config, baseConfig *config.AIConfig) (*config.VisionConfig, *config.AIConfig) {
-	visionConfig := cfg.AI.Vision
-	visionAIConfig := *baseConfig
-
-	if cfg.Memory.Consolidation.Vision.Model != "" {
-		visionAIConfig.Vision.Model = cfg.Memory.Consolidation.Vision.Model
+// buildConsolidationImageAI returns the client settings that describe
+// images during consolidation: core.ai's LLM fields and image modality, with
+// memory_pipeline.consolidation.vision overrides applied to the modality.
+func buildConsolidationImageAI(cfg *config.Config) config.AIConfig {
+	img := cfg.AI.Modalities.Image
+	o := cfg.Memory.Consolidation.Vision
+	if o.Model != "" {
+		img.Model = o.Model
 	}
-	if cfg.Memory.Consolidation.Vision.APIBaseURL != "" {
-		visionAIConfig.APIBaseURL = cfg.Memory.Consolidation.Vision.APIBaseURL
+	if o.APIBaseURL != "" {
+		img.APIBaseURL = o.APIBaseURL
 	}
-	if cfg.Memory.Consolidation.Vision.APIKey != "" {
-		visionAIConfig.APIKey = cfg.Memory.Consolidation.Vision.APIKey
+	if o.APIKey != "" {
+		img.APIKey = o.APIKey
 	}
-	if cfg.Memory.Consolidation.Vision.MaxTokens > 0 {
-		visionAIConfig.MaxTokens = cfg.Memory.Consolidation.Vision.MaxTokens
+	if o.MaxTokens > 0 {
+		img.MaxTokens = o.MaxTokens
 	}
-	if cfg.Memory.Consolidation.Vision.Temperature > 0 {
-		visionAIConfig.Temperature = cfg.Memory.Consolidation.Vision.Temperature
+	if o.Temperature > 0 {
+		img.Temperature = o.Temperature
 	}
-	if cfg.Memory.Consolidation.Vision.RetryCount > 0 {
-		visionAIConfig.RetryCount = cfg.Memory.Consolidation.Vision.RetryCount
+	if o.RetryCount > 0 {
+		img.RetryCount = o.RetryCount
 	}
-	if cfg.Memory.Consolidation.Vision.Timeout > 0 {
-		visionAIConfig.Timeout = cfg.Memory.Consolidation.Vision.Timeout
+	if o.Timeout > 0 {
+		img.Timeout = o.Timeout
 	}
-
-	// VisionBase64 is a boolean override that is always applied (not zero-dependent)
-	visionAIConfig.Vision.Base64 = cfg.Memory.Consolidation.Vision.Base64
-
-	return &visionConfig, &visionAIConfig
+	if o.DescriptionPrompt != "" {
+		img.Prompt = o.DescriptionPrompt
+	}
+	out := config.AIConfig{LLMConfig: cfg.AI.LLMConfig, MaxImageBytes: cfg.AI.MaxImageBytes}
+	out.Modalities.Image = img
+	return out
 }

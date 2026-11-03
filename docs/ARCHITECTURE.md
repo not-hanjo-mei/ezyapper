@@ -41,8 +41,8 @@ The bot process holds five LLM client instances:
 1. main chat client (`core.ai.*`)
 2. embedding client (`memory_pipeline.embedding.*`, may inherit from `core.ai`)
 3. consolidation chat client (`memory_pipeline.memory.consolidation.*`, may inherit)
-4. consolidation vision client (separate so you can route image descriptions to a cheaper model)
-5. vision describer client (used in hybrid mode at request time, derived from `core.ai.vision.*`)
+4. consolidation image describer (the image modality, optionally overridden by `consolidation.vision` to route image descriptions to a cheaper model)
+5. media processor (image/audio/video clients derived from `core.ai.modalities.*`, used at request time)
 
 Each can have its own endpoint, key, model, and `extra_params`. They're all built up front during boot.
 
@@ -57,10 +57,10 @@ Eleven sequential phases. Anything that fails is fatal — the bot does not star
 | 1 | CLI flags | `pflag` parses `-config` (default `./config.yaml`). |
 | 2 | Config load | `config.Load(path)` reads YAML, applies env overrides, runs all 15 validators. All errors joined and reported at once. |
 | 3 | Logger init | Zap logger with file rotation via lumberjack. The global `logger.L()` helper returns a no-op logger before this runs (so `init()`-free packages don't NPE). |
-| 4 | Memory service | Builds the embedding client, Qdrant gRPC client, embedder, vision describer, consolidator. If both `retrieval.top_k=0` and `consolidation.enabled=false`, returns a `NoopService` instead. Calls `RepairOrDeleteDamagedMemories()` (best-effort startup repair) and starts the maintenance worker. |
+| 4 | Memory service | Builds the embedding client, Qdrant gRPC client, embedder, image describer, consolidator. If both `retrieval.top_k=0` and `consolidation.enabled=false`, returns a `NoopService` instead. Calls `RepairOrDeleteDamagedMemories()` (best-effort startup repair) and starts the maintenance worker. |
 | 5 | Plugin manager | `plugin.NewManager(...)` with all the configured timeouts (startup, RPC, before-send, command, shutdown, disable). Plugins aren't loaded yet. |
 | 6 | Config store | `atomic.Value` holding `*config.Config`. Used for copy-on-write reads from anywhere in the app. |
-| 7 | Bot creation | `bot.New(...)` — wires every dependency into the `Bot` struct. Creates the Discord session (not connected), tool registry, MCP manager, decision service (or nil), rate limiter, vision describer (when hybrid). Registers Discord tools and any MCP/plugin tools available at construction time. |
+| 7 | Bot creation | `bot.New(...)` — wires every dependency into the `Bot` struct. Creates the Discord session (not connected), tool registry, MCP manager, decision service (or nil), rate limiter, media processor (when any modality is enabled). Registers Discord tools and any MCP/plugin tools available at construction time. |
 | 8 | Bot start | Opens the Discord WebSocket and connects MCP + plugin servers. Plugins are scanned, loaded, and probed here. |
 | 9 | Web server | If `operations.web.enabled`, builds a Discord adapter (channel/user/guild name lookups) and starts the HTTP listener. Otherwise no-op. |
 | 10 | Cleanup goroutine | Periodic ticker calls `Bot.CleanupCache()` (rate limiter pruning + image description cache eviction) every `operations.runtime.cleanup_interval_min`. |
@@ -74,7 +74,7 @@ There are **no `init()` functions anywhere in the codebase**. Every side effect 
 
 ### `internal/config` — Strict Typed Config
 
-Viper-backed YAML loader with env overrides. The runtime `Config` struct has 13 sub-structs covering Discord, AI, Vision, Decision, Embedding, Memory, Qdrant, Web, Logging, Plugins, MCP, Operations runtime, and access control.
+Viper-backed YAML loader with env overrides. The runtime `Config` struct has 13 sub-structs covering Discord, AI (incl. modalities), Decision, Embedding, Memory, Qdrant, Web, Logging, Plugins, MCP, Operations runtime, and access control.
 
 Key invariants:
 
@@ -90,16 +90,16 @@ Thin wrapper around `go.uber.org/zap` with lumberjack rotation. Exposes a global
 
 ### `internal/ai` — LLM Client Family
 
-`internal/ai/client.go` is the OpenAI-compatible client. It handles chat completions, vision completions, embeddings, retries, and `extra_params` injection (via reflection — unknown keys are warned about, not silently ignored). Sub-packages:
+`internal/ai/client.go` is the OpenAI-compatible client. It handles chat completions (including media content parts such as `audio_url`/`video_url`, spliced into the JSON go-openai produces), embeddings, retries, and `extra_params` injection (via reflection — unknown keys are warned about, not silently ignored). Sub-packages:
 
 - `internal/ai/tools` — Tool registry and the nine built-in Discord tools (server/channel info, member lookup, recent messages, reactions, threads, etc.). Schemas are sorted alphabetically and SHA-256 hashed for prompt-cache stability.
-- `internal/ai/vision` — Hybrid-mode image describer. Calls the vision model first, then feeds the descriptions back into the main chat path.
+- `internal/media` — the image/audio/video modalities: describers, the ASR client, direct-mode content parts, and the ID-keyed result cache.
 - `internal/ai/decision` — Optional LLM-based reply decision. Image-aware: includes attachment count in the prompt context. Has its own retry loop (100ms base delay vs 1s for the main client).
 - `internal/ai/mcp` — MCP client manager. Connects to stdio or SSE servers, lists/invokes tools, filters secrets out of the env passed to subprocesses.
 
 ### `internal/bot` — Discord Glue
 
-The `Bot` struct is the dependency-injection hub. It owns the Discord session, three views of the memory service (`MemoryStore`, `ProfileStore`, an extended `consolidationManager`), the tool registry, plugin/MCP managers, decision service, rate limiter, vision describer, and several caches:
+The `Bot` struct is the dependency-injection hub. It owns the Discord session, three views of the memory service (`MemoryStore`, `ProfileStore`, an extended `consolidationManager`), the tool registry, plugin/MCP managers, decision service, rate limiter, media processor, and several caches:
 
 - **Channel message buffer** — recent messages per channel, drained during channel-scoped consolidation.
 - **Channel consolidating** — dedup flag set while a channel batch is in flight.
@@ -110,7 +110,7 @@ Event handlers live in `handlers*.go` files split by concern:
 
 - `handlers.go` — registration + `onMessageCreate` dispatch
 - `handlers_process.go` — the long pipeline (~290 lines) that runs per non-blacklisted message
-- `handlers_response.go` — vision-mode dispatch + completion calls
+- `handlers_response.go` — modality handling for the current message + completion calls
 - `handlers_context.go` / `handlers_history.go` — dynamic-context + conversation-history string building
 - `handlers_send.go` — Discord-side sending, chunking at 1900 chars, file uploads from `before_send` hooks
 - `handlers_consolidation.go` — async consolidation trigger + recursion guard
@@ -210,9 +210,9 @@ A typical user message in a non-blacklisted, non-rate-limited channel:
       otherwise → random reply%
    If true: plugin AfterDecision hooks may cancel the reply or inject prompt context.
 9. Dispatch to processMessageWithoutImages or processMessage based on
-   vision mode + presence of images
+   whether the image modality is enabled
 10. processMessageCore (phase: Generating):
-      a. Image extraction; hybrid mode invokes vision describer with cache
+      a. Image extraction; image describe mode invokes the describer with cache
       b. 3-way parallel memory search:
          - user memories (by author)
          - mentioned-user memories (anyone @-pinged)
@@ -222,10 +222,11 @@ A typical user message in a non-blacklisted, non-rate-limited channel:
       e. Build the static system prompt (instructions + static plugin sections)
       f. Build the user prompt: server, channel, context, participants,
          plugin blocks, user profile, key facts, current message
-      g. generateResponse → vision-mode handler:
-           text_only: text model + tools
-           hybrid:    cached/described images injected as text → text model + tools
-           multimodal: single multimodal model with images and tools
+      g. generateResponse → modalities:
+           describe/asr: descriptions and transcripts (cached by attachment ID)
+                         are added to the messages as text → base model + tools
+           direct:       image/audio parts ride along in the reply request
+                         (base model, or the modality's model) + tools
       h. executeToolLoop runs tool calls (Discord + plugin + MCP) until no more
          calls or MaxToolIterations hit
 11. Phase: Sending. BeforeSend plugin hooks may rewrite the response, attach files, or cancel sending
@@ -312,7 +313,7 @@ internal/
   ai/                     # LLM client, retry, ExtraParams reflection
     client.go             # main openai-compat client
     tools/                # registry + 9 Discord tools
-    vision/               # hybrid-mode image describer
+
     decision/             # optional LLM reply classifier
     mcp/                  # MCP client manager
   bot/                    # Discord glue, message pipeline, caches

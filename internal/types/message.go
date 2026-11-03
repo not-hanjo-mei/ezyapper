@@ -21,6 +21,10 @@ type DiscordMessage struct {
 	Content           string   `json:"content"`
 	ImageURLs         []string `json:"image_urls,omitempty"`
 	ImageDescriptions []string `json:"image_descriptions,omitempty"` // Cached image descriptions to avoid redundant API calls
+	// Media holds audio, voice and video attachments.
+	Media []MediaAttachment `json:"media,omitempty"`
+	// Stickers holds the stickers sent with the message.
+	Stickers []StickerRef `json:"stickers,omitempty"`
 	// Embeds holds the readable text of the message's embeds (bot embeds,
 	// link previews). Content stays the raw message text; use FullText for
 	// content plus embeds.
@@ -61,6 +65,8 @@ func FromDiscordgo(m *discordgo.MessageCreate) DiscordMessage {
 		DisplayName: displayName,
 		Content:     m.Content,
 		ImageURLs:   extractImageURLsFromMessage(m.Message),
+		Media:       ExtractMedia(m.Message),
+		Stickers:    ExtractStickers(m.Message),
 		Embeds:      SummarizeEmbeds(m.Embeds),
 		Kinds:       MessageKinds(m.Message),
 		Timestamp:   m.Timestamp,

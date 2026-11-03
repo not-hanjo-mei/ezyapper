@@ -15,6 +15,7 @@ import (
 	"ezyapper/internal/config"
 	"ezyapper/internal/hotreload"
 	"ezyapper/internal/logger"
+	"ezyapper/internal/media"
 	"ezyapper/internal/memory"
 	"ezyapper/internal/plugin"
 	"ezyapper/internal/web"
@@ -31,6 +32,13 @@ func main() {
 	cfg, err := config.Load(configFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
+		os.Exit(1)
+	}
+
+	// ffmpeg is optional, but an enabled option that needs it must not
+	// fail on the first message: refuse to start instead.
+	if _, err := media.CheckFFmpeg(context.Background(), cfg.AI.Modalities); err != nil {
+		fmt.Fprintf(os.Stderr, "Refusing to start: %v\n", err)
 		os.Exit(1)
 	}
 

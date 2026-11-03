@@ -4,6 +4,7 @@ package bot
 import (
 	"context"
 	crand "crypto/rand"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"slices"
@@ -12,14 +13,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"ezyapper/internal/ai"
 	"ezyapper/internal/ai/decision"
 	"ezyapper/internal/ai/mcp"
 	"ezyapper/internal/ai/tools"
-	"ezyapper/internal/ai/vision"
 	"ezyapper/internal/config"
 	"ezyapper/internal/filter"
 	"ezyapper/internal/logger"
+	"ezyapper/internal/media"
 	"ezyapper/internal/memory"
 	"ezyapper/internal/plugin"
 	"ezyapper/internal/ratelimit"
@@ -131,8 +131,12 @@ type Bot struct {
 	// cutoffs hides channel history older than a /clear-context call.
 	cutoffs contextCutoffs
 	// contextWindow keeps the anchored history window per channel.
-	contextWindow   *contextWindow
-	visionDescriber *vision.VisionDescriber
+	contextWindow *contextWindow
+	// media handles the image/audio/video modalities of the current config;
+	// rebuilt by ApplyRuntimeConfig. mediaCache outlives rebuilds.
+	media           *media.Processor
+	mediaCache      *media.Cache
+	stickerCache    *media.Cache
 	pluginToolNames map[string]struct{}
 
 	mu sync.RWMutex
@@ -216,7 +220,8 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 		mcpToolNames:             make(map[string]struct{}),
 		decider:                  decider,
 		rateLimiter:              limiter,
-		visionDescriber:          nil,
+		mediaCache:               media.NewCache(time.Duration(cfg.Discord.ImageCacheTTLMin)*time.Minute, cfg.Discord.ImageCacheMaxEntries),
+		stickerCache:             media.NewCache(time.Duration(cfg.AI.Modalities.Sticker.CacheTTLMin)*time.Minute, cfg.AI.Modalities.Sticker.CacheMaxEntries),
 		pluginToolNames:          make(map[string]struct{}),
 		channelMessageBuffer:     make(map[string][]*types.DiscordMessage),
 		channelConsolidating:     make(map[string]bool),
@@ -601,34 +606,73 @@ func (b *Bot) ApplyRuntimeConfig() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if b.cfg().AI.Vision.Mode != config.VisionModeHybrid {
-		b.visionDescriber = nil
+	cfg := b.cfg()
+	b.mediaCache.SetLimits(time.Duration(cfg.Discord.ImageCacheTTLMin)*time.Minute, cfg.Discord.ImageCacheMaxEntries)
+	st := cfg.AI.Modalities.Sticker
+	b.stickerCache.SetLimits(time.Duration(st.CacheTTLMin)*time.Minute, st.CacheMaxEntries)
+	if !cfg.AI.Modalities.AnyEnabled() {
+		b.media = nil
 		return nil
 	}
-
-	visionAIConfig := b.cfg().AI
-	if b.cfg().AI.Vision.APIBaseURL != "" {
-		visionAIConfig.APIBaseURL = b.cfg().AI.Vision.APIBaseURL
+	if _, err := media.CheckFFmpeg(b.ctx, cfg.AI.Modalities); err != nil {
+		return err
 	}
-	if b.cfg().AI.Vision.APIKey != "" {
-		visionAIConfig.APIKey = b.cfg().AI.Vision.APIKey
-	}
-	if b.cfg().AI.Vision.RetryCount > 0 {
-		visionAIConfig.RetryCount = b.cfg().AI.Vision.RetryCount
-	}
-	if b.cfg().AI.Vision.Timeout > 0 {
-		visionAIConfig.Timeout = b.cfg().AI.Vision.Timeout
-	}
-
-	clientWrapper := ai.NewClient(&visionAIConfig, b.toolRegistry)
-	b.visionDescriber = vision.NewVisionDescriber(clientWrapper, &b.cfg().AI.Vision, &visionAIConfig)
+	b.media = media.New(cfg, b.toolRegistry, b.mediaCache)
+	b.media.SetStickers(b.lookupSticker, b.stickerCache)
 	return nil
 }
 
-func (b *Bot) getVisionDescriber() *vision.VisionDescriber {
+// lookupSticker returns a sticker's details: from the guild sticker list in
+// the state cache when it is there, else GET /stickers/{id}.
+func (b *Bot) lookupSticker(ctx context.Context, id string) (media.StickerInfo, error) {
+	sess := b.sess()
+	if sess == nil {
+		return media.StickerInfo{}, fmt.Errorf("no discord session")
+	}
+	if sess.State != nil {
+		sess.State.RLock()
+		for _, g := range sess.State.Guilds {
+			for _, s := range g.Stickers {
+				if s != nil && s.ID == id {
+					info := media.StickerInfo{Name: s.Name, Description: s.Description, Tags: s.Tags}
+					sess.State.RUnlock()
+					return info, nil
+				}
+			}
+		}
+		sess.State.RUnlock()
+	}
+	body, err := sess.RequestWithBucketID("GET", discordgo.EndpointSticker(id), nil, discordgo.EndpointSticker(""), discordgo.WithContext(ctx))
+	if err != nil {
+		return media.StickerInfo{}, err
+	}
+	var s discordgo.Sticker
+	if err := json.Unmarshal(body, &s); err != nil {
+		return media.StickerInfo{}, err
+	}
+	return media.StickerInfo{Name: s.Name, Description: s.Description, Tags: s.Tags}, nil
+}
+
+// mediaProcessor returns the modality processor, or nil when no modality
+// besides text is enabled.
+func (b *Bot) mediaProcessor() *media.Processor {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	return b.visionDescriber
+	return b.media
+}
+
+// imageDescriber returns the image describer, or nil when images are not
+// described (image modality off).
+func (b *Bot) imageDescriber() imageDescriber {
+	if d := b.mediaProcessor().ImageDescriber(); d != nil {
+		return d
+	}
+	return nil
+}
+
+// imageDescriber describes images (implemented by media.Processor).
+type imageDescriber interface {
+	DescribeImages(ctx context.Context, imageURLs []string) ([]string, error)
 }
 
 // RefreshPluginTools reloads plugin tool registrations into the AI tool registry.
@@ -782,7 +826,10 @@ func (b *Bot) shouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 		decisionCtx, cancel := context.WithTimeout(ctx, totalTimeout)
 		defer cancel()
 
-		imageCount := len(extractImageURLs(m.Message, b.cfg().AI.Vision.MaxImages))
+		imageCount := 0
+		if img := b.cfg().AI.Modalities.Image; img.Enabled {
+			imageCount = len(extractImageURLs(m.Message, img.MaxItems))
+		}
 		decisionMessages := b.getRecentMessagesForDecision(m.ID, recentMessages)
 
 		msgInfo := decision.MessageInfo{
@@ -856,6 +903,8 @@ func (b *Bot) CleanupCache() {
 	b.historicalImageDescCacheMu.Lock()
 	b.pruneHistoricalImageDescCacheLocked()
 	b.historicalImageDescCacheMu.Unlock()
+	b.mediaCache.Prune()
+	b.stickerCache.Prune()
 }
 
 // registerProcessingMessage registers a new message being processed

@@ -100,7 +100,7 @@ const (
 // the "system_one" provider. Only the selected provider's fields are
 // validated, so both blocks can stay in the file while switching providers.
 type DecisionConfig struct {
-	LLMConfig    `mapstructure:",squash"`
+	LLMConfig    `mapstructure:",squash" yaml:",inline"`
 	Enabled      bool             `mapstructure:"enabled" yaml:"enabled"`
 	Provider     DecisionProvider `mapstructure:"provider" yaml:"provider,omitempty"`
 	SystemPrompt string           `mapstructure:"system_prompt" yaml:"system_prompt"`
@@ -197,12 +197,20 @@ type ClearCommandConfig struct {
 
 // AIConfig holds AI/LLM settings for chat
 type AIConfig struct {
-	LLMConfig               `mapstructure:",squash"`
-	Vision                  VisionConfig `mapstructure:"vision" yaml:"vision"`
+	LLMConfig `mapstructure:",squash" yaml:",inline"`
+	// Modalities configures image, audio and video handling (optional).
+	Modalities ModalitiesConfig `mapstructure:"modalities" yaml:"modalities"`
+	// Vision is the deprecated pre-modalities block. It is only read: Load
+	// maps it onto Modalities.Image and clears it (see mapLegacyVision).
+	Vision                  VisionConfig `mapstructure:"vision" yaml:"vision,omitempty"`
 	SystemPrompt            string       `mapstructure:"system_prompt" yaml:"system_prompt"`
 	MaxToolIterations       int          `mapstructure:"max_tool_iterations" yaml:"max_tool_iterations"`
 	MaxImageBytes           int          `mapstructure:"max_image_bytes" yaml:"max_image_bytes"`
 	RequireImageContentType bool         `mapstructure:"require_image_content_type" yaml:"require_image_content_type"`
+
+	// modalitiesSet records that core.ai.modalities was present in the file
+	// (even with only zero values), so the legacy vision block is ignored.
+	modalitiesSet bool
 }
 
 // EmbeddingConfig holds settings for embedding generation.
@@ -261,7 +269,7 @@ type MemoryConfig struct {
 }
 
 type ConsolidationConfig struct {
-	LLMConfig         `mapstructure:",squash"`
+	LLMConfig         `mapstructure:",squash" yaml:",inline"`
 	Enabled           bool         `mapstructure:"enabled" yaml:"enabled"`
 	Vision            VisionConfig `mapstructure:"vision" yaml:"vision"`
 	SystemPrompt      string       `mapstructure:"system_prompt" yaml:"system_prompt"`
@@ -364,23 +372,19 @@ type MCPServer struct {
 	Headers map[string]string `mapstructure:"headers" yaml:"headers"`
 }
 
-// VisionMode represents the vision processing mode
-type VisionMode string
-
-const (
-	VisionModeTextOnly   VisionMode = "text_only"
-	VisionModeHybrid     VisionMode = "hybrid"
-	VisionModeMultimodal VisionMode = "multimodal"
-)
-
-// VisionConfig holds vision processing settings
+// VisionConfig is the shape of the deprecated core.ai.vision block (mapped
+// onto core.ai.modalities.image at load) and of the optional
+// memory_pipeline.memory.consolidation.vision override, which routes image
+// descriptions made during consolidation to another model or endpoint.
 type VisionConfig struct {
-	LLMConfig         `mapstructure:",squash"`
-	Mode              VisionMode `mapstructure:"mode" yaml:"mode"`
-	DescriptionPrompt string     `mapstructure:"description_prompt" yaml:"description_prompt"`
-	Model             string     `mapstructure:"model" yaml:"model"`
-	Base64            bool       `mapstructure:"base64" yaml:"base64"`
-	MaxImages         int        `mapstructure:"max_images" yaml:"max_images"`
+	LLMConfig `mapstructure:",squash"`
+	// Mode is only read from the deprecated core.ai.vision block
+	// (text_only | hybrid | multimodal).
+	Mode              string `mapstructure:"mode" yaml:"mode,omitempty"`
+	DescriptionPrompt string `mapstructure:"description_prompt" yaml:"description_prompt,omitempty"`
+	Model             string `mapstructure:"model" yaml:"model,omitempty"`
+	Base64            bool   `mapstructure:"base64" yaml:"base64,omitempty"`
+	MaxImages         int    `mapstructure:"max_images" yaml:"max_images,omitempty"`
 }
 
 func Load(configPath string) (*Config, error) {
@@ -436,6 +440,7 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	raw.Core.AI.modalitiesSet = v.IsSet("core.ai.modalities")
 	cfg := Config{
 		Discord:        raw.Core.Discord,
 		AI:             raw.Core.AI,
@@ -490,43 +495,6 @@ func validateAI(cfg *Config, errs *[]string) {
 	requirePositive(cfg.AI.RetryCount, "core.ai.retry_count", errs)
 	requirePositive(cfg.AI.MaxToolIterations, "core.ai.max_tool_iterations", errs)
 	requirePositive(cfg.AI.MaxImageBytes, "core.ai.max_image_bytes", errs)
-	if !cfg.AI.Vision.Base64 {
-		fmt.Fprintf(os.Stderr, "WARNING: core.ai.vision.base64 is false - images will be sent as URLs (may not work with local endpoints)\n")
-	}
-}
-
-func validateVision(cfg *Config, errs *[]string) {
-	requireNonEmpty(string(cfg.AI.Vision.Mode), "core.ai.vision.mode", errs)
-	validVisionModes := map[VisionMode]bool{
-		VisionModeTextOnly:   true,
-		VisionModeHybrid:     true,
-		VisionModeMultimodal: true,
-	}
-	if !validVisionModes[cfg.AI.Vision.Mode] {
-		*errs = append(*errs, "core.ai.vision.mode must be one of: text_only, hybrid, multimodal")
-	}
-	if cfg.AI.Vision.Mode != VisionModeTextOnly && cfg.AI.Vision.Model == "" {
-		*errs = append(*errs, "core.ai.vision.model is required when vision.mode is not text_only")
-	}
-	if cfg.AI.Vision.Mode == VisionModeHybrid && cfg.AI.Vision.DescriptionPrompt == "" {
-		*errs = append(*errs, "core.ai.vision.description_prompt is required when vision.mode is hybrid")
-	}
-	if cfg.AI.Vision.MaxTokens != 0 {
-		requirePositive(cfg.AI.Vision.MaxTokens, "core.ai.vision.max_tokens", errs)
-	}
-	if cfg.AI.Vision.Mode != VisionModeTextOnly && cfg.AI.Vision.MaxTokens == 0 {
-		*errs = append(*errs, "core.ai.vision.max_tokens is required when vision.mode is not text_only")
-	}
-	if cfg.AI.Vision.Mode != VisionModeTextOnly {
-		if cfg.AI.Vision.APIBaseURL == "" && cfg.AI.APIBaseURL == "" {
-			*errs = append(*errs, "core.ai.vision.api_base_url is required when vision.mode is not text_only (or set core.ai.api_base_url)")
-		}
-		if cfg.AI.Vision.APIKey == "" && cfg.AI.APIKey == "" {
-			*errs = append(*errs, "core.ai.vision.api_key is required when vision.mode is not text_only (or set core.ai.api_key)")
-		}
-		requirePositive(cfg.AI.Vision.RetryCount, "core.ai.vision.retry_count", errs)
-		requirePositive(cfg.AI.Vision.Timeout, "core.ai.vision.timeout", errs)
-	}
 }
 
 func validateDiscord(cfg *Config, errs *[]string) {
@@ -884,7 +852,11 @@ func validate(cfg *Config) error {
 	rejectRemovedPlaceholders(cfg, &errs)
 	validateCore(cfg, &errs)
 	validateAI(cfg, &errs)
-	validateVision(cfg, &errs)
+	if notice := mapLegacyVision(&cfg.AI, &errs); notice != "" {
+		fmt.Fprintf(os.Stderr, "[config][WARNING] %s\n", notice)
+	}
+	cfg.AI.Modalities.ApplyDefaults()
+	validateModalities(cfg, &errs)
 	validateDiscord(cfg, &errs)
 	validateQdrant(cfg, &errs)
 	validateMemory(cfg, &errs)

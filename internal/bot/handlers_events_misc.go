@@ -3,7 +3,6 @@ package bot
 import (
 	"context"
 
-	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/types"
 
@@ -102,7 +101,7 @@ func (b *Bot) onMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) 
 	}
 
 	// Re-process with updated content.
-	if b.cfg().AI.Vision.Mode == config.VisionModeTextOnly {
+	if !b.cfg().AI.Modalities.Image.Enabled {
 		b.wg.Add(1)
 		go b.processMessageWithoutImages(messageCtx, s, tempMsg, newPm, recentMessages)
 	} else {

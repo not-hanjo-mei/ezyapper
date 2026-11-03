@@ -12,6 +12,7 @@ import (
 	"ezyapper/internal/config"
 	"ezyapper/internal/hotreload"
 	"ezyapper/internal/logger"
+	"ezyapper/internal/media"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -32,8 +33,10 @@ func (b *Bot) Name() string { return "discord bot" }
 //   - operations.mcp.*: a new MCP manager connects to every configured
 //     server and lists its tools; any server failing rejects the reload.
 //   - core.decision.*: the decision provider (llm or system_one) is rebuilt.
+//   - core.ai.modalities.*: an option that needs ffmpeg is checked, so a
+//     missing ffmpeg rejects the reload instead of failing on a message.
 //
-// The chat model, vision, rate limits, prompts, access lists and filters
+// The chat model, the media processor, rate limits, prompts, access lists and filters
 // are read from the config on every message (or rebuilt in Commit without
 // any failure mode), so they need nothing prepared.
 func (b *Bot) Prepare(ctx context.Context, old, next *config.Config, changes hotreload.Changes) (hotreload.Pending, error) {
@@ -41,6 +44,12 @@ func (b *Bot) Prepare(ctx context.Context, old, next *config.Config, changes hot
 		return nil, nil
 	}
 	r := &botReload{b: b, old: old, next: next}
+
+	if changes.Any("core.ai.modalities") {
+		if _, err := media.CheckFFmpeg(ctx, next.AI.Modalities); err != nil {
+			return nil, fmt.Errorf("core.ai.modalities: %w", err)
+		}
+	}
 
 	if changes.Any("core.discord.token") {
 		s, err := b.openSession(ctx, next.Discord.Token)
@@ -109,8 +118,8 @@ func (r *botReload) Commit() {
 	if b.discordClient != nil {
 		b.discordClient.SetMaxPaginatedLimit(r.next.Memory.MaxPaginatedLimit)
 	}
-	// Rate limiter and the hybrid-vision describer are rebuilt from the
-	// published config; ApplyRuntimeConfig cannot fail.
+	// Rate limiter, caches and the media processor are rebuilt from the
+	// published config; ffmpeg was checked in Prepare.
 	if err := b.ApplyRuntimeConfig(); err != nil {
 		logger.Errorf("[bot] applying runtime config: %v", err)
 	}

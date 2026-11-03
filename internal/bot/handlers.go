@@ -5,7 +5,6 @@ import (
 	"context"
 	"time"
 
-	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/types"
 
@@ -219,7 +218,7 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		return
 	}
 
-	if b.cfg().AI.Vision.Mode == config.VisionModeTextOnly {
+	if !b.cfg().AI.Modalities.Image.Enabled {
 		b.wg.Add(1)
 		go b.processMessageWithoutImages(messageCtx, s, m, pm, recentMessages)
 		return

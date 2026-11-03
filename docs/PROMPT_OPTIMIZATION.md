@@ -46,7 +46,7 @@ Each message is one line:
   When the model writes `<@Name>` for an unambiguous participant, it is
   converted back to a real `<@id>` ping before sending.
 - Text is not HTML-escaped.
-- Image descriptions (hybrid vision) are appended as `[Image N: ...]`.
+- Image descriptions, audio transcripts and video descriptions (describe/asr modalities) are appended as `[Image N: ...]`, `[Audio N transcript (...): ...]`, `[Video N (...): ...]`.
 
 ## Anchored context window
 

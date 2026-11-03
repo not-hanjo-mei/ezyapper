@@ -51,7 +51,7 @@
         },
         "ai": {
           "type": "object",
-          "required": ["api_base_url", "api_key", "model", "max_tokens", "temperature", "retry_count", "timeout", "system_prompt", "vision", "max_tool_iterations", "max_image_bytes"],
+          "required": ["api_base_url", "api_key", "model", "max_tokens", "temperature", "retry_count", "timeout", "system_prompt", "max_tool_iterations", "max_image_bytes"],
           "additionalProperties": false,
           "properties": {
             "api_base_url":   { "type": "string" },
@@ -66,8 +66,106 @@
             "require_image_content_type": { "type": "boolean" },
             "system_prompt":  { "type": "string" },
             "extra_params":   { "type": "object" },
+            "modalities": {
+              "type": "object",
+              "description": "Optional per-modality models. Text is always core.ai. Empty endpoint fields fall back to core.ai.",
+              "additionalProperties": false,
+              "properties": {
+                "image": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "allOf": [{ "if": { "properties": { "enabled": { "const": true }, "mode": { "enum": ["describe"] } }, "required": ["enabled"] }, "then": { "required": ["model"] } }],
+                  "properties": {
+                    "enabled":      { "type": "boolean" },
+                    "mode":         { "type": "string", "enum": ["describe", "direct"] },
+                    "model":        { "type": "string" },
+                    "api_base_url": { "type": "string" },
+                    "api_key":      { "type": "string" },
+                    "timeout":      { "type": "integer", "minimum": 0 },
+                    "max_tokens":   { "type": "integer", "minimum": 1 },
+                    "temperature":  { "type": "number", "minimum": 0, "maximum": 2 },
+                    "retry_count":  { "type": "integer", "minimum": 0 },
+                    "extra_params": { "type": "object" },
+                    "prompt":       { "type": "string" },
+                    "max_items":    { "type": "integer", "minimum": 0 },
+                    "transport":    { "type": "string", "enum": ["base64", "url"] }
+                  }
+                },
+                "audio": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "allOf": [{ "if": { "properties": { "enabled": { "const": true }, "mode": { "enum": ["asr"] } }, "required": ["enabled"] }, "then": { "required": ["model"] } }],
+                  "properties": {
+                    "enabled":          { "type": "boolean" },
+                    "mode":             { "type": "string", "enum": ["asr", "direct"] },
+                    "model":            { "type": "string" },
+                    "api_base_url":     { "type": "string" },
+                    "api_key":          { "type": "string" },
+                    "timeout":          { "type": "integer", "minimum": 0 },
+                    "max_tokens":       { "type": "integer", "minimum": 1 },
+                    "temperature":      { "type": "number", "minimum": 0, "maximum": 2 },
+                    "retry_count":      { "type": "integer", "minimum": 0 },
+                    "extra_params":     { "type": "object" },
+                    "language":         { "type": "string" },
+                    "prompt":           { "type": "string" },
+                    "max_items":        { "type": "integer", "minimum": 0 },
+                    "max_bytes":        { "type": "integer", "minimum": 0 },
+                    "max_duration_sec": { "type": "integer", "minimum": 0 },
+                    "transcode":        { "type": "string", "enum": ["", "mp3", "wav"] },
+                    "part_type":        { "type": "string", "enum": ["audio_url", "input_audio"] }
+                  }
+                },
+                "video": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "allOf": [{ "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }, "then": { "required": ["model"] } }],
+                  "properties": {
+                    "enabled":          { "type": "boolean" },
+                    "mode":             { "type": "string", "enum": ["describe"] },
+                    "model":            { "type": "string" },
+                    "api_base_url":     { "type": "string" },
+                    "api_key":          { "type": "string" },
+                    "timeout":          { "type": "integer", "minimum": 0 },
+                    "max_tokens":       { "type": "integer", "minimum": 1 },
+                    "temperature":      { "type": "number", "minimum": 0, "maximum": 2 },
+                    "retry_count":      { "type": "integer", "minimum": 0 },
+                    "extra_params":     { "type": "object" },
+                    "prompt":           { "type": "string" },
+                    "max_items":        { "type": "integer", "minimum": 0 },
+                    "max_bytes":        { "type": "integer", "minimum": 0 },
+                    "max_duration_sec": { "type": "integer", "minimum": 0 },
+                    "transport":        { "type": "string", "enum": ["base64", "url"] },
+                    "transcode":        { "type": "boolean" },
+                    "max_height":       { "type": "integer", "minimum": 0 }
+                  }
+                },
+                "sticker": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled":           { "type": "boolean" },
+                    "mode":              { "type": "string", "enum": ["text", "vision"] },
+                    "model":             { "type": "string" },
+                    "api_base_url":      { "type": "string" },
+                    "api_key":           { "type": "string" },
+                    "timeout":           { "type": "integer", "minimum": 0 },
+                    "max_tokens":        { "type": "integer", "minimum": 1 },
+                    "temperature":       { "type": "number", "minimum": 0, "maximum": 2 },
+                    "retry_count":       { "type": "integer", "minimum": 0 },
+                    "extra_params":      { "type": "object" },
+                    "prompt":            { "type": "string" },
+                    "max_items":         { "type": "integer", "minimum": 0 },
+                    "cache_ttl_min":     { "type": "integer", "minimum": 0 },
+                    "cache_max_entries": { "type": "integer", "minimum": 0 }
+                  }
+                },
+                "ffmpeg_path": { "type": "string" }
+              }
+            },
             "vision": {
               "type": "object",
+              "deprecated": true,
+              "description": "Deprecated: mapped onto modalities.image (text_only=off, hybrid=describe, multimodal=direct). Ignored when modalities is set.",
               "required": ["mode"],
               "additionalProperties": false,
               "allOf": [

@@ -113,10 +113,14 @@ type aiChatCompleter interface {
 	CreateChatCompletionSingle(ctx context.Context, req ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error)
 }
 
-// visionDescriber is the subset of vision.VisionDescriber methods used by Consolidator.
+// visionDescriber describes images for consolidation (media.Processor).
 type visionDescriber interface {
 	DescribeImages(ctx context.Context, imageURLs []string) ([]string, error)
 }
+
+// ImageDescriber is the exported name of the image describer NewService
+// accepts.
+type ImageDescriber = visionDescriber
 
 // Consolidator extracts and stores memories from conversation context using LLM analysis.
 type Consolidator struct {

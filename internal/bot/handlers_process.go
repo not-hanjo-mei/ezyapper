@@ -150,11 +150,12 @@ func (b *Bot) extractMessageImages(ctx context.Context, m *discordgo.MessageCrea
 	imageDescriptions = make([]string, 0)
 
 	if withImages {
-		imageURLs = extractImageURLs(m.Message, b.cfg().AI.Vision.MaxImages)
+		img := b.cfg().AI.Modalities.Image
+		imageURLs = extractImageURLs(m.Message, img.MaxItems)
 
-		visionDescriber := b.getVisionDescriber()
-		if b.cfg().AI.Vision.Mode == config.VisionModeHybrid && len(imageURLs) > 0 && visionDescriber != nil {
-			descriptions, err := visionDescriber.DescribeImages(ctx, imageURLs)
+		describer := b.imageDescriber()
+		if img.Enabled && img.Mode == config.ImageModeDescribe && len(imageURLs) > 0 && describer != nil {
+			descriptions, err := describer.DescribeImages(ctx, imageURLs)
 			if err != nil {
 				logger.Warnf("[process] failed to describe images for message %s: %v", m.ID, err)
 			} else {
@@ -175,6 +176,8 @@ func (b *Bot) extractMessageImages(ctx context.Context, m *discordgo.MessageCrea
 			Kinds:             types.MessageKinds(m.Message),
 			ImageURLs:         imageURLs,
 			ImageDescriptions: imageDescriptions,
+			Media:             types.ExtractMedia(m.Message),
+			Stickers:          types.ExtractStickers(m.Message),
 			Timestamp:         m.Timestamp,
 			IsBot:             m.Author.Bot,
 		}

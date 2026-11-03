@@ -8,6 +8,7 @@ import (
 
 	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
+	"ezyapper/internal/media"
 	"ezyapper/internal/types"
 )
 
@@ -39,14 +40,33 @@ func containsImageKeyword(content string) bool {
 	return false
 }
 
-// recentImageEnrichment describes when the most recent historical image may
-// be described on demand (a vision call) while building history.
+// audioKeywords / videoKeywords play the role of imageKeywords for audio and
+// video history enrichment.
+var (
+	audioKeywords = []string{"audio", "voice", "listen", "recording", "song"}
+	videoKeywords = []string{"video", "clip"}
+)
+
+func containsAny(content string, keywords []string) bool {
+	for _, k := range keywords {
+		if strings.Contains(content, k) {
+			return true
+		}
+	}
+	return false
+}
+
+// recentImageEnrichment describes when the most recent historical image (or
+// audio / video) may be processed on demand (a model call) while building
+// history.
 type recentImageEnrichment struct {
 	// replyToID is the message the user replied to, if any. A reply only
-	// justifies enrichment when it targets the image message itself.
+	// justifies enrichment when it targets the media message itself.
 	replyToID string
 	// keyword is true when the user's text mentions an image.
 	keyword bool
+	// audioKeyword / videoKeyword: the text mentions audio / a video.
+	audioKeyword, videoKeyword bool
 }
 
 // planRecentImageEnrichment decides whether on-demand enrichment is allowed.
@@ -56,9 +76,19 @@ type recentImageEnrichment struct {
 func planRecentImageEnrichment(userContent, replyToID string) recentImageEnrichment {
 	content := strings.ToLower(strings.TrimSpace(userContent))
 	return recentImageEnrichment{
-		replyToID: replyToID,
-		keyword:   content != "" && containsImageKeyword(content),
+		replyToID:    replyToID,
+		keyword:      content != "" && containsImageKeyword(content),
+		audioKeyword: content != "" && containsAny(content, audioKeywords),
+		videoKeyword: content != "" && containsAny(content, videoKeywords),
 	}
+}
+
+// allowsKind is allows for audio ("audio") and video ("video") messages.
+func (p recentImageEnrichment) allowsKind(kind, messageID string) bool {
+	if (kind == "audio" && p.audioKeyword) || (kind == "video" && p.videoKeyword) {
+		return true
+	}
+	return p.replyToID != "" && p.replyToID == messageID
 }
 
 // allows reports whether the image message with the given ID may be enriched.
@@ -76,54 +106,82 @@ func (p recentImageEnrichment) allows(messageID string) bool {
 // only when the user replied to it or mentioned an image (see
 // planRecentImageEnrichment). The input slice is not modified.
 func (b *Bot) enrichHistory(ctx context.Context, messages []*types.DiscordMessage, currentMsgID string, enrichment recentImageEnrichment) []*types.DiscordMessage {
-	if len(messages) == 0 || b.cfg().AI.Vision.Mode == config.VisionModeTextOnly {
+	mods := b.cfg().AI.Modalities
+	if len(messages) == 0 || !mods.AnyEnabled() {
 		return messages
 	}
+	proc := b.mediaProcessor()
 
-	mostRecentImageIndex := -1
+	// Newest first: the first match is the most recent media message.
+	mostRecentImageIndex, mostRecentAudioIndex, mostRecentVideoIndex := -1, -1, -1
 	for i, msg := range messages {
-		if msg != nil && msg.ID != currentMsgID && len(msg.ImageURLs) > 0 {
+		if msg == nil || msg.ID == currentMsgID {
+			continue
+		}
+		if mostRecentImageIndex < 0 && len(msg.ImageURLs) > 0 {
 			mostRecentImageIndex = i
-			break // newest first
+		}
+		for _, a := range msg.Media {
+			if mostRecentAudioIndex < 0 && a.IsAudio() {
+				mostRecentAudioIndex = i
+			}
+			if mostRecentVideoIndex < 0 && a.Kind == types.MediaVideo {
+				mostRecentVideoIndex = i
+			}
 		}
 	}
-	visionDescriber := b.getVisionDescriber()
+	var describer imageDescriber
+	if mods.Image.Enabled && mods.Image.Mode == config.ImageModeDescribe {
+		describer = b.imageDescriber()
+	}
 
 	out := make([]*types.DiscordMessage, len(messages))
 	for i, msg := range messages {
 		out[i] = msg
-		if msg == nil || msg.ID == currentMsgID || len(msg.ImageURLs) == 0 {
+		if msg == nil || msg.ID == currentMsgID {
 			continue
 		}
+		var extra strings.Builder
 
-		descriptions := msg.ImageDescriptions
-		if len(descriptions) == 0 {
-			if cached, ok := b.getHistoricalImageDescriptions(msg.ID, msg.ImageURLs); ok {
-				descriptions = cached
-				logger.Debugf("[history] using bot-cache descriptions for message %s", msg.ID)
+		if mods.Image.Enabled && len(msg.ImageURLs) > 0 {
+			descriptions := msg.ImageDescriptions
+			if len(descriptions) == 0 {
+				if cached, ok := b.getHistoricalImageDescriptions(msg.ID, msg.ImageURLs); ok {
+					descriptions = cached
+					logger.Debugf("[history] using bot-cache descriptions for message %s", msg.ID)
+				}
+			}
+			if len(descriptions) == 0 && i == mostRecentImageIndex && enrichment.allows(msg.ID) && describer != nil {
+				logger.Debugf("[history] performing on-demand enrichment for image message %s", msg.ID)
+				fresh, err := describer.DescribeImages(ctx, msg.ImageURLs)
+				if err != nil {
+					logger.Warnf("[history] on-demand enrichment failed for message %s: %v", msg.ID, err)
+				} else {
+					descriptions = fresh
+					b.setHistoricalImageDescriptions(msg.ID, msg.ImageURLs, descriptions)
+				}
+			}
+			for idx, desc := range descriptions {
+				fmt.Fprintf(&extra, "\n[Image %d: %s]", idx+1, desc)
 			}
 		}
-		if len(descriptions) == 0 && i == mostRecentImageIndex && enrichment.allows(msg.ID) && visionDescriber != nil {
-			logger.Debugf("[history] performing on-demand enrichment for image message %s", msg.ID)
-			fresh, err := visionDescriber.DescribeImages(ctx, msg.ImageURLs)
-			if err != nil {
-				logger.Warnf("[history] on-demand enrichment failed for message %s: %v", msg.ID, err)
-			} else {
-				descriptions = fresh
-				b.setHistoricalImageDescriptions(msg.ID, msg.ImageURLs, descriptions)
-			}
+
+		if proc != nil && len(msg.Stickers) > 0 {
+			extra.WriteString(proc.AnnotateStickers(ctx, msg, false))
 		}
-		if len(descriptions) == 0 {
+		if proc != nil && len(msg.Media) > 0 {
+			ann := proc.AnnotateAV(ctx, msg, media.AnnotateOptions{
+				ComputeAudio: i == mostRecentAudioIndex && enrichment.allowsKind("audio", msg.ID),
+				ComputeVideo: i == mostRecentVideoIndex && enrichment.allowsKind("video", msg.ID),
+			})
+			extra.WriteString(ann.Text)
+		}
+
+		if extra.Len() == 0 {
 			continue
 		}
-
 		cp := *msg
-		var sb strings.Builder
-		sb.WriteString(cp.Content)
-		for idx, desc := range descriptions {
-			fmt.Fprintf(&sb, "\n[Image %d: %s]", idx+1, desc)
-		}
-		cp.Content = sb.String()
+		cp.Content += extra.String()
 		out[i] = &cp
 	}
 	return out
