@@ -17,6 +17,7 @@ import (
 	"ezyapper/internal/ai/mcp"
 	"ezyapper/internal/ai/tools"
 	"ezyapper/internal/config"
+	"ezyapper/internal/discordvis"
 	"ezyapper/internal/filter"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/media"
@@ -430,13 +431,18 @@ func newDiscordSession(token string) (*discordgo.Session, error) {
 	return session, nil
 }
 
-// GetChannelName returns the name of a Discord channel, or the channelID if not found.
+// GetChannelName returns the name of a Discord channel, or the channelID if
+// it is not found or hidden from the bot (Discord obfuscates those).
 func (b *Bot) GetChannelName(channelID string) string {
 	ch, err := b.GetChannel(channelID)
 	if err != nil {
 		return channelID
 	}
-	return ch.Name
+	st := b.sess().State
+	if name, ok := discordvis.Name(ch, discordvis.StatePermissions(st, discordvis.StateBotID(st))); ok {
+		return name
+	}
+	return channelID
 }
 
 // GetUserName returns the display name of a guild member, or the userID if not found.

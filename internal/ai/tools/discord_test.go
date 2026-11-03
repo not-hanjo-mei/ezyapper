@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"ezyapper/internal/discordvis"
+
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -309,5 +311,119 @@ func TestMarshalJSON_PropagatesErrorToHandler(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "failed to marshal result") {
 		t.Fatalf("expected marshal error, got: %v", err)
+	}
+}
+
+const visGuildID = "g1"
+
+// visibilityState is a state with the bot as a member of a guild whose
+// @everyone role can view channels, plus the given channels.
+func visibilityState(t *testing.T, channels ...*discordgo.Channel) *discordgo.State {
+	t.Helper()
+	st := discordgo.NewState()
+	st.Ready.User = &discordgo.User{ID: "bot"}
+	g := &discordgo.Guild{
+		ID: visGuildID, OwnerID: "owner",
+		Roles:    []*discordgo.Role{{ID: visGuildID, Permissions: discordgo.PermissionViewChannel}},
+		Channels: channels,
+	}
+	if err := st.GuildAdd(g); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.MemberAdd(&discordgo.Member{GuildID: visGuildID, User: &discordgo.User{ID: "bot"}}); err != nil {
+		t.Fatal(err)
+	}
+	return st
+}
+
+func visibilityChannels() []*discordgo.Channel {
+	deny := []*discordgo.PermissionOverwrite{{ID: visGuildID, Type: discordgo.PermissionOverwriteTypeRole, Deny: discordgo.PermissionViewChannel}}
+	return []*discordgo.Channel{
+		{ID: "10", GuildID: visGuildID, Name: "general", Topic: "chat", Type: discordgo.ChannelTypeGuildText},
+		{ID: "11", GuildID: visGuildID, Name: "staff", Topic: "secret", Type: discordgo.ChannelTypeGuildText, PermissionOverwrites: deny},
+		{ID: "12", GuildID: visGuildID, Name: discordvis.HiddenChannelName, Type: discordgo.ChannelTypeGuildText, Flags: discordvis.ChannelFlagObfuscated, PermissionOverwrites: deny},
+		{ID: "13", GuildID: visGuildID, Name: "Text", Type: discordgo.ChannelTypeGuildCategory},
+	}
+}
+
+func TestListChannelsResultFiltersHidden(t *testing.T) {
+	tests := []struct {
+		name     string
+		withPerm bool
+		wantIDs  []string
+	}{
+		{"permissions known", true, []string{"10", "13"}},
+		{"permissions unknown keeps all but obfuscated", false, []string{"10", "11", "13"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			channels := visibilityChannels()
+			var perms discordvis.PermissionFunc
+			if tt.withPerm {
+				st := visibilityState(t, visibilityChannels()...)
+				perms = discordvis.StatePermissions(st, discordvis.StateBotID(st))
+			}
+			got := listChannelsResult(channels, perms)
+			if len(got) != len(tt.wantIDs) {
+				t.Fatalf("got %v, want ids %v", got, tt.wantIDs)
+			}
+			for i, id := range tt.wantIDs {
+				if got[i]["id"] != id {
+					t.Fatalf("got[%d] id = %v, want %s (all: %v)", i, got[i]["id"], id, got)
+				}
+				if got[i]["name"] == discordvis.HiddenChannelName {
+					t.Fatalf("placeholder name leaked: %v", got)
+				}
+			}
+		})
+	}
+}
+
+func TestListChannelsToolUsesSessionState(t *testing.T) {
+	d := NewDiscordTools(&discordgo.Session{State: visibilityState(t, visibilityChannels()...)})
+	perms := d.botPermissions()
+	if perms == nil {
+		t.Fatal("botPermissions returned nil with READY user and member in state")
+	}
+	got := listChannelsResult(visibilityChannels(), perms)
+	if len(got) != 2 {
+		t.Fatalf("got %v, want general and Text", got)
+	}
+	if NewDiscordTools(&discordgo.Session{}).botPermissions() != nil {
+		t.Fatal("botPermissions must be nil without state")
+	}
+}
+
+func TestChannelInfoResultHidesHidden(t *testing.T) {
+	st := visibilityState(t, visibilityChannels()...)
+	perms := discordvis.StatePermissions(st, discordvis.StateBotID(st))
+	tests := []struct {
+		id         string
+		wantName   string
+		accessible bool
+	}{
+		{"10", "general", true},
+		{"11", discordvis.UnknownChannelName, false},
+		{"12", discordvis.UnknownChannelName, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.id, func(t *testing.T) {
+			ch, err := st.Channel(tt.id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := channelInfoResult(ch, perms)
+			if got["name"] != tt.wantName {
+				t.Fatalf("name = %v, want %s", got["name"], tt.wantName)
+			}
+			if !tt.accessible {
+				if got["accessible"] != false {
+					t.Fatalf("accessible = %v, want false", got["accessible"])
+				}
+				if _, ok := got["topic"]; ok {
+					t.Fatalf("topic leaked for hidden channel: %v", got)
+				}
+			}
+		})
 	}
 }
