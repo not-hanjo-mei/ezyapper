@@ -7,7 +7,7 @@ The fastest path to a running EZyapper. For full configuration details and tunin
 
 ## Prerequisites
 
-- **Go 1.25+** (only if building from source)
+- **Go 1.27+** (only if building from source)
 - **Discord bot token** — [Discord Developer Portal](https://discord.com/developers/applications)
 - **OpenAI-compatible API key** (or a local endpoint like Ollama)
 - **Qdrant vector database** — bundled in the Docker Compose setup

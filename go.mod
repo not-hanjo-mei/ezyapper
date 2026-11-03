@@ -1,6 +1,8 @@
 module ezyapper
 
-go 1.25.0
+go 1.27.0
+
+toolchain go1.27.3
 
 require (
 	github.com/bwmarrin/discordgo v0.29.0
@@ -12,11 +14,10 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.18.2
 	go.uber.org/zap v1.26.0
+	google.golang.org/grpc v1.78.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 )
-
-require gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 
 require (
 	github.com/google/jsonschema-go v0.4.2 // indirect
@@ -42,7 +43,7 @@ require (
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260209200024-4cfbd4190f57 // indirect
-	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.11 // indirect
+	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 )
