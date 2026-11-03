@@ -617,7 +617,7 @@ func (b *Bot) ApplyRuntimeConfig() error {
 	if _, err := media.CheckFFmpeg(b.ctx, cfg.AI.Modalities); err != nil {
 		return err
 	}
-	b.media = media.New(cfg, b.toolRegistry, b.mediaCache)
+	b.media = media.New(cfg, b.mediaCache)
 	b.media.SetStickers(b.lookupSticker, b.stickerCache)
 	return nil
 }

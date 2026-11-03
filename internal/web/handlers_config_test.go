@@ -275,13 +275,13 @@ func TestConfigHandler_POST_InvalidReplyPercentage(t *testing.T) {
 	}
 }
 
-func TestConfigHandler_POST_InvalidImageMode(t *testing.T) {
+func TestConfigHandler_POST_RemovedAudioDirectMode(t *testing.T) {
 	store := newConfigStore(t)
 	tmpl := testConfigTemplate()
 	handler := ConfigHandler(store, tmpl, nil)
 
 	form := url.Values{
-		"image_mode": {"invalid_mode"},
+		"audio_mode": {"direct"},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/config", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -295,8 +295,8 @@ func TestConfigHandler_POST_InvalidImageMode(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "image.mode") {
-		t.Error("expected error message to mention image.mode")
+	if !strings.Contains(body, "audio.mode") || !strings.Contains(body, "removed") {
+		t.Error("expected error message to say audio.mode direct was removed")
 	}
 }
 

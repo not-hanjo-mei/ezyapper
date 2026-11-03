@@ -114,13 +114,13 @@ The main chat model. All sub-fields here are required.
 
 #### `core.ai.modalities` (optional)
 
-Text is always on: `core.ai` is the base model that reasons and writes every reply. Image, audio and video are optional, each with its own `enabled` switch and its own model. The whole block, and every field in it, is optional: a config without it loads with all three modalities off.
+Text is always on: `core.ai` is the base model that reasons, runs tools and writes every reply. It is treated as text-only: the reply request never carries media. Image, audio, video and stickers are optional, each with its own `enabled` switch and its own model. The whole block, and every field in it, is optional: a config without it loads with all three modalities off.
 
 Every modality accepts these endpoint fields. Left empty (or 0) they fall back to the matching `core.ai` value, so a modality on the same gateway only needs `enabled` and `model`.
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `model` | string | The modality's model. Required by `describe` / `asr` modes. |
+| `model` | string | The modality's model. Required when the modality is enabled (stickers in vision mode may fall back to `modalities.image.model`). |
 | `api_base_url`, `api_key` | string | Fall back to `core.ai`. |
 | `timeout` | int (≥0, s) | Per-request timeout. Falls back to `core.ai.timeout`. |
 | `max_tokens` | int (>0) | Falls back to `core.ai.max_tokens`. Reasoning models describing video need a lot (≈12000) or they return no content. |
@@ -128,10 +128,11 @@ Every modality accepts these endpoint fields. Left empty (or 0) they fall back t
 | `retry_count` | int (≥0) | Falls back to `core.ai.retry_count`. |
 | `extra_params` | map | Replaces `core.ai.extra_params` for this modality. |
 
-Two ways media reaches the base model:
+Media reaches the base model only as text:
 
-- **describe / asr**: a dedicated model turns the media into text, added to the message in the user prompt: `[Image 1: ...]`, `[Audio 1 transcript (voice message, 4s): ...]`, `[Video 1 (clip.mp4): ...]`. Results are cached by attachment ID (TTL and size from `core.discord.image_cache_ttl_min` / `image_cache_max_entries`), so the same media is processed once. For the message being answered, media is always processed; history messages use cached results, and at most one history message per kind is processed on demand: the most recent one, and only when the user replied to it or mentions it (e.g. "image", "voice", "video").
-- **direct**: the media itself is sent as content parts in the reply request (`image_url`, `audio_url` data URI). The reply is written by `core.ai.model`, or by the modality's `model` when set (that model then also handles tools). Image and audio in direct mode share one request, so if both name a model it must be the same one. The message text gets a marker per part (`[Image 1: attached]`, `[Audio 1: voice message, 4s, attached]`) so the model can tell which message the parts belong to. Only the message being answered carries media parts; history shows a placeholder such as `[Audio 1: voice message, 4s]`.
+- A dedicated model per modality turns the media into text, added to the message in the user prompt: `[Image 1: ...]`, `[Audio 1 transcript (voice message, 4s): ...]`, `[Video 1 (clip.mp4): ...]`. Results are cached by attachment ID (TTL and size from `core.discord.image_cache_ttl_min` / `image_cache_max_entries`), so the same media is processed once. For the message being answered, media is always processed; history messages use cached results, and at most one history message per kind is processed on demand: the most recent one, and only when the user replied to it or mentions it (e.g. "image", "voice", "video").
+- Media whose text is not available (not cached, or processing failed) shows a placeholder such as `[Audio 1: voice message, 4s]`.
+- There is no "direct" mode: `mode: direct` (image or audio) and any `image.mode` / `video.mode` fail validation with a message asking to remove them. Omni models given the media inside the long, tool-carrying reply request tended to ignore it, so a dedicated model describes it instead.
 
 The system prompt stays byte-identical: everything media-related is in the user prompt.
 
@@ -140,8 +141,8 @@ The system prompt stays byte-identical: everything media-related is in the user 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
 | `enabled` | bool | `false` | |
-| `mode` | enum | `describe` | `describe` (vision model writes a description) or `direct` (images sent to the reply model). |
-| `prompt` | string | built-in | Description prompt (describe mode). |
+| `model` | string | | Required: the vision model that describes each image (`image_url` part). |
+| `prompt` | string | built-in | Description prompt. |
 | `max_items` | int (≥0) | `4` | Images processed per message. |
 | `transport` | enum | `base64` | `base64` downloads the image (limit `core.ai.max_image_bytes`) and inlines it as a data URI; `url` passes the Discord CDN URL. |
 
@@ -150,21 +151,21 @@ The system prompt stays byte-identical: everything media-related is in the user 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
 | `enabled` | bool | `false` | |
-| `mode` | enum | `asr` | `asr`: speech-to-text via an OpenAI-compatible `POST {api_base_url}/audio/transcriptions` (multipart `file` + `model`), e.g. Whisper. `direct`: the audio is sent to an audio-capable model as an `audio_url` data URI (works with ogg/opus voice messages as is). |
+| `mode` | enum | `asr` | `asr`: speech-to-text via an OpenAI-compatible `POST {api_base_url}/audio/transcriptions` (multipart `file` + `model`), e.g. Whisper or `IFM/Jais-ASR`; added as `[Audio 1 transcript (voice message, 4s): ...]`. `describe`: an audio-capable chat-completions model receives the audio (an `audio_url` data URI by default; ogg/opus voice messages work as is) and returns a transcript or description, added as `[Audio 1 (voice message, 4s): ...]`. |
 | `language` | string | | Optional ISO-639-1 hint (asr). |
-| `prompt` | string | | Optional vocabulary/spelling hint (asr). |
+| `prompt` | string | | asr: optional vocabulary/spelling hint. describe: the instruction for the audio model (built-in default asks for a verbatim transcript, or a one-sentence description when there is no speech). |
 | `max_items` | int (≥0) | `2` | |
 | `max_bytes` | int (≥0) | 25 MiB | Larger attachments are skipped. |
 | `max_duration_sec` | int (≥0) | `600` | Checked when Discord reports a duration (voice messages). |
 | `transcode` | enum | (empty) | `mp3` or `wav`: convert with ffmpeg (mono, 16 kHz) before sending. Only needed for an ASR endpoint that rejects ogg/opus voice messages, or for `part_type: input_audio`. Requires ffmpeg. |
-| `part_type` | enum | `audio_url` | Direct mode: `audio_url` (data URI, any format the model accepts) or `input_audio` (OpenAI format, mp3/wav only, so `transcode` is required). |
+| `part_type` | enum | `audio_url` | Describe mode: `audio_url` (data URI, any format the model accepts) or `input_audio` (OpenAI format, mp3/wav only, so `transcode` is required). |
 
 **`video`**
 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
 | `enabled` | bool | `false` | |
-| `mode` | enum | `describe` | The only mode: a video-capable model (`video_url` parts) describes each video. |
+| `model` | string | | Required: a video-capable model (`video_url` parts) that describes each video. |
 | `prompt` | string | built-in | |
 | `max_items` | int (≥0) | `1` | |
 | `max_bytes` | int (≥0) | 50 MiB | |
@@ -196,12 +197,11 @@ core:
   ai:
     api_base_url: "https://gateway.example/v1"
     api_key: "..."
-    model: "my-chat-model"
+    model: "Beam-1.0-501B-A23B"
     modalities:
       image:
         enabled: true
-        mode: describe
-        model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+        model: "nvidia/nemotron-3.5-super-vl-120b-a12b"
       audio:
         enabled: true
         mode: asr
@@ -214,9 +214,11 @@ core:
         max_tokens: 12000
 ```
 
+For `audio.mode: describe`, point the audio modality at an audio-capable chat model instead, e.g. `model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"` with `max_tokens: 12000`.
+
 #### `core.ai.vision` (deprecated)
 
-The pre-modalities block still loads and is mapped onto `core.ai.modalities.image` with a startup warning: `text_only` → image off, `hybrid` → `describe`, `multimodal` → `direct` (with `vision.model` answering turns that carry images, as before). `model`, `description_prompt` (→ `prompt`), `max_images` (→ `max_items`), `base64` (→ `transport`), and the endpoint fields carry over. When `core.ai.modalities` is present, `core.ai.vision` is ignored. Saving the config from the WebUI writes the new block.
+The pre-modalities block still loads and is mapped onto `core.ai.modalities.image` with a startup warning: `text_only` → image off, `hybrid` and `multimodal` → image on (`vision.model` describes images; `multimodal` no longer sends images to the reply model). `model`, `description_prompt` (→ `prompt`), `max_images` (→ `max_items`), `base64` (→ `transport`), and the endpoint fields carry over. When `core.ai.modalities` is present, `core.ai.vision` is ignored. Saving the config from the WebUI writes the new block.
 
 ### `core.decision`
 
@@ -585,7 +587,7 @@ Saving from the WebUI `/config` page goes through the same steps; the file is wr
 | `core.discord.token` | The token is checked against the Discord API, a new gateway session is opened with the bot's handlers attached, then swapped in and the old session closed. During the switch only events from the current session are handled, so no message is answered twice. A rejected token keeps the bot connected with the old one. |
 | Other `core.discord.*` (bot name, reply percentage, cooldowns, rate limits, other-bot policy, image cache, typing/long-response timing) | Read from the live config on every message; the rate limiter is updated immediately. |
 | `core.discord.clear_command` | Enabling registers `/clear-context`; disabling leaves the global command registered but refuses it. |
-| `core.ai.*` (model, endpoint, key, prompt, tool iterations, vision) | The chat client is built per request from the live config; the hybrid-vision describer is rebuilt. |
+| `core.ai.*` (model, endpoint, key, prompt, tool iterations, vision) | The chat client is built per request from the live config; the media describers (image, audio, video, sticker) are rebuilt. |
 | `core.decision.*` | The decision provider (`llm` or `system_one`) is rebuilt; a provider that cannot be built rejects the reload. |
 | `memory_pipeline.embedding.*` with the same `model` | A new embedding client is swapped into the running memory service. |
 | `memory_pipeline.embedding.model`, `memory_pipeline.qdrant.*`, `memory_pipeline.memory.*`, consolidation settings, memory on/off | A complete new memory service is built first (connects to Qdrant, prepares the collections). For a new embedding model its vector collection is selected and filled from the source tier in the background, as on a restart (see [Switching Embedding Models](#switching-embedding-models)). The old service finishes in-flight calls and is closed after 30 s. |
@@ -623,7 +625,7 @@ core:
     api_key: "sk-..."
     model: "gpt-4o-mini"
     modalities:
-      image: { enabled: true, mode: direct, model: "gpt-4o" }
+      image: { enabled: true, model: "gpt-4o" }
       audio: { enabled: true, mode: asr, model: "whisper-1" }
 ```
 
@@ -637,7 +639,7 @@ core:
     model: "deepseek-chat"
 ```
 
-DeepSeek doesn't currently ship a vision model on its OpenAI-compatible surface; leave the modalities off or point `core.ai.modalities.image` (mode `describe`) at a different provider.
+DeepSeek doesn't currently ship a vision model on its OpenAI-compatible surface; leave the modalities off or point `core.ai.modalities.image` at a different provider.
 
 **Qwen (Alibaba Cloud)**
 
@@ -648,7 +650,7 @@ core:
     api_key: "sk-..."
     model: "qwen-plus"
     modalities:
-      image: { enabled: true, mode: describe, model: "qwen-vl-plus" }
+      image: { enabled: true, model: "qwen-vl-plus" }
 ```
 
 **Azure OpenAI**

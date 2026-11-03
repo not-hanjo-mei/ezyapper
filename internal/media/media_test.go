@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"ezyapper/internal/ai"
 	"ezyapper/internal/config"
 	"ezyapper/internal/types"
 )
@@ -147,7 +146,7 @@ func TestAnnotateASRCurrentHistoryAndCache(t *testing.T) {
 	cfg := baseConfig("http://unused.invalid")
 	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeASR, ModalityModel: config.ModalityModel{Model: "asr", APIBaseURL: asr.URL}}
 	cfg.AI.Modalities.ApplyDefaults()
-	p := New(cfg, nil, NewCache(time.Hour, 10))
+	p := New(cfg, NewCache(time.Hour, 10))
 
 	msg := &types.DiscordMessage{ID: "m1", Media: []types.MediaAttachment{voice(files.URL)}}
 
@@ -158,8 +157,8 @@ func TestAnnotateASRCurrentHistoryAndCache(t *testing.T) {
 	}
 	// Current message: transcribed, whitespace collapsed onto one line.
 	ann = p.AnnotateAV(context.Background(), msg, AnnotateOptions{Current: true})
-	if ann.Text != "\n[Audio 1 transcript (voice message, 3s): see you at noon]" || len(ann.Parts) != 0 {
-		t.Fatalf("current = %q parts=%d", ann.Text, len(ann.Parts))
+	if ann.Text != "\n[Audio 1 transcript (voice message, 3s): see you at noon]" {
+		t.Fatalf("current = %q", ann.Text)
 	}
 	// Later turns reuse the cached transcript (keyed by attachment ID, even
 	// when the CDN URL was re-signed).
@@ -174,61 +173,56 @@ func TestAnnotateASRCurrentHistoryAndCache(t *testing.T) {
 
 func TestAnnotateAudioLimits(t *testing.T) {
 	files := cdn(t)
-	cfg := baseConfig("http://unused.invalid")
-	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDirect, MaxDurationSec: 2}
+	var calls int32
+	chat := chatServer(t, "never", &calls, nil)
+	cfg := baseConfig(chat.URL)
+	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDescribe, MaxDurationSec: 2, ModalityModel: config.ModalityModel{Model: "omni"}}
 	cfg.AI.Modalities.ApplyDefaults()
-	p := New(cfg, nil, NewCache(time.Hour, 10))
+	p := New(cfg, NewCache(time.Hour, 10))
 	msg := &types.DiscordMessage{ID: "m1", Media: []types.MediaAttachment{voice(files.URL)}}
 	ann := p.AnnotateAV(context.Background(), msg, AnnotateOptions{Current: true})
-	if len(ann.Parts) != 0 || !strings.Contains(ann.Text, "duration limit") {
-		t.Fatalf("over-long audio must not be sent: %q parts=%d", ann.Text, len(ann.Parts))
+	if ann.Text != "\n[Audio 1: voice message, 3s]" || calls != 0 {
+		t.Fatalf("over-long audio must not be sent: %q calls=%d", ann.Text, calls)
 	}
 }
 
-func TestAnnotateDirectAudioParts(t *testing.T) {
+// In describe mode an audio-capable chat model gets the audio as an
+// audio_url data URI and its answer goes into the prompt as text.
+func TestAnnotateDescribeAudio(t *testing.T) {
 	files := cdn(t)
-	cfg := baseConfig("http://unused.invalid")
-	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDirect}
+	var calls int32
+	var bodies []map[string]any
+	chat := chatServer(t, "hello\nthere", &calls, &bodies)
+	cfg := baseConfig(chat.URL)
+	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDescribe, ModalityModel: config.ModalityModel{Model: "omni"}}
 	cfg.AI.Modalities.ApplyDefaults()
-	p := New(cfg, nil, NewCache(time.Hour, 10))
+	p := New(cfg, NewCache(time.Hour, 10))
 	msg := &types.DiscordMessage{ID: "m1", Media: []types.MediaAttachment{voice(files.URL), {ID: "v1", Kind: types.MediaVideo, URL: files.URL + "/v.mp4"}}}
 
+	// History without permission to compute: placeholder only, no call.
+	if hist := p.AnnotateAV(context.Background(), msg, AnnotateOptions{}); hist.Text != "\n[Audio 1: voice message, 3s]" || calls != 0 {
+		t.Fatalf("history = %q calls=%d", hist.Text, calls)
+	}
+	// Video is disabled: no line.
 	ann := p.AnnotateAV(context.Background(), msg, AnnotateOptions{Current: true})
-	if len(ann.Parts) != 1 {
-		t.Fatalf("parts = %+v", ann.Parts)
-	}
-	part := ann.Parts[0]
-	// Voice messages are ogg/opus; sent as an audio_url data URI as is.
-	if part.Kind != ai.PartAudioURL || part.URL != "data:audio/ogg;base64,T2dnUy12b2ljZQ==" {
-		t.Fatalf("part = %+v", part)
-	}
-	// Video is disabled: no line, no part.
-	if ann.Text != "\n[Audio 1: voice message, 3s, attached]" {
+	if ann.Text != "\n[Audio 1 (voice message, 3s): hello there]" {
 		t.Fatalf("text = %q", ann.Text)
 	}
-	// History in direct mode only gets a placeholder (no media parts).
-	hist := p.AnnotateAV(context.Background(), msg, AnnotateOptions{})
-	if len(hist.Parts) != 0 || hist.Text != "\n[Audio 1: voice message, 3s]" {
-		t.Fatalf("history = %+v", hist)
+	doc := bodies[0]
+	if doc["model"] != "omni" {
+		t.Fatalf("model = %v", doc["model"])
 	}
-	// No direct model override: the base client answers.
-	base := ai.NewClient(&cfg.AI, nil)
-	if p.ReplyClient(base, true) != base {
-		t.Fatal("expected base client without override")
+	content := doc["messages"].([]any)[0].(map[string]any)["content"].([]any)
+	if content[0].(map[string]any)["text"] != config.DefaultAudioPrompt {
+		t.Fatalf("prompt = %v", content[0])
 	}
-}
-
-func TestReplyClientOverride(t *testing.T) {
-	cfg := baseConfig("http://unused.invalid")
-	cfg.AI.Modalities.Image = config.ImageModalityConfig{Enabled: true, Mode: config.ImageModeDirect, ModalityModel: config.ModalityModel{Model: "vision-model"}}
-	cfg.AI.Modalities.ApplyDefaults()
-	p := New(cfg, nil, nil)
-	base := ai.NewClient(&cfg.AI, nil)
-	if p.ReplyClient(base, false) != base {
-		t.Fatal("turns without direct media use the base client")
+	// Voice messages are ogg/opus; sent as an audio_url data URI as is.
+	if u := content[1].(map[string]any)["audio_url"].(map[string]any)["url"]; u != "data:audio/ogg;base64,T2dnUy12b2ljZQ==" {
+		t.Fatalf("audio url = %v", u)
 	}
-	if p.ReplyClient(base, true) == base {
-		t.Fatal("turns with direct media use the image model (legacy multimodal behavior)")
+	// Later turns reuse the cached text.
+	if hist := p.AnnotateAV(context.Background(), msg, AnnotateOptions{}); !strings.Contains(hist.Text, "hello there") || calls != 1 {
+		t.Fatalf("cached history = %q calls=%d", hist.Text, calls)
 	}
 }
 
@@ -243,7 +237,7 @@ func TestDescribeVideoTransportAndCache(t *testing.T) {
 		cfg := baseConfig(chat.URL)
 		cfg.AI.Modalities.Video = config.VideoModalityConfig{Enabled: true, Transport: transport, ModalityModel: config.ModalityModel{Model: "omni", MaxTokens: 12000}}
 		cfg.AI.Modalities.ApplyDefaults()
-		p := New(cfg, nil, NewCache(time.Hour, 10))
+		p := New(cfg, NewCache(time.Hour, 10))
 		msg := &types.DiscordMessage{ID: "m1", Media: []types.MediaAttachment{{ID: "vid1", Kind: types.MediaVideo, URL: files.URL + "/v.mp4", Filename: "v.mp4", ContentType: "video/mp4", Size: 9}}}
 
 		ann := p.AnnotateAV(context.Background(), msg, AnnotateOptions{Current: true})
@@ -278,7 +272,7 @@ func TestDescribeImagesDescribeMode(t *testing.T) {
 	cfg := baseConfig(chat.URL)
 	cfg.AI.Modalities.Image = config.ImageModalityConfig{Enabled: true, ModalityModel: config.ModalityModel{Model: "vm"}}
 	cfg.AI.Modalities.ApplyDefaults()
-	p := New(cfg, nil, nil)
+	p := New(cfg, nil)
 	got, err := p.ImageDescriber().DescribeImages(context.Background(), []string{files.URL + "/x.png"})
 	if err != nil || len(got) != 1 || got[0] != "a red square" {
 		t.Fatalf("got %v %v", got, err)
@@ -295,9 +289,9 @@ func TestDescribeImagesDescribeMode(t *testing.T) {
 func TestDisabledModalitiesAreIgnored(t *testing.T) {
 	cfg := baseConfig("http://unused.invalid")
 	cfg.AI.Modalities.ApplyDefaults()
-	p := New(cfg, nil, nil)
+	p := New(cfg, nil)
 	msg := &types.DiscordMessage{ID: "m1", Media: []types.MediaAttachment{{ID: "a", Kind: types.MediaVoice}, {ID: "v", Kind: types.MediaVideo}}}
-	if ann := p.AnnotateAV(context.Background(), msg, AnnotateOptions{Current: true}); ann.Text != "" || len(ann.Parts) != 0 {
+	if ann := p.AnnotateAV(context.Background(), msg, AnnotateOptions{Current: true}); ann.Text != "" {
 		t.Fatalf("disabled modalities must add nothing: %+v", ann)
 	}
 	if p.ImageDescriber() != nil {
@@ -358,9 +352,9 @@ func serveASR(t *testing.T, seen func(filename, contentType string)) string {
 func TestAudioPartNormalizesDiscordContentType(t *testing.T) {
 	files := serveBytes(t, map[string][]byte{"/a.mp3": []byte("ID3")}, "audio/mpeg")
 	cfg := baseConfig("http://unused.invalid")
-	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDirect}
+	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDescribe, ModalityModel: config.ModalityModel{Model: "omni"}}
 	cfg.AI.Modalities.ApplyDefaults()
-	p := New(cfg, nil, nil)
+	p := New(cfg, nil)
 	part, err := p.AudioPart(context.Background(), types.MediaAttachment{ID: "a", Kind: types.MediaAudio, URL: files + "/a.mp3", ContentType: "audio/mpeg3"})
 	if err != nil {
 		t.Fatal(err)

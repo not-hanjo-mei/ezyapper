@@ -79,7 +79,7 @@ func (b *Bot) generateResponse(ctx context.Context, mc ModeContext, gc GenerateC
 	current.Content = mc.UserContent
 	current.Embeds = nil // already folded into UserContent
 
-	content, parts := b.annotateCurrent(ctx, current, gc)
+	content := b.annotateCurrent(ctx, current, gc)
 	current.Content = content
 
 	in := b.basePromptInput(mc, botID)
@@ -93,12 +93,9 @@ func (b *Bot) generateResponse(ctx context.Context, mc ModeContext, gc GenerateC
 
 	logger.Debugf("[prompt] system prompt: %d chars (static), user prompt: %d chars", len(systemPrompt), len(userPrompt))
 
-	client := mc.AIClient
-	if p := b.mediaProcessor(); p != nil {
-		client = p.ReplyClient(mc.AIClient, len(parts) > 0)
-	}
-	req := ai.ChatCompletionRequest{SystemPrompt: systemPrompt, Messages: []openai.ChatCompletionMessage{}, MediaParts: parts}
-	response, err := b.completeTextWithTools(ctx, client, req, userPrompt)
+	// The reply request is text only: media was turned into text above.
+	req := ai.ChatCompletionRequest{SystemPrompt: systemPrompt, Messages: []openai.ChatCompletionMessage{}}
+	response, err := b.completeTextWithTools(ctx, mc.AIClient, req, userPrompt)
 	if err != nil {
 		return "", err
 	}
@@ -151,44 +148,24 @@ func (b *Bot) renderMemories(memories []*memory.Record) string {
 }
 
 // annotateCurrent applies the enabled modalities to the message being
-// answered. It returns the content with description/transcript lines added
-// and the media parts to send in direct modes.
-func (b *Bot) annotateCurrent(ctx context.Context, current types.DiscordMessage, gc GenerateContext) (string, []ai.MediaPart) {
+// answered: it returns the content with image descriptions, sticker text,
+// audio transcripts and video descriptions added.
+func (b *Bot) annotateCurrent(ctx context.Context, current types.DiscordMessage, gc GenerateContext) string {
 	content := current.Content
 	p := b.mediaProcessor()
 	if p == nil {
-		return content, nil
+		return content
 	}
-	var parts []ai.MediaPart
-	switch {
-	case p.ImageDescribeEnabled():
+	if p.ImageDescribeEnabled() {
 		content += b.describeCurrentImages(ctx, gc)
-	case p.ImageDirectEnabled():
-		// A marker per attached image tells the model which message the
-		// media parts belong to (they follow the whole prompt text).
-		for i, u := range gc.ImageURLs {
-			part, err := p.ImagePart(ctx, u)
-			if err != nil {
-				logger.Warnf("[media] image not sent: %v", err)
-				content += fmt.Sprintf("\n[Image %d: not processed: %v]", i+1, err)
-				continue
-			}
-			parts = append(parts, part)
-			content += fmt.Sprintf("\n[Image %d: attached]", i+1)
-		}
 	}
 	content += p.AnnotateStickers(ctx, &current, true)
-	ann := p.AnnotateAV(ctx, &current, media.AnnotateOptions{Current: true})
-	content += ann.Text
-	parts = append(parts, ann.Parts...)
-	if len(parts) > 0 {
-		logger.Infof("[media] sending %d media part(s) directly with the reply request", len(parts))
-	}
-	return content, parts
+	content += p.AnnotateAV(ctx, &current, media.AnnotateOptions{Current: true}).Text
+	return content
 }
 
 // describeCurrentImages returns " [Image N: description]" suffixes for the
-// current message's images (describe mode), using cached descriptions first.
+// current message's images, using cached descriptions first.
 func (b *Bot) describeCurrentImages(ctx context.Context, gc GenerateContext) string {
 	if len(gc.ImageURLs) == 0 {
 		return ""

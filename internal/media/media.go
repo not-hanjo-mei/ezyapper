@@ -22,16 +22,14 @@ type Processor struct {
 
 	// base is the core.ai client, used for downloads.
 	base *ai.Client
-	// imageClient describes images (image enabled; any mode, so memory
-	// consolidation can still describe images in direct mode).
+	// imageClient describes images (image enabled).
 	imageClient *ai.Client
 	// videoClient describes videos.
 	videoClient *ai.Client
 	// asr transcribes audio (audio mode asr).
 	asr *Transcriber
-	// replyClient answers turns that carry direct media when a direct
-	// modality names its own model; nil means the base client.
-	replyClient *ai.Client
+	// audioClient transcribes or describes audio (audio mode describe).
+	audioClient *ai.Client
 
 	// stickerClient describes sticker images (sticker mode vision).
 	stickerClient *ai.Client
@@ -46,13 +44,10 @@ type Processor struct {
 	cache         *Cache
 }
 
-// New builds a Processor from cfg. registry is the tool registry for the
-// direct-mode reply client (direct replies keep tool support).
-func New(cfg *config.Config, registry *tools.ToolRegistry, cache *Cache) *Processor {
+// New builds a Processor from cfg. Every model it calls only turns media
+// into text; the reply itself is always written by core.ai.model from text.
+func New(cfg *config.Config, cache *Cache) *Processor {
 	mods := cfg.AI.Modalities
-	if registry == nil {
-		registry = tools.NewToolRegistry()
-	}
 	p := &Processor{
 		mods:          mods,
 		maxImageBytes: int64(cfg.AI.MaxImageBytes),
@@ -60,7 +55,7 @@ func New(cfg *config.Config, registry *tools.ToolRegistry, cache *Cache) *Proces
 		ffmpeg:        ffmpegBinary(mods),
 	}
 	base := cfg.AI
-	p.base = ai.NewClient(&base, registry)
+	p.base = ai.NewClient(&base, tools.NewToolRegistry())
 
 	if mods.Image.Enabled {
 		ic := mods.Image.Resolve(cfg.AI)
@@ -82,17 +77,13 @@ func New(cfg *config.Config, registry *tools.ToolRegistry, cache *Cache) *Proces
 			RetryCount: ac.RetryCount,
 		})
 	}
+	if mods.Audio.Enabled && mods.Audio.Mode == config.AudioModeDescribe {
+		ac := mods.Audio.Resolve(cfg.AI)
+		p.audioClient = ai.NewClient(&ac, tools.NewToolRegistry())
+	}
 	if mods.Sticker.Enabled && mods.Sticker.Mode == config.StickerModeVision {
 		sc := mods.StickerVisionModel().Resolve(cfg.AI)
 		p.stickerClient = ai.NewClient(&sc, tools.NewToolRegistry())
-	}
-	for _, name := range []string{"image", "audio"} {
-		mm, ok := mods.DirectModalities()[name]
-		if ok && mm.HasEndpointOverride() {
-			rc := mm.Resolve(cfg.AI)
-			p.replyClient = ai.NewClient(&rc, registry)
-			break
-		}
 	}
 	return p
 }
@@ -100,27 +91,13 @@ func New(cfg *config.Config, registry *tools.ToolRegistry, cache *Cache) *Proces
 // Modalities returns the config snapshot the processor was built from.
 func (p *Processor) Modalities() config.ModalitiesConfig { return p.mods }
 
-// ReplyClient returns the client that should answer a turn: the direct-mode
-// model when the turn carries direct media and one is configured, else base.
-func (p *Processor) ReplyClient(base *ai.Client, hasDirectMedia bool) *ai.Client {
-	if hasDirectMedia && p.replyClient != nil {
-		return p.replyClient
-	}
-	return base
-}
-
 // ImageDescribeEnabled reports whether images are described into text.
 func (p *Processor) ImageDescribeEnabled() bool {
-	return p.mods.Image.Enabled && p.mods.Image.Mode == config.ImageModeDescribe
+	return p.mods.Image.Enabled
 }
 
-// ImageDirectEnabled reports whether images go straight to the reply model.
-func (p *Processor) ImageDirectEnabled() bool {
-	return p.mods.Image.Enabled && p.mods.Image.Mode == config.ImageModeDirect
-}
-
-// ImagePart returns the image as a content part, inlined as a data URI when
-// the transport is base64.
+// ImagePart returns the image as a content part for the image model,
+// inlined as a data URI when the transport is base64.
 func (p *Processor) ImagePart(ctx context.Context, url string) (ai.MediaPart, error) {
 	if strings.HasPrefix(url, "data:") || p.mods.Image.Transport == config.TransportURL {
 		return ai.MediaPart{Kind: ai.PartImageURL, URL: url}, nil
@@ -245,9 +222,10 @@ func (p *Processor) Transcribe(ctx context.Context, a types.MediaAttachment) (st
 	return text, nil
 }
 
-// AudioPart returns an audio attachment as an audio_url data URI part
-// (direct mode). Data URIs work for ogg/opus voice messages without
-// transcoding; http URLs work too but are much slower on some gateways.
+// AudioPart returns an audio attachment as a content part for the audio
+// model (describe mode): an audio_url data URI part, or input_audio. Data
+// URIs work for ogg/opus voice messages without transcoding; http URLs work
+// too but are much slower on some gateways.
 func (p *Processor) AudioPart(ctx context.Context, a types.MediaAttachment) (ai.MediaPart, error) {
 	au := p.mods.Audio
 	if err := checkLimits(a, au.MaxBytes, au.MaxDurationSec); err != nil {
@@ -269,7 +247,34 @@ func (p *Processor) AudioPart(ctx context.Context, a types.MediaAttachment) (ai.
 	return ai.MediaPart{Kind: ai.PartAudioURL, URL: ai.DataURI(ct, data)}, nil
 }
 
-// VideoPart returns a video attachment as a video_url part.
+// DescribeAudio returns the audio model's transcript or description of an
+// audio attachment (describe mode), cached by attachment ID.
+func (p *Processor) DescribeAudio(ctx context.Context, a types.MediaAttachment) (string, error) {
+	if p.audioClient == nil {
+		return "", fmt.Errorf("audio describe is disabled")
+	}
+	key := "audio-describe:" + a.ID
+	if v, ok := p.cache.Get(key); ok {
+		return v, nil
+	}
+	part, err := p.AudioPart(ctx, a)
+	if err != nil {
+		return "", err
+	}
+	prompt := p.mods.Audio.Prompt
+	if strings.TrimSpace(prompt) == "" {
+		prompt = config.DefaultAudioPrompt
+	}
+	d, err := p.audioClient.DescribeMedia(ctx, prompt, part)
+	if err != nil {
+		return "", err
+	}
+	p.cache.Set(key, d)
+	return d, nil
+}
+
+// VideoPart returns a video attachment as a video_url part for the video
+// model.
 func (p *Processor) VideoPart(ctx context.Context, a types.MediaAttachment) (ai.MediaPart, error) {
 	v := p.mods.Video
 	maxDuration := v.MaxDurationSec
@@ -325,23 +330,20 @@ func (p *Processor) DescribeVideo(ctx context.Context, a types.MediaAttachment) 
 type Annotation struct {
 	// Text is appended to the message content ("\n[Audio 1 transcript: ...]").
 	Text string
-	// Parts are media parts for the reply request (direct modes, current
-	// message only).
-	Parts []ai.MediaPart
 }
 
 // AnnotateOptions controls AnnotateAV.
 type AnnotateOptions struct {
 	// Current is true for the message being answered: missing results are
-	// computed and direct-mode parts are built.
+	// computed.
 	Current bool
 	// ComputeAudio / ComputeVideo allow computing missing results for a
 	// history message (bounded on-demand enrichment).
 	ComputeAudio, ComputeVideo bool
 }
 
-// AnnotateAV returns text lines (and, for the current message in direct
-// mode, media parts) for the audio, voice and video attachments of msg.
+// AnnotateAV returns text lines for the audio, voice and video attachments
+// of msg.
 // Cached results are always used; missing ones are only computed when opts
 // allow it. Media whose modality is disabled is left out entirely.
 func (p *Processor) AnnotateAV(ctx context.Context, msg *types.DiscordMessage, opts AnnotateOptions) Annotation {
@@ -360,32 +362,26 @@ func (p *Processor) AnnotateAV(ctx context.Context, msg *types.DiscordMessage, o
 				continue
 			}
 			label := audioLabel(a)
-			switch {
-			case au.Mode == config.AudioModeDirect && opts.Current:
-				part, err := p.AudioPart(ctx, a)
+			describe := au.Mode == config.AudioModeDescribe
+			key, compute := "audio:"+a.ID, p.Transcribe
+			if describe {
+				key, compute = "audio-describe:"+a.ID, p.DescribeAudio
+			}
+			text, ok := p.cache.Get(key)
+			if !ok && (opts.Current || opts.ComputeAudio) {
+				var err error
+				text, err = compute(ctx, a)
 				if err != nil {
-					logger.Warnf("[media] audio %s not sent: %v", a.ID, err)
-					fmt.Fprintf(&sb, "\n[Audio %d: %s (not processed: %v)]", audioN, label, err)
-					continue
-				}
-				out.Parts = append(out.Parts, part)
-				fmt.Fprintf(&sb, "\n[Audio %d: %s, attached]", audioN, label)
-			case au.Mode == config.AudioModeASR:
-				text, ok := p.cache.Get("audio:" + a.ID)
-				if !ok && (opts.Current || opts.ComputeAudio) {
-					var err error
-					text, err = p.Transcribe(ctx, a)
-					if err != nil {
-						logger.Warnf("[media] audio %s not transcribed: %v", a.ID, err)
-					} else {
-						ok = true
-					}
-				}
-				if ok {
-					fmt.Fprintf(&sb, "\n[Audio %d transcript (%s): %s]", audioN, label, oneLine(text))
+					logger.Warnf("[media] audio %s not processed: %v", a.ID, err)
 				} else {
-					fmt.Fprintf(&sb, "\n[Audio %d: %s]", audioN, label)
+					ok = true
 				}
+			}
+			switch {
+			case ok && describe:
+				fmt.Fprintf(&sb, "\n[Audio %d (%s): %s]", audioN, label, oneLine(text))
+			case ok:
+				fmt.Fprintf(&sb, "\n[Audio %d transcript (%s): %s]", audioN, label, oneLine(text))
 			default:
 				fmt.Fprintf(&sb, "\n[Audio %d: %s]", audioN, label)
 			}

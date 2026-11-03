@@ -68,16 +68,15 @@
             "extra_params":   { "type": "object" },
             "modalities": {
               "type": "object",
-              "description": "Optional per-modality models. Text is always core.ai. Empty endpoint fields fall back to core.ai.",
+              "description": "Optional per-modality models that turn media into text. Text is always core.ai, which is text-only (the reply request never carries media). Empty endpoint fields fall back to core.ai.",
               "additionalProperties": false,
               "properties": {
                 "image": {
                   "type": "object",
                   "additionalProperties": false,
-                  "allOf": [{ "if": { "properties": { "enabled": { "const": true }, "mode": { "enum": ["describe"] } }, "required": ["enabled"] }, "then": { "required": ["model"] } }],
+                  "allOf": [{ "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }, "then": { "required": ["model"] } }],
                   "properties": {
                     "enabled":      { "type": "boolean" },
-                    "mode":         { "type": "string", "enum": ["describe", "direct"] },
                     "model":        { "type": "string" },
                     "api_base_url": { "type": "string" },
                     "api_key":      { "type": "string" },
@@ -94,10 +93,10 @@
                 "audio": {
                   "type": "object",
                   "additionalProperties": false,
-                  "allOf": [{ "if": { "properties": { "enabled": { "const": true }, "mode": { "enum": ["asr"] } }, "required": ["enabled"] }, "then": { "required": ["model"] } }],
+                  "allOf": [{ "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }, "then": { "required": ["model"] } }],
                   "properties": {
                     "enabled":          { "type": "boolean" },
-                    "mode":             { "type": "string", "enum": ["asr", "direct"] },
+                    "mode":             { "type": "string", "enum": ["asr", "describe"] },
                     "model":            { "type": "string" },
                     "api_base_url":     { "type": "string" },
                     "api_key":          { "type": "string" },
@@ -121,7 +120,6 @@
                   "allOf": [{ "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }, "then": { "required": ["model"] } }],
                   "properties": {
                     "enabled":          { "type": "boolean" },
-                    "mode":             { "type": "string", "enum": ["describe"] },
                     "model":            { "type": "string" },
                     "api_base_url":     { "type": "string" },
                     "api_key":          { "type": "string" },
@@ -165,7 +163,7 @@
             "vision": {
               "type": "object",
               "deprecated": true,
-              "description": "Deprecated: mapped onto modalities.image (text_only=off, hybrid=describe, multimodal=direct). Ignored when modalities is set.",
+              "description": "Deprecated: mapped onto modalities.image (text_only=off, hybrid and multimodal=image described by vision.model). Ignored when modalities is set.",
               "required": ["mode"],
               "additionalProperties": false,
               "allOf": [

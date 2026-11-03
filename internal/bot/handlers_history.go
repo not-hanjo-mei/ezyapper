@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/media"
 	"ezyapper/internal/types"
@@ -131,7 +130,7 @@ func (b *Bot) enrichHistory(ctx context.Context, messages []*types.DiscordMessag
 		}
 	}
 	var describer imageDescriber
-	if mods.Image.Enabled && mods.Image.Mode == config.ImageModeDescribe {
+	if mods.Image.Enabled {
 		describer = b.imageDescriber()
 	}
 

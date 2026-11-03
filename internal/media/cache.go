@@ -1,7 +1,7 @@
 // Package media turns image, audio, video (and sticker) content of Discord
-// messages into something the base model can use: text added to the user
-// prompt (descriptions, transcripts) or media parts for direct modes. It is
-// configured by core.ai.modalities.
+// messages into text for the base model: descriptions and transcripts added
+// to the user prompt. The reply model never receives media. It is configured
+// by core.ai.modalities.
 package media
 
 import (

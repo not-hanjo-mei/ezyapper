@@ -11,7 +11,7 @@ EZyapper is a group chat companion that can understand images, recall past conve
 | Feature | Description |
 |---------|-------------|
 | **Multi-provider AI** | Works with OpenAI, DeepSeek, Qwen, Azure, or local endpoints |
-| **Vision modes** | Three ways to handle images: ignore them (`text_only`), describe them (`hybrid`), or feed them raw to a multimodal model |
+| **Media modalities** | Images, audio, video and stickers are turned into text (descriptions, transcripts) by dedicated models; the reply model stays text-only |
 | **Long-term memory** | Qdrant vector storage for conversation history, user preferences, and facts |
 | **Extensible tools** | Discord tools + MCP servers + custom plugins |
 | **Web dashboard** | Manage config, memories, and plugins from a browser (a bit rough around the edges) |
@@ -39,7 +39,7 @@ go build -o ezyapper ./cmd/bot
 - [Configuration](docs/CONFIGURATION.md) — Tweak your bot's personality and behavior
 - [Deployment](docs/DEPLOYMENT.md) — Get it running on a server
 - [Architecture](docs/ARCHITECTURE.md) — How the code is organized
-- [Media Modalities](docs/VISION.md) — Image, audio and video handling (describe/ASR vs direct)
+- [Media Modalities](docs/VISION.md) — Image, audio, video and sticker handling (describe / ASR)
 - [Plugins](docs/PLUGINS.md) — Build your own extensions
 - [Prompt Optimization](docs/PROMPT_OPTIMIZATION.md) — Make responses faster and cheaper
 - [WebUI Reference](docs/API.md) — The optional admin dashboard

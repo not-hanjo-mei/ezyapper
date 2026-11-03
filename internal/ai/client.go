@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -57,9 +58,6 @@ type ChatCompletionRequest struct {
 	Messages     []openai.ChatCompletionMessage
 	Tools        []openai.Tool
 	UserContext  string // Dynamic context appended to user message (for prompt caching)
-	// MediaParts are attached to the user message (images, audio, video in
-	// direct mode). See spliceMediaParts.
-	MediaParts []MediaPart
 }
 
 // ChatCompletionResponse represents a chat completion response
@@ -69,46 +67,6 @@ type ChatCompletionResponse struct {
 	ReasoningContent string
 	FinishReason     string
 	Usage            openai.Usage
-}
-
-// processMessages converts image_url parts to base64 data URIs when the
-// image transport is base64.
-func (c *Client) processMessages(ctx context.Context, messages []openai.ChatCompletionMessage) ([]openai.ChatCompletionMessage, error) {
-	if c.config.Modalities.Image.Transport != config.TransportBase64 {
-		return messages, nil
-	}
-
-	processed := make([]openai.ChatCompletionMessage, len(messages))
-	for i, msg := range messages {
-		processed[i] = msg
-
-		if len(msg.MultiContent) == 0 {
-			continue
-		}
-
-		newParts := make([]openai.ChatMessagePart, len(msg.MultiContent))
-		for j, part := range msg.MultiContent {
-			newParts[j] = part
-			if part.Type != openai.ChatMessagePartTypeImageURL || part.ImageURL == nil {
-				continue
-			}
-			url := part.ImageURL.URL
-			if strings.HasPrefix(url, "data:image") {
-				continue
-			}
-			base64Data, err := c.downloadImageToBase64(ctx, url)
-			if err != nil {
-				return nil, fmt.Errorf("failed to convert image to base64: %w", err)
-			}
-			// Create a copy to avoid mutating the original message's ImageURL
-			imgCopy := *part.ImageURL
-			imgCopy.URL = base64Data
-			newParts[j].ImageURL = &imgCopy
-		}
-		processed[i].MultiContent = newParts
-	}
-
-	return processed, nil
 }
 
 func (c *Client) closeIdleConnections() {
@@ -185,10 +143,9 @@ func (c *Client) buildChatRequest(ctx context.Context, req ChatCompletionRequest
 		})
 	}
 
-	processedMessages, err := c.processMessages(ctx, req.Messages)
-	if err != nil {
-		return openai.ChatCompletionRequest{}, err
-	}
+	// Chat requests are text only; media reaches the models that describe
+	// it through DescribeMedia, never through here.
+	processedMessages := slices.Clone(req.Messages)
 
 	if req.UserContext != "" && len(processedMessages) > 0 {
 		for i := len(processedMessages) - 1; i >= 0; i-- {
@@ -246,12 +203,7 @@ func (c *Client) CreateChatCompletion(ctx context.Context, req ChatCompletionReq
 	logger.Debugf("  System prompt length: %d", len(req.SystemPrompt))
 	logger.Debugf("  Tools: %d", len(chatReq.Tools))
 
-	var resp openai.ChatCompletionResponse
-	if len(req.MediaParts) > 0 {
-		resp, err = c.createChatCompletionWithMediaRetry(ctx, chatReq, req.MediaParts, "llm completion")
-	} else {
-		resp, err = c.CreateChatCompletionWithRetry(ctx, chatReq, "llm completion")
-	}
+	resp, err := c.CreateChatCompletionWithRetry(ctx, chatReq, "llm completion")
 	if err != nil {
 		return nil, err
 	}
@@ -263,12 +215,7 @@ func (c *Client) createChatCompletionOnce(ctx context.Context, req ChatCompletio
 	if err != nil {
 		return nil, err
 	}
-	var resp openai.ChatCompletionResponse
-	if len(req.MediaParts) > 0 {
-		resp, err = c.createChatCompletionWithMediaOnce(ctx, chatReq, req.MediaParts, "llm completion")
-	} else {
-		resp, err = c.CreateChatCompletionOnce(ctx, chatReq, "llm completion")
-	}
+	resp, err := c.CreateChatCompletionOnce(ctx, chatReq, "llm completion")
 	if err != nil {
 		return nil, err
 	}

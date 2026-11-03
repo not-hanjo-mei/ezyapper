@@ -89,24 +89,21 @@ core:
     model: "gpt-4o-mini"
 
     # ── Modalities (optional) ──
-    # Text is always on: the model above reasons and writes every reply.
-    # Image, audio and video are optional, each with its own switch and model.
+    # Text is always on: the model above reasons, runs tools and writes every
+    # reply. It is text-only: the reply request never carries media.
+    # Image, audio, video and stickers are optional, each with its own switch
+    # and model, which turns the media into text lines on the message in the
+    # user prompt ("[Image 1: ...]", "[Audio 1 transcript (...): ...]",
+    # "[Video 1 (...): ...]"), cached by attachment ID.
     # Endpoint fields left empty (api_base_url, api_key, timeout, max_tokens,
     # temperature, retry_count, extra_params) fall back to the core.ai values.
-    # "describe"/"asr" modes turn media into text lines on the message in the
-    # user prompt ("[Image 1: ...]", "[Audio 1 transcript (...): ...]",
-    # "[Video 1 (...): ...]"), cached by attachment ID. "direct" mode sends
-    # the media itself in the reply request (the base model, or the
-    # modality's model when set, must accept it).
-    # The old core.ai.vision block still loads (text_only=off,
-    # hybrid=describe, multimodal=direct) but is deprecated.
+    # The old core.ai.vision block still loads (text_only=off, hybrid and
+    # multimodal=image on) but is deprecated.
     modalities:
       image:
         enabled: false
-        # describe: a vision model writes a description for the base model.
-        # direct:   images are sent in the reply request.
-        mode: "describe"
-        model: "gpt-4o"            # required for describe
+        # A vision model describes each image for the base model.
+        model: "gpt-4o"            # required
         # prompt: "Describe this image in 1-2 sentences. Be compact but informative. Transcribe any visible text."
         max_items: 4               # images per message
         transport: "base64"        # base64 (inline data URI) or url (provider fetches the CDN URL)
@@ -117,16 +114,18 @@ core:
 
       audio:
         enabled: false
-        # asr:    transcribe speech with an OpenAI-compatible
-        #         /audio/transcriptions endpoint (e.g. Whisper).
-        # direct: send the audio (audio_url data URI) to an audio-capable
-        #         model in the reply request.
+        # asr:      transcribe speech with an OpenAI-compatible
+        #           /audio/transcriptions endpoint (e.g. Whisper, IFM/Jais-ASR).
+        # describe: an audio-capable chat model (e.g.
+        #           nvidia/nemotron-3-nano-omni-30b-a3b-reasoning, max_tokens
+        #           ~12000) gets the audio as an audio_url data URI and
+        #           returns a transcript or description.
         mode: "asr"
-        model: "whisper-1"         # required for asr
+        model: "whisper-1"         # required
         ## api_base_url: "https://api.openai.com/v1"
         ## api_key: ""
         ## language: "en"          # optional ISO-639-1 hint (asr)
-        ## prompt: ""              # optional vocabulary hint (asr)
+        ## prompt: ""              # asr: vocabulary hint; describe: instruction (built-in default)
         max_items: 2
         max_bytes: 26214400        # 25 MiB
         max_duration_sec: 600      # checked when Discord reports a duration (voice messages)
@@ -134,14 +133,13 @@ core:
         # send as is). Only needed for an ASR endpoint that rejects ogg/opus
         # voice messages, or for part_type input_audio. Requires ffmpeg.
         ## transcode: ""
-        # Direct-mode content part: audio_url (data URI, default) or
+        # Describe-mode content part: audio_url (data URI, default) or
         # input_audio (OpenAI format; mp3/wav only, so it needs transcode).
         ## part_type: "audio_url"
 
       video:
         enabled: false
-        mode: "describe"           # the only video mode
-        model: "gpt-4o"            # required; must accept video_url parts
+        model: "gpt-4o"            # required; describes each video, must accept video_url parts
         # Reasoning models need room: with too few tokens they return no content.
         ## max_tokens: 12000
         ## prompt: "Describe this video in 2-4 sentences: ..."

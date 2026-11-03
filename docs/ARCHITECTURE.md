@@ -93,7 +93,7 @@ Thin wrapper around `go.uber.org/zap` with lumberjack rotation. Exposes a global
 `internal/ai/client.go` is the OpenAI-compatible client. It handles chat completions (including media content parts such as `audio_url`/`video_url`, spliced into the JSON go-openai produces), embeddings, retries, and `extra_params` injection (via reflection — unknown keys are warned about, not silently ignored). Sub-packages:
 
 - `internal/ai/tools` — Tool registry and the nine built-in Discord tools (server/channel info, member lookup, recent messages, reactions, threads, etc.). Schemas are sorted alphabetically and SHA-256 hashed for prompt-cache stability.
-- `internal/media` — the image/audio/video modalities: describers, the ASR client, direct-mode content parts, and the ID-keyed result cache.
+- `internal/media` — the image/audio/video/sticker modalities: describers, the ASR client, and the ID-keyed result cache. Media only ever reaches the reply model as text.
 - `internal/ai/decision` — Optional LLM-based reply decision. Image-aware: includes attachment count in the prompt context. Has its own retry loop (100ms base delay vs 1s for the main client).
 - `internal/ai/mcp` — MCP client manager. Connects to stdio or SSE servers, lists/invokes tools, filters secrets out of the env passed to subprocesses.
 
@@ -222,11 +222,9 @@ A typical user message in a non-blacklisted, non-rate-limited channel:
       e. Build the static system prompt (instructions + static plugin sections)
       f. Build the user prompt: server, channel, context, participants,
          plugin blocks, user profile, key facts, current message
-      g. generateResponse → modalities:
-           describe/asr: descriptions and transcripts (cached by attachment ID)
-                         are added to the messages as text → base model + tools
-           direct:       image/audio parts ride along in the reply request
-                         (base model, or the modality's model) + tools
+      g. generateResponse → modalities: each modality's model turns media
+           into text (descriptions, transcripts; cached by attachment ID),
+           added to the messages → text-only base model + tools
       h. executeToolLoop runs tool calls (Discord + plugin + MCP) until no more
          calls or MaxToolIterations hit
 11. Phase: Sending. BeforeSend plugin hooks may rewrite the response, attach files, or cancel sending

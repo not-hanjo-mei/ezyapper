@@ -7,8 +7,9 @@ package media
 // The media dir must hold a.mp3, a.ogg, v.mp4 and img.webp. Endpoints and
 // models default to the project's test gateway and ASR service and can be
 // overridden with EZYAPPER_LIVE_GATEWAY_URL / _GATEWAY_MODEL / _GATEWAY_KEY
-// and EZYAPPER_LIVE_ASR_URL / _ASR_MODEL / _ASR_KEY (keys may stay empty
-// when a proxy injects them).
+// (the audio/video describe model), EZYAPPER_LIVE_IMAGE_MODEL and
+// EZYAPPER_LIVE_ASR_URL / _ASR_MODEL / _ASR_KEY (keys may stay empty when a
+// proxy injects them).
 
 import (
 	"context"
@@ -74,7 +75,7 @@ func TestLiveASR(t *testing.T) {
 		Timeout:    120,
 	}}
 	cfg.AI.Modalities.ApplyDefaults()
-	p := New(cfg, nil, NewCache(time.Hour, 10))
+	p := New(cfg, NewCache(time.Hour, 10))
 	for _, f := range []struct{ name, ct string }{{"a.ogg", "audio/ogg"}, {"a.mp3", "audio/mpeg"}} {
 		start := time.Now()
 		text, err := p.Transcribe(context.Background(), liveAttachment(t, base, dir, f.name, types.MediaVoice, f.ct))
@@ -88,24 +89,20 @@ func TestLiveASR(t *testing.T) {
 	}
 }
 
-func TestLiveDirectAudio(t *testing.T) {
+func TestLiveDescribeAudio(t *testing.T) {
 	cfg, base := liveSetup(t)
 	dir := os.Getenv("EZYAPPER_LIVE_MEDIA_DIR")
-	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDirect}
+	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDescribe, ModalityModel: config.ModalityModel{Model: cfg.AI.Model}}
 	cfg.AI.Modalities.ApplyDefaults()
-	p := New(cfg, nil, nil)
-	part, err := p.AudioPart(context.Background(), liveAttachment(t, base, dir, "a.ogg", types.MediaVoice, "audio/ogg"))
-	if err != nil {
-		t.Fatal(err)
+	p := New(cfg, NewCache(time.Hour, 10))
+	for _, f := range []struct{ name, ct string }{{"a.ogg", "audio/ogg"}, {"a.mp3", "audio/mpeg"}} {
+		start := time.Now()
+		text, err := p.DescribeAudio(context.Background(), liveAttachment(t, base, dir, f.name, types.MediaVoice, f.ct))
+		if err != nil {
+			t.Fatalf("%s: %v", f.name, err)
+		}
+		t.Logf("describe %s (%s): %q", f.name, time.Since(start).Round(time.Millisecond), text)
 	}
-	start := time.Now()
-	// The base client answers direct turns; DescribeMedia sends the same
-	// audio_url part the reply request would.
-	text, err := p.base.DescribeMedia(context.Background(), "Transcribe what is said in this audio, then describe the voice in one sentence.", part)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("direct ogg (%s): %q", time.Since(start).Round(time.Millisecond), text)
 }
 
 func TestLiveVideoDescribe(t *testing.T) {
@@ -113,7 +110,7 @@ func TestLiveVideoDescribe(t *testing.T) {
 	dir := os.Getenv("EZYAPPER_LIVE_MEDIA_DIR")
 	cfg.AI.Modalities.Video = config.VideoModalityConfig{Enabled: true, ModalityModel: config.ModalityModel{Model: cfg.AI.Model, MaxTokens: 12000}}
 	cfg.AI.Modalities.ApplyDefaults()
-	p := New(cfg, nil, NewCache(time.Hour, 10))
+	p := New(cfg, NewCache(time.Hour, 10))
 	start := time.Now()
 	text, err := p.DescribeVideo(context.Background(), liveAttachment(t, base, dir, "v.mp4", types.MediaVideo, "video/mp4"))
 	if err != nil {
@@ -124,9 +121,9 @@ func TestLiveVideoDescribe(t *testing.T) {
 
 func TestLiveImageDescribe(t *testing.T) {
 	cfg, base := liveSetup(t)
-	cfg.AI.Modalities.Image = config.ImageModalityConfig{Enabled: true, ModalityModel: config.ModalityModel{Model: cfg.AI.Model}}
+	cfg.AI.Modalities.Image = config.ImageModalityConfig{Enabled: true, ModalityModel: config.ModalityModel{Model: liveEnv(t, "EZYAPPER_LIVE_IMAGE_MODEL", "nvidia/nemotron-3.5-super-vl-120b-a12b")}}
 	cfg.AI.Modalities.ApplyDefaults()
-	p := New(cfg, nil, nil)
+	p := New(cfg, nil)
 	start := time.Now()
 	got, err := p.DescribeImages(context.Background(), []string{base + "/img.webp"})
 	if err != nil {
@@ -143,10 +140,10 @@ func TestLiveStickerVision(t *testing.T) {
 	if id == "" {
 		t.Skip("set EZYAPPER_LIVE_STICKER_ID")
 	}
-	cfg.AI.Modalities.Image.Model = cfg.AI.Model
+	cfg.AI.Modalities.Image.Model = liveEnv(t, "EZYAPPER_LIVE_IMAGE_MODEL", "nvidia/nemotron-3.5-super-vl-120b-a12b")
 	cfg.AI.Modalities.Sticker = config.StickerModalityConfig{Enabled: true, Mode: config.StickerModeVision}
 	cfg.AI.Modalities.ApplyDefaults()
-	p := New(cfg, nil, nil)
+	p := New(cfg, nil)
 	p.SetStickers(nil, NewCache(time.Hour, 10))
 	start := time.Now()
 	got := p.AnnotateStickers(context.Background(), &types.DiscordMessage{Stickers: []types.StickerRef{{ID: id, Name: "live", FormatType: types.StickerPNG}}}, true)
@@ -156,21 +153,17 @@ func TestLiveStickerVision(t *testing.T) {
 	t.Logf("sticker (%s): %q", time.Since(start).Round(time.Millisecond), got)
 }
 
-// TestLiveDirectAudioInputAudio sends the ogg voice clip transcoded to mp3
-// as an input_audio part (needs ffmpeg).
-func TestLiveDirectAudioInputAudio(t *testing.T) {
+// TestLiveDescribeAudioInputAudio sends the ogg voice clip transcoded to
+// mp3 as an input_audio part to the audio describe model (needs ffmpeg).
+func TestLiveDescribeAudioInputAudio(t *testing.T) {
 	cfg, base := liveSetup(t)
 	realFFmpeg(t)
 	dir := os.Getenv("EZYAPPER_LIVE_MEDIA_DIR")
-	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDirect, Transcode: "mp3", PartType: config.AudioPartInput}
+	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDescribe, Transcode: "mp3", PartType: config.AudioPartInput, ModalityModel: config.ModalityModel{Model: cfg.AI.Model}}
 	cfg.AI.Modalities.ApplyDefaults()
-	p := New(cfg, nil, nil)
-	part, err := p.AudioPart(context.Background(), liveAttachment(t, base, dir, "a.ogg", types.MediaVoice, "audio/ogg"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	p := New(cfg, nil)
 	start := time.Now()
-	text, err := p.base.DescribeMedia(context.Background(), "Transcribe what is said in this audio.", part)
+	text, err := p.DescribeAudio(context.Background(), liveAttachment(t, base, dir, "a.ogg", types.MediaVoice, "audio/ogg"))
 	if err != nil {
 		t.Fatal(err)
 	}

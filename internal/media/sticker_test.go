@@ -21,7 +21,7 @@ func stickerProcessor(t *testing.T, mode config.StickerMode, chatURL string) (*P
 	// Sticker vision falls back to the image modality's model.
 	cfg.AI.Modalities.Image.Model = "vm"
 	cfg.AI.Modalities.ApplyDefaults()
-	p := New(cfg, nil, NewCache(time.Hour, 10))
+	p := New(cfg, NewCache(time.Hour, 10))
 	var lookups int32
 	p.SetStickers(func(ctx context.Context, id string) (StickerInfo, error) {
 		atomic.AddInt32(&lookups, 1)
@@ -118,7 +118,7 @@ func TestStickerVisionModeCacheAndFallbacks(t *testing.T) {
 func TestStickerDisabled(t *testing.T) {
 	cfg := baseConfig("http://unused.invalid")
 	cfg.AI.Modalities.ApplyDefaults()
-	p := New(cfg, nil, nil)
+	p := New(cfg, nil)
 	if got := p.AnnotateStickers(context.Background(), stickerMsg(types.StickerRef{ID: "1", Name: "x"}), true); got != "" {
 		t.Fatalf("disabled sticker modality must add nothing, got %q", got)
 	}

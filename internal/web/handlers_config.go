@@ -141,7 +141,6 @@ var configFormAppliers = []configFieldApplier{
 	}},
 	{formKey: "system_prompt", apply: func(c *config.Config, v string) error { c.AI.SystemPrompt = v; return nil }},
 	{formKey: "image_enabled", apply: boolApplier("image_enabled", func(c *config.Config, b bool) { c.AI.Modalities.Image.Enabled = b })},
-	{formKey: "image_mode", apply: func(c *config.Config, v string) error { c.AI.Modalities.Image.Mode = config.ImageMode(v); return nil }},
 	{formKey: "image_model", apply: func(c *config.Config, v string) error { c.AI.Modalities.Image.Model = v; return nil }},
 	{formKey: "image_prompt", apply: func(c *config.Config, v string) error { c.AI.Modalities.Image.Prompt = v; return nil }},
 	{formKey: "image_max_items", apply: func(c *config.Config, v string) error {

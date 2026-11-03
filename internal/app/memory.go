@@ -93,7 +93,7 @@ func BuildMemoryService(cfg *config.Config) (memory.Service, error) {
 	if in.ImageAI.Modalities.Image.Enabled {
 		imgCfg := &config.Config{}
 		imgCfg.AI = in.ImageAI
-		if d := media.New(imgCfg, nil, nil).ImageDescriber(); d != nil {
+		if d := media.New(imgCfg, nil).ImageDescriber(); d != nil {
 			imageDescriber = d
 		}
 	}

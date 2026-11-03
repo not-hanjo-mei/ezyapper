@@ -97,9 +97,9 @@ func TestTranscodeAudioAndInputAudioPart(t *testing.T) {
 	files := serveBytes(t, map[string][]byte{"/voice.ogg": ogg}, "audio/ogg")
 
 	cfg := baseConfig("http://unused.invalid")
-	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDirect, Transcode: "mp3", PartType: config.AudioPartInput}
+	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDescribe, Transcode: "mp3", PartType: config.AudioPartInput, ModalityModel: config.ModalityModel{Model: "omni"}}
 	cfg.AI.Modalities.ApplyDefaults()
-	p := New(cfg, nil, nil)
+	p := New(cfg, nil)
 	part, err := p.AudioPart(context.Background(), types.MediaAttachment{ID: "a", Kind: types.MediaVoice, URL: files + "/voice.ogg", Filename: "voice-message.ogg", ContentType: "audio/ogg", Size: len(ogg)})
 	if err != nil {
 		t.Fatal(err)
@@ -145,7 +145,7 @@ func TestTranscodedTranscriptionUploadsMP3(t *testing.T) {
 	cfg := baseConfig("http://unused.invalid")
 	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeASR, Transcode: "mp3", ModalityModel: config.ModalityModel{Model: "asr", APIBaseURL: asr}}
 	cfg.AI.Modalities.ApplyDefaults()
-	p := New(cfg, nil, NewCache(time.Hour, 10))
+	p := New(cfg, NewCache(time.Hour, 10))
 	if _, err := p.Transcribe(context.Background(), types.MediaAttachment{ID: "a", Kind: types.MediaVoice, URL: files + "/voice.ogg", Filename: "voice-message.ogg", ContentType: "audio/ogg"}); err != nil {
 		t.Fatal(err)
 	}

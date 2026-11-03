@@ -1019,7 +1019,7 @@ func appendStructFields(n *yaml.Node, v reflect.Value) {
 			appendStructFields(n, v.Field(i))
 			continue
 		}
-		if name == "-" {
+		if name == "-" || f.Tag.Get("yaml") == "-" {
 			continue
 		}
 		if name == "" {

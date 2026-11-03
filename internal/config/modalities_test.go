@@ -132,7 +132,7 @@ func TestLoad_NoModalitiesBlock_AllOptional(t *testing.T) {
 	if m.AnyEnabled() {
 		t.Fatalf("no modality may be enabled by default: %+v", m)
 	}
-	if m.Image.Mode != ImageModeDescribe || m.Audio.Mode != AudioModeASR || m.Video.Mode != VideoModeDescribe {
+	if m.Audio.Mode != AudioModeASR || m.Image.Prompt != DefaultImagePrompt || m.Video.Prompt != DefaultVideoPrompt {
 		t.Fatalf("defaults not applied: %+v", m)
 	}
 }
@@ -154,8 +154,8 @@ func TestLoad_LegacyHybridMapsToImageDescribe(t *testing.T) {
 		t.Fatalf("legacy config must keep loading: %v", err)
 	}
 	img := cfg.AI.Modalities.Image
-	if !img.Enabled || img.Mode != ImageModeDescribe {
-		t.Fatalf("hybrid must map to enabled describe, got %+v", img)
+	if !img.Enabled {
+		t.Fatalf("hybrid must map to an enabled image modality, got %+v", img)
 	}
 	if img.Model != "gpt-4-vision" || img.Prompt != "describe it" || img.MaxItems != 3 || img.MaxTokens != 512 ||
 		img.RetryCount != 1 || img.Timeout != 30 || img.Transport != TransportURL ||
@@ -171,7 +171,7 @@ func TestLoad_ModalitiesBlock(t *testing.T) {
 	cfg, err := loadModalitiesYAML(t, `    modalities:
       image:
         enabled: true
-        mode: direct
+        model: "vl"
       audio:
         enabled: true
         mode: asr
@@ -189,7 +189,7 @@ func TestLoad_ModalitiesBlock(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 	m := cfg.AI.Modalities
-	if !m.Image.Enabled || m.Image.Mode != ImageModeDirect || m.Image.Model != "" {
+	if !m.Image.Enabled || m.Image.Model != "vl" || m.Image.RemovedMode != "" {
 		t.Fatalf("image: %+v", m.Image)
 	}
 	if m.Audio.Model != "IFM/Jais-ASR" || m.Audio.APIBaseURL != "https://api.ifm.ai/v1" || m.Audio.MaxDurationSec != 60 || m.Audio.MaxBytes != DefaultAudioMaxBytes {
@@ -202,6 +202,27 @@ func TestLoad_ModalitiesBlock(t *testing.T) {
 	r := m.Video.Resolve(cfg.AI)
 	if r.APIBaseURL != cfg.AI.APIBaseURL || r.APIKey != cfg.AI.APIKey || r.Model != "omni" || r.MaxTokens != 12000 {
 		t.Fatalf("resolve: %+v", r.LLMConfig)
+	}
+}
+
+// A config that still says mode: direct fails to load with a removal hint.
+func TestLoad_RemovedDirectModeRejected(t *testing.T) {
+	_, err := loadModalitiesYAML(t, `    modalities:
+      image:
+        enabled: true
+        mode: direct
+        model: "vl"
+`)
+	if err == nil || !strings.Contains(err.Error(), "core.ai.modalities.image.mode") || !strings.Contains(err.Error(), "remove the mode field") {
+		t.Fatalf("expected image.mode removal error, got %v", err)
+	}
+	_, err = loadModalitiesYAML(t, `    modalities:
+      audio:
+        enabled: true
+        mode: direct
+`)
+	if err == nil || !strings.Contains(err.Error(), `core.ai.modalities.audio.mode "direct" was removed`) {
+		t.Fatalf("expected audio.mode removal error, got %v", err)
 	}
 }
 
@@ -222,14 +243,15 @@ func TestLoad_ModalitiesWinOverLegacy(t *testing.T) {
 }
 
 func TestMapLegacyVision(t *testing.T) {
+	// multimodal used to send images to the reply model; the reply model is
+	// text-only now, so it maps onto describe like hybrid.
 	cases := []struct {
 		mode    string
 		enabled bool
-		img     ImageMode
 	}{
-		{"text_only", false, ""},
-		{"hybrid", true, ImageModeDescribe},
-		{"multimodal", true, ImageModeDirect},
+		{"text_only", false},
+		{"hybrid", true},
+		{"multimodal", true},
 	}
 	for _, c := range cases {
 		ai := AIConfig{Vision: VisionConfig{Mode: c.mode, Model: "vm", Base64: true}}
@@ -238,7 +260,7 @@ func TestMapLegacyVision(t *testing.T) {
 			t.Fatalf("%s: notice=%q errs=%v", c.mode, notice, errs)
 		}
 		img := ai.Modalities.Image
-		if img.Enabled != c.enabled || img.Mode != c.img || img.Transport != TransportBase64 || img.Model != "vm" {
+		if img.Enabled != c.enabled || img.RemovedMode != "" || img.Transport != TransportBase64 || img.Model != "vm" {
 			t.Fatalf("%s: got %+v", c.mode, img)
 		}
 	}
@@ -271,14 +293,23 @@ func TestValidateModalities(t *testing.T) {
 	if e := modalityErrors(ModalitiesConfig{Image: ImageModalityConfig{Enabled: true}}); !strings.Contains(e, "image.model is required") {
 		t.Fatalf("describe without model: %s", e)
 	}
-	if e := modalityErrors(ModalitiesConfig{Image: ImageModalityConfig{Enabled: true, Mode: ImageModeDirect}}); e != "" {
-		t.Fatalf("direct image may use core.ai.model: %s", e)
+	if e := modalityErrors(ModalitiesConfig{Image: ImageModalityConfig{RemovedMode: "direct"}}); !strings.Contains(e, "image.mode") || !strings.Contains(e, "remove the mode field") {
+		t.Fatalf("image.mode direct must be rejected with a removal hint: %s", e)
+	}
+	if e := modalityErrors(ModalitiesConfig{Image: ImageModalityConfig{RemovedMode: "describe"}}); !strings.Contains(e, "image.mode") {
+		t.Fatalf("image.mode no longer exists: %s", e)
 	}
 	if e := modalityErrors(ModalitiesConfig{Audio: AudioModalityConfig{Enabled: true}}); !strings.Contains(e, "audio.model is required") {
 		t.Fatalf("asr without model: %s", e)
 	}
-	if e := modalityErrors(ModalitiesConfig{Audio: AudioModalityConfig{Enabled: true, Mode: AudioModeDirect}}); e != "" {
-		t.Fatalf("direct audio may use core.ai.model: %s", e)
+	if e := modalityErrors(ModalitiesConfig{Audio: AudioModalityConfig{Enabled: true, Mode: AudioModeDescribe}}); !strings.Contains(e, "audio.model is required") {
+		t.Fatalf("audio describe without model: %s", e)
+	}
+	if e := modalityErrors(ModalitiesConfig{Audio: AudioModalityConfig{Enabled: true, Mode: AudioModeDescribe, ModalityModel: ModalityModel{Model: "omni"}}}); e != "" {
+		t.Fatalf("audio describe with a model is valid: %s", e)
+	}
+	if e := modalityErrors(ModalitiesConfig{Audio: AudioModalityConfig{Mode: "direct"}}); !strings.Contains(e, `audio.mode "direct" was removed`) {
+		t.Fatalf("audio.mode direct must be rejected with a removal hint: %s", e)
 	}
 	if e := modalityErrors(ModalitiesConfig{Video: VideoModalityConfig{Enabled: true}}); !strings.Contains(e, "video.model is required") {
 		t.Fatalf("video without model: %s", e)
@@ -286,29 +317,14 @@ func TestValidateModalities(t *testing.T) {
 	if e := modalityErrors(ModalitiesConfig{Audio: AudioModalityConfig{Mode: "transcribe"}}); !strings.Contains(e, "audio.mode") {
 		t.Fatalf("bad audio mode: %s", e)
 	}
-	if e := modalityErrors(ModalitiesConfig{Video: VideoModalityConfig{Mode: "direct"}}); !strings.Contains(e, "video.mode") {
-		t.Fatalf("video has no direct mode: %s", e)
+	if e := modalityErrors(ModalitiesConfig{Video: VideoModalityConfig{RemovedMode: "direct"}}); !strings.Contains(e, "video.mode") {
+		t.Fatalf("video.mode no longer exists: %s", e)
 	}
 	if e := modalityErrors(ModalitiesConfig{Image: ImageModalityConfig{Transport: "ftp"}}); !strings.Contains(e, "image.transport") {
 		t.Fatalf("bad transport: %s", e)
 	}
 	if e := modalityErrors(ModalitiesConfig{Audio: AudioModalityConfig{MaxBytes: -1}}); !strings.Contains(e, "audio.max_bytes") {
 		t.Fatalf("negative limit: %s", e)
-	}
-	conflict := ModalitiesConfig{
-		Image: ImageModalityConfig{Enabled: true, Mode: ImageModeDirect, ModalityModel: ModalityModel{Model: "a"}},
-		Audio: AudioModalityConfig{Enabled: true, Mode: AudioModeDirect, ModalityModel: ModalityModel{Model: "b"}},
-	}
-	if e := modalityErrors(conflict); !strings.Contains(e, "both in direct mode") {
-		t.Fatalf("conflicting direct models must be rejected: %s", e)
-	}
-	conflict.Audio.Model = "a"
-	if e := modalityErrors(conflict); e != "" {
-		t.Fatalf("matching direct models are fine: %s", e)
-	}
-	conflict.Audio.Model = ""
-	if e := modalityErrors(conflict); e != "" {
-		t.Fatalf("a direct modality without override shares the other's model: %s", e)
 	}
 }
 
@@ -334,7 +350,7 @@ func TestSave_RoundTripsModalities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
-	if !again.AI.Modalities.Image.Enabled || again.AI.Modalities.Image.Model != "vm" || again.AI.Modalities.Image.Mode != ImageModeDescribe {
+	if !again.AI.Modalities.Image.Enabled || again.AI.Modalities.Image.Model != "vm" {
 		t.Fatalf("modalities lost in round trip: %+v", again.AI.Modalities.Image)
 	}
 }

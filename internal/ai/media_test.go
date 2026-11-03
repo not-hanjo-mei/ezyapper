@@ -128,7 +128,9 @@ func lastUserContent(t *testing.T, doc map[string]any) []any {
 	return nil
 }
 
-func TestChatCompletionWithToolsAndMediaParts(t *testing.T) {
+// The reply request is text only: media is turned into text before it, so
+// every request of a tool loop carries a plain string prompt.
+func TestChatCompletionWithToolsIsTextOnly(t *testing.T) {
 	fake := &fakeChat{reply: func(n int) string {
 		if n == 1 {
 			return `{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"c1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}`
@@ -139,8 +141,7 @@ func TestChatCompletionWithToolsAndMediaParts(t *testing.T) {
 	defer srv.Close()
 	c := mediaTestClient(srv.URL)
 
-	parts := []MediaPart{{Kind: PartAudioURL, URL: "data:audio/ogg;base64,T2dnUw=="}}
-	req := ChatCompletionRequest{SystemPrompt: "sys", Messages: []openai.ChatCompletionMessage{{Role: "user", Content: "what did I say?"}}, MediaParts: parts}
+	req := ChatCompletionRequest{SystemPrompt: "sys", Messages: []openai.ChatCompletionMessage{{Role: "user", Content: "what did I say?\n[Audio 1 transcript (voice message, 3s): hello]"}}}
 	resp, err := c.CreateChatCompletionWithTools(context.Background(), req, func(ctx context.Context, tc openai.ToolCall) (string, error) { return "ok", nil })
 	if err != nil {
 		t.Fatal(err)
@@ -155,10 +156,11 @@ func TestChatCompletionWithToolsAndMediaParts(t *testing.T) {
 		if doc["tools"] == nil {
 			t.Errorf("request %d lost its tools", i)
 		}
-		msgs := doc["messages"].([]any)
-		user := msgs[1].(map[string]any)["content"].([]any)
-		if len(user) != 2 || user[1].(map[string]any)["type"] != "audio_url" {
-			t.Errorf("request %d: audio part missing from the prompt message: %v", i, user)
+		for _, raw := range doc["messages"].([]any) {
+			m := raw.(map[string]any)
+			if _, ok := m["content"].([]any); ok {
+				t.Errorf("request %d: message has content parts, want text only: %v", i, m)
+			}
 		}
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"ezyapper/internal/ai"
-	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/memory"
 	"ezyapper/internal/types"
@@ -154,7 +153,7 @@ func (b *Bot) extractMessageImages(ctx context.Context, m *discordgo.MessageCrea
 		imageURLs = extractImageURLs(m.Message, img.MaxItems)
 
 		describer := b.imageDescriber()
-		if img.Enabled && img.Mode == config.ImageModeDescribe && len(imageURLs) > 0 && describer != nil {
+		if img.Enabled && len(imageURLs) > 0 && describer != nil {
 			descriptions, err := describer.DescribeImages(ctx, imageURLs)
 			if err != nil {
 				logger.Warnf("[process] failed to describe images for message %s: %v", m.ID, err)

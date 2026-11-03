@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"ezyapper/internal/ai"
 	"ezyapper/internal/config"
 	"ezyapper/internal/media"
 	"ezyapper/internal/ratelimit"
@@ -33,7 +33,7 @@ func mediaTestBot(t *testing.T, mods config.ModalitiesConfig) (*Bot, *httptest.S
 	store := &atomic.Value{}
 	store.Store(cfg)
 	b := &Bot{configStore: store, historicalImageDescCache: map[string]historicalImageDescCacheEntry{}, mediaCache: media.NewCache(time.Hour, 10)}
-	b.media = media.New(cfg, nil, b.mediaCache)
+	b.media = media.New(cfg, b.mediaCache)
 	return b, files
 }
 
@@ -41,16 +41,47 @@ func voiceMsg(id, base string) *types.DiscordMessage {
 	return &types.DiscordMessage{ID: id, Content: "", Media: []types.MediaAttachment{{ID: "att-" + id, Kind: types.MediaVoice, URL: base + "/" + id + ".ogg", ContentType: "audio/ogg", DurationSec: 2}}}
 }
 
-func TestAnnotateCurrent_DirectAudioBuildsParts(t *testing.T) {
-	b, files := mediaTestBot(t, config.ModalitiesConfig{Audio: config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDirect}})
+// describeServer is a chat-completions endpoint that answers every request
+// with content and records the content-part types it received.
+func describeServer(t *testing.T, content string, partTypes *[]string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var doc struct {
+			Messages []struct {
+				Content json.RawMessage `json:"content"`
+			} `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&doc)
+		for _, m := range doc.Messages {
+			var parts []struct {
+				Type string `json:"type"`
+			}
+			if json.Unmarshal(m.Content, &parts) == nil {
+				for _, p := range parts {
+					*partTypes = append(*partTypes, p.Type)
+				}
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"role": "assistant", "content": content}, "finish_reason": "stop"}}})
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// Audio in describe mode reaches the reply prompt as text only.
+func TestAnnotateCurrent_DescribeAudioIsText(t *testing.T) {
+	var partTypes []string
+	omni := describeServer(t, "listen to this", &partTypes)
+	b, files := mediaTestBot(t, config.ModalitiesConfig{Audio: config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDescribe, ModalityModel: config.ModalityModel{Model: "omni", APIBaseURL: omni.URL}}})
 	cur := *voiceMsg("cur", files.URL)
 	cur.Content = "listen"
-	content, parts := b.annotateCurrent(context.Background(), cur, GenerateContext{})
-	if len(parts) != 1 || parts[0].Kind != ai.PartAudioURL || !strings.HasPrefix(parts[0].URL, "data:audio/ogg;base64,") {
-		t.Fatalf("parts = %+v", parts)
-	}
-	if content != "listen\n[Audio 1: voice message, 2s, attached]" {
+	content := b.annotateCurrent(context.Background(), cur, GenerateContext{})
+	if content != "listen\n[Audio 1 (voice message, 2s): listen to this]" {
 		t.Fatalf("content = %q", content)
+	}
+	if strings.Join(partTypes, ",") != "text,audio_url" {
+		t.Fatalf("describe request parts = %v", partTypes)
 	}
 }
 
@@ -102,8 +133,8 @@ func TestStickersInCurrentAndHistory(t *testing.T) {
 		return media.StickerInfo{Name: "wave", Description: "waves hello"}, nil
 	}, media.NewCache(time.Hour, 10))
 	msg := types.DiscordMessage{ID: "cur", Content: "hi", Stickers: []types.StickerRef{{ID: "1", Name: "wave", FormatType: types.StickerPNG}}}
-	content, parts := b.annotateCurrent(context.Background(), msg, GenerateContext{})
-	if content != "hi\n[Sticker: wave — waves hello]" || len(parts) != 0 {
+	content := b.annotateCurrent(context.Background(), msg, GenerateContext{})
+	if content != "hi\n[Sticker: wave — waves hello]" {
 		t.Fatalf("current = %q", content)
 	}
 	hist := msg
@@ -130,15 +161,21 @@ func TestApplyRuntimeConfig_RefusesMissingFFmpeg(t *testing.T) {
 	}
 }
 
-func TestAnnotateCurrent_DirectImageMarker(t *testing.T) {
+// Images are described by the image model; the reply prompt gets the text.
+func TestAnnotateCurrent_ImageDescription(t *testing.T) {
 	img := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = io.WriteString(w, "png")
 	}))
 	defer img.Close()
-	b, _ := mediaTestBot(t, config.ModalitiesConfig{Image: config.ImageModalityConfig{Enabled: true, Mode: config.ImageModeDirect}})
-	content, parts := b.annotateCurrent(context.Background(), types.DiscordMessage{ID: "c", Content: "look"}, GenerateContext{ImageURLs: []string{img.URL + "/a.png"}})
-	if content != "look\n[Image 1: attached]" || len(parts) != 1 || parts[0].URL != "data:image/png;base64,cG5n" {
-		t.Fatalf("content=%q parts=%+v", content, parts)
+	var partTypes []string
+	vl := describeServer(t, "a red square", &partTypes)
+	b, _ := mediaTestBot(t, config.ModalitiesConfig{Image: config.ImageModalityConfig{Enabled: true, ModalityModel: config.ModalityModel{Model: "vl", APIBaseURL: vl.URL}}})
+	content := b.annotateCurrent(context.Background(), types.DiscordMessage{ID: "c", Content: "look"}, GenerateContext{ImageURLs: []string{img.URL + "/a.png"}})
+	if content != "look [Image 1: a red square]" {
+		t.Fatalf("content=%q", content)
+	}
+	if strings.Join(partTypes, ",") != "text,image_url" {
+		t.Fatalf("describe request parts = %v", partTypes)
 	}
 }

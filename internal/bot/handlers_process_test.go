@@ -27,7 +27,7 @@ func minimalConfigStore() *atomic.Value {
 		},
 		AI: config.AIConfig{
 			Modalities: config.ModalitiesConfig{
-				Image: config.ImageModalityConfig{Enabled: true, Mode: config.ImageModeDescribe},
+				Image: config.ImageModalityConfig{Enabled: true},
 			},
 		},
 	})
