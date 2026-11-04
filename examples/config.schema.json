@@ -255,7 +255,7 @@
                 "model":           { "type": "string" },
                 "timeout":         { "type": "integer", "minimum": 1 },
                 "retry_count":     { "type": "integer", "minimum": 0 },
-                "threshold":       { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+                "threshold":       { "type": "number", "minimum": 0, "exclusiveMaximum": 1, "description": "Reply only when P(yes) > 0.5 (Jev says yes) and P(yes) > threshold." },
                 "instructions":    { "type": "string", "minLength": 1 },
                 "criteria_true":   { "type": "string" },
                 "criteria_false":  { "type": "string" },

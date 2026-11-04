@@ -272,7 +272,8 @@ core:
     #   llm        - an OpenAI-compatible chat model returns a JSON verdict
     #                (default when this key is absent)
     #   system_one - a System One decision model (TypeSafe Jev) returns
-    #                P(yes); the bot replies when it reaches the threshold
+    #                P(yes); the bot replies only when Jev says yes
+    #                (P(yes) > 0.5) and P(yes) > threshold
     ## provider: llm
 
     # provider: llm - fields below are required ONLY when enabled: true.
@@ -299,7 +300,7 @@ core:
     ##   model: "jev-latest"
     ##   timeout: 10          # per-request seconds
     ##   retry_count: 2       # retries on 429/529/5xx/network errors
-    ##   threshold: 0.7       # reply when P(yes) >= threshold, (0, 1]
+    ##   threshold: 0.7       # reply when P(yes) > 0.5 and P(yes) > threshold, [0, 1)
     ##   instructions: "Should the Discord bot Ezy send a reply to current_message?"
     ##   # Optional, set both or neither:
     ##   criteria_true: "current_message talks to Ezy, asks Ezy or the channel something Ezy can answer, or continues a conversation with Ezy"

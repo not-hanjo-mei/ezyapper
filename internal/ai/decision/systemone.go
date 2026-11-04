@@ -33,8 +33,8 @@ const truncationMarker = " …[truncated]"
 
 // SystemOneService is the "system_one" provider. It asks a System One
 // decision model (TypeSafe Jev) one yes/no ("noul") question about a JSON
-// state built from the conversation and replies when P(yes) reaches the
-// configured threshold. Unlike the llm provider there is no generated text
+// state built from the conversation and replies only when Jev says yes
+// (P(yes) > 0.5) and P(yes) is above the configured threshold. Unlike the llm provider there is no generated text
 // to parse: the answer is a calibrated probability.
 type SystemOneService struct {
 	cfg        *config.SystemOneConfig
@@ -204,20 +204,32 @@ func (s *SystemOneService) ShouldRespondWithInfo(ctx context.Context, _ string, 
 	return result, nil
 }
 
-// systemOneResult turns P(yes) into a verdict. Confidence is the
+// systemOneYes is the P(yes) Jev's answer must exceed to count as "yes".
+const systemOneYes = 0.5
+
+// systemOneResult turns P(yes) into a verdict. The bot replies only when
+// both hold, with strict comparisons:
+//
+//   - Jev says yes: p > 0.5 (p == 0.5 is not a yes), and
+//   - p > threshold (p == threshold does not reply).
+//
+// So a threshold below 0.5 cannot make the bot reply to a "no", and a
+// threshold above 0.5 asks for a more confident yes. Confidence is the
 // probability of the verdict taken (p when replying, 1-p when not), which
 // keeps the llm provider's meaning of "how sure is this verdict" on a 0..1
-// scale. A "no" just under a high threshold therefore reports a confidence
-// below 0.5: the model leaned yes, the threshold said no.
+// scale. A "no" from a yes just under a high threshold therefore reports a
+// confidence below 0.5: the model leaned yes, the threshold said no.
 func systemOneResult(p, threshold float64) *DecisionResult {
-	respond := p >= threshold
+	jevYes := p > systemOneYes
+	aboveThreshold := p > threshold
+	respond := jevYes && aboveThreshold
 	confidence := p
 	if !respond {
 		confidence = 1 - p
 	}
 	return &DecisionResult{
 		ShouldRespond: respond,
-		Reason:        fmt.Sprintf("p(yes)=%.2f threshold=%.2f", p, threshold),
+		Reason:        fmt.Sprintf("p(yes)=%.4f jev_yes=%t (p>%g) above_threshold=%t (p>%g)", p, jevYes, systemOneYes, aboveThreshold, threshold),
 		Confidence:    confidence,
 	}
 }

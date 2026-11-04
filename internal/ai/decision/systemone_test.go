@@ -153,31 +153,45 @@ func TestSystemOne_NoCriteriaOmitted(t *testing.T) {
 	}
 }
 
+// The bot replies only when Jev says yes (p > 0.5) AND p > threshold, both
+// strict. Confidence is p when replying, 1-p otherwise.
 func TestSystemOneResult_Threshold(t *testing.T) {
 	cases := []struct {
-		p, threshold   float64
-		respond        bool
-		wantConfidence float64
+		name                string
+		p, threshold        float64
+		jevYes, aboveThresh bool
+		respond             bool
+		wantConfidence      float64
 	}{
-		{0.70, 0.70, true, 0.70}, // at threshold replies
-		{0.69, 0.70, false, 0.31},
-		{0.95, 0.70, true, 0.95},
-		{0.05, 0.70, false, 0.95},
-		{1.00, 1.00, true, 1.00},
-		{0.60, 0.50, true, 0.60},
+		{"p == threshold does not reply", 0.70, 0.70, true, false, false, 0.30},
+		{"just above threshold replies", 0.7001, 0.70, true, true, true, 0.7001},
+		{"below threshold", 0.69, 0.70, true, false, false, 0.31},
+		{"confident yes", 0.95, 0.70, true, true, true, 0.95},
+		{"confident no", 0.05, 0.70, false, false, false, 0.95},
+		{"p == 0.5 is not a yes (threshold 0.3)", 0.50, 0.30, false, true, false, 0.50},
+		{"p == 0.5 with threshold 0.5", 0.50, 0.50, false, false, false, 0.50},
+		{"just above 0.5 with threshold 0.5", 0.5001, 0.50, true, true, true, 0.5001},
+		{"threshold below 0.5: a no above it does not reply", 0.40, 0.30, false, true, false, 0.60},
+		{"threshold below 0.5: a yes replies", 0.51, 0.30, true, true, true, 0.51},
+		{"threshold below 0.5: p == threshold", 0.30, 0.30, false, false, false, 0.70},
+		{"threshold 0: any yes replies", 0.60, 0, true, true, true, 0.60},
+		{"threshold 0: p == 0", 0, 0, false, false, false, 1},
+		{"high threshold, certain yes", 1.00, 0.99, true, true, true, 1.00},
 	}
 	for _, c := range cases {
-		r := systemOneResult(c.p, c.threshold)
-		if r.ShouldRespond != c.respond {
-			t.Errorf("p=%v t=%v respond=%v want %v", c.p, c.threshold, r.ShouldRespond, c.respond)
-		}
-		if diff := r.Confidence - c.wantConfidence; diff > 1e-9 || diff < -1e-9 {
-			t.Errorf("p=%v t=%v confidence=%v want %v", c.p, c.threshold, r.Confidence, c.wantConfidence)
-		}
-		want := fmt.Sprintf("p(yes)=%.2f threshold=%.2f", c.p, c.threshold)
-		if r.Reason != want {
-			t.Errorf("reason=%q want %q", r.Reason, want)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			r := systemOneResult(c.p, c.threshold)
+			if r.ShouldRespond != c.respond {
+				t.Errorf("respond=%v want %v", r.ShouldRespond, c.respond)
+			}
+			if diff := r.Confidence - c.wantConfidence; diff > 1e-9 || diff < -1e-9 {
+				t.Errorf("confidence=%v want %v", r.Confidence, c.wantConfidence)
+			}
+			want := fmt.Sprintf("p(yes)=%.4f jev_yes=%t (p>0.5) above_threshold=%t (p>%g)", c.p, c.jevYes, c.aboveThresh, c.threshold)
+			if r.Reason != want {
+				t.Errorf("reason=%q want %q", r.Reason, want)
+			}
+		})
 	}
 }
 

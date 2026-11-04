@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"reflect"
 	"strings"
@@ -137,7 +138,10 @@ type SystemOneConfig struct {
 	Model      string `mapstructure:"model" yaml:"model"`
 	Timeout    int    `mapstructure:"timeout" yaml:"timeout"`
 	RetryCount int    `mapstructure:"retry_count" yaml:"retry_count"`
-	// Threshold is the minimum P(yes) at which the bot replies, in (0, 1].
+	// Threshold is the P(yes) the answer must exceed, in [0, 1). The bot
+	// replies only when Jev says yes (P(yes) > 0.5) AND P(yes) > Threshold
+	// (both strict), so a threshold at or below 0.5 just means "Jev says
+	// yes".
 	Threshold float64 `mapstructure:"threshold" yaml:"threshold"`
 	// Instructions is the yes/no question asked about the state.
 	Instructions string `mapstructure:"instructions" yaml:"instructions"`
@@ -853,11 +857,10 @@ func validateSystemOneDecision(s *SystemOneConfig, errs *[]string) {
 	if s.RetryCount < 0 {
 		*errs = append(*errs, p+"retry_count must be greater than or equal to 0")
 	}
-	// 0 would mean "always reply", which is what disabling the decision and
-	// setting reply_percentage to 1 already does; rejecting it also catches a
-	// forgotten threshold (the zero value).
-	if s.Threshold <= 0 || s.Threshold > 1 {
-		*errs = append(*errs, p+"threshold must be greater than 0 and at most 1")
+	// The reply needs P(yes) > threshold (strict), so 1 could never reply;
+	// 0 is valid and leaves only the "Jev says yes" check (P(yes) > 0.5).
+	if math.IsNaN(s.Threshold) || s.Threshold < 0 || s.Threshold >= 1 {
+		*errs = append(*errs, p+"threshold must be at least 0 and less than 1")
 	}
 	if (strings.TrimSpace(s.CriteriaTrue) == "") != (strings.TrimSpace(s.CriteriaFalse) == "") {
 		*errs = append(*errs, p+"criteria_true and criteria_false must be set together")

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -61,8 +62,10 @@ func TestValidateDecision_SystemOneInvalid(t *testing.T) {
 		{"blank instructions", func(s *SystemOneConfig) { s.Instructions = "  " }, "system_one.instructions is required"},
 		{"zero timeout", func(s *SystemOneConfig) { s.Timeout = 0 }, "system_one.timeout must be greater than 0"},
 		{"negative retry", func(s *SystemOneConfig) { s.RetryCount = -1 }, "system_one.retry_count"},
-		{"zero threshold", func(s *SystemOneConfig) { s.Threshold = 0 }, "system_one.threshold"},
+		{"negative threshold", func(s *SystemOneConfig) { s.Threshold = -0.01 }, "system_one.threshold must be at least 0 and less than 1"},
+		{"threshold 1", func(s *SystemOneConfig) { s.Threshold = 1 }, "system_one.threshold must be at least 0 and less than 1"},
 		{"threshold above 1", func(s *SystemOneConfig) { s.Threshold = 1.01 }, "system_one.threshold"},
+		{"NaN threshold", func(s *SystemOneConfig) { s.Threshold = math.NaN() }, "system_one.threshold"},
 		{"only criteria_true", func(s *SystemOneConfig) { s.CriteriaTrue = "x" }, "set together"},
 		{"only criteria_false", func(s *SystemOneConfig) { s.CriteriaFalse = "x" }, "set together"},
 		{"zero state budget", func(s *SystemOneConfig) { s.MaxStateBytes = 0 }, "system_one.max_state_bytes"},
@@ -79,11 +82,16 @@ func TestValidateDecision_SystemOneInvalid(t *testing.T) {
 	}
 }
 
-func TestValidateDecision_ThresholdOneAllowed(t *testing.T) {
-	d := validSystemOneDecision()
-	d.SystemOne.Threshold = 1
-	if errs := decisionErrs(d); len(errs) != 0 {
-		t.Fatalf("threshold 1 should be valid, got %v", errs)
+// Threshold is validated as [0, 1): the reply needs p(yes) > threshold, so
+// 1 could never reply, while 0 (and anything up to 0.5) leaves only the
+// "Jev says yes" check.
+func TestValidateDecision_ThresholdRange(t *testing.T) {
+	for _, th := range []float64{0, 0.3, 0.5, 0.7, 0.999} {
+		d := validSystemOneDecision()
+		d.SystemOne.Threshold = th
+		if errs := decisionErrs(d); len(errs) != 0 {
+			t.Fatalf("threshold %v should be valid, got %v", th, errs)
+		}
 	}
 }
 
