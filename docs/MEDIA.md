@@ -1,6 +1,6 @@
 # Media Modalities (images, audio, video, stickers)
 
-Text is always handled by the base model (`core.ai`), which is treated as text-only: the reply request never carries media. Images, audio, video and stickers are the four optional modalities configured under `core.ai.modalities`, each with its own on/off switch and its own model. Field reference: [CONFIGURATION.md](CONFIGURATION.md#coreaimodalities-optional).
+Text is always handled by the base model (`core.ai`), which is treated as text-only: the reply request never carries media. Images, audio, video and stickers are the four optional modalities configured under `core.ai.modalities`, each with its own on/off switch and its own model (for stickers the switch only decides whether the image is read; they are always shown as text otherwise). Field reference: [CONFIGURATION.md](CONFIGURATION.md#coreaimodalities-optional).
 
 ## Pipeline ("fake multimodal")
 
@@ -20,10 +20,12 @@ The same text is reused for the memory search query of the current message and f
 | audio | `asr` | Speech is transcribed by an `/audio/transcriptions` endpoint; `[Audio N transcript (...): ...]` is added. | 1 per audio (cached) |
 | audio | `describe` | An audio-capable chat model gets the audio as an `audio_url` data URI part (ogg/opus voice messages work as is) and returns a transcript or description; `[Audio N (...): ...]` is added. | 1 per audio (cached) |
 | video | (always describe) | A video-capable model describes each video (`video_url` part); `[Video N (...): ...]` is added. | 1 per video (cached) |
-| sticker | `text` | `[Sticker: name — description (tags: ...)]` from Discord's sticker details. | none (1 Discord API call per sticker, cached) |
-| sticker | `vision` | A vision model describes the sticker image: `[Sticker: name — ...]`. Lottie stickers fall back to text. | 1 per sticker ID (cached) |
+| sticker | `enabled: false` (default) | `[Sticker: name — description (tags: ...)]` from Discord's sticker details. | none (1 Discord API call per sticker, cached) |
+| sticker | `enabled: true` | A vision model describes the sticker image: `[Sticker: name — ...]`. Lottie stickers fall back to the text. | 1 per sticker ID (cached) |
 
-Every modality turns media into text with its own model, and the result is reused on later turns (cached by attachment ID, which survives Discord re-signing CDN URLs; see [Shared media cache](#shared-media-cache)). The base model only sees the text. There is no "direct" mode that sends media to the reply model: omni models given media inside the long, tool-carrying reply request tended to ignore it. `image.mode` and `video.mode` were removed: a config that sets either fails validation and asks you to remove the key. `audio.mode` accepts only `asr` and `describe`; `direct` fails validation.
+Every modality turns media into text with its own model, and the result is reused on later turns (cached by attachment ID or CDN path, which survives Discord re-signing CDN URLs; see [Shared media cache](#shared-media-cache)). The base model only sees the text. There is no "direct" mode that sends media to the reply model: omni models given media inside the long, tool-carrying reply request tended to ignore it. `image.mode` and `video.mode` were removed: a config that sets either fails validation and asks you to remove the key. `audio.mode` accepts only `asr` and `describe`; `direct` fails validation.
+
+Stickers have no mode: `sticker.mode` was removed and is ignored with a deprecation warning; `sticker.enabled` alone decides whether a vision model reads the image.
 
 For audio, `asr` needs a transcription endpoint (e.g. `IFM/Jais-ASR`); `describe` works with any audio-capable chat model (e.g. `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`, which needs `max_tokens` around 12000) and can also describe music or sounds.
 
@@ -45,7 +47,15 @@ History messages reuse cached descriptions/transcripts. A model call for a histo
 
 ## Shared media cache
 
-One cache is created at startup and shared by the reply path, history enrichment and memory consolidation. It holds image descriptions, audio transcripts and video descriptions keyed by attachment ID (never by the signed CDN URL), and it lets only one caller compute a given attachment at a time, so an attachment is turned into text once even when the reply and a consolidation run ask for it together. Its TTL and size come from `core.discord.image_cache_ttl_min` and `core.discord.image_cache_max_entries` and are updated on hot reload; entries that are still within the new limits are kept. Sticker details and descriptions use a separate cache keyed by sticker ID (`sticker.cache_ttl_min`, `sticker.cache_max_entries`). The cache is in memory only and starts empty after a restart.
+One cache is created at startup and shared by the reply prompt, history enrichment and memory consolidation. It holds image descriptions, audio transcripts and video descriptions under a stable key (the attachment ID, or the CDN path without its signed query; never the signed URL), and it lets only one caller compute a given attachment at a time, so each attachment is processed once while it is in context, even when the reply and a consolidation run ask for it together. Plain-text messages never re-process history media.
+
+- **Pinning.** Media still in a channel's prompt window (history plus the current message) is pinned and never expires. When it scrolls out of the window it drops back to the idle TTL.
+- **Idle TTL** (`core.discord.image_cache_ttl_min`). Unpinned entries expire after this many minutes unused; each use refreshes them.
+- **Size bound** (`core.discord.image_cache_max_entries`). Over it, the least recently used unpinned entries are dropped first; pinned entries are never evicted.
+- **Failures.** Permanent failures (over the size or duration limit, wrong content type, a download 4xx other than 408/429, a model 400/404/413/415/422, a transcode error) are remembered for 5 minutes, so a broken attachment is not retried on every message. Timeouts, 429, 5xx and empty model output are not cached and are retried.
+- **Hot reload.** The TTL and size are updated in place. A kind's cache is dropped only when its model, endpoint, prompt or transcode settings change; other kinds keep theirs.
+
+Sticker details and descriptions use a separate cache keyed by sticker ID that follows the same rules, with `sticker.cache_ttl_min` and `sticker.cache_max_entries`. Both caches are in memory only and start empty after a restart.
 
 ## Limits
 

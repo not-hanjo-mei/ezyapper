@@ -90,7 +90,6 @@ You'll also find prebuilt **plugin binaries** in the same artifacts — Go plugi
 > [!WARNING]
 > **The Docker build is unverified.** The `Dockerfile` and `docker-compose.yml` have not been tested against the current code. Reading them against the code shows these problems; work around them as described until they are fixed:
 >
-> - The image's default command is `CMD ["-config", "/app/config.yaml"]`. The bot parses flags with `pflag`, where `-config` means `-c onfig` (config file `onfig`), so the container exits at startup. Override the command with `--config /app/config.yaml` (see below).
 > - The build copies `config.yaml` from the build context into the image (`COPY --from=builder /build/config.yaml ...`), so the build fails without one, and whatever it contains (including secrets) ends up in the image. Mount the real file at run time instead and keep secrets in the environment.
 > - The image has no ffmpeg, which `audio.transcode` and `video.transcode` need. See [ffmpeg in Docker](#ffmpeg-in-docker).
 > - The health check probes `/health`, which is not a real endpoint (see [Health check](#health-check)).
@@ -128,12 +127,6 @@ cp examples/config.yaml.example config.yaml
 ```
 
 The compose file mounts `./config.yaml` read-only into the container. A variable in `.env` overrides a key **only if that key is present in `config.yaml`** (see [CONFIGURATION.md](CONFIGURATION.md#environment-variable-overrides)); keep the keys in the file with placeholder values. The mount is read-only, so saving the config from the WebUI fails; edit the file on the host instead (with hot reload enabled the bot picks up the change).
-
-Until the image's default command is fixed, add this to the `ezyapper` service in `docker-compose.yml`:
-
-```yaml
-    command: ["--config", "/app/config.yaml"]
-```
 
 ### 3. Up and running
 

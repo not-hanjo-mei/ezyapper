@@ -90,8 +90,8 @@ Config field names are case-insensitive (`Core:` and `core:` are the same key). 
 | `consolidation_timeout_sec` | int (>0) | Deadline for one background consolidation run: fetching the channel's messages, turning their media into text and extracting memories. |
 | `typing_indicator_interval_sec` | int (>0) | How often the typing indicator is re-sent while a reply is generated. |
 | `long_response_delay_ms` | int (>0) | Pause between the chunks of a reply longer than Discord's 2000-character limit (such a reply is split into chunks of up to 1900 characters). |
-| `image_cache_ttl_min` | int (>0) | TTL of the shared media cache (image descriptions, audio transcripts, video descriptions, keyed by attachment ID) and of the cache of image descriptions for history messages. |
-| `image_cache_max_entries` | int (>0) | Size limit of those caches. |
+| `image_cache_ttl_min` | int (>0) | Idle TTL of the media text cache (image descriptions, audio transcripts, video descriptions). Media still in a channel's prompt window is pinned and never expires; other entries expire after this long unused, and each use refreshes them. |
+| `image_cache_max_entries` | int (>0) | Size bound of that cache: the least recently used unpinned entries are dropped first; pinned entries are never evicted. |
 
 **`other_bot_policy`** controls how the bot treats messages from *other* bots (its own messages are always self-filtered):
 
@@ -121,15 +121,17 @@ The main chat model. All sub-fields here are required.
 
 `core.ai.require_image_content_type` was removed: image downloads already reject responses whose `Content-Type` is not an image type. A config that still sets it loads and logs a deprecation warning.
 
+`core.ai.modalities.sticker.mode` was removed: `sticker.enabled` is the only switch (`true` reads the image with a vision model, `false` uses the Discord text). A config that still sets it loads and logs a deprecation warning.
+
 #### `core.ai.modalities` (optional)
 
-Text is always on: `core.ai` is the base model that reasons, runs tools and writes every reply. It is treated as text-only: the reply request never carries media. There are four media modalities: image, audio, video and sticker. Each is optional, with its own `enabled` switch and its own model. The whole block, and every field in it, is optional: a config without it loads with all four modalities off. See [MEDIA.md](MEDIA.md) for how the pipeline works.
+Text is always on: `core.ai` is the base model that reasons, runs tools and writes every reply. It is treated as text-only: the reply request never carries media. There are four media modalities: image, audio, video and sticker. Each is optional, with its own `enabled` switch and its own model. The whole block, and every field in it, is optional: a config without it loads with image, audio and video off, and stickers shown as their Discord text (no model call). See [MEDIA.md](MEDIA.md) for how the pipeline works.
 
 Every modality accepts these endpoint fields. Left empty (or 0) they fall back to the matching `core.ai` value, so a modality on the same gateway only needs `enabled` and `model`.
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `model` | string | The modality's model. Required when the modality is enabled (stickers in vision mode may fall back to `modalities.image.model`). |
+| `model` | string | The modality's model. Required when the modality is enabled (an enabled sticker modality may fall back to `modalities.image.model`). |
 | `api_base_url`, `api_key` | string | Fall back to `core.ai`. |
 | `timeout` | int (≥0, s) | Per-request timeout. Falls back to `core.ai.timeout`. An ASR endpoint with no timeout from either uses 60 s. |
 | `max_tokens` | int (>0) | Falls back to `core.ai.max_tokens`. Reasoning models describing video need a lot (≈12000) or they return no content. |
@@ -139,7 +141,7 @@ Every modality accepts these endpoint fields. Left empty (or 0) they fall back t
 
 Media reaches the base model only as text:
 
-- A dedicated model per modality turns the media into text, added to the message in the user prompt: `[Image 1: ...]`, `[Audio 1 transcript (voice message, 4s): ...]`, `[Video 1 (clip.mp4): ...]`. Results are cached by attachment ID (TTL and size from `core.discord.image_cache_ttl_min` / `image_cache_max_entries`), so the same media is processed once. For the message being answered, media is always processed; history messages use cached results, and at most one history message per kind is processed on demand: the most recent one, and only when the user replied to it or mentions it (e.g. "image", "voice", "video").
+- A dedicated model per modality turns the media into text, added to the message in the user prompt: `[Image 1: ...]`, `[Audio 1 transcript (voice message, 4s): ...]`, `[Video 1 (clip.mp4): ...]`. Results are cached by a stable key (the attachment ID, or the CDN path without its signed query) and shared by the reply prompt, history and memory consolidation, so each attachment is processed once while it is in context, and plain-text messages never re-process history media. Media still in a channel's prompt window is pinned in the cache; other entries expire after `core.discord.image_cache_ttl_min` minutes unused and are evicted least recently used first beyond `image_cache_max_entries`. Permanent failures (over the size or duration limit, wrong content type, a download 4xx other than 408/429, a model 400/404/413/415/422, a transcode error) are remembered for 5 minutes; timeouts, 429, 5xx and empty output are retried. On hot reload, a kind's cache is dropped only when its model, endpoint, prompt or transcode settings change. Stickers follow the same rules with `sticker.cache_ttl_min` / `cache_max_entries`. For the message being answered, media is always processed; history messages use cached results, and at most one history message per kind is processed on demand: the most recent one, and only when the user replied to it or mentions it (e.g. "image", "voice", "video").
 - Media whose text is not available (not cached, or processing failed) shows a placeholder such as `[Audio 1: voice message, 4s]`.
 - There is no "direct" mode. `image.mode` and `video.mode` were removed: any value fails validation with a message asking to remove the key. `audio.mode` takes only `asr` or `describe`; `direct` fails validation. Omni models given the media inside the long, tool-carrying reply request tended to ignore it, so a dedicated model describes it instead.
 
@@ -191,13 +193,14 @@ ffmpeg is an optional dependency. It is only needed by `audio.transcode` and `vi
 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
-| `enabled` | bool | `false` | |
-| `mode` | enum | `text` | `text`: `[Sticker: name — description (tags: ...)]` from Discord (one `GET /stickers/{id}` per sticker, cached; no model call). `vision`: a vision model describes the sticker image (`media.discordapp.net/stickers/{id}.png`/`.gif`), once per sticker ID; custom guild stickers included. Lottie stickers cannot be rendered and always use text. In history, a sticker without a cached description falls back to text (no model call). |
-| model fields | | | In vision mode, empty fields fall back to `modalities.image`, then `core.ai`. Vision mode needs a model from one of them. |
+| `enabled` | bool | `false` | The only sticker switch; it decides whether the image is read. Stickers are always added to the message. `false`: `[Sticker: name — description (tags: ...)]` from Discord (one `GET /stickers/{id}` per sticker, cached; no model call). `true`: a vision model describes the sticker image (`media.discordapp.net/stickers/{id}.png`/`.gif`) once per sticker ID; custom guild stickers included. Lottie stickers cannot be rendered and always use the text. In history, a sticker without a cached description falls back to the text (no model call). |
+| model fields | | | When enabled, empty fields fall back to `modalities.image`, then `core.ai`. `enabled: true` needs a model from `sticker.model` or `image.model`. |
 | `prompt` | string | built-in | Vision prompt. |
 | `max_items` | int (≥0) | `3` | |
-| `cache_ttl_min` | int (≥0) | `1440` | Sticker details and descriptions are cached by sticker ID (not by URL). |
-| `cache_max_entries` | int (≥0) | `1000` | |
+| `cache_ttl_min` | int (≥0) | `1440` | Sticker details and descriptions are cached by sticker ID (not by URL). Stickers in a channel's prompt window are pinned; others expire after this long unused. |
+| `cache_max_entries` | int (≥0) | `1000` | Least recently used unpinned entries are dropped first. |
+
+`sticker.mode` was removed. A config that still sets it loads and logs a deprecation warning. `mode: text` together with `enabled: true` logs a second warning: that combination used to mean text only and now reads the image, so set `enabled: false` to keep text only (without any `sticker.model`/`image.model` it fails validation with that hint).
 
 Example (one OpenAI-compatible gateway for chat, vision and video; a separate ASR service):
 
@@ -264,7 +267,7 @@ The optional reply classifier. When enabled, every message that neither mentions
 | `model` | string | enabled | e.g. `jev-latest` (or `jev-preview`). |
 | `timeout` | int (>0) | enabled | Per-request timeout in seconds. |
 | `retry_count` | int (≥0) | enabled | Retries on 429, 529, 5xx and network errors. 400/401/413/422 fail at once. |
-| `threshold` | float (0 < t ≤ 1) | enabled | Reply when P(yes) ≥ threshold. 0.7 is TypeSafe's suggested starting point; raise it to make the bot quieter. |
+| `threshold` | float (0 ≤ t < 1) | enabled | The bot replies only when Jev says yes (P(yes) > 0.5) **and** P(yes) > threshold. Both comparisons are strict: P(yes) = 0.5 is not a yes, and P(yes) = threshold does not reply. A threshold at or below 0.5 therefore just means "reply when Jev says yes"; raise it above 0.5 to make the bot quieter. 0.7 is TypeSafe's suggested starting point. |
 | `instructions` | string | enabled | The yes/no question, e.g. `Should the Discord bot Ezy send a reply to current_message?`. Sent verbatim: there is **no** `{BotName}` substitution, write the bot's name literally. |
 | `criteria_true` / `criteria_false` | string | optional | What a yes / a no means. Set both or neither. Sent verbatim. |
 | `max_state_bytes` | int (>0) | enabled | Budget for the JSON state. 48000 keeps even CJK-heavy text well inside Jev's 64k-token context. |
@@ -281,9 +284,9 @@ The state sent with the question is a JSON object:
 }
 ```
 
-`recent_messages` is oldest first; `reply_to` (the replied-to author) is omitted when the message is not a reply, and author IDs are not sent. When the encoded state exceeds `max_state_bytes`, the oldest messages are dropped first (`older_messages_omitted` says how many); if the current message alone is still too large, its content is cut. Images are not sent (text only); `image_count` tells the model they exist. The decision is logged like `system_one decision: p(yes)=0.83 threshold=0.70 (confidence: 0.83)`; the reported confidence is the probability of the chosen verdict: P(yes) when replying, 1 − P(yes) when not.
+`recent_messages` is oldest first; `reply_to` (the replied-to author) is omitted when the message is not a reply, and author IDs are not sent. When the encoded state exceeds `max_state_bytes`, the oldest messages are dropped first (`older_messages_omitted` says how many); if the current message alone is still too large, its content is cut. Images are not sent (text only); `image_count` tells the model they exist. The decision is logged like `system_one decision: p(yes)=0.8300 jev_yes=true (p>0.5) above_threshold=true (p>0.7) (confidence: 0.83)`, so the log shows which check failed; the reported confidence is the probability of the chosen verdict: P(yes) when replying, 1 − P(yes) when not.
 
-Tuning: with the criteria from `config.yaml.example` and `jev-latest` (jev-1.14.0, November 2026), a message addressed to the bot by name scored about 0.94, a follow-up in a conversation with the bot 0.97, two users talking to each other 0.04, and an open question to the whole channel about 0.65. With the default threshold of 0.7 the bot therefore stays out of open channel questions; lower it to about 0.6 if it should take those. Instructions alone (no criteria) separate the cases less sharply (0.84 / 0.94 / 0.14 / 0.71).
+Tuning: with the criteria from `config.yaml.example` and `jev-latest` (jev-1.14.0, November 2026), a message addressed to the bot by name scored about 0.94, a follow-up in a conversation with the bot 0.97, two users talking to each other 0.04, and an open question to the whole channel about 0.65. With the default threshold of 0.7 the bot therefore stays out of open channel questions; lower it to about 0.6 if it should take those (anything at or below 0.5 still needs Jev to say yes, P(yes) > 0.5). Instructions alone (no criteria) separate the cases less sharply (0.84 / 0.94 / 0.14 / 0.71).
 
 If the decision model fails (timeout, error, invalid JSON for `llm`, an HTTP error or missing answer for `system_one`), the bot falls back to `core.discord.reply_percentage`. So a decision-service outage doesn't kill the bot — it just makes it less smart about when to chime in.
 
@@ -603,7 +606,7 @@ Saving from the WebUI `/config` page goes through the same steps; the file is wr
 | `core.discord.token` | The token is checked against the Discord API, a new gateway session is opened with the bot's handlers attached, then swapped in and the old session closed. During the switch only events from the current session are handled, so no message is answered twice. A rejected token keeps the bot connected with the old one. |
 | Other `core.discord.*` (bot name, reply percentage, cooldowns, rate limits, other-bot policy, image cache, typing/long-response timing) | Read from the live config on every message; the rate limiter is updated immediately. |
 | `core.discord.clear_command` | Enabling registers `/clear-context`; disabling leaves the global command registered but refuses it. |
-| `core.ai.*` (model, endpoint, key, prompt, tool iterations, vision) | The chat client is built per request from the live config; the media describers (image, audio, video, sticker) are rebuilt. |
+| `core.ai.*` (model, endpoint, key, prompt, tool iterations, vision) | The chat client is built per request from the live config; the media describers (image, audio, video, sticker) are rebuilt. A kind's cached media text is dropped only when its model, endpoint, prompt or transcode settings change. |
 | `core.decision.*` | The decision provider (`llm` or `system_one`) is rebuilt; a provider that cannot be built rejects the reload. |
 | `memory_pipeline.embedding.*` with the same `model` | A new embedding client is swapped into the running memory service. |
 | `memory_pipeline.embedding.model`, `memory_pipeline.qdrant.*`, `memory_pipeline.memory.*`, consolidation settings, memory on/off | A complete new memory service is built first (connects to Qdrant, prepares the collections). For a new embedding model its vector collection is selected and filled from the source tier in the background, as on a restart (see [Switching Embedding Models](#switching-embedding-models)). The old service finishes in-flight calls and is closed after 30 s. |

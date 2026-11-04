@@ -46,13 +46,7 @@ The fastest path to a running EZyapper. For full configuration details and tunin
 
     The compose file mounts this read-only into the container. A variable in `.env` overrides a key only if that key is present in `config.yaml` (the example file has them all).
 
-4. The Docker setup is unverified, and the image's default command uses `-config`, which the bot's flag parser reads as `-c onfig`. Add this to the `ezyapper` service in `docker-compose.yml` (see [DEPLOYMENT.md](DEPLOYMENT.md#docker)):
-
-    ```yaml
-        command: ["--config", "/app/config.yaml"]
-    ```
-
-5. Start it:
+4. Start it:
 
     ```bash
     docker compose up -d
