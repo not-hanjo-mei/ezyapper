@@ -1,13 +1,15 @@
 # Configuration
 
-EZyapper is configured via a single YAML file (default: `config.yaml`). Pass a custom path with `-config`:
+EZyapper is configured via a single YAML file. Pass its path with `--config` (short form `-c`):
 
 ```bash
-./ezyapper -config /path/to/config.yaml
+./ezyapper --config /path/to/config.yaml
 ```
 
+Without the flag the bot looks for `config.yaml` in `.`, `./config` and `/etc/ezyapper`, in that order.
+
 > [!CAUTION]
-> **Strict config — no defaults.** Every required field must be set. Missing one and the bot refuses to start. Validation errors are batched: if you have ten missing fields, you'll see all ten in one go.
+> **Strict config.** Most fields have no default in code: a required field that is missing or zero stops the bot at startup. Validation errors are batched: if you have ten missing fields, you'll see all ten in one go. Some fields do have defaults: every field of `core.ai.modalities` (see the tables below), `core.decision.provider` (`llm`), `operations.runtime.hot_reload.enabled` (`false`) and `memory_pipeline.memory.context_flush_window` (`0`, sliding window). Optional maps such as `extra_params` can be left out. Start from `examples/config.yaml.example`, which sets every field.
 
 > [!TIP]
 > **Hot reload.** With `operations.runtime.hot_reload.enabled: true` the bot watches its config file and applies every change on save, without a restart: the Discord token, models, prompts, the decision provider, Qdrant, MCP servers and the dashboard port included. A file that does not validate, or a change that cannot be applied (bad token, unreachable server, port in use), is rejected as a whole and the bot keeps running on the previous config. See [Hot reload](#hot-reload).
@@ -48,7 +50,7 @@ For a complete annotated example, see `examples/config.yaml.example`. For the JS
 
 ## Environment Variable Overrides
 
-Every field can be overridden by an environment variable. Prefix `EZYAPPER_`, then convert the YAML path to uppercase with dots replaced by underscores.
+An environment variable can override a field **that is present in the config file**. Prefix `EZYAPPER_`, then convert the YAML path to uppercase with dots replaced by underscores.
 
 ```
 core.discord.token                            → EZYAPPER_CORE_DISCORD_TOKEN
@@ -60,6 +62,8 @@ memory_pipeline.memory.retrieval.top_k        → EZYAPPER_MEMORY_PIPELINE_MEMOR
 operations.web.enabled                        → EZYAPPER_OPERATIONS_WEB_ENABLED
 operations.plugins.plugins_dir                → EZYAPPER_OPERATIONS_PLUGINS_PLUGINS_DIR
 ```
+
+Overrides apply only to keys that appear in the file (the loader has no list of known keys, so it only looks up environment variables for the keys it read). To supply a secret from the environment, keep the key in the file with a placeholder value, for example `token: ""`, and set `EZYAPPER_CORE_DISCORD_TOKEN`. A variable for a key that is not in the file is silently ignored.
 
 The full nested path is required — short forms like `EZYAPPER_DISCORD_TOKEN` (without `CORE_`) do **not** map to anything and are silently ignored.
 
@@ -76,18 +80,18 @@ Config field names are case-insensitive (`Core:` and `core:` are the same key). 
 | Field | Type | Notes |
 |-------|------|-------|
 | `token` | string | Discord bot token. **Always required.** |
-| `bot_name` | string | Display name used in prompts and logs. |
-| `own_bot_id` | string | The bot's user ID. Required when memory retrieval (`top_k > 0`) or consolidation is enabled. |
-| `reply_percentage` | float (0.0–1.0) | Random reply probability when not mentioned. |
-| `cooldown_seconds` | int (>0) | Minimum gap between replies for the same user+channel. |
-| `max_responses_per_minute` | int (>0) | Hard cap across all channels. |
-| `rate_limit.reset_period_seconds` | int (>0) | Sliding window for the per-user rate limit. |
+| `bot_name` | string | Required. The bot's name. It is currently passed only to the decision provider, and both providers ignore it: nothing substitutes it into a prompt. Write the name literally in `core.ai.system_prompt` and the decision prompt or instructions. |
+| `own_bot_id` | string | The bot's user ID. Used to mark the bot's own messages in memory search queries and consolidation (`BOT=SELF`). Required when memory retrieval (`top_k > 0`) or consolidation is enabled. Replying to itself is prevented separately, using the session's own user ID. |
+| `reply_percentage` | float (0.0–1.0) | Probability of replying to a message that neither mentions the bot nor replies to it, when the decision model is disabled or has failed. `0` never replies at random. |
+| `cooldown_seconds` | int (>0) | After the bot replies to a user, that user's messages are ignored for this many seconds, in every channel (the cooldown is per user). |
+| `max_responses_per_minute` | int (>0) | Messages per user **per channel** that are considered within one `rate_limit.reset_period_seconds` window. Every message that passes the access checks counts, including ones the bot then does not answer; further messages in the window are ignored. It is not a global cap. |
+| `rate_limit.reset_period_seconds` | int (>0) | Length of the window for `max_responses_per_minute`. The window starts at the first counted message and resets when it expires (a fixed window, not a sliding one). |
 | `other_bot_policy` | enum | `"ignore"` / `"context_only"` / `"full"` — how to treat messages from other bots. See below. |
-| `consolidation_timeout_sec` | int (>0) | Timeout for consolidation-triggered response generation. |
-| `typing_indicator_interval_sec` | int (>0) | Refresh interval for typing indicator. |
-| `long_response_delay_ms` | int (>0) | Pause before sending a response flagged as "long" (humanizing). |
-| `image_cache_ttl_min` | int (>0) | TTL for cached Discord image data. |
-| `image_cache_max_entries` | int (>0) | Max entries in the in-memory image cache. |
+| `consolidation_timeout_sec` | int (>0) | Deadline for one background consolidation run: fetching the channel's messages, turning their media into text and extracting memories. |
+| `typing_indicator_interval_sec` | int (>0) | How often the typing indicator is re-sent while a reply is generated. |
+| `long_response_delay_ms` | int (>0) | Pause between the chunks of a reply longer than Discord's 2000-character limit (such a reply is split into chunks of up to 1900 characters). |
+| `image_cache_ttl_min` | int (>0) | TTL of the shared media cache (image descriptions, audio transcripts, video descriptions, keyed by attachment ID) and of the cache of image descriptions for history messages. |
+| `image_cache_max_entries` | int (>0) | Size limit of those caches. |
 
 **`other_bot_policy`** controls how the bot treats messages from *other* bots (its own messages are always self-filtered):
 
@@ -109,8 +113,8 @@ The main chat model. All sub-fields here are required.
 | `max_tokens` | int (>0) | Max tokens in completion. |
 | `temperature` | float (0.0–2.0) | Higher = more creative. |
 | `retry_count` | int (>0) | Retries for transient API errors. |
-| `timeout` | int (>0, seconds) | Per-request timeout. The pipeline timeout is auto-derived from this. |
-| `extra_params` | map | Optional. Forwarded to the API via reflection. Unknown keys log a warning at runtime. Nested keys keep their case. |
+| `timeout` | int (seconds) | Per-request timeout. **Not validated**, but required in practice: every request runs under a deadline of this many seconds, so `0` or a missing value makes each chat request fail at once. Set it to a positive value. The per-message processing deadline is derived from it: `(timeout + max plugin timeout) × max_tool_iterations + 10 s`. |
+| `extra_params` | map | Optional. Forwarded to the API via reflection. Unknown keys log a warning at runtime. Nested keys keep their case. Also used for embedding requests when `memory_pipeline.embedding.extra_params` is empty. |
 | `system_prompt` | string | The static system prompt. Sent unchanged on every request (no placeholders); see [System prompt](#system-prompt). |
 | `max_tool_iterations` | int (>0) | Cap on tool-calling loops per turn. Prevents infinite tool-call cycles. |
 | `max_image_bytes` | int (>0) | Maximum bytes for an image fetched from Discord CDN. |
@@ -119,7 +123,7 @@ The main chat model. All sub-fields here are required.
 
 #### `core.ai.modalities` (optional)
 
-Text is always on: `core.ai` is the base model that reasons, runs tools and writes every reply. It is treated as text-only: the reply request never carries media. Image, audio, video and stickers are optional, each with its own `enabled` switch and its own model. The whole block, and every field in it, is optional: a config without it loads with all three modalities off.
+Text is always on: `core.ai` is the base model that reasons, runs tools and writes every reply. It is treated as text-only: the reply request never carries media. There are four media modalities: image, audio, video and sticker. Each is optional, with its own `enabled` switch and its own model. The whole block, and every field in it, is optional: a config without it loads with all four modalities off. See [MEDIA.md](MEDIA.md) for how the pipeline works.
 
 Every modality accepts these endpoint fields. Left empty (or 0) they fall back to the matching `core.ai` value, so a modality on the same gateway only needs `enabled` and `model`.
 
@@ -127,7 +131,7 @@ Every modality accepts these endpoint fields. Left empty (or 0) they fall back t
 |-------|------|-------|
 | `model` | string | The modality's model. Required when the modality is enabled (stickers in vision mode may fall back to `modalities.image.model`). |
 | `api_base_url`, `api_key` | string | Fall back to `core.ai`. |
-| `timeout` | int (≥0, s) | Per-request timeout. Falls back to `core.ai.timeout`. |
+| `timeout` | int (≥0, s) | Per-request timeout. Falls back to `core.ai.timeout`. An ASR endpoint with no timeout from either uses 60 s. |
 | `max_tokens` | int (>0) | Falls back to `core.ai.max_tokens`. Reasoning models describing video need a lot (≈12000) or they return no content. |
 | `temperature` | float (0–2) | Falls back to `core.ai.temperature`. |
 | `retry_count` | int (≥0) | Falls back to `core.ai.retry_count`. |
@@ -137,7 +141,7 @@ Media reaches the base model only as text:
 
 - A dedicated model per modality turns the media into text, added to the message in the user prompt: `[Image 1: ...]`, `[Audio 1 transcript (voice message, 4s): ...]`, `[Video 1 (clip.mp4): ...]`. Results are cached by attachment ID (TTL and size from `core.discord.image_cache_ttl_min` / `image_cache_max_entries`), so the same media is processed once. For the message being answered, media is always processed; history messages use cached results, and at most one history message per kind is processed on demand: the most recent one, and only when the user replied to it or mentions it (e.g. "image", "voice", "video").
 - Media whose text is not available (not cached, or processing failed) shows a placeholder such as `[Audio 1: voice message, 4s]`.
-- There is no "direct" mode: `mode: direct` (image or audio) and any `image.mode` / `video.mode` fail validation with a message asking to remove them. Omni models given the media inside the long, tool-carrying reply request tended to ignore it, so a dedicated model describes it instead.
+- There is no "direct" mode. `image.mode` and `video.mode` were removed: any value fails validation with a message asking to remove the key. `audio.mode` takes only `asr` or `describe`; `direct` fails validation. Omni models given the media inside the long, tool-carrying reply request tended to ignore it, so a dedicated model describes it instead.
 
 The system prompt stays byte-identical: everything media-related is in the user prompt.
 
@@ -162,7 +166,7 @@ The system prompt stays byte-identical: everything media-related is in the user 
 | `max_items` | int (≥0) | `2` | |
 | `max_bytes` | int (≥0) | 25 MiB | Larger attachments are skipped. |
 | `max_duration_sec` | int (≥0) | `600` | Checked when Discord reports a duration (voice messages). |
-| `transcode` | enum | (empty) | `mp3` or `wav`: convert with ffmpeg (mono, 16 kHz) before sending. Only needed for an ASR endpoint that rejects ogg/opus voice messages, or for `part_type: input_audio`. Requires ffmpeg. |
+| `transcode` | enum | (empty) | `mp3` or `wav`: convert with ffmpeg (mono, 16 kHz) before sending. Only needed for an ASR endpoint that rejects ogg/opus voice messages, or for `part_type: input_audio`. Requires ffmpeg, which the Docker image does not include (see [DEPLOYMENT.md](DEPLOYMENT.md#ffmpeg-in-docker)). |
 | `part_type` | enum | `audio_url` | Describe mode: `audio_url` (data URI, any format the model accepts) or `input_audio` (OpenAI format, mp3/wav only, so `transcode` is required). |
 
 **`video`**
@@ -181,7 +185,7 @@ The system prompt stays byte-identical: everything media-related is in the user 
 
 **ffmpeg**
 
-ffmpeg is an optional dependency. It is only needed by `audio.transcode` and `video.transcode`; nothing else calls it, and without those options the bot never looks for it. When an enabled modality uses one of them, the bot checks at startup (and on a WebUI config reload) that the binary exists and `ffmpeg -version` runs; if not, it refuses to start with an error naming the options that need it. `core.ai.modalities.ffmpeg_path` sets the binary (default `ffmpeg` from `PATH`).
+ffmpeg is an optional dependency. It is only needed by `audio.transcode` and `video.transcode`; nothing else calls it, and without those options the bot never looks for it. The published Dockerfile does not install it. When an enabled modality uses one of them, the bot checks at startup (and on a WebUI config reload) that the binary exists and `ffmpeg -version` runs; if not, it refuses to start with an error naming the options that need it. `core.ai.modalities.ffmpeg_path` sets the binary (default `ffmpeg` from `PATH`).
 
 **`sticker`**
 
@@ -291,7 +295,7 @@ The whole memory subsystem can be turned **off** by setting `memory.retrieval.to
 
 ### `memory_pipeline.embedding`
 
-Inherits from `core.ai.api_base_url` / `core.ai.api_key` if empty.
+Empty `api_base_url`, `api_key` and `extra_params` are taken from `core.ai`. `retry_count` and `timeout` are not inherited.
 
 | Field | Type | Required when | Notes |
 |-------|------|---------------|-------|
@@ -300,7 +304,7 @@ Inherits from `core.ai.api_base_url` / `core.ai.api_key` if empty.
 | `model` | string | memory enabled | Embedding model. **The vector size of this model must match `qdrant.vector_size`.** |
 | `retry_count` | int (≥0) | memory enabled | |
 | `timeout` | int (>0) | memory enabled | |
-| `extra_params` | map | optional | |
+| `extra_params` | map | optional | Falls back to `core.ai.extra_params` when empty. |
 
 ### `memory_pipeline.memory`
 
@@ -333,7 +337,7 @@ The biggest subsection. Skim it in two passes — first the basics, then the mai
 | `retrieval.max_mentioned_memories` | int (≥0) | Memories that mention the sender (0 = use top_k). |
 | `retrieval.max_channel_memories` | int (≥0) | Memories scoped to current channel (0 = use top_k). |
 
-**`consolidation`** — empty fields inherit from `core.ai`.
+**`consolidation`** — empty `model`, `api_base_url` and `api_key` are taken from `core.ai`. `max_tokens`, `retry_count` and `timeout` must be set when consolidation is enabled. `extra_params` is **not** inherited: only the consolidation block's own `extra_params` is sent.
 
 | Field | Type | Required when | Notes |
 |-------|------|---------------|-------|
@@ -345,10 +349,10 @@ The biggest subsection. Skim it in two passes — first the basics, then the mai
 | `consolidation.temperature` | float (0.0–2.0) | enabled | |
 | `consolidation.retry_count` | int (>0) | enabled | |
 | `consolidation.timeout` | int (>0) | enabled | |
-| `consolidation.extra_params` | map | optional | |
+| `consolidation.extra_params` | map | optional | Not inherited from `core.ai.extra_params`. |
 | `consolidation.system_prompt` | string | enabled | The extraction prompt. Templates for each `other_bot_policy` value live in `examples/config.yaml.example` — start from one of those. |
 | `consolidation.memory_search_limit` | int (>0) | always | How many existing memories to load for dedup during consolidation. Validated even when consolidation is disabled. |
-| `consolidation.vision.*` | submap | optional | `model`, `api_base_url`, `api_key`, `max_tokens`, `temperature`, `retry_count`, `timeout`, `description_prompt`: overrides for describing images during consolidation. Anything left empty inherits from `core.ai.modalities.image` (then `core.ai`). Only used when the image modality is enabled. |
+| `consolidation.vision.*` | submap | optional | Overrides for describing images during consolidation. Only these keys are read: `model`, `api_base_url`, `api_key`, `max_tokens`, `temperature`, `retry_count`, `timeout`, `description_prompt`. Other keys (`extra_params`, `base64`, `max_images`, `mode`) are ignored; extra params, transport and the item limit come from `core.ai.modalities.image`. Anything left empty inherits from `core.ai.modalities.image` (then `core.ai`). Only used when the image modality is enabled. |
 
 **Maintenance**
 
@@ -535,7 +539,7 @@ Each `servers[]` entry:
 | `args` | list | optional | Arguments. |
 | `env` | map | optional | Env vars set for the subprocess, names exactly as written (`GITHUB_TOKEN` stays `GITHUB_TOKEN`). The bot's own environment is passed on with names containing TOKEN, SECRET, KEY, PASSWORD and similar removed; vars listed here are always set. |
 | `url` | string | type=sse, http | Endpoint URL. |
-| `headers` | map | optional, type=http | Headers sent with every request. Values are expanded with `$VAR` from the bot's environment. |
+| `headers` | map | optional, type=http | Headers sent with every request. Values are expanded with `$VAR` from the bot's environment. Only the `http` transport sends them: an `sse` server ignores `headers`, so use `http` for a server that needs an `Authorization` header. |
 
 ```yaml
 operations:
@@ -581,7 +585,7 @@ operations:
       debounce_ms: 500
 ```
 
-The bot then watches the file it was started with (`-c`, or the `config.yaml` it found). The parent directory is watched, so editors that save by writing a temporary file and renaming it (vim, VS Code, JetBrains, `sed -i`, Kubernetes ConfigMaps) are handled. After `debounce_ms` without further events the file is re-read.
+The bot then watches the file it was started with (`--config`/`-c`, or the `config.yaml` it found). The parent directory is watched, so editors that save by writing a temporary file and renaming it (vim, VS Code, JetBrains, `sed -i`, Kubernetes ConfigMaps) are handled. After `debounce_ms` without further events the file is re-read.
 
 ### What happens on save
 
@@ -603,6 +607,7 @@ Saving from the WebUI `/config` page goes through the same steps; the file is wr
 | `core.decision.*` | The decision provider (`llm` or `system_one`) is rebuilt; a provider that cannot be built rejects the reload. |
 | `memory_pipeline.embedding.*` with the same `model` | A new embedding client is swapped into the running memory service. |
 | `memory_pipeline.embedding.model`, `memory_pipeline.qdrant.*`, `memory_pipeline.memory.*`, consolidation settings, memory on/off | A complete new memory service is built first (connects to Qdrant, prepares the collections). For a new embedding model its vector collection is selected and filled from the source tier in the background, as on a restart (see [Switching Embedding Models](#switching-embedding-models)). The old service finishes in-flight calls and is closed after 30 s. |
+| `memory_pipeline.memory.max_paginated_limit` | Also applied to the running Discord history fetcher when the reload is committed (in addition to the rebuilt memory service). |
 | `access_control.*` | Read from the live config on every message. |
 | `operations.web.*` | The dashboard's routes are rebuilt and swapped under the running listener. A new port (or enabling it) is bound before the switch; a port in use rejects the reload. Changing the username, password or session lifetime signs everyone out. |
 | `operations.logging.*` | A level change is applied to the running logger; a new file or rotation settings open the new log file first (an unwritable path rejects the reload). |

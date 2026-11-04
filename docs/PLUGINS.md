@@ -28,7 +28,7 @@ type Interface interface {
 | Method | Behavior |
 |--------|----------|
 | `Info()` | Metadata: Name, Version, Author, Description, Priority. Higher Priority runs first in hook chains. |
-| `OnMessage(msg)` | Per-message hook. Return `false` to **block** the message (bot won't process or respond). |
+| `OnMessage(msg)` | Per-message hook. Return `false` to **block** the message (bot won't process or respond). If the call fails (an error, a timeout or a dead process), that plugin is skipped for this message and the next plugin is asked; a failing plugin never blocks a message. |
 | `Shutdown()` | Called when the plugin is being stopped. Clean up resources here. |
 
 ### Hook chain
@@ -181,7 +181,7 @@ Field notes:
   - `command` — executable path. Relative paths are resolved against the plugin directory.
   - `args` — static arguments always passed first.
   - `arg_keys` — argument names appended in order. The host pulls each name from the LLM-supplied `arguments` object and appends its value to the command line.
-  - `timeout_ms` — per-tool override of the manager's default timeout. `0` falls back to `default_tool_timeout_ms`.
+  - `timeout_ms` — per-tool timeout. `0` (or absent) falls back to `operations.plugins.command_timeout_sec`. `default_tool_timeout_ms` is not used for command tools.
 
 ---
 
@@ -218,17 +218,30 @@ Response:
 
 ### Methods the host calls
 
-| Method | Required | Params | Result |
-|--------|----------|--------|--------|
-| `info` | yes | none | `Info` struct |
-| `on_message` | yes | `types.DiscordMessage` | `bool` (false = block) |
-| `on_response` | yes | `{message, response}` | none |
-| `before_send` | optional | `{message, response}` | `BeforeSendResult` |
-| `list_tools` | optional | none | `[]ToolSpec` |
-| `execute_tool` | optional | `{name, arguments}` | `string` (result text) |
-| `shutdown` | yes | none | none |
+| Method | Required | Params | Result | Timeout |
+|--------|----------|--------|--------|---------|
+| `info` | yes | none | `Info` struct | `startup_timeout_sec` |
+| `on_message` | yes | `types.DiscordMessage` | `bool` (false = block) | `rpc_timeout_sec` |
+| `after_decision` | optional | `{message, reason}` | `AfterDecisionResult` | `rpc_timeout_sec` |
+| `before_send` | optional | `{Message, Response, deadline_unix_ms}` (see note) | `BeforeSendResult` | `before_send_timeout_sec` |
+| `after_send` | optional | `{message, response, message_ids}` | none | `rpc_timeout_sec` |
+| `system_prompt` | optional | none | `ContextBlock` | `rpc_timeout_sec` |
+| `list_tools` | optional | none | `[]ToolSpec` | `rpc_timeout_sec` |
+| `execute_tool` | optional | `{Name, Arguments}` (see note) | `string` (result text) | the tool spec's `timeout_ms`, else `default_tool_timeout_ms` |
+| `shutdown` | yes | none | none | `rpc_timeout_sec` |
 
-The host probes `info` once at startup. If the plugin doesn't respond within `startup_timeout_sec`, it's considered dead and skipped. Other calls use `rpc_timeout_sec`, except `before_send` which uses its own (typically longer) `before_send_timeout_sec` to accommodate things like TTS generation.
+These are the only methods; `on_response` was removed (use `after_send`). "Optional" means a plugin may answer with JSON-RPC "method not found" (`-32601`) and the host moves on. The Go `server.Serve` helper instead answers an optional method the plugin does not implement with an empty result (no tools, no context, unchanged response), except `execute_tool`, which returns an error.
+
+Note on parameter names: `before_send` and `execute_tool` params are encoded from Go structs without JSON tags for most fields, so the keys are capitalised: `{"Message": ..., "Response": "...", "deadline_unix_ms": ...}` and `{"Name": "...", "Arguments": {...}}`. Go plugins decode them case-insensitively; a plugin in another language must read these exact keys. The other params use lowercase keys (`message`, `reason`, `response`, `message_ids`).
+
+The host probes `info` once at startup. If the plugin doesn't respond within `startup_timeout_sec`, it's considered dead and skipped. `list_tools` and `system_prompt` are called right after `info`, and again when the plugin sends `tools_changed`. `before_send` uses its own (typically longer) `before_send_timeout_sec` to accommodate things like TTS generation. If neither the tool spec nor `default_tool_timeout_ms` gives `execute_tool` a timeout, the call fails with "no timeout configured".
+
+### Failures and automatic restart
+
+- A call that times out marks the plugin's transport dead and closes its pipes.
+- `on_message`, `after_decision` and `after_send`: a failing plugin is skipped for this message and the remaining plugins still run. `on_message` therefore never blocks a message because of an error.
+- `before_send`: a timeout or dead plugin is skipped for this message; any other error returned by the plugin aborts sending the reply.
+- When a hook or tool call finds a plugin's transport dead, the host restarts the plugin in the background (stops the process, starts it again and re-runs `info`, `list_tools` and `system_prompt`). A successful restart resets the failure count. After `max_restarts` consecutive failed restarts, no further attempt is made until `restart_cooldown_sec` has passed since the last failed one; each attempt after that which fails waits for the cooldown again.
 
 ### Notifications the plugin may send
 
@@ -323,7 +336,7 @@ Lifecycle:
 2. Tools registered with the AI tool registry.
 3. On a tool call: `exec.CommandContext` runs `command + args + arg_keys-mapped-values`.
 4. stdout is captured and returned to the LLM as the tool result. stderr is logged.
-5. Timeout: per-tool `timeout_ms` if set, else `command_timeout_sec * 1000`, else fail with "no timeout configured."
+5. Timeout: per-tool `timeout_ms` if set, else `command_timeout_sec`. The process is killed when it runs out.
 
 The host injects two environment variables into every plugin process:
 
@@ -366,11 +379,13 @@ If a value fails sanitization, the tool call fails with an error and the LLM get
 
 | Setting | What it controls | Where |
 |---------|------------------|-------|
-| `default_tool_timeout_ms` | Default tool-call timeout when neither the manifest nor the JSON-RPC tool spec sets one | `operations.plugins.default_tool_timeout_ms` |
+| `default_tool_timeout_ms` | `execute_tool` timeout for a JSON-RPC tool whose spec sets no `timeout_ms` (not used by command tools) | `operations.plugins.default_tool_timeout_ms` |
 | `startup_timeout_sec` | Time to wait for the first `info` probe at boot | `operations.plugins.startup_timeout_sec` |
-| `rpc_timeout_sec` | Default JSON-RPC call timeout (`on_message`, `on_response`, `execute_tool`, …) | `operations.plugins.rpc_timeout_sec` |
+| `rpc_timeout_sec` | JSON-RPC calls other than `info`, `before_send` and `execute_tool`: `on_message`, `after_decision`, `after_send`, `system_prompt`, `list_tools`, `shutdown` | `operations.plugins.rpc_timeout_sec` |
 | `before_send_timeout_sec` | Specifically for `before_send` (longer because TTS, image gen, etc.) | `operations.plugins.before_send_timeout_sec` |
-| `command_timeout_sec` | Default for command-runtime tool execution | `operations.plugins.command_timeout_sec` |
+| `command_timeout_sec` | Command-runtime tool execution when the manifest's `timeout_ms` is `0` or absent | `operations.plugins.command_timeout_sec` |
+| `max_restarts` | Consecutive failed automatic restarts before the cooldown applies | `operations.plugins.max_restarts` |
+| `restart_cooldown_sec` | Wait after `max_restarts` failed restarts before trying again | `operations.plugins.restart_cooldown_sec` |
 | `shutdown_timeout_sec` | Grace period during graceful shutdown | `operations.plugins.shutdown_timeout_sec` |
 | `disable_timeout_sec` | Grace period when toggling a plugin off via the WebUI | `operations.plugins.disable_timeout_sec` |
 
@@ -424,4 +439,4 @@ CI builds prebuilt binaries for all of these on the platforms it targets — see
 | `plugin command not found` | Manifest's `command` path is wrong, or the file isn't executable |
 | `plugin command execution failed` | Subprocess returned non-zero. Check stderr in the bot's logs. |
 | `jsonrpc call timeout` | The plugin took longer than `rpc_timeout_sec` (or `before_send_timeout_sec`) to reply. Either it's stuck or you need to bump the timeout. |
-| `no timeout configured` | Both `default_tool_timeout_ms` and the per-tool/per-spec timeout are zero. Set one. |
+| `no timeout configured` | A JSON-RPC tool has no `timeout_ms` in its spec and `default_tool_timeout_ms` is `0`. Set one. (Command tools fall back to `command_timeout_sec` instead.) |

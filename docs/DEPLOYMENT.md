@@ -85,7 +85,17 @@ You'll also find prebuilt **plugin binaries** in the same artifacts — Go plugi
 
 ---
 
-## Docker Compose (Recommended)
+## Docker
+
+> [!WARNING]
+> **The Docker build is unverified.** The `Dockerfile` and `docker-compose.yml` have not been tested against the current code. Reading them against the code shows these problems; work around them as described until they are fixed:
+>
+> - The image's default command is `CMD ["-config", "/app/config.yaml"]`. The bot parses flags with `pflag`, where `-config` means `-c onfig` (config file `onfig`), so the container exits at startup. Override the command with `--config /app/config.yaml` (see below).
+> - The build copies `config.yaml` from the build context into the image (`COPY --from=builder /build/config.yaml ...`), so the build fails without one, and whatever it contains (including secrets) ends up in the image. Mount the real file at run time instead and keep secrets in the environment.
+> - The image has no ffmpeg, which `audio.transcode` and `video.transcode` need. See [ffmpeg in Docker](#ffmpeg-in-docker).
+> - The health check probes `/health`, which is not a real endpoint (see [Health check](#health-check)).
+
+## Docker Compose
 
 The included `docker-compose.yml` runs both the bot and Qdrant.
 
@@ -117,7 +127,13 @@ EZYAPPER_MEMORY_PIPELINE_QDRANT_HOST=qdrant
 cp examples/config.yaml.example config.yaml
 ```
 
-The compose file mounts `./config.yaml` read-only into the container. Anything in `.env` overrides the file.
+The compose file mounts `./config.yaml` read-only into the container. A variable in `.env` overrides a key **only if that key is present in `config.yaml`** (see [CONFIGURATION.md](CONFIGURATION.md#environment-variable-overrides)); keep the keys in the file with placeholder values. The mount is read-only, so saving the config from the WebUI fails; edit the file on the host instead (with hot reload enabled the bot picks up the change).
+
+Until the image's default command is fixed, add this to the `ezyapper` service in `docker-compose.yml`:
+
+```yaml
+    command: ["--config", "/app/config.yaml"]
+```
 
 ### 3. Up and running
 
@@ -157,14 +173,28 @@ docker run -d \
   -e EZYAPPER_MEMORY_PIPELINE_QDRANT_HOST=your_qdrant_host \
   -v $(pwd)/config.yaml:/app/config.yaml:ro \
   -p 8080:8080 \
-  ezyapper
+  ezyapper --config /app/config.yaml
 ```
+
+Arguments after the image name replace the image's `CMD`, so `--config /app/config.yaml` works around the broken default.
 
 The image:
 
 - Base: `golang:1.27-alpine` (build) → `alpine:3.24` (runtime)
 - Runs as non-root `appuser`
-- Healthcheck: `wget /health` against the WebUI. **Note:** `/health` only responds when `operations.web.enabled: true`. If the WebUI is off, the healthcheck will mark the container unhealthy — switch to a different probe (e.g., `pgrep ezyapper`) or accept that signal.
+- Healthcheck: `wget --spider http://localhost:8080/health`. There is no `/health` route: the request falls through to the dashboard, which redirects to `/login`, and `wget` follows the redirect. So the check passes whenever the WebUI is running and fails whenever `operations.web.enabled` is `false`. Switch to a different probe (e.g., `pgrep ezyapper`) if the WebUI is off.
+- No ffmpeg (see below).
+
+### ffmpeg in Docker
+
+`core.ai.modalities.audio.transcode` and `core.ai.modalities.video.transcode` run ffmpeg, and the bot refuses to start when one of them is enabled and ffmpeg is missing. The runtime stage of the `Dockerfile` installs only `ca-certificates` and `tzdata`. To use transcoding, add ffmpeg to that line and rebuild:
+
+```dockerfile
+# Runtime stage
+RUN apk add --no-cache ca-certificates tzdata ffmpeg
+```
+
+This makes the image noticeably larger. Without transcoding the bot never looks for ffmpeg, so leave it out if you do not use those options.
 
 ---
 
@@ -183,7 +213,7 @@ Type=simple
 User=ezyapper
 Group=ezyapper
 WorkingDirectory=/opt/ezyapper
-ExecStart=/opt/ezyapper/ezyapper -config /opt/ezyapper/config.yaml
+ExecStart=/opt/ezyapper/ezyapper --config /opt/ezyapper/config.yaml
 Restart=on-failure
 RestartSec=10
 StartLimitBurst=5
@@ -223,7 +253,16 @@ sudo journalctl -u ezyapper -f
 
 ## Qdrant Setup
 
-The bot expects Qdrant on **gRPC port 6334** (REST 6333 is for diagnostics). Three collections (`memories`, `profiles`, `relationships`) are created automatically at first startup.
+The bot expects Qdrant on **gRPC port 6334** (REST 6333 is for diagnostics). These collections are created automatically at startup:
+
+| Collection | Holds |
+|------------|-------|
+| `memories_source` | Every memory's text and metadata. The source of truth; independent of the embedding model. |
+| `memories_vec_<model>_<dim>` | Vectors for the configured embedding model and `vector_size`, e.g. `memories_vec_text_embedding_3_small_1536`. One collection per model and dimension. |
+| `profiles` | One record per user. |
+| `relationships` | User-to-user links. |
+
+A `memories` collection from versions before the two-tier store is migrated into `memories_source` on startup and can be deleted afterwards (see [ARCHITECTURE.md](ARCHITECTURE.md#internalmemory--vector-store--consolidation)).
 
 ### Standalone container
 
@@ -247,7 +286,7 @@ docker run -d \
 | MiniLM, M3E variants | 384–1024 |
 | BGE | 1024 |
 
-Switching models requires deleting the existing collections — see [Vector Dimension Errors](#vector-dimension-errors) below.
+Switching models does **not** require deleting anything: change `embedding.model` and `vector_size` and the bot creates the new model's `memories_vec_...` collection and re-embeds every memory into it in the background. See [Switching Embedding Models](CONFIGURATION.md#switching-embedding-models).
 
 ---
 
@@ -294,8 +333,9 @@ spec:
           resources:
             requests: { cpu: 250m, memory: 256Mi }
             limits:   { cpu: 500m, memory: 512Mi }
-          # If WebUI is enabled, the /health endpoint exists.
-          # If not, drop the probes or switch to an exec probe.
+          args: ["--config", "/app/config.yaml"]
+          # There is no /health route; this probe passes only while the
+          # WebUI is enabled (see Health check). Otherwise use an exec probe.
           livenessProbe:
             httpGet: { path: /health, port: 8080 }
             initialDelaySeconds: 10
@@ -360,17 +400,19 @@ Caddy works just as well — it'll handle TLS automatically.
 
 ### Health check
 
+There is no health endpoint. `/health` is not a route: it falls through to the dashboard, which redirects an unauthenticated request to `/login`:
+
 ```bash
-curl http://localhost:8080/health
+curl -sL -o /dev/null -w '%{http_code}\n' http://localhost:8080/health   # 200 after the redirect
 ```
 
-Returns `{"status":"ok","timestamp":...}` only when the WebUI is enabled. There's no separate health endpoint when it's off — use process supervision instead.
+That only tells you the WebUI is serving. When it is off, use process supervision instead.
 
 ### Qdrant health
 
 ```bash
 curl http://localhost:6333/healthz
-curl http://localhost:6333/collections   # lists memories, profiles, relationships
+curl http://localhost:6333/collections   # memories_source, memories_vec_..., profiles, relationships
 ```
 
 ### Logs
@@ -398,23 +440,25 @@ There's no built-in `/metrics` endpoint. If you want metrics, scrape your contai
 
 ```bash
 # Trigger a snapshot (REST API)
-curl -X POST http://localhost:6333/collections/memories/snapshots
+curl -X POST http://localhost:6333/collections/memories_source/snapshots
 curl -X POST http://localhost:6333/collections/profiles/snapshots
 curl -X POST http://localhost:6333/collections/relationships/snapshots
 
 # List snapshots
-curl http://localhost:6333/collections/memories/snapshots
+curl http://localhost:6333/collections/memories_source/snapshots
 
 # Download
-curl http://localhost:6333/collections/memories/snapshots/<name> > memories.snapshot
+curl http://localhost:6333/collections/memories_source/snapshots/<name> > memories_source.snapshot
 ```
+
+`memories_source`, `profiles` and `relationships` hold all the data. A `memories_vec_...` collection can be rebuilt from `memories_source` (the bot re-embeds missing records on startup), so backing it up only saves the re-embedding time.
 
 ### Restore
 
 ```bash
-curl -X PUT http://localhost:6333/collections/memories/snapshots/upload \
+curl -X PUT http://localhost:6333/collections/memories_source/snapshots/upload \
   -H "Content-Type: multipart/form-data" \
-  -F "snapshot=@memories.snapshot"
+  -F "snapshot=@memories_source.snapshot"
 ```
 
 Or restore from a copy of `qdrant_storage` if you snapshot the volume directly.
@@ -428,7 +472,7 @@ BACKUP_DIR="/backup/ezyapper"
 DATE=$(date +%Y%m%d_%H%M%S)
 mkdir -p "$BACKUP_DIR"
 
-for col in memories profiles relationships; do
+for col in memories_source profiles relationships; do
   curl -sX POST "http://localhost:6333/collections/$col/snapshots" >/dev/null
   # Snapshot files are written into the qdrant volume; copy them out:
   cp /var/lib/docker/volumes/qdrant_storage/_data/snapshots/$col-* \
@@ -474,7 +518,7 @@ The web layer is stateless (sessions live in memory but auto-expire), so you can
 ### Bot doesn't connect to Discord
 
 ```bash
-./ezyapper -config config.yaml 2>&1 | grep -i token
+./ezyapper --config config.yaml 2>&1 | grep -i token
 ```
 
 Check that:
@@ -523,26 +567,18 @@ For Qdrant memory, watch `docker stats qdrant`. The big lever is collection size
 
 Error: `Vector dimension error: expected dim: X, got Y`
 
-Happens when you change embedding models without dropping collections. Fix:
+Happens when `memory_pipeline.qdrant.vector_size` does not match what the embedding model returns. The vector collection is named after the model **and** the configured dimension, so the fix is only to correct `vector_size` and restart (or save, with hot reload on): the bot then uses `memories_vec_<model>_<correct dim>` and re-embeds the memories from `memories_source` into it in the background. Do **not** delete collections; `memories_source` holds all memory text and deleting it loses every memory. The collection created with the wrong dimension can be deleted once it is no longer used:
 
 ```bash
-curl -X DELETE http://localhost:6333/collections/memories
-curl -X DELETE http://localhost:6333/collections/profiles
-curl -X DELETE http://localhost:6333/collections/relationships
-```
-
-…or with auth:
-
-```bash
-curl -X DELETE https://your-cluster.qdrant.io:6333/collections/memories \
+curl -X DELETE http://localhost:6333/collections/memories_vec_<model>_<wrong dim> \
   -H "api-key: your-key"
 ```
 
-Update `embedding.model` and `qdrant.vector_size`, restart. **All memory data is lost** by this — snapshot first if you care.
+For the OpenAI models `text-embedding-3-small`, `text-embedding-3-large` and `text-embedding-ada-002` the config check already rejects a mismatched `vector_size` at startup.
 
 ### `/health` says unhealthy but the bot is fine
 
-The `/health` endpoint is part of the WebUI. If `operations.web.enabled: false`, there's nothing serving HTTP and the Docker healthcheck will fail. Either:
+There is no real `/health` endpoint; the probe only succeeds because the WebUI answers it with a redirect to `/login`. If `operations.web.enabled: false`, nothing serves HTTP and the Docker healthcheck fails. Either:
 
 - enable the WebUI, or
 - override the healthcheck in your runtime (compose, k8s) to check the process instead of HTTP.
@@ -557,6 +593,6 @@ downloads are recorded by size only; bodies are capped at 1 MiB. Leave the
 variable unset in normal operation.
 
 ```bash
-EZYAPPER_CAPTURE_DIR=./captures ./bot
+EZYAPPER_CAPTURE_DIR=./captures ./ezyapper --config config.yaml
 jq -r 'select(.label|startswith("ai:")) | .request_body.messages[] | "\(.role):\n\(.content)\n"' captures/*.jsonl
 ```

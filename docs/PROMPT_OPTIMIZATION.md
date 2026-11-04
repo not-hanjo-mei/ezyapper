@@ -37,12 +37,12 @@ Sections are ordered from "changes least" to "changes most":
 Each message is one line:
 
 ```
-[2026-11-01T05:20:11Z] [User] [reply to Bob: "text"] Alice Mana: "content"
+[2026-11-01T05:20:00Z] [User] [reply to Bob: "text"] Alice Mana: "content"
 ```
 
-- The timestamp is the Discord message timestamp (UTC), also for the current message.
+- The timestamp is the Discord message timestamp in RFC3339 format, in UTC, also for the current message.
 - Roles are `User`, `Bot` (another bot) and `Assistant` (this bot).
-- User mentions are shown as `<@DisplayName>` and channel mentions as `#name`.
+- User mentions are shown as `<@DisplayName>` and channel mentions as `#name`; a mention of a channel the bot cannot view (or does not know) is shown as `#unknown-channel` (see [ARCHITECTURE.md](ARCHITECTURE.md#internaldiscordvis--channel-visibility)).
   When the model writes `<@Name>` for an unambiguous participant, it is
   converted back to a real `<@id>` ping before sending.
 - Text is not HTML-escaped.

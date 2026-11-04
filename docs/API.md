@@ -1,7 +1,7 @@
 # WebUI Reference
 
 > [!IMPORTANT]
-> **There is no JSON REST API.** The WebUI is a server-rendered HTML dashboard. Earlier versions of these docs described a `/api/*` JSON surface — that surface never shipped. If you need to manage the bot programmatically, edit `config.yaml` and restart, or use the dashboard's HTML forms.
+> **There is no JSON REST API.** The WebUI is a server-rendered HTML dashboard. Earlier versions of these docs described a `/api/*` JSON surface — that surface never shipped. If you need to manage the bot programmatically, edit `config.yaml` (with `operations.runtime.hot_reload.enabled: true` the bot applies the saved file without a restart; otherwise restart it), or use the dashboard's HTML forms.
 
 EZyapper's WebUI is a small admin dashboard built directly on `net/http`. It's optional, disabled by default, and considered experimental — keep `operations.web.enabled: false` for production unless you explicitly need it.
 
@@ -62,7 +62,7 @@ If a request is rejected for CSRF reasons you'll see a 403 with a brief message.
 
 ## Routes
 
-The bot registers exactly these routes (`internal/web/server.go:setupRoutes`). Anything else returns 404.
+The bot registers exactly these routes (`internal/web/server.go:buildRouter`). `/` is Go's catch-all pattern, so any other path (for example `/health`) is handled by the dashboard: it redirects to `/login` without a session and renders the dashboard with one.
 
 | Path | Methods | Auth | Renders | Notes |
 |------|---------|------|---------|-------|
@@ -84,7 +84,7 @@ The bot registers exactly these routes (`internal/web/server.go:setupRoutes`). A
 | `/plugins/toggle` | POST | session + CSRF | redirect | Enable/disable a plugin (refreshes tool registrations) |
 | `/logs` | GET | session | `logs` template | Tail the log file. Query param: `lines`. |
 
-There is **no** `/health` endpoint — health checks should hit the bot's process directly (e.g., supervisor, container probe, or systemd `MainPID`). The Docker image's `HEALTHCHECK` currently does request `/health` and will fail when the WebUI is disabled; treat the WebUI healthcheck as best-effort, not authoritative.
+There is **no** `/health` endpoint — health checks should hit the bot's process directly (e.g., supervisor, container probe, or systemd `MainPID`). The Docker image's `HEALTHCHECK` requests `/health`; it passes only because the dashboard redirects to `/login` (and `wget` follows the redirect), and it fails when the WebUI is disabled. Treat it as best-effort, not authoritative.
 
 ### Middleware Chain
 
@@ -153,5 +153,5 @@ Templates, on the other hand, **are** embedded via `//go:embed`, so the binary a
 - **No HTTPS support built in.** Put nginx, Caddy, or similar in front of the WebUI if it's exposed beyond localhost.
 - **No streaming endpoints.** No SSE, no WebSocket, no long-polling. Logs page reads a snapshot — refresh for fresh data.
 - **No metrics endpoint.** Add Prometheus scraping via labels on the container if you want metrics; the bot itself doesn't expose them.
-- **Config persistence:** updates submitted from `/config` are validated, applied to the running process via `atomic.Value`, and written back to the path in `-config`. If the file is read-only (e.g., mounted with `:ro` in Docker Compose), the write fails and the change reverts.
+- **Config persistence and hot reload:** updates submitted from `/config` (and the channel blacklist/whitelist forms) go through the same hot-reload path as a saved config file, whether or not `operations.runtime.hot_reload.enabled` is set: the new config is validated, every affected component is prepared, and the change is committed as a whole or rejected with the running config untouched (see [Hot reload](CONFIGURATION.md#hot-reload)). Only after it was applied is it written back to the file the bot was started with (`--config`). If the file is read-only (e.g., mounted with `:ro` in Docker Compose), the write fails and the previous config is applied again. Changing the dashboard's own credentials or session lifetime signs everyone out; a new port is bound before the switch.
 - **Plugin toggles** call `PluginManager.EnablePlugin/DisablePlugin`, which in turn refreshes the AI tool registry. Toggles are not persisted — they reset on restart.
