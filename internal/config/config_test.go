@@ -2199,14 +2199,14 @@ func TestMemoryConfig_MaxBufferSize_NotExist(t *testing.T) {
 }
 
 func TestValidateMessageFilters(t *testing.T) {
-	cfg := &Config{MessageFilters: filter.Config{Rules: []filter.RuleConfig{{Action: "ignore", Channel: "^1$", Kinds: []string{"embed"}}}}}
+	cfg := &Config{MessageFilters: filter.Config{DefaultAction: "allow", Rules: []filter.RuleConfig{{Action: "ignore", Channel: "^1$", Kinds: []string{"embed"}}}}}
 	var errs []string
 	validateMessageFilters(cfg, &errs)
 	if len(errs) != 0 || cfg.MessageFilter() == nil {
 		t.Fatalf("expected a compiled filter, errs=%v", errs)
 	}
 
-	bad := &Config{MessageFilters: filter.Config{Rules: []filter.RuleConfig{{Action: "ignore", User: "("}}}}
+	bad := &Config{MessageFilters: filter.Config{DefaultAction: "allow", Rules: []filter.RuleConfig{{Action: "ignore", User: "("}}}}
 	errs = nil
 	validateMessageFilters(bad, &errs)
 	if len(errs) != 1 || !strings.Contains(errs[0], "access_control.message_filters") {
