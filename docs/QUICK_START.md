@@ -44,9 +44,15 @@ The fastest path to a running EZyapper. For full configuration details and tunin
     cp examples/config.yaml.example config.yaml
     ```
 
-    The compose file mounts this read-only into the container. Your `.env` overrides anything in the file.
+    The compose file mounts this read-only into the container. A variable in `.env` overrides a key only if that key is present in `config.yaml` (the example file has them all).
 
-4. Start it:
+4. The Docker setup is unverified, and the image's default command uses `-config`, which the bot's flag parser reads as `-c onfig`. Add this to the `ezyapper` service in `docker-compose.yml` (see [DEPLOYMENT.md](DEPLOYMENT.md#docker)):
+
+    ```yaml
+        command: ["--config", "/app/config.yaml"]
+    ```
+
+5. Start it:
 
     ```bash
     docker compose up -d
@@ -67,7 +73,7 @@ The fastest path to a running EZyapper. For full configuration details and tunin
     Copy-Item examples/config.yaml.example config.yaml
     ```
 
-2. Edit `config.yaml` and fill in the required fields. EZyapper's config is strict — missing fields stop startup, and you'll see *all* errors at once.
+2. Edit `config.yaml` and fill in the required fields. EZyapper's config is strict — a missing required field stops startup, and you'll see *all* errors at once. Some fields are optional or have defaults (for example everything under `core.ai.modalities`); see [CONFIGURATION.md](CONFIGURATION.md).
 
 3. Build and run:
 
@@ -76,11 +82,11 @@ The fastest path to a running EZyapper. For full configuration details and tunin
 
     # macOS/Linux
     go build -o ezyapper ./cmd/bot
-    ./ezyapper -config config.yaml
+    ./ezyapper --config config.yaml
 
     # Windows PowerShell
     go build -o ezyapper.exe ./cmd/bot
-    .\ezyapper.exe -config config.yaml
+    .\ezyapper.exe --config config.yaml
     ```
 
 If you don't want to compile, grab a prebuilt binary from [GitHub Actions Artifacts](https://github.com/not-hanjo-mei/ezyapper/actions).
@@ -91,15 +97,15 @@ If you don't want to compile, grab a prebuilt binary from [GitHub Actions Artifa
 
 - Bot shows up online in Discord.
 - No validation errors in the logs.
-- If the WebUI is enabled: `curl http://localhost:8080/health` returns `{"status":"ok",...}`.
+- If the WebUI is enabled: `http://localhost:8080/` shows the login page.
 
-If validation fails, the log will list every missing/invalid field. Fix them, restart.
+If validation fails at startup, the log lists every missing/invalid field. Fix them and start again. Once the bot is running, config changes do not need a restart if you enable hot reload (`operations.runtime.hot_reload.enabled: true`): the bot applies each saved change, or rejects it and keeps the previous config. See [Hot reload](CONFIGURATION.md#hot-reload).
 
 ---
 
 ## Next Steps
 
-- [Configuration](CONFIGURATION.md) — every field, with defaults policy and tuning notes
+- [Configuration](CONFIGURATION.md) — every field, which ones have defaults, and tuning notes
 - [Architecture](ARCHITECTURE.md) — how the pieces fit together
 - [Media Modalities](MEDIA.md) — image, audio and video handling
 - [Plugins](PLUGINS.md) — write or install extensions

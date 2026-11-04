@@ -29,7 +29,7 @@ See [Quick Start](docs/QUICK_START.md) for the full walkthrough.
 go build -o ezyapper ./cmd/bot
 
 # Run it (edit config.yaml first!)
-./ezyapper -config config.yaml
+./ezyapper --config config.yaml
 ```
 
 ---
@@ -63,9 +63,9 @@ make build-all
 
 ## Heads Up
 
-- **Strict config**: Every field is required. No defaults, no shortcuts. Missing something? It won't start.
+- **Strict config**: Most fields have no default and must be set; a missing required field stops startup, with every error listed at once. Start from `examples/config.yaml.example`. A few things are optional or have defaults (the media modalities, the decision provider, hot reload).
 - **Needs Qdrant**: For memory features, you'll need a Qdrant instance running.
-- **Restart to reload**: Config changes require a restart. No hot reload here.
+- **Hot reload**: With `operations.runtime.hot_reload.enabled: true`, saved config changes are applied without a restart, or rejected as a whole if they don't validate or can't be applied. See [Hot reload](docs/CONFIGURATION.md#hot-reload).
 - **WebUI is experimental**: For stable production runs, consider disabling it with `operations.web.enabled: false`.
 - **MCP logging gaps**: MCP tools can work even when logs look suspicious. Trust but verify.
 
