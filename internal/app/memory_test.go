@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"os"
@@ -97,9 +97,9 @@ func TestInitMemoryService_DisabledBySwitchesUsesNoop(t *testing.T) {
 		},
 	}
 
-	svc, err := initMemoryService(cfg)
+	svc, err := BuildMemoryService(cfg, nil)
 	if err != nil {
-		t.Fatalf("initMemoryService returned error: %v", err)
+		t.Fatalf("BuildMemoryService returned error: %v", err)
 	}
 	if _, ok := svc.(*memory.NoopService); !ok {
 		t.Fatalf("expected NoopService when memory switches are disabled, got %T", svc)

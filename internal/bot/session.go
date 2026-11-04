@@ -2,23 +2,26 @@
 package bot
 
 import (
+	"cmp"
 	"context"
 	crand "crypto/rand"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"slices"
-	"strings"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"ezyapper/internal/ai"
 	"ezyapper/internal/ai/decision"
 	"ezyapper/internal/ai/mcp"
 	"ezyapper/internal/ai/tools"
-	"ezyapper/internal/ai/vision"
 	"ezyapper/internal/config"
+	"ezyapper/internal/discordvis"
+	"ezyapper/internal/filter"
 	"ezyapper/internal/logger"
+	"ezyapper/internal/media"
 	"ezyapper/internal/memory"
 	"ezyapper/internal/plugin"
 	"ezyapper/internal/ratelimit"
@@ -55,6 +58,8 @@ type ProcessingMessage struct {
 	CancelFunc      context.CancelFunc
 	OriginalContent string // Store original content before any edits
 	EditCount       int    // Track number of edits
+	// InjectedContext holds prompt blocks plugins added in after_decision.
+	InjectedContext []plugin.ContextBlock
 	mu              sync.RWMutex
 }
 
@@ -105,35 +110,56 @@ type consolidationManager interface {
 }
 
 type Bot struct {
-	session         *discordgo.Session
-	ctx             context.Context
-	cancel          context.CancelFunc
-	configStore     *atomic.Value // stores *config.Config
-	memoryStore     memory.MemoryStore
-	profileStore    memory.ProfileStore
-	consolidation   consolidationManager
-	discordClient   *memory.ShortTermClient
-	toolRegistry    *tools.ToolRegistry
-	pluginManager   *plugin.Manager
-	mcpManager      *mcp.MCPManager
-	decisionService *decision.DecisionService
-	rateLimiter     *ratelimit.Limiter
-	visionDescriber *vision.VisionDescriber
+	// session is the live Discord session. A token hot reload replaces it
+	// (see reload.go), so every use goes through sess().
+	session       atomic.Pointer[discordgo.Session]
+	ctx           context.Context
+	cancel        context.CancelFunc
+	configStore   *atomic.Value // stores *config.Config
+	memoryStore   memory.MemoryStore
+	profileStore  memory.ProfileStore
+	consolidation consolidationManager
+	discordClient *memory.ShortTermClient
+	toolRegistry  *tools.ToolRegistry
+	pluginManager *plugin.Manager
+	// mcpManager and decider are replaced by config hot reload; read them
+	// with getMCPManager / getDecider (guarded by mu).
+	mcpManager *mcp.MCPManager
+	// mcpToolNames are the registry names of the registered MCP tools, so
+	// an MCP reload can drop tools of servers that went away.
+	mcpToolNames map[string]struct{}
+	decider      decision.Decider
+	rateLimiter  *ratelimit.Limiter
+	// cutoffs hides channel history older than a /clear-context call.
+	cutoffs contextCutoffs
+	// contextWindow keeps the anchored history window per channel.
+	contextWindow *contextWindow
+	// media handles the image/audio/video modalities of the current config;
+	// rebuilt by ApplyRuntimeConfig. mediaCache outlives rebuilds.
+	media           *media.Processor
+	mediaCache      *media.Cache
+	stickerCache    *media.Cache
 	pluginToolNames map[string]struct{}
 
-	mu               sync.RWMutex
+	mu sync.RWMutex
+	// reconnectMu serializes Discord session swaps with Start/Stop.
+	reconnectMu      sync.Mutex
 	pluginRegisterMu sync.Mutex
 	wg               sync.WaitGroup
 
-	channelMessageBuffer   map[string][]*types.DiscordMessage // Channel-level buffer for batch consolidation
-	channelBufferMu        sync.RWMutex
-	channelConsolidating   map[string]bool
-	channelConsolidationMu sync.Mutex
+	channelMessageBuffer map[string][]*types.DiscordMessage // Channel-level buffer for batch consolidation
+	// channelConsolidatedUpTo is, per channel, the ID of the newest message
+	// handed to consolidation. Older messages are not buffered again (the
+	// cold-start warm-up re-fetches recent history after every batch).
+	// Guarded by channelBufferMu.
+	channelConsolidatedUpTo map[string]string
+	channelBufferMu         sync.RWMutex
+	channelConsolidating    map[string]bool
+	channelConsolidationMu  sync.Mutex
 
-	// historicalImageDescCache stores image descriptions for historical messages
-	// fetched from Discord API to avoid repeated vision calls on the same messages.
-	historicalImageDescCache   map[string]historicalImageDescCacheEntry
-	historicalImageDescCacheMu sync.RWMutex
+	// mediaFingerprints are the media settings (media.Fingerprints) the
+	// cached media text was produced with. Guarded by mu.
+	mediaFingerprints map[string]string
 
 	// processingMessages tracks messages currently being processed
 	processingMessages map[string]*ProcessingMessage
@@ -149,32 +175,32 @@ func (b *Bot) cfg() *config.Config {
 	return c
 }
 
-type historicalImageDescCacheEntry struct {
-	imageURLsKey string
-	descriptions []string
-	cachedAt     time.Time
+// Option configures New.
+type Option func(*Bot)
+
+// WithMediaCache makes the bot keep media results (image descriptions, audio
+// transcripts, video descriptions, by attachment ID) in cache. Pass the cache
+// the memory service's image describer uses, so consolidation reuses the
+// descriptions of the reply path instead of describing each image again.
+// Its limits follow core.discord.image_cache_*.
+func WithMediaCache(cache *media.Cache) Option {
+	return func(b *Bot) {
+		if cache != nil {
+			b.mediaCache = cache
+		}
+	}
 }
 
 // New creates a new Discord bot instance
-func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore memory.ProfileStore, conMgr consolidationManager, pluginMgr *plugin.Manager) (*Bot, error) {
+func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore memory.ProfileStore, conMgr consolidationManager, pluginMgr *plugin.Manager, opts ...Option) (*Bot, error) {
 	cfg, ok := cfgStore.Load().(*config.Config)
 	if !ok {
 		return nil, fmt.Errorf("failed to load config from config store")
 	}
-	session, err := discordgo.New("Bot " + cfg.Discord.Token)
+	session, err := newDiscordSession(cfg.Discord.Token)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Discord session: %w", err)
+		return nil, err
 	}
-
-	session.Identify.Intents = discordgo.IntentsGuilds |
-		discordgo.IntentsGuildMessages |
-		discordgo.IntentsMessageContent |
-		discordgo.IntentsGuildMessageReactions |
-		discordgo.IntentsGuildMembers
-
-	// Enable state caching for member search
-	session.StateEnabled = true
-	session.State.TrackMembers = true
 
 	toolRegistry := tools.NewToolRegistry()
 
@@ -182,13 +208,10 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 
 	mcpManager := mcp.NewMCPManager(cfg.MCP.Servers)
 
-	// Create Discord client for short-term context
-	discordClient := memory.NewShortTermClient(NewDiscordMessageFetcher(session), cfg.Memory.MaxPaginatedLimit)
-
-	var decisionService *decision.DecisionService
+	var decider decision.Decider
 	if cfg.Decision.Enabled {
 		var err error
-		decisionService, err = decision.NewDecisionService(&cfg.Decision)
+		decider, err = decision.New(&cfg.Decision)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create decision service: %w", err)
 		}
@@ -200,28 +223,35 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 
 	rootCtx, rootCancel := context.WithCancel(context.Background())
 	bot := &Bot{
-		session:                  session,
-		ctx:                      rootCtx,
-		cancel:                   rootCancel,
-		configStore:              cfgStore,
-		memoryStore:              memoryStore,
-		profileStore:             profileStore,
-		consolidation:            conMgr,
-		discordClient:            discordClient,
-		toolRegistry:             toolRegistry,
-		pluginManager:            pluginManager,
-		mcpManager:               mcpManager,
-		decisionService:          decisionService,
-		rateLimiter:              limiter,
-		visionDescriber:          nil,
-		pluginToolNames:          make(map[string]struct{}),
-		channelMessageBuffer:     make(map[string][]*types.DiscordMessage),
-		channelConsolidating:     make(map[string]bool),
-		historicalImageDescCache: make(map[string]historicalImageDescCacheEntry),
-		processingMessages:       make(map[string]*ProcessingMessage),
+		contextWindow:        newContextWindow(),
+		ctx:                  rootCtx,
+		cancel:               rootCancel,
+		configStore:          cfgStore,
+		memoryStore:          memoryStore,
+		profileStore:         profileStore,
+		consolidation:        conMgr,
+		toolRegistry:         toolRegistry,
+		pluginManager:        pluginManager,
+		mcpManager:           mcpManager,
+		mcpToolNames:         make(map[string]struct{}),
+		decider:              decider,
+		rateLimiter:          limiter,
+		mediaCache:           media.NewCache(time.Duration(cfg.Discord.ImageCacheTTLMin)*time.Minute, cfg.Discord.ImageCacheMaxEntries),
+		stickerCache:         media.NewCache(time.Duration(cfg.AI.Modalities.Sticker.CacheTTLMin)*time.Minute, cfg.AI.Modalities.Sticker.CacheMaxEntries),
+		pluginToolNames:      make(map[string]struct{}),
+		channelMessageBuffer: make(map[string][]*types.DiscordMessage),
+		channelConsolidating: make(map[string]bool),
+		processingMessages:   make(map[string]*ProcessingMessage),
+	}
+	for _, opt := range opts {
+		opt(bot)
 	}
 
-	discordTools := tools.NewDiscordTools(session)
+	bot.session.Store(session)
+	// The short-term fetcher and the Discord tools resolve the session per
+	// call, so they follow a token reconnect.
+	bot.discordClient = memory.NewShortTermClient(NewDiscordMessageFetcherFunc(bot.sess), cfg.Memory.MaxPaginatedLimit)
+	discordTools := tools.NewDiscordToolsFunc(bot.sess)
 	discordTools.RegisterTools(toolRegistry)
 
 	bot.registerPluginTools()
@@ -230,7 +260,7 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 		return nil, fmt.Errorf("failed to apply runtime config: %w", err)
 	}
 
-	bot.registerHandlers()
+	bot.registerHandlers(session)
 
 	return bot, nil
 }
@@ -239,20 +269,25 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 func (b *Bot) Start(ctx context.Context) error {
 	logger.Info("[bot] Starting Discord bot...")
 
-	if err := b.session.Open(); err != nil {
+	b.reconnectMu.Lock()
+	s := b.sess()
+	err := s.Open()
+	b.reconnectMu.Unlock()
+	if err != nil {
 		return fmt.Errorf("failed to open Discord connection: %w", err)
 	}
 
 	logger.Infof("[bot] Bot connected as: %s#%s",
-		b.session.State.User.Username,
-		b.session.State.User.Discriminator)
+		s.State.User.Username,
+		s.State.User.Discriminator)
 
 	// Connect to MCP servers and register tools
 	if b.cfg().MCP.Enabled {
-		if err := b.mcpManager.Connect(ctx); err != nil {
+		m := b.getMCPManager()
+		if err := m.Connect(ctx); err != nil {
 			logger.Warnf("[bot] Failed to connect to MCP servers: %v", err)
 		} else {
-			b.registerMCPTools(ctx)
+			b.registerMCPTools(ctx, m)
 		}
 	}
 
@@ -272,13 +307,15 @@ func (b *Bot) Stop() error {
 
 	b.cancel()
 
-	if b.mcpManager != nil {
-		if err := b.mcpManager.Close(); err != nil {
+	if m := b.getMCPManager(); m != nil {
+		if err := m.Close(); err != nil {
 			logger.Warnf("[bot] Error closing MCP connections: %v", err)
 		}
 	}
 
-	if err := b.session.Close(); err != nil {
+	b.reconnectMu.Lock()
+	defer b.reconnectMu.Unlock()
+	if err := b.sess().Close(); err != nil {
 		return fmt.Errorf("failed to close Discord connection: %w", err)
 	}
 
@@ -313,26 +350,51 @@ func (b *Bot) Shutdown(ctx context.Context) error {
 	}
 }
 
-// registerMCPTools fetches and registers MCP tools from connected servers
-func (b *Bot) registerMCPTools(ctx context.Context) {
-	mcpTools, err := b.mcpManager.GetAllTools(ctx)
-	if err != nil {
-		logger.Warnf("[bot] Failed to get MCP tools: %v", err)
-		return
+// registerMCPTools fetches the tools of m's connected servers, registers
+// them, and unregisters MCP tools that are no longer offered (m == nil
+// removes them all). Handlers are bound to m: a manager replaced by hot
+// reload is closed after a grace period, and its in-flight calls finish on
+// it.
+func (b *Bot) registerMCPTools(ctx context.Context, m *mcp.MCPManager) {
+	var mcpTools []mcp.MCPTool
+	if m != nil {
+		var err error
+		mcpTools, err = m.GetAllTools(ctx)
+		if err != nil {
+			logger.Warnf("[bot] Failed to get MCP tools: %v", err)
+		}
 	}
+	b.installMCPTools(m, mcpTools)
+}
 
+// installMCPTools registers tools (listed from m) and drops MCP tools that
+// are not in the list.
+func (b *Bot) installMCPTools(m *mcp.MCPManager, mcpTools []mcp.MCPTool) {
+	next := make(map[string]struct{}, len(mcpTools))
 	perServer := make(map[string]int)
 	for _, tool := range mcpTools {
 		mcpTool := tool
 		perServer[mcpTool.ServerName]++
+		name := fmt.Sprintf("%s_%s", mcpTool.ServerName, mcpTool.Tool.Name)
+		next[name] = struct{}{}
 		b.toolRegistry.Register(&tools.Tool{
-			Name:        fmt.Sprintf("%s_%s", mcpTool.ServerName, mcpTool.Tool.Name),
+			Name:        name,
 			Description: fmt.Sprintf("[%s] %s", mcpTool.ServerName, mcpTool.Tool.Description),
 			Parameters:  mcpTool.Tool.InputSchema,
 			Handler: func(ctx context.Context, args map[string]any) (string, error) {
-				return b.mcpManager.CallTool(ctx, mcpTool.ServerName, mcpTool.Tool.Name, args)
+				return m.CallTool(ctx, mcpTool.ServerName, mcpTool.Tool.Name, args)
 			},
 		})
+	}
+
+	b.mu.Lock()
+	previous := b.mcpToolNames
+	b.mcpToolNames = next
+	b.mu.Unlock()
+	for old := range previous {
+		if _, ok := next[old]; !ok {
+			b.toolRegistry.Unregister(old)
+		}
 	}
 
 	for server, count := range perServer {
@@ -341,18 +403,63 @@ func (b *Bot) registerMCPTools(ctx context.Context) {
 	logger.Infof("[bot] Registered %d MCP tools from %d external servers", len(mcpTools), len(perServer))
 }
 
-// GetSession returns the Discord session
-func (b *Bot) GetSession() *discordgo.Session {
-	return b.session
+// getMCPManager returns the current MCP manager.
+func (b *Bot) getMCPManager() *mcp.MCPManager {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.mcpManager
 }
 
-// GetChannelName returns the name of a Discord channel, or the channelID if not found.
+// getDecider returns the current reply decider (nil when decision is off).
+func (b *Bot) getDecider() decision.Decider {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.decider
+}
+
+// GetSession returns the current Discord session. A token hot reload
+// replaces it, so callers must not cache the result.
+func (b *Bot) GetSession() *discordgo.Session {
+	return b.sess()
+}
+
+// sess returns the current Discord session (nil for a bare Bot in tests).
+func (b *Bot) sess() *discordgo.Session {
+	return b.session.Load()
+}
+
+// newDiscordSession builds a session with the intents and state settings the
+// bot relies on. Used at startup and for token reconnects.
+func newDiscordSession(token string) (*discordgo.Session, error) {
+	session, err := discordgo.New("Bot " + token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Discord session: %w", err)
+	}
+
+	session.Identify.Intents = discordgo.IntentsGuilds |
+		discordgo.IntentsGuildMessages |
+		discordgo.IntentsMessageContent |
+		discordgo.IntentsGuildMessageReactions |
+		discordgo.IntentsGuildMembers
+
+	// Enable state caching for member search
+	session.StateEnabled = true
+	session.State.TrackMembers = true
+	return session, nil
+}
+
+// GetChannelName returns the name of a Discord channel, or the channelID if
+// it is not found or hidden from the bot (Discord obfuscates those).
 func (b *Bot) GetChannelName(channelID string) string {
 	ch, err := b.GetChannel(channelID)
 	if err != nil {
 		return channelID
 	}
-	return ch.Name
+	st := b.sess().State
+	if name, ok := discordvis.Name(ch, discordvis.StatePermissions(st, discordvis.StateBotID(st))); ok {
+		return name
+	}
+	return channelID
 }
 
 // GetUserName returns the display name of a guild member, or the userID if not found.
@@ -379,10 +486,10 @@ func (b *Bot) GetGuildName(guildID string) string {
 // GetGuild retrieves guild information
 func (b *Bot) GetGuild(guildID string) (*discordgo.Guild, error) {
 	// Try state cache first
-	guild, err := b.session.State.Guild(guildID)
+	guild, err := b.sess().State.Guild(guildID)
 	if err != nil {
 		// Fall back to API
-		guild, err = b.session.Guild(guildID)
+		guild, err = b.sess().Guild(guildID)
 		if err != nil {
 			return nil, err
 		}
@@ -393,10 +500,10 @@ func (b *Bot) GetGuild(guildID string) (*discordgo.Guild, error) {
 // GetChannel retrieves channel information
 func (b *Bot) GetChannel(channelID string) (*discordgo.Channel, error) {
 	// Try state cache first
-	channel, err := b.session.State.Channel(channelID)
+	channel, err := b.sess().State.Channel(channelID)
 	if err != nil {
 		// Fall back to API
-		channel, err = b.session.Channel(channelID)
+		channel, err = b.sess().Channel(channelID)
 		if err != nil {
 			return nil, err
 		}
@@ -407,10 +514,10 @@ func (b *Bot) GetChannel(channelID string) (*discordgo.Channel, error) {
 // GetMember retrieves guild member information
 func (b *Bot) GetMember(guildID, userID string) (*discordgo.Member, error) {
 	// Try state cache first
-	member, err := b.session.State.Member(guildID, userID)
+	member, err := b.sess().State.Member(guildID, userID)
 	if err != nil {
 		// Fall back to API
-		member, err = b.session.GuildMember(guildID, userID)
+		member, err = b.sess().GuildMember(guildID, userID)
 		if err != nil {
 			return nil, err
 		}
@@ -421,7 +528,7 @@ func (b *Bot) GetMember(guildID, userID string) (*discordgo.Member, error) {
 // IsBotMentioned checks if the bot is mentioned in a message
 func (b *Bot) IsBotMentioned(m *discordgo.MessageCreate) bool {
 	for _, mention := range m.Mentions {
-		if mention.ID == b.session.State.User.ID {
+		if mention.ID == b.sess().State.User.ID {
 			return true
 		}
 	}
@@ -522,34 +629,102 @@ func (b *Bot) ApplyRuntimeConfig() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if b.cfg().AI.Vision.Mode != config.VisionModeHybrid {
-		b.visionDescriber = nil
-		return nil
+	cfg := b.cfg()
+	b.mediaCache.SetLimits(time.Duration(cfg.Discord.ImageCacheTTLMin)*time.Minute, cfg.Discord.ImageCacheMaxEntries)
+	st := cfg.AI.Modalities.Sticker
+	b.stickerCache.SetLimits(time.Duration(st.CacheTTLMin)*time.Minute, st.CacheMaxEntries)
+	b.invalidateChangedMediaLocked(cfg)
+	// The processor is always built: stickers are annotated with their
+	// Discord text even when no modality is enabled. It calls no model
+	// for a modality that is off.
+	if _, err := media.CheckFFmpeg(b.ctx, cfg.AI.Modalities); err != nil {
+		return err
 	}
-
-	visionAIConfig := b.cfg().AI
-	if b.cfg().AI.Vision.APIBaseURL != "" {
-		visionAIConfig.APIBaseURL = b.cfg().AI.Vision.APIBaseURL
-	}
-	if b.cfg().AI.Vision.APIKey != "" {
-		visionAIConfig.APIKey = b.cfg().AI.Vision.APIKey
-	}
-	if b.cfg().AI.Vision.RetryCount > 0 {
-		visionAIConfig.RetryCount = b.cfg().AI.Vision.RetryCount
-	}
-	if b.cfg().AI.Vision.Timeout > 0 {
-		visionAIConfig.Timeout = b.cfg().AI.Vision.Timeout
-	}
-
-	clientWrapper := ai.NewClient(&visionAIConfig, b.toolRegistry)
-	b.visionDescriber = vision.NewVisionDescriber(clientWrapper, &b.cfg().AI.Vision, &visionAIConfig)
+	b.media = media.New(cfg, b.mediaCache)
+	b.media.SetStickers(b.lookupSticker, b.stickerCache)
 	return nil
 }
 
-func (b *Bot) getVisionDescriber() *vision.VisionDescriber {
+// invalidateChangedMediaLocked drops the cached text of each media kind
+// whose model, endpoint, prompt or transcode settings changed since the
+// last apply; other kinds keep theirs. Called with b.mu held.
+func (b *Bot) invalidateChangedMediaLocked(cfg *config.Config) {
+	cur := media.Fingerprints(cfg)
+	for _, kind := range media.ChangedKinds(b.mediaFingerprints, cur) {
+		cache := b.mediaCache
+		if kind == media.KindSticker {
+			cache = b.stickerCache
+		}
+		n := cache.DeletePrefix(media.KindPrefixes(kind)...)
+		logger.Infof("[media] %s settings changed, dropped %d cached results", kind, n)
+	}
+	b.mediaFingerprints = cur
+}
+
+// pinMediaWindow pins the cache entries of the media the prompt window of
+// channelID shows (history plus the current message), replacing the
+// channel's previous pins: they stay cached for as long as they are in
+// context, and drop back to the idle TTL once they scroll out.
+func (b *Bot) pinMediaWindow(channelID string, msgs ...*types.DiscordMessage) {
+	if channelID == "" {
+		return
+	}
+	keys := media.WindowKeys(msgs...)
+	b.mediaCache.Pin(channelID, keys)
+	b.stickerCache.Pin(channelID, keys)
+}
+
+// lookupSticker returns a sticker's details: from the guild sticker list in
+// the state cache when it is there, else GET /stickers/{id}.
+func (b *Bot) lookupSticker(ctx context.Context, id string) (media.StickerInfo, error) {
+	sess := b.sess()
+	if sess == nil {
+		return media.StickerInfo{}, fmt.Errorf("no discord session")
+	}
+	if sess.State != nil {
+		sess.State.RLock()
+		for _, g := range sess.State.Guilds {
+			for _, s := range g.Stickers {
+				if s != nil && s.ID == id {
+					info := media.StickerInfo{Name: s.Name, Description: s.Description, Tags: s.Tags}
+					sess.State.RUnlock()
+					return info, nil
+				}
+			}
+		}
+		sess.State.RUnlock()
+	}
+	body, err := sess.RequestWithBucketID("GET", discordgo.EndpointSticker(id), nil, discordgo.EndpointSticker(""), discordgo.WithContext(ctx))
+	if err != nil {
+		return media.StickerInfo{}, err
+	}
+	var s discordgo.Sticker
+	if err := json.Unmarshal(body, &s); err != nil {
+		return media.StickerInfo{}, err
+	}
+	return media.StickerInfo{Name: s.Name, Description: s.Description, Tags: s.Tags}, nil
+}
+
+// mediaProcessor returns the modality processor (nil before the first
+// ApplyRuntimeConfig).
+func (b *Bot) mediaProcessor() *media.Processor {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	return b.visionDescriber
+	return b.media
+}
+
+// imageDescriber returns the image describer, or nil when images are not
+// described (image modality off).
+func (b *Bot) imageDescriber() imageDescriber {
+	if d := b.mediaProcessor().ImageDescriber(); d != nil {
+		return d
+	}
+	return nil
+}
+
+// imageDescriber describes images (implemented by media.Processor).
+type imageDescriber interface {
+	DescribeImages(ctx context.Context, imageURLs []string) ([]string, error)
 }
 
 // RefreshPluginTools reloads plugin tool registrations into the AI tool registry.
@@ -647,7 +822,21 @@ func (b *Bot) registerPluginTools() {
 // ShouldRespond determines if the bot should respond to a message
 // The context is used to cancel the LLM decision if the message is edited
 func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, recentMessages []*types.DiscordMessage) (bool, string) {
-	if m.Author.ID == b.session.State.User.ID {
+	return b.shouldRespond(ctx, m, recentMessages, respondOptions{})
+}
+
+// respondOptions tunes a reply decision.
+type respondOptions struct {
+	// reEvaluation marks a decision re-run for a message that already passed
+	// the rate limiter once (an edit while in flight). Charging the limiter
+	// again counted one message twice against max_responses_per_minute, so
+	// near the limit an edit came back "rate limited" and the reply was
+	// silently dropped instead of regenerated.
+	reEvaluation bool
+}
+
+func (b *Bot) shouldRespond(ctx context.Context, m *discordgo.MessageCreate, recentMessages []*types.DiscordMessage, opts respondOptions) (bool, string) {
+	if m.Author.ID == b.sess().State.User.ID {
 		return false, "own message"
 	}
 
@@ -670,7 +859,7 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 		return false, "channel not allowed"
 	}
 
-	if !b.CheckRateLimit(m.ChannelID, m.Author.ID) {
+	if !opts.reEvaluation && !b.CheckRateLimit(m.ChannelID, m.Author.ID) {
 		return false, "rate limited"
 	}
 
@@ -678,39 +867,46 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 		return true, "mentioned"
 	}
 
-	if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil && m.ReferencedMessage.Author.ID == b.session.State.User.ID {
+	if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil && m.ReferencedMessage.Author.ID == b.sess().State.User.ID {
 		return true, "reply to bot"
 	}
 
-	if b.decisionService != nil && b.cfg().Decision.Enabled {
+	if decider := b.getDecider(); decider != nil && b.cfg().Decision.Enabled {
 		// Timeout*(retry_count+1) for attempts + one Timeout unit as overhead/slack (schema and network share retry_count).
-		totalTimeout := time.Duration(b.cfg().Decision.Timeout) * time.Second * time.Duration(b.cfg().Decision.RetryCount+2)
+		timeoutSec, retryCount := b.cfg().Decision.RequestBudget()
+		totalTimeout := time.Duration(timeoutSec) * time.Second * time.Duration(retryCount+2)
 		decisionCtx, cancel := context.WithTimeout(ctx, totalTimeout)
 		defer cancel()
 
-		imageCount := len(extractImageURLs(m.Message, b.cfg().AI.Vision.MaxImages))
+		imageCount := 0
+		if img := b.cfg().AI.Modalities.Image; img.Enabled {
+			imageCount = len(extractImageURLs(m.Message, img.MaxItems))
+		}
 		decisionMessages := b.getRecentMessagesForDecision(m.ID, recentMessages)
 
 		msgInfo := decision.MessageInfo{
 			AuthorName: m.Author.Username,
 			AuthorID:   m.Author.ID,
-			Content:    m.Content,
+			Content:    types.JoinContentAndEmbeds(m.Content, types.SummarizeEmbeds(m.Embeds)),
+			IsBot:      m.Author.Bot,
+			Timestamp:  m.Timestamp,
 		}
 		if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
 			msgInfo.ReplyTo = m.ReferencedMessage.Author.Username
 			msgInfo.ReplyToID = m.ReferencedMessage.Author.ID
 		}
 
-		result, err := b.decisionService.ShouldRespondWithInfo(decisionCtx, b.cfg().Discord.BotName, msgInfo, imageCount, decisionMessages)
+		provider := b.cfg().Decision.EffectiveProvider()
+		result, err := decider.ShouldRespondWithInfo(decisionCtx, b.cfg().Discord.BotName, msgInfo, imageCount, decisionMessages)
 		if err != nil {
 			logger.Warnf("[bot] decision service failed: %v, using fallback", err)
-			return b.ShouldRandomReply(), "llm decision failed, fallback"
+			return b.ShouldRandomReply(), fmt.Sprintf("%s decision failed, fallback", provider)
 		}
 
 		if result.ShouldRespond {
-			return true, fmt.Sprintf("llm decision: %s (confidence: %.2f)", result.Reason, result.Confidence)
+			return true, fmt.Sprintf("%s decision: %s (confidence: %.2f)", provider, result.Reason, result.Confidence)
 		}
-		return false, fmt.Sprintf("llm decision: %s", result.Reason)
+		return false, fmt.Sprintf("%s decision: %s", provider, result.Reason)
 	}
 
 	if !b.ShouldRandomReply() {
@@ -722,16 +918,17 @@ func (b *Bot) ShouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 
 func (b *Bot) getRecentMessagesForDecision(currentMessageID string, messages []*types.DiscordMessage) []decision.ContextMessage {
 	result := []decision.ContextMessage{}
-	for _, msg := range messages {
+	for _, msg := range b.filterMessages(messages) {
 		if msg.ID == currentMessageID {
 			continue
 		}
 		result = append(result, decision.ContextMessage{
 			AuthorName: msg.Username,
 			AuthorID:   msg.AuthorID,
-			Content:    msg.Content,
+			Content:    msg.FullText(),
 			IsBot:      msg.IsBot,
 			Timestamp:  msg.Timestamp,
+			ReplyTo:    msg.ReplyToUsername,
 		})
 	}
 	return result
@@ -755,9 +952,8 @@ func (b *Bot) ShouldRandomReply() bool {
 
 func (b *Bot) CleanupCache() {
 	b.rateLimiter.Cleanup()
-	b.historicalImageDescCacheMu.Lock()
-	b.pruneHistoricalImageDescCacheLocked()
-	b.historicalImageDescCacheMu.Unlock()
+	b.mediaCache.Prune()
+	b.stickerCache.Prune()
 }
 
 // registerProcessingMessage registers a new message being processed
@@ -863,6 +1059,10 @@ func (b *Bot) addMessageToChannelBuffer(channelID string, msg *types.DiscordMess
 	b.channelBufferMu.Lock()
 	defer b.channelBufferMu.Unlock()
 
+	if mark := b.channelConsolidatedUpTo[channelID]; mark != "" && !snowflakeAfter(msg.ID, mark) {
+		return // already consolidated
+	}
+
 	existing := b.channelMessageBuffer[channelID]
 	for i := len(existing) - 1; i >= 0; i-- {
 		if existing[i] != nil && existing[i].ID == msg.ID {
@@ -880,13 +1080,104 @@ func (b *Bot) addMessageToChannelBuffer(channelID string, msg *types.DiscordMess
 	}
 }
 
-func (b *Bot) getAndClearChannelMessageBuffer(channelID string) []*types.DiscordMessage {
+// updateChannelBufferContent rewrites the content of a buffered message after
+// an edit, so consolidation sees what the user finally said.
+func (b *Bot) updateChannelBufferContent(channelID, messageID, content string) {
+	b.channelBufferMu.Lock()
+	defer b.channelBufferMu.Unlock()
+	for _, msg := range b.channelMessageBuffer[channelID] {
+		if msg != nil && msg.ID == messageID {
+			msg.Content = content
+			return
+		}
+	}
+}
+
+// takeChannelMessageBatch removes and returns the oldest max buffered
+// messages of a channel (all when max <= 0), in chronological order, and
+// records the newest one as consolidated. The rest stay buffered for the
+// next batch: the consolidator only reads max messages, so handing it more
+// silently dropped the newest ones.
+func (b *Bot) takeChannelMessageBatch(channelID string, max int) []*types.DiscordMessage {
 	b.channelBufferMu.Lock()
 	defer b.channelBufferMu.Unlock()
 
-	messages := b.channelMessageBuffer[channelID]
-	delete(b.channelMessageBuffer, channelID)
+	messages := sortChronological(b.channelMessageBuffer[channelID])
+	if max > 0 && len(messages) > max {
+		b.channelMessageBuffer[channelID] = messages[max:]
+		messages = messages[:max]
+	} else {
+		delete(b.channelMessageBuffer, channelID)
+	}
+	b.markConsolidatedLocked(channelID, messages)
 	return messages
+}
+
+// selectUnconsolidated keeps the messages newer than the channel's
+// consolidated mark, oldest first and at most max (max <= 0: all), and
+// records them as consolidated. Used for messages fetched from Discord when
+// the buffer is empty.
+func (b *Bot) selectUnconsolidated(channelID string, messages []*types.DiscordMessage, max int) []*types.DiscordMessage {
+	b.channelBufferMu.Lock()
+	defer b.channelBufferMu.Unlock()
+
+	mark := b.channelConsolidatedUpTo[channelID]
+	out := make([]*types.DiscordMessage, 0, len(messages))
+	for _, m := range sortChronological(messages) {
+		if m != nil && (mark == "" || snowflakeAfter(m.ID, mark)) {
+			out = append(out, m)
+		}
+	}
+	if max > 0 && len(out) > max {
+		out = out[:max]
+	}
+	b.markConsolidatedLocked(channelID, out)
+	return out
+}
+
+func (b *Bot) markConsolidatedLocked(channelID string, messages []*types.DiscordMessage) {
+	for _, m := range messages {
+		if m == nil {
+			continue
+		}
+		if b.channelConsolidatedUpTo == nil {
+			b.channelConsolidatedUpTo = map[string]string{}
+		}
+		if cur := b.channelConsolidatedUpTo[channelID]; cur == "" || snowflakeAfter(m.ID, cur) {
+			b.channelConsolidatedUpTo[channelID] = m.ID
+		}
+	}
+}
+
+// snowflakeAfter reports whether Discord ID a is newer than b. IDs that are
+// not snowflakes (tests) are never treated as older.
+func snowflakeAfter(a, b string) bool {
+	x, errA := strconv.ParseUint(a, 10, 64)
+	y, errB := strconv.ParseUint(b, 10, 64)
+	if errA != nil || errB != nil {
+		return true
+	}
+	return x > y
+}
+
+// sortChronological returns messages ordered by snowflake ID (oldest
+// first). Order is kept when IDs are not snowflakes.
+func sortChronological(messages []*types.DiscordMessage) []*types.DiscordMessage {
+	out := slices.Clone(messages)
+	for _, m := range out {
+		if m == nil {
+			return out
+		}
+		if _, err := strconv.ParseUint(m.ID, 10, 64); err != nil {
+			return out
+		}
+	}
+	slices.SortStableFunc(out, func(a, b *types.DiscordMessage) int {
+		x, _ := strconv.ParseUint(a.ID, 10, 64)
+		y, _ := strconv.ParseUint(b.ID, 10, 64)
+		return cmp.Compare(x, y)
+	})
+	return out
 }
 
 func (b *Bot) tryStartChannelConsolidation(channelID string) bool {
@@ -907,87 +1198,50 @@ func (b *Bot) finishChannelConsolidation(channelID string) {
 	delete(b.channelConsolidating, channelID)
 }
 
-func (b *Bot) getHistoricalImageDescriptions(messageID string, imageURLs []string) ([]string, bool) {
-	if messageID == "" || len(imageURLs) == 0 {
-		return nil, false
+// isFilteredOut reports whether the message filters ignore msg. The bot's own
+// messages are never filtered, so its side of the conversation stays intact.
+func (b *Bot) isFilteredOut(msg *types.DiscordMessage) (bool, string) {
+	if msg == nil {
+		return false, ""
 	}
+	f := b.messageFilter()
+	if f == nil {
+		return false, ""
+	}
+	if own := b.cfg().Discord.OwnBotID; own != "" && msg.AuthorID == own {
+		return false, ""
+	}
+	if b.sess() != nil && b.sess().State != nil && b.sess().State.User != nil && msg.AuthorID == b.sess().State.User.ID {
+		return false, ""
+	}
+	action, rule := f.Decide(filter.SubjectOf(msg))
+	return action == filter.ActionIgnore, rule
+}
 
-	key := strings.Join(imageURLs, "\n")
-
-	b.historicalImageDescCacheMu.RLock()
-	entry, ok := b.historicalImageDescCache[messageID]
-	b.historicalImageDescCacheMu.RUnlock()
+// messageFilter returns the compiled filter, or nil when none is configured
+// (or the bot has no config, as in some unit tests).
+func (b *Bot) messageFilter() *filter.Filter {
+	if b == nil || b.configStore == nil {
+		return nil
+	}
+	c, ok := b.configStore.Load().(*config.Config)
 	if !ok {
-		return nil, false
+		return nil
 	}
-
-	cacheTTL := time.Duration(b.cfg().Discord.ImageCacheTTLMin) * time.Minute
-	if entry.imageURLsKey != key || time.Since(entry.cachedAt) > cacheTTL || len(entry.descriptions) == 0 {
-		b.historicalImageDescCacheMu.Lock()
-		if latest, exists := b.historicalImageDescCache[messageID]; exists {
-			if latest.imageURLsKey != key || time.Since(latest.cachedAt) > cacheTTL || len(latest.descriptions) == 0 {
-				delete(b.historicalImageDescCache, messageID)
-			}
-		}
-		b.historicalImageDescCacheMu.Unlock()
-		return nil, false
-	}
-
-	descriptions := make([]string, len(entry.descriptions))
-	copy(descriptions, entry.descriptions)
-	return descriptions, true
+	return c.MessageFilter()
 }
 
-func (b *Bot) setHistoricalImageDescriptions(messageID string, imageURLs, descriptions []string) {
-	if messageID == "" || len(imageURLs) == 0 || len(descriptions) == 0 {
-		return
+// filterMessages drops messages the filters ignore (never the bot's own).
+func (b *Bot) filterMessages(msgs []*types.DiscordMessage) []*types.DiscordMessage {
+	if b.messageFilter() == nil {
+		return msgs
 	}
-
-	key := strings.Join(imageURLs, "\n")
-	copied := make([]string, len(descriptions))
-	copy(copied, descriptions)
-
-	b.historicalImageDescCacheMu.Lock()
-	b.historicalImageDescCache[messageID] = historicalImageDescCacheEntry{
-		imageURLsKey: key,
-		descriptions: copied,
-		cachedAt:     time.Now(),
-	}
-	b.pruneHistoricalImageDescCacheLocked()
-	b.historicalImageDescCacheMu.Unlock()
-}
-
-func (b *Bot) pruneHistoricalImageDescCacheLocked() {
-	now := time.Now()
-	cacheTTL := time.Duration(b.cfg().Discord.ImageCacheTTLMin) * time.Minute
-	maxEntries := b.cfg().Discord.ImageCacheMaxEntries
-
-	for messageID, entry := range b.historicalImageDescCache {
-		if now.Sub(entry.cachedAt) > cacheTTL {
-			delete(b.historicalImageDescCache, messageID)
+	out := make([]*types.DiscordMessage, 0, len(msgs))
+	for _, m := range msgs {
+		if ignored, _ := b.isFilteredOut(m); ignored {
+			continue
 		}
+		out = append(out, m)
 	}
-
-	if len(b.historicalImageDescCache) <= maxEntries {
-		return
-	}
-
-	if len(b.historicalImageDescCache) > maxEntries {
-		type entry struct {
-			id  string
-			age time.Time
-		}
-		entries := make([]entry, 0, len(b.historicalImageDescCache))
-		for id, e := range b.historicalImageDescCache {
-			entries = append(entries, entry{id, e.cachedAt})
-		}
-		slices.SortFunc(entries, func(a, b entry) int {
-			return a.age.Compare(b.age)
-		})
-		excess := len(entries) - maxEntries
-		for i := 0; i < excess; i++ {
-			logger.Warnf("[bot] evicting image description cache entry for message %s", entries[i].id)
-			delete(b.historicalImageDescCache, entries[i].id)
-		}
-	}
+	return out
 }

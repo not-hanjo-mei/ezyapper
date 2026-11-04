@@ -51,16 +51,17 @@ func (b *Bot) triggerChannelConsolidationDepth(ctx context.Context, channelID st
 		consolidationCtx, cancel := context.WithTimeout(ctx, time.Duration(b.cfg().Discord.ConsolidationTimeoutSec)*time.Second)
 		defer cancel()
 
-		channelMessages := b.getAndClearChannelMessageBuffer(channelID)
+		interval := b.cfg().Memory.ConsolidationInterval
+		channelMessages := b.takeChannelMessageBatch(channelID, interval)
 		if len(channelMessages) == 0 {
 			logger.Infof("[consolidation] buffer empty for channel=%s, fetching from Discord", channelID)
-			fetchedMessages, err := b.discordClient.FetchChannelMessages(consolidationCtx, channelID, b.cfg().Memory.ConsolidationInterval)
+			fetchedMessages, err := b.discordClient.FetchChannelMessages(consolidationCtx, channelID, interval)
 			if err != nil {
 				logger.Warnf("[consolidation] failed to fetch messages from Discord for channel=%s: %v", channelID, err)
 				b.finishChannelConsolidation(channelID)
 				return
 			}
-			channelMessages = fetchedMessages
+			channelMessages = b.selectUnconsolidated(channelID, b.filterMessages(fetchedMessages), interval)
 		}
 
 		if len(channelMessages) == 0 {
@@ -79,6 +80,11 @@ func (b *Bot) triggerChannelConsolidationDepth(ctx context.Context, channelID st
 				b.triggerChannelConsolidationDepth(b.ctx, channelID, remaining, depth+1)
 			}
 		}()
+
+		// Audio transcripts and video descriptions (cached by attachment ID
+		// from the reply path, computed once otherwise) go into the
+		// conversation the consolidation model reads.
+		channelMessages = b.mediaProcessor().AnnotateForMemory(consolidationCtx, channelMessages)
 
 		logger.Infof("[consolidation] starting batch for channel=%s with %d messages", channelID, len(channelMessages))
 		if err := b.consolidation.ConsolidateChannel(consolidationCtx, channelID, channelMessages); err != nil {

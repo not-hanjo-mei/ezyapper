@@ -5,7 +5,7 @@
 	<div class="md3-tabs" role="tablist">
 		<button type="button" class="md3-tab md3-tab--active" role="tab" data-tab="discord">Discord</button>
 		<button type="button" class="md3-tab" role="tab" data-tab="ai">AI</button>
-		<button type="button" class="md3-tab" role="tab" data-tab="vision">Vision</button>
+		<button type="button" class="md3-tab" role="tab" data-tab="media">Media</button>
 		<button type="button" class="md3-tab" role="tab" data-tab="memory">Memory</button>
 		<button type="button" class="md3-tab" role="tab" data-tab="ratelimit">Rate Limit</button>
 		<button type="button" class="md3-tab" role="tab" data-tab="mcp">MCP</button>
@@ -28,7 +28,6 @@
 			<div class="md3-card__content">
 				<h3 class="md3-config-section-title">AI Settings</h3>
 				{{template "form_field" (dict "Label" "Model" "Name" "model" "Type" "text" "Value" .Data.AI.Model "Required" true)}}
-				{{template "form_field" (dict "Label" "Vision Model" "Name" "vision_model" "Type" "text" "Value" .Data.AI.Vision.Model)}}
 				{{template "form_field" (dict "Label" "Max Tokens" "Name" "max_tokens" "Type" "number" "Value" .Data.AI.MaxTokens)}}
 				{{template "form_field" (dict "Label" "Temperature" "Name" "temperature" "Type" "number" "Value" .Data.AI.Temperature "Placeholder" "0.8")}}
 				{{template "form_field" (dict "Label" "System Prompt" "Name" "system_prompt" "Type" "textarea" "Value" .Data.AI.SystemPrompt "Rows" 6)}}
@@ -36,13 +35,30 @@
 		</div>
 	</div>
 
-	<div class="md3-tab-panel" id="tab-vision">
+	<div class="md3-tab-panel" id="tab-media">
 		<div class="md3-card md3-card--outlined md3-mb-16">
 			<div class="md3-card__content">
-				<h3 class="md3-config-section-title">Vision Settings</h3>
-				{{template "form_field" (dict "Label" "Vision Mode" "Name" "vision_mode" "Type" "select" "Value" .Data.AI.Vision.Mode "Options" (list (dict "Value" "text_only" "Label" "Text Only") (dict "Value" "hybrid" "Label" "Hybrid") (dict "Value" "multimodal" "Label" "Multimodal")) )}}
-				{{template "form_field" (dict "Label" "Description Prompt" "Name" "vision_description_prompt" "Type" "textarea" "Value" .Data.AI.Vision.DescriptionPrompt "Rows" 3)}}
-				{{template "form_field" (dict "Label" "Max Images" "Name" "vision_max_images" "Type" "number" "Value" .Data.AI.Vision.MaxImages)}}
+				<p class="md3-body-medium md3-text-muted md3-mb-16">The reply model is text-only: each modality's model turns media into text (descriptions, transcripts) that is added to the prompt.</p>
+				<h3 class="md3-config-section-title">Image</h3>
+				{{template "form_field" (dict "Label" "Enabled" "Name" "image_enabled" "Type" "select" "Value" (printf "%t" .Data.AI.Modalities.Image.Enabled) "Options" (list (dict "Value" "false" "Label" "Off") (dict "Value" "true" "Label" "On")) )}}
+				{{template "form_field" (dict "Label" "Image Model" "Name" "image_model" "Type" "text" "Value" .Data.AI.Modalities.Image.Model)}}
+				{{template "form_field" (dict "Label" "Description Prompt" "Name" "image_prompt" "Type" "textarea" "Value" .Data.AI.Modalities.Image.Prompt "Rows" 3)}}
+				{{template "form_field" (dict "Label" "Max Images" "Name" "image_max_items" "Type" "number" "Value" .Data.AI.Modalities.Image.MaxItems)}}
+			</div>
+		</div>
+		<div class="md3-card md3-card--outlined md3-mb-16">
+			<div class="md3-card__content">
+				<h3 class="md3-config-section-title">Audio</h3>
+				{{template "form_field" (dict "Label" "Enabled" "Name" "audio_enabled" "Type" "select" "Value" (printf "%t" .Data.AI.Modalities.Audio.Enabled) "Options" (list (dict "Value" "false" "Label" "Off") (dict "Value" "true" "Label" "On")) )}}
+				{{template "form_field" (dict "Label" "Mode" "Name" "audio_mode" "Type" "select" "Value" .Data.AI.Modalities.Audio.Mode "Options" (list (dict "Value" "asr" "Label" "ASR (transcribe speech)") (dict "Value" "describe" "Label" "Describe (audio-capable chat model writes a transcript)")) )}}
+				{{template "form_field" (dict "Label" "Audio Model" "Name" "audio_model" "Type" "text" "Value" .Data.AI.Modalities.Audio.Model)}}
+			</div>
+		</div>
+		<div class="md3-card md3-card--outlined md3-mb-16">
+			<div class="md3-card__content">
+				<h3 class="md3-config-section-title">Video</h3>
+				{{template "form_field" (dict "Label" "Enabled" "Name" "video_enabled" "Type" "select" "Value" (printf "%t" .Data.AI.Modalities.Video.Enabled) "Options" (list (dict "Value" "false" "Label" "Off") (dict "Value" "true" "Label" "On")) )}}
+				{{template "form_field" (dict "Label" "Video Model" "Name" "video_model" "Type" "text" "Value" .Data.AI.Modalities.Video.Model)}}
 			</div>
 		</div>
 	</div>

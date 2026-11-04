@@ -237,21 +237,32 @@ func (b *Bot) buildBotMessage(sentMsg *discordgo.Message, m *discordgo.MessageCr
 	}
 }
 
-// sendResponse sends a response to a channel
-func (b *Bot) sendResponse(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, response string) error {
+// sendOutcome describes what sendResponse actually sent.
+type sendOutcome struct {
+	// Text is the final text after BeforeSend rewrites.
+	Text string
+	// MessageIDs are the sent Discord message IDs, in order.
+	MessageIDs []string
+	// Skipped is true when a BeforeSend hook cancelled sending.
+	Skipped bool
+}
+
+// sendResponse runs BeforeSend hooks and sends the response to the channel.
+func (b *Bot) sendResponse(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, response string) (sendOutcome, error) {
 	response, localFiles, skipSend, err := b.runBeforeSendPluginHooks(ctx, m, response)
 	if err != nil {
-		return err
+		return sendOutcome{}, err
 	}
 	if skipSend {
 		logger.Infof("[send] skipped by plugin before_send hook: message=%s channel=%s", m.ID, m.ChannelID)
-		return nil
+		return sendOutcome{Text: response, Skipped: true}, nil
 	}
 
 	// Check if response is too long
 	if len(response) > discordMessageLimit {
 		// Split into multiple messages
-		return b.sendLongResponse(s, m, response, localFiles)
+		ids, err := b.sendLongResponse(s, m, response, localFiles)
+		return sendOutcome{Text: response, MessageIDs: ids}, err
 	}
 
 	// Check if we should reply or just send
@@ -263,21 +274,24 @@ func (b *Bot) sendResponse(ctx context.Context, s *discordgo.Session, m *discord
 	}
 
 	if err != nil {
-		return err
+		return sendOutcome{}, err
 	}
 
+	out := sendOutcome{Text: response}
 	// Add bot's own message to channel buffer for complete conversation context
 	if sentMsg != nil {
+		out.MessageIDs = append(out.MessageIDs, sentMsg.ID)
 		botMsg := b.buildBotMessage(sentMsg, m, s)
 		b.addMessageToChannelBuffer(m.ChannelID, botMsg)
 	}
 
-	return nil
+	return out, nil
 }
 
 // sendLongResponse sends a response that exceeds Discord's character limit
-func (b *Bot) sendLongResponse(s *discordgo.Session, m *discordgo.MessageCreate, response string, firstChunkFiles []localUploadFile) error {
+func (b *Bot) sendLongResponse(s *discordgo.Session, m *discordgo.MessageCreate, response string, firstChunkFiles []localUploadFile) ([]string, error) {
 	chunks := utils.SplitMessage(response, discordChunkLimit)
+	ids := make([]string, 0, len(chunks))
 
 	// Send chunks
 	for i, chunk := range chunks {
@@ -297,15 +311,16 @@ func (b *Bot) sendLongResponse(s *discordgo.Session, m *discordgo.MessageCreate,
 		}
 
 		if err != nil {
-			return err
+			return ids, err
 		}
 
 		// Add bot's own message to channel buffer
 		if sentMsg != nil {
+			ids = append(ids, sentMsg.ID)
 			botMsg := b.buildBotMessage(sentMsg, m, s)
 			b.addMessageToChannelBuffer(m.ChannelID, botMsg)
 		}
 	}
 
-	return nil
+	return ids, nil
 }

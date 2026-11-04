@@ -11,7 +11,7 @@ EZyapper is a group chat companion that can understand images, recall past conve
 | Feature | Description |
 |---------|-------------|
 | **Multi-provider AI** | Works with OpenAI, DeepSeek, Qwen, Azure, or local endpoints |
-| **Vision modes** | Three ways to handle images: ignore them (`text_only`), describe them (`hybrid`), or feed them raw to a multimodal model |
+| **Media modalities** | Images, audio, video and stickers are turned into text (descriptions, transcripts) by dedicated models; the reply model stays text-only |
 | **Long-term memory** | Qdrant vector storage for conversation history, user preferences, and facts |
 | **Extensible tools** | Discord tools + MCP servers + custom plugins |
 | **Web dashboard** | Manage config, memories, and plugins from a browser (a bit rough around the edges) |
@@ -29,7 +29,7 @@ See [Quick Start](docs/QUICK_START.md) for the full walkthrough.
 go build -o ezyapper ./cmd/bot
 
 # Run it (edit config.yaml first!)
-./ezyapper -config config.yaml
+./ezyapper --config config.yaml
 ```
 
 ---
@@ -39,7 +39,7 @@ go build -o ezyapper ./cmd/bot
 - [Configuration](docs/CONFIGURATION.md) — Tweak your bot's personality and behavior
 - [Deployment](docs/DEPLOYMENT.md) — Get it running on a server
 - [Architecture](docs/ARCHITECTURE.md) — How the code is organized
-- [Vision Modes](docs/VISION.md) — The difference between the three image-handling modes
+- [Media Modalities](docs/MEDIA.md) — Image, audio, video and sticker handling (describe / ASR)
 - [Plugins](docs/PLUGINS.md) — Build your own extensions
 - [Prompt Optimization](docs/PROMPT_OPTIMIZATION.md) — Make responses faster and cheaper
 - [WebUI Reference](docs/API.md) — The optional admin dashboard
@@ -63,9 +63,9 @@ make build-all
 
 ## Heads Up
 
-- **Strict config**: Every field is required. No defaults, no shortcuts. Missing something? It won't start.
+- **Strict config**: Most fields have no default and must be set; a missing required field stops startup, with every error listed at once. Start from `examples/config.yaml.example`. A few things are optional or have defaults (the media modalities, the decision provider, hot reload).
 - **Needs Qdrant**: For memory features, you'll need a Qdrant instance running.
-- **Restart to reload**: Config changes require a restart. No hot reload here.
+- **Hot reload**: With `operations.runtime.hot_reload.enabled: true`, saved config changes are applied without a restart, or rejected as a whole if they don't validate or can't be applied. See [Hot reload](docs/CONFIGURATION.md#hot-reload).
 - **WebUI is experimental**: For stable production runs, consider disabling it with `operations.web.enabled: false`.
 - **MCP logging gaps**: MCP tools can work even when logs look suspicious. Trust but verify.
 

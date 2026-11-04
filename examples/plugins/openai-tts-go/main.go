@@ -435,16 +435,25 @@ func (p *openAITTSPlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	return true, nil
 }
 
-func (p *openAITTSPlugin) OnResponse(msg types.DiscordMessage, response string) error {
-	return nil
-}
-
 func (p *openAITTSPlugin) Shutdown() error {
 	p.httpClient.CloseIdleConnections()
 	return nil
 }
 
-func (p *openAITTSPlugin) BeforeSend(msg types.DiscordMessage, response string) (plugin.BeforeSendResult, error) {
+// beforeSendSafetyMargin is reserved from the host's before_send deadline so
+// the reply (possibly without audio) reaches the host before it gives up on
+// the plugin and restarts it.
+const beforeSendSafetyMargin = 2 * time.Second
+
+func (p *openAITTSPlugin) BeforeSend(args plugin.BeforeSendArgs) (plugin.BeforeSendResult, error) {
+	msg, response := args.Message, args.Response
+	ctx := context.Background()
+	if args.DeadlineUnixMs > 0 {
+		deadline := time.UnixMilli(args.DeadlineUnixMs).Add(-beforeSendSafetyMargin)
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, deadline)
+		defer cancel()
+	}
 	text := strings.TrimSpace(response)
 	if text == "" {
 		return plugin.BeforeSendResult{}, nil
@@ -452,6 +461,7 @@ func (p *openAITTSPlugin) BeforeSend(msg types.DiscordMessage, response string) 
 
 	fileName := fmt.Sprintf("discord_%s_%s", msg.ChannelID, msg.ID)
 	generatedFile, err := p.synthesizeForBeforeSend(
+		ctx,
 		text,
 		p.cfg.Model,
 		p.cfg.Voice,
@@ -471,6 +481,7 @@ func (p *openAITTSPlugin) BeforeSend(msg types.DiscordMessage, response string) 
 }
 
 func (p *openAITTSPlugin) synthesizeForBeforeSend(
+	ctx context.Context,
 	text string,
 	model string,
 	voice string,
@@ -479,7 +490,7 @@ func (p *openAITTSPlugin) synthesizeForBeforeSend(
 	instructions string,
 	fileName string,
 ) (plugin.LocalFile, error) {
-	rewrittenText, rewrittenInstructions, _, includeInstructions, err := p.maybeRewriteInputAndInstructions(text, instructions)
+	rewrittenText, rewrittenInstructions, _, includeInstructions, err := p.maybeRewriteInputAndInstructions(ctx, text, instructions)
 	if err != nil {
 		return plugin.LocalFile{}, err
 	}
@@ -489,6 +500,7 @@ func (p *openAITTSPlugin) synthesizeForBeforeSend(
 	}
 
 	audioData, contentType, _, err := p.requestSpeech(
+		ctx,
 		model,
 		voice,
 		format,
@@ -664,7 +676,7 @@ func (p *openAITTSPlugin) synthesizeAndSave(
 	fileName string,
 	overwrite bool,
 ) (map[string]interface{}, plugin.LocalFile, error) {
-	rewrittenText, rewrittenInstructions, rewritten, includeInstructions, err := p.maybeRewriteInputAndInstructions(text, instructions)
+	rewrittenText, rewrittenInstructions, rewritten, includeInstructions, err := p.maybeRewriteInputAndInstructions(context.Background(), text, instructions)
 	if err != nil {
 		return nil, plugin.LocalFile{}, err
 	}
@@ -679,6 +691,7 @@ func (p *openAITTSPlugin) synthesizeAndSave(
 	}
 
 	audioData, contentType, endpoint, err := p.requestSpeech(
+		context.Background(),
 		model,
 		voice,
 		format,
@@ -725,6 +738,7 @@ func (p *openAITTSPlugin) synthesizeAndSave(
 }
 
 func (p *openAITTSPlugin) maybeRewriteInputAndInstructions(
+	parent context.Context,
 	text string,
 	instructions string,
 ) (string, string, bool, bool, error) {
@@ -737,7 +751,11 @@ func (p *openAITTSPlugin) maybeRewriteInputAndInstructions(
 
 	var lastErr error
 	for attempt := 0; attempt <= p.cfg.Rewriter.RetryCount; attempt++ {
-		rewrittenText, rewrittenInstructions, includeInstructions, err := p.rewriteInputAndInstructionsOnce(originalText, originalInstructions)
+		if parent.Err() != nil {
+			lastErr = parent.Err()
+			break
+		}
+		rewrittenText, rewrittenInstructions, includeInstructions, err := p.rewriteInputAndInstructionsOnce(parent, originalText, originalInstructions)
 		if err == nil {
 			rewritten := rewrittenText != originalText || rewrittenInstructions != originalInstructions
 			if includeInstructions != (originalInstructions != "") {
@@ -757,6 +775,7 @@ func (p *openAITTSPlugin) maybeRewriteInputAndInstructions(
 }
 
 func (p *openAITTSPlugin) rewriteInputAndInstructionsOnce(
+	parent context.Context,
 	text string,
 	instructions string,
 ) (string, string, bool, error) {
@@ -786,7 +805,7 @@ func (p *openAITTSPlugin) rewriteInputAndInstructionsOnce(
 	}
 
 	endpoint := joinURL(p.cfg.Rewriter.BaseURL, "chat/completions")
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(p.cfg.Rewriter.TimeoutSeconds)*time.Second)
+	ctx, cancel := context.WithTimeout(parent, time.Duration(p.cfg.Rewriter.TimeoutSeconds)*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
@@ -893,6 +912,7 @@ func extractJSONObject(content string) (string, error) {
 }
 
 func (p *openAITTSPlugin) requestSpeech(
+	parent context.Context,
 	model string,
 	voice string,
 	format string,
@@ -919,7 +939,7 @@ func (p *openAITTSPlugin) requestSpeech(
 	}
 
 	endpoint := joinURL(p.cfg.BaseURL, "audio/speech")
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(p.cfg.TimeoutSeconds)*time.Second)
+	ctx, cancel := context.WithTimeout(parent, time.Duration(p.cfg.TimeoutSeconds)*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payloadBytes))
@@ -1245,7 +1265,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := pluginserver.Serve(p); err != nil {
+	r := &reloadingPlugin{}
+	r.cur.Store(p)
+	w := r.watch()
+	defer w.Close()
+
+	if err := pluginserver.Serve(r); err != nil {
 		fmt.Fprintf(os.Stderr, "[OPENAI-TTS] Error: %v\n", err)
 		os.Exit(1)
 	}

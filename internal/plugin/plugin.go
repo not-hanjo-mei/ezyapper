@@ -20,7 +20,18 @@ import (
 	"ezyapper/internal/types"
 )
 
-// Interface defines the methods a plugin must implement
+// Interface defines the methods every plugin must implement.
+//
+// The message hook chain is, in order:
+//
+//	OnMessage      every incoming message; can block further processing
+//	AfterDecision  only when the bot decided to reply, before generation;
+//	               can cancel the reply and inject prompt context
+//	BeforeSend     the generated text, before it is sent; can rewrite it,
+//	               attach files, or cancel sending
+//	AfterSend      after sending, with the final text and sent message IDs
+//
+// AfterDecision, BeforeSend and AfterSend are optional interfaces.
 type Interface interface {
 	// Info returns plugin metadata
 	Info() (Info, error)
@@ -29,11 +40,59 @@ type Interface interface {
 	// Returns: shouldContinue (bool), error
 	OnMessage(msg types.DiscordMessage) (bool, error)
 
-	// OnResponse is called after the bot generates a response
-	OnResponse(msg types.DiscordMessage, response string) error
-
 	// Shutdown is called when the plugin is being stopped
 	Shutdown() error
+}
+
+// ContextBlock is a section a plugin injects into the prompt. Tag becomes the
+// XML tag name (letters, digits, '_' and '-' only); Content is its body.
+type ContextBlock struct {
+	Tag     string `json:"tag"`
+	Content string `json:"content"`
+}
+
+// AfterDecisionArgs holds arguments for the after_decision hook.
+type AfterDecisionArgs struct {
+	Message types.DiscordMessage `json:"message"`
+	// Reason is why the bot decided to reply (mentioned, llm decision, ...).
+	Reason string `json:"reason"`
+}
+
+// AfterDecisionResult lets a plugin cancel the reply or add prompt context.
+// Context blocks are placed in the user prompt's plugin slot (after the
+// conversation and participants, before user profile and key facts), never
+// in the system prompt, so the system prompt stays cacheable.
+type AfterDecisionResult struct {
+	Cancel  bool           `json:"cancel"`
+	Context []ContextBlock `json:"context,omitempty"`
+}
+
+// AfterDecisionProvider is an optional interface for the after_decision hook.
+type AfterDecisionProvider interface {
+	AfterDecision(args AfterDecisionArgs) (AfterDecisionResult, error)
+}
+
+// SystemPromptProvider is an optional interface for plugins that add a
+// static section to the system prompt. It is queried once when the plugin
+// loads; the text must not change per message (the system prompt has to stay
+// byte-identical across requests for prompt caching).
+type SystemPromptProvider interface {
+	SystemPrompt() (ContextBlock, error)
+}
+
+// AfterSendArgs holds arguments for the after_send hook.
+type AfterSendArgs struct {
+	Message types.DiscordMessage `json:"message"`
+	// Response is the final text that was sent (after BeforeSend rewrites).
+	Response string `json:"response"`
+	// MessageIDs are the IDs of the Discord messages sent, in order (long
+	// replies are split into several messages).
+	MessageIDs []string `json:"message_ids"`
+}
+
+// AfterSendProvider is an optional interface for the after_send hook.
+type AfterSendProvider interface {
+	AfterSend(args AfterSendArgs) error
 }
 
 // ToolSpec describes a callable tool exposed by a plugin.
@@ -99,6 +158,7 @@ type LocalFile struct {
 }
 
 // BeforeSendResult contains optional response mutation and upload files.
+// A non-empty Response replaces the text; SkipSend cancels sending.
 type BeforeSendResult struct {
 	Response string      `json:"response"`
 	Files    []LocalFile `json:"files"`
@@ -107,7 +167,7 @@ type BeforeSendResult struct {
 
 // BeforeSendProvider is an optional interface for pre-send hooks.
 type BeforeSendProvider interface {
-	BeforeSend(msg types.DiscordMessage, response string) (BeforeSendResult, error)
+	BeforeSend(args BeforeSendArgs) (BeforeSendResult, error)
 }
 
 type Info struct {
@@ -124,16 +184,15 @@ type InfoExt struct {
 	Enabled bool `json:"enabled"`
 }
 
-// ResponseArgs holds arguments for OnResponse
-type ResponseArgs struct {
-	Message  types.DiscordMessage
-	Response string
-}
-
 // BeforeSendArgs holds arguments for before-send plugin hooks.
 type BeforeSendArgs struct {
 	Message  types.DiscordMessage
 	Response string
+	// DeadlineUnixMs is when the host stops waiting for this hook (Unix
+	// milliseconds). Plugins doing slow work (TTS, network calls) should
+	// finish or give up before it; past it the host marks the plugin dead
+	// and restarts it.
+	DeadlineUnixMs int64 `json:"deadline_unix_ms,omitempty"`
 }
 
 // ExecuteToolArgs holds arguments for ExecuteTool RPC.
@@ -144,17 +203,22 @@ type ExecuteToolArgs struct {
 
 // Client represents a connection to a plugin
 type Client struct {
-	Name      string
-	Info      Info
-	jsonrpc   *stdioJSONRPCClient
-	process   *os.Process
+	Name    string
+	Info    Info
+	jsonrpc *stdioJSONRPCClient
+	process *os.Process
+	// exited is closed once the plugin process has exited and been reaped.
+	exited    chan struct{}
 	priority  int
 	path      string
 	configDir string
 	tools     []ToolSpec
-	runtime   string
-	commands  map[string]commandTool
-	wg        *sync.WaitGroup // parent Manager's WaitGroup for RPC call tracking
+	// systemPrompt is the static system prompt section the plugin
+	// registered at load (nil when it has none).
+	systemPrompt *ContextBlock
+	runtime      string
+	commands     map[string]commandTool
+	wg           *sync.WaitGroup // parent Manager's WaitGroup for RPC call tracking
 }
 
 // PluginTool wraps a tool with its owning plugin name.
@@ -241,21 +305,15 @@ type pluginLoadTarget struct {
 }
 
 type Manager struct {
-	plugins              map[string]*Client
-	disabled             map[string]disabledPlugin
-	mu                   sync.RWMutex
-	defaultToolTimeoutMs int
-	startupTimeoutSec    int
-	rpcTimeoutSec        int
-	beforeSendTimeoutSec int
-	commandTimeoutSec    int
-	shutdownTimeoutSec   int
-	disableTimeoutSec    int
-	maxRestarts          int
-	restartCooldown      time.Duration
-	pluginsDir           string
-	wg                   sync.WaitGroup
-	restartStates        sync.Map // name -> *restartState
+	plugins  map[string]*Client
+	disabled map[string]disabledPlugin
+	mu       sync.RWMutex
+	// settings holds the current *Settings; replaced by UpdateSettings.
+	settings atomic.Pointer[Settings]
+	// toolsChanged holds the handler set by SetToolsChangedHandler.
+	toolsChanged  atomic.Pointer[func()]
+	wg            sync.WaitGroup
+	restartStates sync.Map // name -> *restartState
 }
 
 type restartState struct {
@@ -296,7 +354,7 @@ func (pm *Manager) ExecuteTool(ctx context.Context, pluginName string, toolName 
 
 	if plugin.jsonrpc != nil {
 		if plugin.jsonrpc.dead.Load() {
-			pm.triggerRestart(pluginName)
+			pm.triggerRestart(pluginName, plugin.jsonrpc.DeadReason())
 			return "", fmt.Errorf("plugin %s transport is dead", pluginName)
 		}
 		return pm.executeJSONRPCTool(plugin, toolName, args)
@@ -320,8 +378,8 @@ func (pm *Manager) executeJSONRPCTool(plugin *Client, toolName string, args map[
 			break
 		}
 	}
-	if timeout == 0 && pm.defaultToolTimeoutMs > 0 {
-		timeout = time.Duration(pm.defaultToolTimeoutMs) * time.Millisecond
+	if timeout == 0 && pm.st().DefaultToolTimeoutMs > 0 {
+		timeout = time.Duration(pm.st().DefaultToolTimeoutMs) * time.Millisecond
 		source = "config"
 	}
 	if timeout == 0 {
@@ -341,7 +399,7 @@ func (pm *Manager) executeJSONRPCTool(plugin *Client, toolName string, args map[
 	)
 	if err != nil {
 		if isClientDeadError(err) {
-			pm.triggerRestart(plugin.Name)
+			pm.triggerRestart(plugin.Name, err.Error())
 		}
 		return "", fmt.Errorf("plugin tool execution failed: %w", err)
 	}
@@ -382,7 +440,7 @@ func (pm *Manager) executeCommandTool(ctx context.Context, plugin *Client, toolN
 		}
 	}
 	if timeout == 0 {
-		timeout = time.Duration(pm.commandTimeoutSec) * time.Second
+		timeout = time.Duration(pm.st().CommandTimeoutSec) * time.Second
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)

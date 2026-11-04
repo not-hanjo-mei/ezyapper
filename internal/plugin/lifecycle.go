@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"bufio"
 	"cmp"
 	"context"
 	"encoding/json"
@@ -111,6 +112,18 @@ func (pm *Manager) loadPluginWithConfig(pluginPath string, pluginConfigDir strin
 	return pm.loadRPCPlugin(pluginPath, pluginConfigDir)
 }
 
+// attachNotifications routes the plugin's unprompted notifications to the
+// manager. Only tools_changed is defined.
+func (pm *Manager) attachNotifications(client *stdioJSONRPCClient) {
+	client.onNotify = func(method string) {
+		if method != NotificationToolsChanged {
+			logger.Debugf("[plugin] %s: ignoring unknown notification %q", client.label(), method)
+			return
+		}
+		pm.refreshTools(client)
+	}
+}
+
 func (pm *Manager) loadRPCPlugin(pluginPath string, pluginConfigDir string) error {
 	cmd := exec.Command(pluginPath)
 	cmd.Env = buildPluginEnv(pluginConfigDir,
@@ -129,7 +142,12 @@ func (pm *Manager) loadRPCPlugin(pluginPath string, pluginConfigDir string) erro
 		return fmt.Errorf("failed to create plugin stdout pipe: %w", err)
 	}
 
-	cmd.Stderr = os.Stderr
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		stdin.Close()
+		stdout.Close()
+		return fmt.Errorf("failed to create plugin stderr pipe: %w", err)
+	}
 
 	if err := cmd.Start(); err != nil {
 		stdin.Close()
@@ -138,18 +156,33 @@ func (pm *Manager) loadRPCPlugin(pluginPath string, pluginConfigDir string) erro
 	}
 
 	jsonClient := newStdioJSONRPCClient(stdin, stdout)
+	jsonClient.SetName(filepath.Base(pluginPath))
+	pm.attachNotifications(jsonClient)
+	exited := pm.watchPluginProcess(cmd, stderr, jsonClient)
 
 	var info Info
-	if err := callJSONRPCWithTimeout(jsonClient, &pm.wg, "info", map[string]any{}, &info, time.Duration(pm.startupTimeoutSec)*time.Second); err != nil {
+	if err := callJSONRPCWithTimeout(jsonClient, &pm.wg, "info", map[string]any{}, &info, time.Duration(pm.st().StartupTimeoutSec)*time.Second); err != nil {
 		jsonClient.Close()
 		cmd.Process.Kill()
 		return fmt.Errorf("plugin failed to initialize jsonrpc: %w", err)
 	}
+	jsonClient.SetName(info.Name)
 
-	pluginTools, err := listPluginToolsJSONRPC(jsonClient, &pm.wg, time.Duration(pm.rpcTimeoutSec)*time.Second)
+	pluginTools, err := listPluginToolsJSONRPC(jsonClient, &pm.wg, time.Duration(pm.st().RPCTimeoutSec)*time.Second)
 	if err != nil {
 		logger.Warnf("[plugin] Failed to list tools for plugin %s: %v", info.Name, err)
 		pluginTools = []ToolSpec{}
+	}
+
+	var systemPrompt *ContextBlock
+	var sp ContextBlock
+	if err := callJSONRPCWithTimeout(jsonClient, &pm.wg, "system_prompt", map[string]any{}, &sp, time.Duration(pm.st().RPCTimeoutSec)*time.Second); err != nil {
+		if !isMethodNotFoundPluginError(err) {
+			logger.Warnf("[plugin] Failed to get system prompt section for plugin %s: %v", info.Name, err)
+		}
+	} else if clean, ok := sanitizeContextBlock(sp); ok {
+		systemPrompt = &clean
+		logger.Infof("[plugin] Plugin %s adds system prompt section <%s> (%d chars)", info.Name, clean.Tag, len(clean.Content))
 	}
 
 	for i := range pluginTools {
@@ -172,16 +205,18 @@ func (pm *Manager) loadRPCPlugin(pluginPath string, pluginConfigDir string) erro
 	}
 
 	pm.plugins[info.Name] = &Client{
-		Name:      info.Name,
-		Info:      info,
-		jsonrpc:   jsonClient,
-		process:   cmd.Process,
-		priority:  info.Priority,
-		path:      pluginPath,
-		configDir: pluginConfigDir,
-		tools:     pluginTools,
-		runtime:   pluginRuntimeJSONRPC,
-		wg:        &pm.wg,
+		Name:         info.Name,
+		Info:         info,
+		jsonrpc:      jsonClient,
+		process:      cmd.Process,
+		exited:       exited,
+		priority:     info.Priority,
+		path:         pluginPath,
+		configDir:    pluginConfigDir,
+		tools:        pluginTools,
+		systemPrompt: systemPrompt,
+		runtime:      pluginRuntimeJSONRPC,
+		wg:           &pm.wg,
 	}
 	delete(pm.disabled, info.Name)
 
@@ -627,7 +662,7 @@ func (pm *Manager) shutdownPlugin(plugin *Client) error {
 		return nil
 	}
 
-	err := callPluginShutdownWithTimeout(plugin, time.Duration(pm.rpcTimeoutSec)*time.Second)
+	err := callPluginShutdownWithTimeout(plugin, time.Duration(pm.st().RPCTimeoutSec)*time.Second)
 	if isBenignPluginShutdownError(err) {
 		return nil
 	}
@@ -677,26 +712,77 @@ func (pm *Manager) stopPluginProcess(plugin *Client, timeout time.Duration) {
 		return
 	}
 
-	done := make(chan error, 1)
-	pm.wg.Add(1)
-	go func() {
-		defer pm.wg.Done()
-		defer func() {
-			if r := recover(); r != nil {
-				logger.Errorf("[plugin] panic recovered: %v\n%s", r, debug.Stack())
-			}
+	if plugin.exited == nil {
+		// Process not started through loadRPCPlugin (tests); reap directly.
+		done := make(chan struct{})
+		pm.wg.Add(1)
+		go func() {
+			defer pm.wg.Done()
+			defer close(done)
+			_, _ = plugin.process.Wait()
 		}()
-		_, err := plugin.process.Wait()
-		done <- err
-	}()
+		plugin.exited = done
+	}
 
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
-	case <-done:
+	case <-plugin.exited:
 	case <-timer.C:
+		logger.Warnf("[plugin] Plugin %s did not exit within %v, killing it", plugin.Name, timeout)
 		plugin.process.Kill()
+		<-plugin.exited
 	}
+}
+
+// watchPluginProcess forwards the plugin's stderr into the bot log line by
+// line and reaps the process when it exits, logging its exit status. Without
+// this, a plugin that crashed left no trace in the log file because its stderr
+// went straight to the console. The returned channel closes after exit.
+func (pm *Manager) watchPluginProcess(cmd *exec.Cmd, stderr io.Reader, client *stdioJSONRPCClient) chan struct{} {
+	exited := make(chan struct{})
+	pm.wg.Add(1)
+	go func() {
+		defer pm.wg.Done()
+		defer close(exited)
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Errorf("[plugin] panic recovered in process watcher: %v\n%s", r, debug.Stack())
+			}
+		}()
+
+		scanner := bufio.NewScanner(stderr)
+		scanner.Buffer(make([]byte, 64*1024), 1<<20)
+		for scanner.Scan() {
+			line := strings.TrimRight(scanner.Text(), "\r")
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			logger.Warnf("[plugin:%s] %s", client.label(), line)
+		}
+		if err := scanner.Err(); err != nil && !errors.Is(err, os.ErrClosed) {
+			logger.Warnf("[plugin:%s] stderr read error: %v", client.label(), err)
+		}
+
+		err := cmd.Wait()
+		client.markDead(fmt.Sprintf("process exited: %s", describeExit(cmd, err)))
+		if err != nil {
+			logger.Warnf("[plugin] Plugin %s process exited: %s", client.label(), describeExit(cmd, err))
+		} else {
+			logger.Infof("[plugin] Plugin %s process exited cleanly", client.label())
+		}
+	}()
+	return exited
+}
+
+func describeExit(cmd *exec.Cmd, err error) string {
+	if cmd.ProcessState != nil {
+		return fmt.Sprintf("%s (code %d)", cmd.ProcessState.String(), cmd.ProcessState.ExitCode())
+	}
+	if err != nil {
+		return err.Error()
+	}
+	return "unknown"
 }
 
 // WaitForPending waits for all in-flight goroutines (RPC calls, process shutdown waits)
@@ -713,7 +799,7 @@ func (pm *Manager) WaitForPending() error {
 		close(done)
 	}()
 
-	timer := time.NewTimer(time.Duration(pm.shutdownTimeoutSec) * time.Second)
+	timer := time.NewTimer(time.Duration(pm.st().ShutdownTimeoutSec) * time.Second)
 	defer timer.Stop()
 
 	select {
@@ -741,7 +827,7 @@ func (pm *Manager) Shutdown(ctx context.Context) error {
 			errs = append(errs, fmt.Errorf("plugin %s shutdown error: %w", name, err))
 		}
 
-		pm.stopPluginProcess(plugin, time.Duration(pm.shutdownTimeoutSec)*time.Second)
+		pm.stopPluginProcess(plugin, time.Duration(pm.st().ShutdownTimeoutSec)*time.Second)
 	}
 
 	if err := pm.WaitForPending(); err != nil {
@@ -798,7 +884,7 @@ func (pm *Manager) DisablePlugin(name string) error {
 		logger.Warnf("[plugin] Error shutting down plugin %s: %v", name, err)
 	}
 
-	pm.stopPluginProcess(plugin, time.Duration(pm.disableTimeoutSec)*time.Second)
+	pm.stopPluginProcess(plugin, time.Duration(pm.st().DisableTimeoutSec)*time.Second)
 
 	pm.mu.Lock()
 	pm.disabled[name] = disabledPlugin{
@@ -812,7 +898,7 @@ func (pm *Manager) DisablePlugin(name string) error {
 	return nil
 }
 
-func (pm *Manager) triggerRestart(name string) {
+func (pm *Manager) triggerRestart(name string, reason string) {
 	pm.wg.Add(1)
 	go func() {
 		defer pm.wg.Done()
@@ -821,11 +907,11 @@ func (pm *Manager) triggerRestart(name string) {
 				logger.Errorf("[plugin] panic in restart of %s: %v\n%s", name, r, debug.Stack())
 			}
 		}()
-		pm.tryRestartPlugin(name)
+		pm.tryRestartPlugin(name, reason)
 	}()
 }
 
-func (pm *Manager) tryRestartPlugin(name string) {
+func (pm *Manager) tryRestartPlugin(name string, reason string) {
 	state := pm.getRestartState(name)
 
 	if state.inProgress.Load() {
@@ -833,7 +919,7 @@ func (pm *Manager) tryRestartPlugin(name string) {
 	}
 
 	state.mu.Lock()
-	if state.count >= pm.maxRestarts && time.Since(state.lastAttempt) < pm.restartCooldown {
+	if state.count >= pm.st().MaxRestarts && time.Since(state.lastAttempt) < pm.st().RestartCooldown {
 		state.mu.Unlock()
 		return
 	}
@@ -842,7 +928,10 @@ func (pm *Manager) tryRestartPlugin(name string) {
 	state.inProgress.Store(true)
 	defer state.inProgress.Store(false)
 
-	logger.Warnf("[plugin] Plugin %s transport is dead, attempting restart", name)
+	if strings.TrimSpace(reason) == "" {
+		reason = "unknown reason"
+	}
+	logger.Warnf("[plugin] Plugin %s transport is dead (%s), attempting restart", name, reason)
 
 	if err := pm.restartPluginInternal(name); err != nil {
 		state.mu.Lock()
@@ -851,9 +940,9 @@ func (pm *Manager) tryRestartPlugin(name string) {
 		attempt := state.count
 		state.mu.Unlock()
 
-		if attempt >= pm.maxRestarts {
+		if attempt >= pm.st().MaxRestarts {
 			logger.Errorf("[plugin] Plugin %s restart failed %d times, entering %v cooldown: %v",
-				name, attempt, pm.restartCooldown, err)
+				name, attempt, pm.st().RestartCooldown, err)
 		} else {
 			logger.Warnf("[plugin] Plugin %s restart attempt %d failed: %v", name, attempt, err)
 		}
@@ -882,7 +971,7 @@ func (pm *Manager) restartPluginInternal(name string) error {
 	if plugin.jsonrpc != nil {
 		plugin.jsonrpc.Close()
 	}
-	pm.stopPluginProcess(plugin, time.Duration(pm.disableTimeoutSec)*time.Second)
+	pm.stopPluginProcess(plugin, time.Duration(pm.st().DisableTimeoutSec)*time.Second)
 
 	if err := pm.loadPluginWithConfig(path, configDir); err != nil {
 		pm.mu.Lock()

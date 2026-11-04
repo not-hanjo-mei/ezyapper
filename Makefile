@@ -55,7 +55,7 @@ fmt:
 
 # Run the bot (requires config.yaml)
 run: build
-	./$(BINARY_NAME) -config config.yaml
+	./$(BINARY_NAME) --config config.yaml
 
 # Docker commands
 docker-build:

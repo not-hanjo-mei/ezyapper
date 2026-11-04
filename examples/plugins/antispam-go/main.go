@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"ezyapper/internal/plugin"
+	"ezyapper/internal/plugin/pluginconfig"
 	pluginserver "ezyapper/internal/plugin/server"
 	"ezyapper/internal/types"
 
@@ -39,7 +40,8 @@ import (
 type AntiSpamPlugin struct {
 	messageLog map[string][]time.Time
 	mu         sync.RWMutex
-	config     Config
+	// config is swapped when the config file is edited (see watchConfig).
+	config *pluginconfig.Value[Config]
 }
 
 // Config holds plugin configuration
@@ -72,7 +74,7 @@ func (p *AntiSpamPlugin) Info() (plugin.Info, error) {
 // OnMessage is called for every message
 func (p *AntiSpamPlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	// Skip bot messages if configured
-	if p.config.IgnoreBots && msg.IsBot {
+	if p.config.Load().IgnoreBots && msg.IsBot {
 		return true, nil
 	}
 
@@ -86,16 +88,16 @@ func (p *AntiSpamPlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	// Clean up old entries
 	var recent []time.Time
 	for _, t := range p.messageLog[key] {
-		if now.Sub(t) < p.config.TimeWindow {
+		if now.Sub(t) < p.config.Load().TimeWindow {
 			recent = append(recent, t)
 		}
 	}
 
 	// Check limit
-	if len(recent) >= p.config.MaxMessages {
-		if p.config.LogDetection {
+	if len(recent) >= p.config.Load().MaxMessages {
+		if p.config.Load().LogDetection {
 			fmt.Printf("[ANTISPAM] Detected spam from user %s in channel %s (%d messages in %v)\n",
-				msg.AuthorID, msg.ChannelID, len(recent), p.config.TimeWindow)
+				msg.AuthorID, msg.ChannelID, len(recent), p.config.Load().TimeWindow)
 		}
 		return false, nil
 	}
@@ -103,12 +105,6 @@ func (p *AntiSpamPlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	// Record message
 	p.messageLog[key] = append(recent, now)
 	return true, nil
-}
-
-// OnResponse is called after the bot generates a response
-func (p *AntiSpamPlugin) OnResponse(msg types.DiscordMessage, response string) error {
-	// No action needed
-	return nil
 }
 
 // Shutdown is called when the plugin is being stopped
@@ -220,15 +216,40 @@ func main() {
 
 	p := &AntiSpamPlugin{
 		messageLog: make(map[string][]time.Time),
-		config:     cfg,
+		config:     pluginconfig.NewValue(cfg),
 	}
 
 	fmt.Println("[ANTISPAM] Plugin starting...")
-	fmt.Printf("[ANTISPAM] Config: max %d messages per %v\n", p.config.MaxMessages, p.config.TimeWindow)
+	fmt.Printf("[ANTISPAM] Config: max %d messages per %v\n", p.config.Load().MaxMessages, p.config.Load().TimeWindow)
 
 	// This will connect to the host process and serve RPC requests
+	w := watchConfig(p)
+	defer w.Close()
+
 	if err := pluginserver.Serve(p); err != nil {
 		fmt.Fprintf(os.Stderr, "[ANTISPAM] Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// watchConfig reloads the config file when it is saved: the new file is
+// fully validated before it replaces the running config, and the host is
+// told to re-read tools and the system prompt section (tool timeouts or
+// prompt text may have changed). An invalid file is logged and ignored.
+func watchConfig(p *AntiSpamPlugin) *pluginconfig.Watcher {
+	w, err := pluginconfig.Watch(pluginConfigPath(), pluginconfig.Options{Name: "ANTISPAM"}, func() error {
+		next, err := loadConfig()
+		if err != nil {
+			return err
+		}
+		p.config.Store(next)
+		if err := pluginserver.NotifyToolsChanged(); err != nil {
+			fmt.Fprintf(os.Stderr, "[ANTISPAM] config reloaded but the host could not be notified: %v\n", err)
+		}
+		return nil
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[ANTISPAM] config hot reload unavailable: %v\n", err)
+	}
+	return w
 }

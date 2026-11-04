@@ -10,7 +10,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"ezyapper/internal/plugin"
 	"ezyapper/internal/types"
@@ -52,7 +55,47 @@ func decodeJSONRPCParams(raw any, target any) error {
 	return json.Unmarshal(encoded, target)
 }
 
-func WriteJSONRPCResponse(enc *json.Encoder, id int64, result any, err error) error {
+// lockedEncoder serialises writes to the plugin's stdout, which the request
+// loop and NotifyToolsChanged (called from a config watcher goroutine)
+// share. Interleaved writes would corrupt the frame stream.
+type lockedEncoder struct {
+	mu  sync.Mutex
+	enc *json.Encoder
+}
+
+func (l *lockedEncoder) Encode(v any) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.enc.Encode(v)
+}
+
+// active is the encoder of the running ServeIO loop (one per plugin
+// process), used by NotifyToolsChanged.
+var active atomic.Pointer[lockedEncoder]
+
+type jsonRPCNotification struct {
+	JSONRPC string `json:"jsonrpc"`
+	Method  string `json:"method"`
+}
+
+// ErrNotServing is returned by NotifyToolsChanged when no Serve loop runs.
+var ErrNotServing = errors.New("plugin server is not running")
+
+// NotifyToolsChanged tells the host that this plugin's tool list changed,
+// so the host re-queries list_tools and updates the tools offered to the
+// model. Call it after a config reload that may add, remove or rename
+// tools. The host picks the notification up at its next exchange with the
+// plugin (normally the next Discord message, via on_message). It is safe to
+// call from any goroutine.
+func NotifyToolsChanged() error {
+	enc := active.Load()
+	if enc == nil {
+		return ErrNotServing
+	}
+	return enc.Encode(jsonRPCNotification{JSONRPC: "2.0", Method: plugin.NotificationToolsChanged})
+}
+
+func WriteJSONRPCResponse(enc interface{ Encode(any) error }, id int64, result any, err error) error {
 	resp := jsonRPCResponse{
 		JSONRPC: "2.0",
 		ID:      id,
@@ -92,20 +135,44 @@ func handleInfo(impl plugin.Interface, _ any) (any, error) {
 func handleOnMessage(impl plugin.Interface, params any) (any, error) {
 	var msg types.DiscordMessage
 	if err := decodeJSONRPCParams(params, &msg); err != nil {
-		return nil, fmt.Errorf("invalid params for on_message")
+		return nil, fmt.Errorf("jsonrpc -32602: invalid params for on_message: %w", err)
 	}
 	return impl.OnMessage(msg)
 }
 
-func handleOnResponse(impl plugin.Interface, params any) (any, error) {
-	var args plugin.ResponseArgs
-	if err := decodeJSONRPCParams(params, &args); err != nil {
-		return nil, fmt.Errorf("invalid params for on_response")
+func handleAfterDecision(impl plugin.Interface, params any) (any, error) {
+	provider, ok := impl.(plugin.AfterDecisionProvider)
+	if !ok {
+		return plugin.AfterDecisionResult{}, nil
 	}
-	if err := impl.OnResponse(args.Message, args.Response); err != nil {
+	var args plugin.AfterDecisionArgs
+	if err := decodeJSONRPCParams(params, &args); err != nil {
+		return nil, fmt.Errorf("jsonrpc -32602: invalid params for after_decision: %w", err)
+	}
+	return provider.AfterDecision(args)
+}
+
+func handleAfterSend(impl plugin.Interface, params any) (any, error) {
+	provider, ok := impl.(plugin.AfterSendProvider)
+	if !ok {
+		return map[string]any{}, nil
+	}
+	var args plugin.AfterSendArgs
+	if err := decodeJSONRPCParams(params, &args); err != nil {
+		return nil, fmt.Errorf("jsonrpc -32602: invalid params for after_send: %w", err)
+	}
+	if err := provider.AfterSend(args); err != nil {
 		return nil, err
 	}
 	return map[string]any{}, nil
+}
+
+func handleSystemPrompt(impl plugin.Interface, _ any) (any, error) {
+	provider, ok := impl.(plugin.SystemPromptProvider)
+	if !ok {
+		return plugin.ContextBlock{}, nil
+	}
+	return provider.SystemPrompt()
 }
 
 func handleBeforeSend(impl plugin.Interface, params any) (any, error) {
@@ -115,9 +182,9 @@ func handleBeforeSend(impl plugin.Interface, params any) (any, error) {
 	}
 	var args plugin.BeforeSendArgs
 	if err := decodeJSONRPCParams(params, &args); err != nil {
-		return nil, fmt.Errorf("invalid params for before_send")
+		return nil, fmt.Errorf("jsonrpc -32602: invalid params for before_send: %w", err)
 	}
-	return provider.BeforeSend(args.Message, args.Response)
+	return provider.BeforeSend(args)
 }
 
 func handleListTools(impl plugin.Interface, _ any) (any, error) {
@@ -135,7 +202,7 @@ func handleExecuteTool(impl plugin.Interface, params any) (any, error) {
 	}
 	var args plugin.ExecuteToolArgs
 	if err := decodeJSONRPCParams(params, &args); err != nil {
-		return nil, fmt.Errorf("invalid params for execute_tool")
+		return nil, fmt.Errorf("jsonrpc -32602: invalid params for execute_tool: %w", err)
 	}
 	if args.Arguments == nil {
 		args.Arguments = map[string]any{}
@@ -151,13 +218,15 @@ func handleShutdown(impl plugin.Interface, _ any) (any, error) {
 }
 
 var rpcHandlers = map[string]rpcHandler{
-	"info":         handleInfo,
-	"on_message":   handleOnMessage,
-	"on_response":  handleOnResponse,
-	"before_send":  handleBeforeSend,
-	"list_tools":   handleListTools,
-	"execute_tool": handleExecuteTool,
-	"shutdown":     handleShutdown,
+	"info":           handleInfo,
+	"on_message":     handleOnMessage,
+	"after_decision": handleAfterDecision,
+	"after_send":     handleAfterSend,
+	"system_prompt":  handleSystemPrompt,
+	"before_send":    handleBeforeSend,
+	"list_tools":     handleListTools,
+	"execute_tool":   handleExecuteTool,
+	"shutdown":       handleShutdown,
 }
 
 // Serve starts a plugin server loop over stdio, reading JSON-RPC requests from the
@@ -167,18 +236,39 @@ var rpcHandlers = map[string]rpcHandler{
 // from the bot process itself. The bot only spawns plugins as subprocesses and
 // communicates with them over stdio; it never calls Serve directly.
 func Serve(impl plugin.Interface) error {
+	return ServeIO(impl, os.Stdin, os.Stdout, os.Stderr)
+}
+
+// ServeIO runs the JSON-RPC loop on the given streams. A malformed frame is
+// answered with a -32700 parse error and skipped; only EOF or a broken pipe
+// ends the loop. Panics inside a handler are recovered and reported as a
+// JSON-RPC error so one bad request cannot take the plugin process down.
+// Diagnostics go to logw (the host captures plugin stderr into its log).
+func ServeIO(impl plugin.Interface, r io.Reader, w io.Writer, logw io.Writer) error {
 	if impl == nil {
 		return fmt.Errorf("plugin implementation is nil")
 	}
+	if logw == nil {
+		logw = io.Discard
+	}
 
-	decoder := json.NewDecoder(os.Stdin)
-	encoder := json.NewEncoder(os.Stdout)
+	decoder := plugin.NewFrameDecoder(r)
+	encoder := &lockedEncoder{enc: json.NewEncoder(w)}
+	active.Store(encoder)
+	defer active.CompareAndSwap(encoder, nil)
 
 	for {
 		var req jsonRPCRequest
 		if err := decoder.Decode(&req); err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
+			}
+			if plugin.IsMalformedFrame(err) {
+				fmt.Fprintf(logw, "[plugin-server] %v\n", err)
+				if werr := WriteJSONRPCResponse(encoder, 0, nil, fmt.Errorf("jsonrpc -32700: parse error")); werr != nil {
+					return werr
+				}
+				continue
 			}
 			return fmt.Errorf("failed to read jsonrpc request: %w", err)
 		}
@@ -190,17 +280,28 @@ func Serve(impl plugin.Interface) error {
 			continue
 		}
 
-		var result any
-		var callErr error
-		handler, ok := rpcHandlers[req.Method]
-		if !ok {
-			callErr = fmt.Errorf("jsonrpc -32601: method not found")
-		} else {
-			result, callErr = handler(impl, req.Params)
+		result, callErr := dispatch(impl, req, logw)
+		if callErr != nil {
+			fmt.Fprintf(logw, "[plugin-server] method %s (id=%d) failed: %v\n", req.Method, req.ID, callErr)
 		}
 
 		if err := WriteJSONRPCResponse(encoder, req.ID, result, callErr); err != nil {
 			return err
 		}
 	}
+}
+
+func dispatch(impl plugin.Interface, req jsonRPCRequest, logw io.Writer) (result any, err error) {
+	handler, ok := rpcHandlers[req.Method]
+	if !ok {
+		return nil, fmt.Errorf("jsonrpc -32601: method not found")
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(logw, "[plugin-server] panic in %s: %v\n%s\n", req.Method, r, debug.Stack())
+			result = nil
+			err = fmt.Errorf("plugin panic in %s: %v", req.Method, r)
+		}
+	}()
+	return handler(impl, req.Params)
 }

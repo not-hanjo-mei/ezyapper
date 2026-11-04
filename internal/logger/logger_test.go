@@ -142,7 +142,7 @@ func TestLogger_Named(t *testing.T) {
 }
 
 func TestInit(t *testing.T) {
-	globalLogger = nil
+	globalLogger.Store(nil)
 
 	cfg := Config{
 		Level: "info",
@@ -153,13 +153,13 @@ func TestInit(t *testing.T) {
 		t.Fatalf("Init failed: %v", err)
 	}
 
-	if globalLogger == nil {
+	if globalLogger.Load() == nil {
 		t.Error("Expected globalLogger to be initialized")
 	}
 }
 
 func TestL(t *testing.T) {
-	globalLogger = nil
+	globalLogger.Store(nil)
 
 	cfg := Config{Level: "info"}
 	err := Init(cfg)

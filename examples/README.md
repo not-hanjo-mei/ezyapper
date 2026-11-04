@@ -83,14 +83,15 @@ cp myplugin config.yaml /path/to/bot/plugins/myplugin/
 
 ### Main Config (config.yaml)
 
-See `config.yaml.example` for all available options. Key sections:
-- `discord`: Bot token, reply settings
-- `ai`: LLM configuration, vision settings
-- `embedding`: Vector embedding configuration
-- `memory`: Long-term memory settings
-- `qdrant`: Vector database configuration
-- `blacklist`/`whitelist`: Access control
-- `plugins`: Plugin system settings
+See `config.yaml.example` for all available options (`config.schema.json`
+describes the same keys for editor validation). Top-level sections:
+- `core`: `discord` (bot token, reply settings), `ai` (main model, system
+  prompt, `modalities` for image/audio/video/sticker handling) and `decision`
+  (reply classifier)
+- `memory_pipeline`: `embedding`, `memory` (short-term window, retrieval,
+  consolidation) and `qdrant` (vector database)
+- `access_control`: `blacklist` / `whitelist` and `message_filters`
+- `operations`: `web`, `logging`, `plugins`, `mcp` and `runtime`
 
 ### Plugin Config
 
@@ -106,15 +107,21 @@ enabled: true
 
 ## Environment Variables
 
-All config options can be overridden via environment variables with `EZYAPPER_` prefix:
+Config keys can be overridden via environment variables with the `EZYAPPER_`
+prefix and the full YAML path, dots replaced by underscores:
 
 ```bash
-EZYAPPER_DISCORD_TOKEN=your_token
-EZYAPPER_AI_API_KEY=your_key
-EZYAPPER_AI_MODEL=gpt-4o-mini
+EZYAPPER_CORE_DISCORD_TOKEN=your_token
+EZYAPPER_CORE_AI_API_KEY=your_key
+EZYAPPER_CORE_AI_MODEL=gpt-4o-mini
 ```
 
-See `.env.example` for the complete list.
+An override only applies to a key that is present in `config.yaml`; a key
+that is missing (or commented out) there is not read from the environment, so
+keep a placeholder value for anything you set via env. List values (access
+control IDs, MCP servers) are configured in `config.yaml`.
+
+See `.env.example` for more.
 
 ## Prompt Optimization Example
 
@@ -124,75 +131,66 @@ The bot includes built-in prompt caching optimizations. Here's how to verify the
 
 ```yaml
 # config.yaml
-logging:
-  level: "debug"
-  file: "bot.log"
+operations:
+  logging:
+    level: "debug"
+    file: "logs/ezyapper.log"
 ```
 
-### 2. Check Cache Hit Rates
+### 2. Check Token Usage
 
-After running the bot for a while, check the logs:
+The bot does not log provider cache hits itself. At debug level it logs the
+token usage of every response; compare prompt tokens across requests, or
+check your provider's dashboard for cached tokens:
 
 ```bash
-# View cache hit statistics
-grep "\[cache\]" bot.log
+grep -A4 "\[ai\] received response" logs/ezyapper.log
 
 # Example output:
-# [cache] prompt cache hit: 850/1000 tokens (85.0%)
-# [cache] prompt cache hit: 920/1050 tokens (87.6%)
+# [ai] received response:
+#   Finish reason: stop
+#   Prompt tokens: 1850
+#   Completion tokens: 120
+#   Total tokens: 1970
 ```
 
 ### 3. Monitor Prompt Structure
 
 ```bash
-# View prompt structure
-grep "\[prompt\]" bot.log
+grep "\[prompt\]" logs/ezyapper.log
 
 # Example output:
-# [prompt] system prompt length: 1250 chars (static)
-# [prompt] dynamic context length: 450 chars
+# [prompt] system prompt: 1250 chars (static), user prompt: 450 chars
 ```
 
-### 4. Using the Prompt Compiler
+### 4. Writing the System Prompt
 
-Example of using the prompt package in your own code:
+`core.ai.system_prompt` is sent as written, so it stays identical across
+requests and the provider can cache it. No placeholders are substituted:
+write the bot's name literally. The author, server and channel of each
+message are sent in the user prompt instead. The old placeholders
+`{BotName}`, `{AuthorName}`, `{ServerName}`, `{GuildID}` and `{ChannelID}`
+are rejected at startup (in `core.ai.system_prompt` and
+`core.decision.system_prompt`).
 
-```go
-package main
-
-import (
-    "ezyapper/internal/prompt"
-)
-
-func main() {
-    // Create a registry for your templates
-    registry := prompt.NewRegistry()
-    
-    // Register a template
-    registry.Register("greeting", 
-        "Hello {UserName}! I'm {BotName} in {ServerName}.")
-    
-    // Compile with variables
-    result := registry.GetWithCompile("greeting", map[string]string{
-        "{UserName}":   "Alice",
-        "{BotName}":    "MyBot",
-        "{ServerName}": "Cool Server",
-    })
-    
-    // Output: "Hello Alice! I'm MyBot in Cool Server."
-    println(result)
-}
+```yaml
+core:
+  ai:
+    system_prompt: |
+      You are EZyapper, a helpful Discord bot.
+      Keep replies short and friendly.
 ```
 
 ### 5. Custom Tool Schema
 
-If you're adding custom tools, ensure they're registered for caching:
+If you're adding built-in tools inside this module, register them on the tool
+registry, which keeps the schema sorted and cached:
 
 ```go
-import "ezyapper/internal/ai"
+import "ezyapper/internal/ai/tools"
 
-func registerCustomTools(registry *ai.ToolRegistry) {
-    registry.Register(&ai.Tool{
+func registerCustomTools(registry *tools.ToolRegistry) {
+    registry.Register(&tools.Tool{
         Name:        "my_custom_tool",
         Description: "Does something useful",
         Parameters: map[string]any{

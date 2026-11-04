@@ -21,7 +21,6 @@ If you're writing a Go plugin, your `main` ends in `plugin.Serve(impl)` where `i
 type Interface interface {
     Info() (Info, error)
     OnMessage(msg types.DiscordMessage) (bool, error)
-    OnResponse(msg types.DiscordMessage, response string) error
     Shutdown() error
 }
 ```
@@ -29,9 +28,77 @@ type Interface interface {
 | Method | Behavior |
 |--------|----------|
 | `Info()` | Metadata: Name, Version, Author, Description, Priority. Higher Priority runs first in hook chains. |
-| `OnMessage(msg)` | Per-message hook. Return `false` to **block** the message (bot won't process or respond). |
-| `OnResponse(msg, response)` | Fire-and-forget hook called after the bot generates a reply. |
+| `OnMessage(msg)` | Per-message hook. Return `false` to **block** the message (bot won't process or respond). If the call fails (an error, a timeout or a dead process), that plugin is skipped for this message and the next plugin is asked; a failing plugin never blocks a message. |
 | `Shutdown()` | Called when the plugin is being stopped. Clean up resources here. |
+
+### Hook chain
+
+Every message goes through these hooks, in plugin priority order:
+
+| Hook (JSON-RPC method) | When | Can do |
+|------------------------|------|--------|
+| `OnMessage` (`on_message`) | every incoming message | block all further processing |
+| `AfterDecision` (`after_decision`) | only when the bot decided to reply, before generation | cancel the reply; inject prompt context |
+| `BeforeSend` (`before_send`) | after generation, before sending | rewrite the text, attach files, cancel sending |
+| `AfterSend` (`after_send`) | after the reply was sent | react to the final text and sent message IDs |
+
+`OnResponse` no longer exists: what it did belongs in `AfterSend`, which
+receives the text that was actually sent (after `BeforeSend` rewrites) and the
+IDs of the Discord messages (several when a long reply was split).
+
+### Optional: `plugin.AfterDecisionProvider`
+
+```go
+type AfterDecisionProvider interface {
+    AfterDecision(args AfterDecisionArgs) (AfterDecisionResult, error)
+}
+
+type AfterDecisionArgs struct {
+    Message types.DiscordMessage
+    Reason  string // why the bot decided to reply
+}
+
+type AfterDecisionResult struct {
+    Cancel  bool           // true → do not generate a reply
+    Context []ContextBlock // prompt sections to inject for this reply
+}
+
+type ContextBlock struct {
+    Tag     string // XML tag name: letters, digits, '_' and '-'
+    Content string
+}
+```
+
+Injected blocks are rendered as `<Tag>...</Tag>` sections in the plugin slot
+of the **user** prompt (after the conversation and participants, before the
+user profile and key facts). They never go into the system prompt, which
+stays byte-identical across requests so prompt caching keeps working.
+
+### Optional: `plugin.SystemPromptProvider`
+
+```go
+type SystemPromptProvider interface {
+    SystemPrompt() (ContextBlock, error)
+}
+```
+
+Queried once when the plugin loads. The block is appended to the system
+prompt after the configured instructions. It must be static: do not put
+per-message data here (use `AfterDecision` context blocks instead).
+
+### Optional: `plugin.AfterSendProvider`
+
+```go
+type AfterSendProvider interface {
+    AfterSend(args AfterSendArgs) error
+}
+
+type AfterSendArgs struct {
+    Message    types.DiscordMessage
+    Response   string   // final text that was sent
+    MessageIDs []string // IDs of the sent Discord messages, in order
+}
+```
 
 ### Optional: `plugin.ToolProvider`
 
@@ -48,7 +115,13 @@ Implements LLM-callable tools. Returned `ToolSpec`s are merged into the bot's to
 
 ```go
 type BeforeSendProvider interface {
-    BeforeSend(msg types.DiscordMessage, response string) (BeforeSendResult, error)
+    BeforeSend(args BeforeSendArgs) (BeforeSendResult, error)
+}
+
+type BeforeSendArgs struct {
+    Message        types.DiscordMessage
+    Response       string
+    DeadlineUnixMs int64 // the host stops waiting at this time; finish before it
 }
 
 type BeforeSendResult struct {
@@ -108,7 +181,7 @@ Field notes:
   - `command` — executable path. Relative paths are resolved against the plugin directory.
   - `args` — static arguments always passed first.
   - `arg_keys` — argument names appended in order. The host pulls each name from the LLM-supplied `arguments` object and appends its value to the command line.
-  - `timeout_ms` — per-tool override of the manager's default timeout. `0` falls back to `default_tool_timeout_ms`.
+  - `timeout_ms` — per-tool timeout. `0` (or absent) falls back to `operations.plugins.command_timeout_sec`. `default_tool_timeout_ms` is not used for command tools.
 
 ---
 
@@ -145,17 +218,73 @@ Response:
 
 ### Methods the host calls
 
-| Method | Required | Params | Result |
-|--------|----------|--------|--------|
-| `info` | yes | none | `Info` struct |
-| `on_message` | yes | `types.DiscordMessage` | `bool` (false = block) |
-| `on_response` | yes | `{message, response}` | none |
-| `before_send` | optional | `{message, response}` | `BeforeSendResult` |
-| `list_tools` | optional | none | `[]ToolSpec` |
-| `execute_tool` | optional | `{name, arguments}` | `string` (result text) |
-| `shutdown` | yes | none | none |
+| Method | Required | Params | Result | Timeout |
+|--------|----------|--------|--------|---------|
+| `info` | yes | none | `Info` struct | `startup_timeout_sec` |
+| `on_message` | yes | `types.DiscordMessage` | `bool` (false = block) | `rpc_timeout_sec` |
+| `after_decision` | optional | `{message, reason}` | `AfterDecisionResult` | `rpc_timeout_sec` |
+| `before_send` | optional | `{Message, Response, deadline_unix_ms}` (see note) | `BeforeSendResult` | `before_send_timeout_sec` |
+| `after_send` | optional | `{message, response, message_ids}` | none | `rpc_timeout_sec` |
+| `system_prompt` | optional | none | `ContextBlock` | `rpc_timeout_sec` |
+| `list_tools` | optional | none | `[]ToolSpec` | `rpc_timeout_sec` |
+| `execute_tool` | optional | `{Name, Arguments}` (see note) | `string` (result text) | the tool spec's `timeout_ms`, else `default_tool_timeout_ms` |
+| `shutdown` | yes | none | none | `rpc_timeout_sec` |
 
-The host probes `info` once at startup. If the plugin doesn't respond within `startup_timeout_sec`, it's considered dead and skipped. Other calls use `rpc_timeout_sec`, except `before_send` which uses its own (typically longer) `before_send_timeout_sec` to accommodate things like TTS generation.
+These are the only methods; `on_response` was removed (use `after_send`). "Optional" means a plugin may answer with JSON-RPC "method not found" (`-32601`) and the host moves on. The Go `server.Serve` helper instead answers an optional method the plugin does not implement with an empty result (no tools, no context, unchanged response), except `execute_tool`, which returns an error.
+
+Note on parameter names: `before_send` and `execute_tool` params are encoded from Go structs without JSON tags for most fields, so the keys are capitalised: `{"Message": ..., "Response": "...", "deadline_unix_ms": ...}` and `{"Name": "...", "Arguments": {...}}`. Go plugins decode them case-insensitively; a plugin in another language must read these exact keys. The other params use lowercase keys (`message`, `reason`, `response`, `message_ids`).
+
+The host probes `info` once at startup. If the plugin doesn't respond within `startup_timeout_sec`, it's considered dead and skipped. `list_tools` and `system_prompt` are called right after `info`, and again when the plugin sends `tools_changed`. `before_send` uses its own (typically longer) `before_send_timeout_sec` to accommodate things like TTS generation. If neither the tool spec nor `default_tool_timeout_ms` gives `execute_tool` a timeout, the call fails with "no timeout configured".
+
+### Failures and automatic restart
+
+- A call that times out marks the plugin's transport dead and closes its pipes.
+- `on_message`, `after_decision` and `after_send`: a failing plugin is skipped for this message and the remaining plugins still run. `on_message` therefore never blocks a message because of an error.
+- `before_send`: a timeout or dead plugin is skipped for this message; any other error returned by the plugin aborts sending the reply.
+- When a hook or tool call finds a plugin's transport dead, the host restarts the plugin in the background (stops the process, starts it again and re-runs `info`, `list_tools` and `system_prompt`). A successful restart resets the failure count. After `max_restarts` consecutive failed restarts, no further attempt is made until `restart_cooldown_sec` has passed since the last failed one; each attempt after that which fails waits for the cooldown again.
+
+### Notifications the plugin may send
+
+| Notification | Meaning |
+|--------------|---------|
+| `tools_changed` | The plugin's tool list or system prompt section changed (typically after it reloaded its own config). The host re-queries `list_tools` and `system_prompt`, validates the result (an invalid tool list is rejected and the previous one kept; a failing `system_prompt` keeps the previous section) and re-registers the plugin's tools with the model. |
+
+A notification is a JSON-RPC message with a `method` and **no** `id`:
+
+```json
+{"jsonrpc": "2.0", "method": "tools_changed"}
+```
+
+The transport is strictly request/response, so the host reads a notification during its next exchange with the plugin. Every incoming Discord message reaches each plugin through `on_message`, so in practice the refresh lands with the next message. This was chosen over periodic `list_tools` polling (constant traffic for a rare event, plus a new config knob) and over a background reader on the plugin's stdout (a larger change to a transport that is shared with request timeouts and restarts). Go plugins call `server.NotifyToolsChanged()`, which is safe from any goroutine because the server serialises all writes to stdout.
+
+### Config hot reload
+
+A plugin owns its config file and reloads it itself; the host is not involved. Go plugins use `internal/plugin/pluginconfig`:
+
+```go
+cfg := pluginconfig.NewValue(initialConfig) // read with cfg.Load()
+
+w, err := pluginconfig.Watch(pluginconfig.Path(), pluginconfig.Options{Name: "MYPLUGIN"}, func() error {
+    next, err := loadConfig() // read AND validate; build anything derived from it
+    if err != nil {
+        return err // logged to stderr, the previous config stays live
+    }
+    cfg.Store(next)
+    _ = server.NotifyToolsChanged() // tool specs or the system prompt section may have changed
+    return nil
+})
+if err == nil {
+    defer w.Close()
+}
+```
+
+`Watch` debounces file events and handles editors that save by renaming a temporary file. When the config feeds clients or state built at startup (HTTP clients, fetched tool lists, data directories), build a complete new instance and swap it in only if that succeeded; `kimi-tools-go`, `openai-tts-go` and `emote-go` do this with a small `reloadingPlugin` wrapper. On `tools_changed` the host re-reads both `list_tools` and `system_prompt`.
+
+Environment knobs: `EZYAPPER_PLUGIN_CONFIG_WATCH=off` disables watching, `EZYAPPER_PLUGIN_CONFIG_DEBOUNCE_MS` changes the debounce (default 500).
+
+All Go example plugins (`antispam`, `clank-o-meter`, `datetime`, `emote`, `kimi-tools`, `openai-tts`, `systemspec`) reload their config on save.
+
+Command-runtime plugins need no watcher: the host starts a new process for every tool call, so a plugin that reads `EZYAPPER_PLUGIN_CONFIG` on each run picks up an edited `config.yaml` on the next call, without a restart. See [Config changes](#config-changes) under Command Runtime.
 
 ### Implementing in Go
 
@@ -186,10 +315,6 @@ func (p *myPlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
     return true, nil
 }
 
-func (p *myPlugin) OnResponse(msg types.DiscordMessage, response string) error {
-    return nil
-}
-
 func (p *myPlugin) Shutdown() error { return nil }
 
 func main() {
@@ -211,14 +336,22 @@ Lifecycle:
 2. Tools registered with the AI tool registry.
 3. On a tool call: `exec.CommandContext` runs `command + args + arg_keys-mapped-values`.
 4. stdout is captured and returned to the LLM as the tool result. stderr is logged.
-5. Timeout: per-tool `timeout_ms` if set, else `command_timeout_sec * 1000`, else fail with "no timeout configured."
+5. Timeout: per-tool `timeout_ms` if set, else `command_timeout_sec`. The process is killed when it runs out.
 
 The host injects two environment variables into every plugin process:
 
 - `EZYAPPER_PLUGIN_PATH` — absolute path to the plugin's binary or directory.
-- `EZYAPPER_PLUGIN_CONFIG` — absolute path to a `config.yaml` next to the plugin (if one exists).
+- `EZYAPPER_PLUGIN_CONFIG` — absolute path of the plugin's `config.yaml` (always set; the file itself may not exist).
 
 All other env vars are filtered. Anything containing `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD`, `CREDENTIAL`, or `AUTH` is stripped before the subprocess starts. Plugins that need their own credentials should ship a `config.yaml` next to the binary and read it via `EZYAPPER_PLUGIN_CONFIG`.
+
+### Config changes
+
+Because every tool call is a fresh process, a command plugin reads its `config.yaml` again on every call. Edit and save the file and the next call uses the new values; the bot, the plugin's registration and other plugins are not touched. Nothing needs to watch the file.
+
+The difference from a `jsonrpc` plugin's hot reload: a fresh process has no previous config to fall back to. If the file is broken, the plugin exits non-zero, that call fails and its stderr appears in the bot's log (`plugin command execution failed: ...`); the plugin stays loaded and the first call after the file is fixed succeeds again.
+
+The manifest (`plugin.json`, including tool definitions and `timeout_ms`) is read when the plugin is loaded; changing it needs the plugin to be disabled and re-enabled (WebUI `/plugins`) or a plugin directory reload.
 
 ---
 
@@ -246,11 +379,13 @@ If a value fails sanitization, the tool call fails with an error and the LLM get
 
 | Setting | What it controls | Where |
 |---------|------------------|-------|
-| `default_tool_timeout_ms` | Default tool-call timeout when neither the manifest nor the JSON-RPC tool spec sets one | `operations.plugins.default_tool_timeout_ms` |
+| `default_tool_timeout_ms` | `execute_tool` timeout for a JSON-RPC tool whose spec sets no `timeout_ms` (not used by command tools) | `operations.plugins.default_tool_timeout_ms` |
 | `startup_timeout_sec` | Time to wait for the first `info` probe at boot | `operations.plugins.startup_timeout_sec` |
-| `rpc_timeout_sec` | Default JSON-RPC call timeout (`on_message`, `on_response`, `execute_tool`, …) | `operations.plugins.rpc_timeout_sec` |
+| `rpc_timeout_sec` | JSON-RPC calls other than `info`, `before_send` and `execute_tool`: `on_message`, `after_decision`, `after_send`, `system_prompt`, `list_tools`, `shutdown` | `operations.plugins.rpc_timeout_sec` |
 | `before_send_timeout_sec` | Specifically for `before_send` (longer because TTS, image gen, etc.) | `operations.plugins.before_send_timeout_sec` |
-| `command_timeout_sec` | Default for command-runtime tool execution | `operations.plugins.command_timeout_sec` |
+| `command_timeout_sec` | Command-runtime tool execution when the manifest's `timeout_ms` is `0` or absent | `operations.plugins.command_timeout_sec` |
+| `max_restarts` | Consecutive failed automatic restarts before the cooldown applies | `operations.plugins.max_restarts` |
+| `restart_cooldown_sec` | Wait after `max_restarts` failed restarts before trying again | `operations.plugins.restart_cooldown_sec` |
 | `shutdown_timeout_sec` | Grace period during graceful shutdown | `operations.plugins.shutdown_timeout_sec` |
 | `disable_timeout_sec` | Grace period when toggling a plugin off via the WebUI | `operations.plugins.disable_timeout_sec` |
 
@@ -288,7 +423,7 @@ The repo ships eleven example plugins under `examples/plugins/`. Each has its ow
 |-----------|----------|-----------|
 | `clank-o-meter-zig` | Zig | Same surface as `clank-o-meter-go`, written in Zig |
 | `datetime-zig` | Zig | Same surface as `datetime-go` |
-| `datetime-java` | Java | Same surface, requires JRE 17+. Uses `java -jar` in the manifest. |
+| `datetime-java` | Java | Same surface, requires JRE 17+. Runs `java -cp ./datetime-java.jar DatetimeTool` from the manifest. |
 | `systemspec-c` | C | Same surface as `systemspec-go`, native APIs (links `advapi32` on Windows) |
 
 CI builds prebuilt binaries for all of these on the platforms it targets — see [DEPLOYMENT.md](DEPLOYMENT.md).
@@ -304,4 +439,4 @@ CI builds prebuilt binaries for all of these on the platforms it targets — see
 | `plugin command not found` | Manifest's `command` path is wrong, or the file isn't executable |
 | `plugin command execution failed` | Subprocess returned non-zero. Check stderr in the bot's logs. |
 | `jsonrpc call timeout` | The plugin took longer than `rpc_timeout_sec` (or `before_send_timeout_sec`) to reply. Either it's stuck or you need to bump the timeout. |
-| `no timeout configured` | Both `default_tool_timeout_ms` and the per-tool/per-spec timeout are zero. Set one. |
+| `no timeout configured` | A JSON-RPC tool has no `timeout_ms` in its spec and `default_tool_timeout_ms` is `0`. Set one. (Command tools fall back to `command_timeout_sec` instead.) |

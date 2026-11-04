@@ -107,7 +107,9 @@ type MemoryService struct {
 	qdrant       *QdrantClient
 	consolidator *Consolidator
 	embedder     Embedder
-	config       *ServiceConfig
+	// swEmbedder is embedder as its swappable type (same object).
+	swEmbedder *SwappableEmbedder
+	config     *ServiceConfig
 
 	// Message counters for consolidation triggering (user-level for backward compat)
 	messageCounters map[string]int
@@ -127,6 +129,9 @@ type MemoryService struct {
 	wg          sync.WaitGroup
 
 	maintenance *MaintenanceWorker
+
+	// syncCancel stops the background vector sync on Close.
+	syncCancel context.CancelFunc
 }
 
 // ServiceConfig holds configuration parameters for the memory service.
@@ -202,9 +207,15 @@ func NewService(cfg *ServiceConfig, qdrantCfg *config.QdrantConfig, qdrantClient
 		return nil, fmt.Errorf("consolidation config is required")
 	}
 
+	// One swappable embedder shared by search and consolidation, so a hot
+	// reload of memory_pipeline.embedding reaches both at once.
+	swEmbedder := NewSwappableEmbedder(embedder)
+	embedder = swEmbedder
+
 	service := &MemoryService{
 		qdrant:                qdrantClient,
-		embedder:              embedder,
+		embedder:              swEmbedder,
+		swEmbedder:            swEmbedder,
 		config:                cfg,
 		messageCounters:       make(map[string]int),
 		channelCounters:       make(map[string]int),
@@ -217,10 +228,21 @@ func NewService(cfg *ServiceConfig, qdrantCfg *config.QdrantConfig, qdrantClient
 
 	service.startAccessWorker()
 
+	// Tier preparation and repair need a backing store; they are skipped for
+	// a bare &QdrantClient{} as used by unit tests.
+	if qdrantClient.store != nil {
+		// Copy a pre-split "memories" collection into the source tier before
+		// anything reads memories. This blocks startup on purpose: serving
+		// before the copy finished would make existing memories invisible.
+		if _, err := qdrantClient.MigrateLegacy(context.Background(), embedder); err != nil {
+			service.stopAccessWorker()
+			return nil, fmt.Errorf("migrate legacy memories: %w", err)
+		}
+	}
+
 	// Best-effort cleanup of damaged points left by previous OverwritePayload
-	// bug. Skipped when the gRPC client is nil (e.g. in unit tests using a
-	// bare &QdrantClient{}). Failure logs a warning but does not block startup.
-	if qdrantClient.client != nil {
+	// bug. Failure logs a warning but does not block startup.
+	if qdrantClient.store != nil {
 		repairCtx, repairCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		deleted, userIDs, repairErr := qdrantClient.RepairOrDeleteDamagedMemories(repairCtx, repairScanLimit)
 		repairCancel()
@@ -229,6 +251,10 @@ func NewService(cfg *ServiceConfig, qdrantCfg *config.QdrantConfig, qdrantClient
 		} else if deleted > 0 {
 			logger.Infof("[memory] startup repair: deleted %d damaged points, affected users: %v", deleted, userIDs)
 		}
+	}
+
+	if qdrantClient.store != nil {
+		service.startVectorSync()
 	}
 
 	logger.Info("[memory] Memory service initialized")
@@ -257,6 +283,12 @@ func (s *MemoryService) Search(ctx context.Context, userID string, query string,
 	}
 
 	logger.Debugf("[memory] searching for userID=%s query=%.50s topK=%d", userID, query, opts.TopK)
+	if strings.TrimSpace(query) == "" {
+		// Nothing to search with (a media-only message whose media gave no
+		// text); embedding "" fails with 400 on embedding APIs.
+		logger.Debugf("[memory] empty query for userID=%s, search skipped", userID)
+		return nil, nil
+	}
 
 	embedding, err := s.embedder.Embed(ctx, query)
 	if err != nil {
@@ -286,6 +318,10 @@ func (s *MemoryService) HybridSearch(ctx context.Context, userID string, query s
 		}
 	}
 
+	if strings.TrimSpace(query) == "" {
+		logger.Debugf("[memory] empty query for userID=%s, hybrid search skipped", userID)
+		return nil, nil
+	}
 	embedding, err := s.embedder.Embed(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate query embedding: %w", err)
@@ -594,12 +630,12 @@ func (s *MemoryService) GetStats(ctx context.Context) (*GlobalStats, error) {
 }
 
 func (s *MemoryService) CountMemories(ctx context.Context) (int64, error) {
-	count, err := s.qdrant.CountCollection(ctx, CollectionMemories)
+	count, err := s.qdrant.CountMemories(ctx)
 	return int64(count), err
 }
 
 func (s *MemoryService) CountProfiles(ctx context.Context) (int64, error) {
-	count, err := s.qdrant.CountCollection(ctx, CollectionProfiles)
+	count, err := s.qdrant.CountProfiles(ctx)
 	return int64(count), err
 }
 
@@ -678,6 +714,32 @@ func (s *MemoryService) startAccessWorker() {
 	}()
 }
 
+// startVectorSync fills the current vector collection from the source tier
+// in the background (re-embedding records that have no vector for the
+// configured model). Until it finishes, semantic search only sees records
+// that already have a vector; reads by ID or user are unaffected.
+func (s *MemoryService) startVectorSync() {
+	ctx, cancel := context.WithCancel(context.Background())
+	s.syncCancel = cancel
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		if _, err := s.qdrant.SyncVectors(ctx, s.embedder); err != nil {
+			if ctx.Err() != nil {
+				logger.Infof("[memory] vector sync interrupted by shutdown; it resumes on next start")
+				return
+			}
+			logger.Errorf("[memory] vector sync failed (it is retried on next start): %v", err)
+		}
+	}()
+}
+
+// stopAccessWorker stops the access worker during a failed construction.
+func (s *MemoryService) stopAccessWorker() {
+	close(s.done)
+	s.wg.Wait()
+}
+
 func (s *MemoryService) StartMaintenance(ctx context.Context) error {
 	if s.maintenance != nil {
 		return fmt.Errorf("maintenance already started")
@@ -697,8 +759,19 @@ func (s *MemoryService) Close() error {
 	if s.maintenance != nil {
 		s.maintenance.Stop()
 	}
+	if s.syncCancel != nil {
+		s.syncCancel()
+	}
 	close(s.done)
 	s.wg.Wait()
 	s.embedder.Stop()
 	return s.qdrant.Close()
+}
+
+// SwapEmbedder replaces the embedder used for search and consolidation and
+// stops the previous one.
+func (s *MemoryService) SwapEmbedder(e Embedder) {
+	if s.swEmbedder != nil {
+		s.swEmbedder.Swap(e)
+	}
 }

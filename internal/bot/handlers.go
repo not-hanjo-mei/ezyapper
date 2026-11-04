@@ -5,24 +5,63 @@ import (
 	"context"
 	"time"
 
-	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/types"
 
 	"github.com/bwmarrin/discordgo"
 )
 
-func (b *Bot) registerHandlers() {
-	b.session.AddHandler(b.onReady)
-	b.session.AddHandler(b.onMessageCreate)
-	b.session.AddHandler(b.onMessageUpdate)
-	b.session.AddHandler(b.onMessageDelete)
-	b.session.AddHandler(b.onGuildJoin)
-	b.session.AddHandler(b.onGuildLeave)
+// registerHandlers attaches the bot's event handlers to s. It runs for the
+// startup session and again for the session a token hot reload opens.
+//
+// While a reconnect is in progress two sessions are connected for a moment
+// (the new one is opened before the old one is closed, so a bad token never
+// takes the bot offline). Message and guild events are therefore only
+// handled when they come from the current session; otherwise the same
+// message could be answered twice. Ready is always handled: it registers the
+// slash command and presence on the session that sent it.
+func (b *Bot) registerHandlers(s *discordgo.Session) {
+	s.AddHandler(b.onReady)
+	s.AddHandler(func(s *discordgo.Session, e *discordgo.MessageCreate) {
+		if b.isCurrentSession(s) {
+			b.onMessageCreate(s, e)
+		}
+	})
+	s.AddHandler(func(s *discordgo.Session, e *discordgo.MessageUpdate) {
+		if b.isCurrentSession(s) {
+			b.onMessageUpdate(s, e)
+		}
+	})
+	s.AddHandler(func(s *discordgo.Session, e *discordgo.MessageDelete) {
+		if b.isCurrentSession(s) {
+			b.onMessageDelete(s, e)
+		}
+	})
+	s.AddHandler(func(s *discordgo.Session, e *discordgo.GuildCreate) {
+		if b.isCurrentSession(s) {
+			b.onGuildJoin(s, e)
+		}
+	})
+	s.AddHandler(func(s *discordgo.Session, e *discordgo.GuildDelete) {
+		if b.isCurrentSession(s) {
+			b.onGuildLeave(s, e)
+		}
+	})
+	s.AddHandler(func(s *discordgo.Session, e *discordgo.InteractionCreate) {
+		if b.isCurrentSession(s) {
+			b.onInteractionCreate(s, e)
+		}
+	})
+}
+
+// isCurrentSession reports whether s is the live session.
+func (b *Bot) isCurrentSession(s *discordgo.Session) bool {
+	return s != nil && s == b.sess()
 }
 
 func (b *Bot) onReady(s *discordgo.Session, r *discordgo.Ready) {
 	logger.Infof("[bot] Bot is ready! Serving %d guilds", len(r.Guilds))
+	b.registerClearCommand(s)
 
 	s.UpdateStatusComplex(discordgo.UpdateStatusData{
 		Status: "online",
@@ -94,10 +133,18 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		msg.ReplyToID = m.MessageReference.MessageID
 		if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
 			msg.ReplyToUsername = m.ReferencedMessage.Author.Username
+			msg.ReplyToAuthorID = m.ReferencedMessage.Author.ID
 			msg.ReplyToContent = m.ReferencedMessage.Content
 		} else {
 			msg.ReplyToUsername = "(deleted message)"
 		}
+	}
+
+	// Regex message filters: an ignored message is not answered, not buffered
+	// for consolidation and not counted toward it.
+	if ignored, rule := b.isFilteredOut(&msg); ignored {
+		logger.Infof("[filter] ignoring message %s from %s in channel %s (rule: %s)", m.ID, m.Author.Username, m.ChannelID, rule)
+		return
 	}
 
 	// Always add to channel buffer for complete conversation context in consolidation
@@ -131,7 +178,7 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 	pm.CancelFunc = cancel
 
 	// Fetch recent messages once for both decision and response paths
-	recentMessages, fetchErr := b.discordClient.FetchRecentMessages(ctx, m.ChannelID, b.cfg().Memory.ShortTermLimit)
+	recentMessages, fetchErr := b.fetchContextMessages(ctx, m.ChannelID, b.cfg().Memory.ShortTermLimit)
 	if fetchErr != nil {
 		logger.Warnf("[bot] Failed to fetch recent messages for decision: %v", fetchErr)
 	}
@@ -146,6 +193,15 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		}
 	}
 
+	// An edit that arrived while we were fetching context (PhaseReceived)
+	// only updated pm; decide on the edited text, not the original.
+	if pm.GetEditCount() > 0 {
+		if edited := pm.GetContent(); edited != m.Content {
+			logger.Infof("[edit] Message %s was edited before the decision, using edited content", m.ID)
+			m.Content = edited
+		}
+	}
+
 	pm.SetPhase(PhaseDeciding)
 	shouldRespond, reason := b.ShouldRespond(messageCtx, m, recentMessages)
 	logger.Infof("[bot] Message from %s: shouldRespond=%v, reason=%s", m.Author.Username, shouldRespond, reason)
@@ -156,7 +212,13 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		return
 	}
 
-	if b.cfg().AI.Vision.Mode == config.VisionModeTextOnly {
+	if !b.runAfterDecision(messageCtx, m, reason, pm) {
+		b.removeProcessingMessageIfMatch(m.ID, pm)
+		cancel()
+		return
+	}
+
+	if !b.cfg().AI.Modalities.Image.Enabled {
 		b.wg.Add(1)
 		go b.processMessageWithoutImages(messageCtx, s, m, pm, recentMessages)
 		return
@@ -164,4 +226,24 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 
 	b.wg.Add(1)
 	go b.processMessage(messageCtx, s, m, pm, recentMessages)
+}
+
+// runAfterDecision runs the plugins' after_decision hook once the bot has
+// decided to reply. It stores injected prompt context on pm and returns false
+// when a plugin cancelled the reply.
+func (b *Bot) runAfterDecision(ctx context.Context, m *discordgo.MessageCreate, reason string, pm *ProcessingMessage) bool {
+	if b.pluginManager == nil {
+		return true
+	}
+	cancelled, blocks := b.pluginManager.AfterDecision(ctx, types.FromDiscordgo(m), reason)
+	if cancelled {
+		logger.Infof("[bot] reply to message %s cancelled by a plugin after decision", m.ID)
+		return false
+	}
+	if pm != nil {
+		pm.mu.Lock()
+		pm.InjectedContext = blocks
+		pm.mu.Unlock()
+	}
+	return true
 }

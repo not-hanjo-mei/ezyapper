@@ -3,8 +3,8 @@ package bot
 import (
 	"context"
 
-	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
+	"ezyapper/internal/types"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -31,7 +31,8 @@ func (b *Bot) onMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) 
 		return
 	}
 
-	logger.Infof("[message edited] id=%s author=%s new_content=%q", m.ID, m.Author.Username, m.Content)
+	// Keep the consolidation buffer in sync with the edit.
+	b.updateChannelBufferContent(m.ChannelID, m.ID, m.Content)
 
 	// Get the processing message.
 	oldPm := b.getProcessingMessage(m.ID)
@@ -40,6 +41,16 @@ func (b *Bot) onMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) 
 		logger.Debugf("[edit] Message %s not in processing queue, ignoring", m.ID)
 		return
 	}
+
+	// MESSAGE_UPDATE also fires when Discord unfurls a link or attaches an
+	// embed. The text did not change, so cancelling and regenerating would
+	// only waste a generation and risk a duplicate reply.
+	if m.Content == oldPm.GetContent() {
+		logger.Debugf("[edit] Message %s updated without a content change (embed/unfurl), ignoring", m.ID)
+		return
+	}
+
+	logger.Infof("[message edited] id=%s author=%s new_content=%q", m.ID, m.Author.Username, m.Content)
 
 	logger.Infof("[edit] Found processing message %s in phase %d, old_content=%q", m.ID, oldPm.GetPhase(), oldPm.GetContent())
 
@@ -67,23 +78,35 @@ func (b *Bot) onMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) 
 		tempMsg.Message.Content = m.Content
 	}
 
+	// Re-fetch context: the decision and the response both need the
+	// conversation, which used to be passed as nil here.
+	var recentMessages []*types.DiscordMessage
+	if b.discordClient != nil {
+		fetched, fetchErr := b.fetchContextMessages(messageCtx, m.ChannelID, b.cfg().Memory.ShortTermLimit)
+		if fetchErr != nil {
+			logger.Warnf("[reprocess] Failed to fetch recent messages for edited message %s: %v", m.ID, fetchErr)
+		} else {
+			recentMessages = fetched
+		}
+	}
+
 	logger.Infof("[reprocess] Re-evaluating message %s with content=%q", m.ID, tempMsg.Content)
-	shouldRespond, reason := b.ShouldRespond(messageCtx, tempMsg, nil)
+	shouldRespond, reason := b.shouldRespond(messageCtx, tempMsg, recentMessages, respondOptions{reEvaluation: true})
 	logger.Infof("[reprocess] Message %s re-decision: shouldRespond=%v, reason=%s", m.ID, shouldRespond, reason)
 
-	if !shouldRespond {
+	if !shouldRespond || !b.runAfterDecision(messageCtx, tempMsg, reason, newPm) {
 		b.clearProcessingMessage(newPm, m.ID)
 		cancel()
 		return
 	}
 
 	// Re-process with updated content.
-	if b.cfg().AI.Vision.Mode == config.VisionModeTextOnly {
+	if !b.cfg().AI.Modalities.Image.Enabled {
 		b.wg.Add(1)
-		go b.processMessageWithoutImages(messageCtx, s, tempMsg, newPm, nil)
+		go b.processMessageWithoutImages(messageCtx, s, tempMsg, newPm, recentMessages)
 	} else {
 		b.wg.Add(1)
-		go b.processMessage(messageCtx, s, tempMsg, newPm, nil)
+		go b.processMessage(messageCtx, s, tempMsg, newPm, recentMessages)
 	}
 }
 

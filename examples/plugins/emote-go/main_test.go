@@ -187,11 +187,11 @@ func TestExecuteTool_Unknown(t *testing.T) {
 	}
 }
 
-func TestOnResponse_NoQueueEntry(t *testing.T) {
+func TestAfterSend_NoQueueEntry(t *testing.T) {
 	p := newTestPlugin(t)
 	msg := types.DiscordMessage{ChannelID: "no-queue"}
-	if err := p.OnResponse(msg, "response text"); err != nil {
-		t.Fatalf("OnResponse should return nil: %v", err)
+	if err := p.AfterSend(plugin.AfterSendArgs{Message: msg, Response: "response text"}); err != nil {
+		t.Fatalf("AfterSend should return nil: %v", err)
 	}
 }
 

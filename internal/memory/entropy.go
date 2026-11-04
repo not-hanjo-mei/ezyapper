@@ -23,6 +23,13 @@ func PassesEntropyGate(msg *DiscordMessage, cfg EntropyGateConfig) bool {
 		return false
 	}
 
+	// Images and processed audio/video carry information even when the
+	// message has no text (a voice message, a photo); the gate only judges
+	// the text.
+	if hasMediaContent(msg) {
+		return true
+	}
+
 	content := strings.TrimSpace(msg.Content)
 
 	// Check if purely emoji/reaction
@@ -52,4 +59,18 @@ var emojiPattern = regexp.MustCompile(`^[\p{So}\p{Sk}\p{Sm}\s\!\.\?\<\>\:\;\[\]\
 
 func isPurelyEmoji(s string) bool {
 	return emojiPattern.MatchString(s)
+}
+
+// hasMediaContent reports whether msg carries an image or an audio/video
+// attachment that was turned into text.
+func hasMediaContent(msg *DiscordMessage) bool {
+	if len(msg.ImageURLs) > 0 {
+		return true
+	}
+	for _, a := range msg.Media {
+		if strings.TrimSpace(a.Text) != "" {
+			return true
+		}
+	}
+	return false
 }

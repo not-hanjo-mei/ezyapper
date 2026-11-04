@@ -3,79 +3,11 @@ package bot
 import (
 	"context"
 	"errors"
-	"fmt"
-	"strings"
-	"time"
 
 	"ezyapper/internal/logger"
-	"ezyapper/internal/memory"
-	"ezyapper/internal/types"
 
 	"github.com/bwmarrin/discordgo"
 )
-
-// buildDynamicContext builds the dynamic user context that changes each request.
-// This content is appended to the user message rather than the system prompt
-// to preserve prompt caching benefits.
-func (b *Bot) buildDynamicContext(authorName string, profile *memory.Profile, memories []*memory.Record, recentMessages []*types.DiscordMessage) string {
-	var context strings.Builder
-
-	// User identification is included in <currentMessage> XML format.
-	// No need to repeat here.
-
-	if profile == nil {
-		context.WriteString("User profile: not available\n")
-	} else {
-		if profile.DisplayName != "" {
-			fmt.Fprintf(&context, "User profile for @%s:\n", profile.DisplayName)
-		} else {
-			context.WriteString("User profile:\n")
-		}
-
-		first := true
-		if len(profile.Traits) > 0 {
-			fmt.Fprintf(&context, "User traits: %s", strings.Join(profile.Traits, ", "))
-			first = false
-		}
-		if len(profile.Facts) > 0 {
-			facts := make([]string, 0, len(profile.Facts))
-			for k, v := range profile.Facts {
-				facts = append(facts, fmt.Sprintf("%s: %s", k, v))
-			}
-			if !first {
-				context.WriteString("\n")
-			}
-			fmt.Fprintf(&context, "User facts: %s", strings.Join(facts, ", "))
-			first = false
-		}
-		if len(profile.Preferences) > 0 {
-			prefs := make([]string, 0, len(profile.Preferences))
-			for k, v := range profile.Preferences {
-				prefs = append(prefs, fmt.Sprintf("%s: %s", k, v))
-			}
-			if !first {
-				context.WriteString("\n")
-			}
-			fmt.Fprintf(&context, "User preferences: %s", strings.Join(prefs, ", "))
-		}
-	}
-
-	// Add relevant memories.
-	if len(memories) > 0 {
-		cfg := b.cfg().Memory
-		multiplier := cfg.MemoryStrengthMultiplier
-		maxMentioned := cfg.Retrieval.MaxMentionedMemories
-		maxChannel := cfg.Retrieval.MaxChannelMemories
-		formatted := memory.FormatMemoriesForContext(memories, multiplier, time.Now(), maxMentioned, maxChannel)
-		if formatted != "" {
-			context.WriteString("\n")
-			context.WriteString(formatted)
-		}
-		logger.Debugf("[memory] added %d memories to dynamic context", len(memories))
-	}
-
-	return context.String()
-}
 
 func shouldSendGenerationFallback(err error) bool {
 	if err == nil {
@@ -90,7 +22,7 @@ func (b *Bot) addGenerationFailureReaction(s *discordgo.Session, m *discordgo.Me
 		return
 	}
 
-	const timeoutReaction = "棣冩媰"
+	const timeoutReaction = "💀"
 	if err := s.MessageReactionAdd(m.ChannelID, m.ID, timeoutReaction); err != nil {
 		logger.Warnf("[context] Failed to add generation timeout reaction: %v", err)
 	}

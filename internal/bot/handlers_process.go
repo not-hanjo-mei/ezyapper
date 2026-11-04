@@ -2,12 +2,14 @@ package bot
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"ezyapper/internal/ai"
-	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
+	"ezyapper/internal/media"
 	"ezyapper/internal/memory"
 	"ezyapper/internal/types"
 
@@ -72,7 +74,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		return
 	}
 
-	memories := b.searchMemories(ctx, m, recentMessages)
+	memories := b.searchMemories(ctx, m, recentMessages, b.currentMediaText(ctx, m, imageDescriptions))
 
 	if b.cancelledBefore(ctx, pm, m.ID, "profile fetch") {
 		return
@@ -87,7 +89,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 	})
 	defer cancelTyping()
 
-	mc, gc := b.buildModeContexts(m, displayName, guildName, imageURLs, imageDescriptions)
+	mc, gc := b.buildModeContexts(m, pm, displayName, guildName, imageURLs, imageDescriptions)
 
 	response, err := b.generateResponse(ctx, mc, gc, recentMessages, memories, profile)
 	if err != nil {
@@ -116,7 +118,8 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		return
 	}
 
-	if err := b.sendResponse(ctx, s, m, response); err != nil {
+	outcome, err := b.sendResponse(ctx, s, m, response)
+	if err != nil {
 		logger.Errorf("[processing] failed to send response for message %s: %v", m.ID, err)
 		b.clearProcessingMessage(pm, m.ID)
 		return
@@ -124,11 +127,12 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 
 	b.clearProcessingMessage(pm, m.ID)
 
+	if outcome.Skipped {
+		return
+	}
+
 	if b.pluginManager != nil {
-		dm := types.FromDiscordgo(m)
-		if err := b.pluginManager.OnResponse(ctx, dm, response); err != nil {
-			logger.Warnf("[processing] Plugin error in OnResponse: %v", err)
-		}
+		b.pluginManager.AfterSend(ctx, types.FromDiscordgo(m), outcome.Text, outcome.MessageIDs)
 	}
 
 	b.SetCooldown(m.Author.ID, time.Duration(b.cfg().Discord.CooldownSeconds)*time.Second)
@@ -148,17 +152,17 @@ func (b *Bot) extractMessageImages(ctx context.Context, m *discordgo.MessageCrea
 	imageDescriptions = make([]string, 0)
 
 	if withImages {
-		imageURLs = extractImageURLs(m.Message, b.cfg().AI.Vision.MaxImages)
+		img := b.cfg().AI.Modalities.Image
+		imageURLs = extractImageURLs(m.Message, img.MaxItems)
 
-		visionDescriber := b.getVisionDescriber()
-		if b.cfg().AI.Vision.Mode == config.VisionModeHybrid && len(imageURLs) > 0 && visionDescriber != nil {
-			descriptions, err := visionDescriber.DescribeImages(ctx, imageURLs)
+		describer := b.imageDescriber()
+		if img.Enabled && len(imageURLs) > 0 && describer != nil {
+			descriptions, err := describer.DescribeImages(ctx, imageURLs)
 			if err != nil {
 				logger.Warnf("[process] failed to describe images for message %s: %v", m.ID, err)
 			} else {
+				// DescribeImages cached them by image key.
 				imageDescriptions = descriptions
-				b.setHistoricalImageDescriptions(m.ID, imageURLs, descriptions)
-				logger.Debugf("[process] cached image descriptions for message %s count=%d", m.ID, len(descriptions))
 			}
 		}
 
@@ -169,8 +173,12 @@ func (b *Bot) extractMessageImages(ctx context.Context, m *discordgo.MessageCrea
 			AuthorID:          m.Author.ID,
 			Username:          m.Author.Username,
 			Content:           m.Content,
+			Embeds:            types.SummarizeEmbeds(m.Embeds),
+			Kinds:             types.MessageKinds(m.Message),
 			ImageURLs:         imageURLs,
 			ImageDescriptions: imageDescriptions,
+			Media:             types.ExtractMedia(m.Message),
+			Stickers:          types.ExtractStickers(m.Message),
 			Timestamp:         m.Timestamp,
 			IsBot:             m.Author.Bot,
 		}
@@ -179,6 +187,7 @@ func (b *Bot) extractMessageImages(ctx context.Context, m *discordgo.MessageCrea
 			msg.ReplyToID = m.MessageReference.MessageID
 			if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
 				msg.ReplyToUsername = m.ReferencedMessage.Author.Username
+				msg.ReplyToAuthorID = m.ReferencedMessage.Author.ID
 				content := m.ReferencedMessage.Content
 				msg.ReplyToContent = content
 			} else {
@@ -193,7 +202,7 @@ func (b *Bot) extractMessageImages(ctx context.Context, m *discordgo.MessageCrea
 func (b *Bot) fetchRecentMessagesIfEmpty(ctx context.Context, channelID string, recentMessages []*types.DiscordMessage) []*types.DiscordMessage {
 	if len(recentMessages) == 0 {
 		var fetchErr error
-		recentMessages, fetchErr = b.discordClient.FetchRecentMessages(ctx, channelID, b.cfg().Memory.ShortTermLimit)
+		recentMessages, fetchErr = b.fetchContextMessages(ctx, channelID, b.cfg().Memory.ShortTermLimit)
 		if fetchErr != nil {
 			logger.Warnf("[processing] Failed to fetch recent messages: %v", fetchErr)
 		}
@@ -201,16 +210,51 @@ func (b *Bot) fetchRecentMessagesIfEmpty(ctx context.Context, channelID string, 
 	return recentMessages
 }
 
-func (b *Bot) searchMemories(ctx context.Context, m *discordgo.MessageCreate, recentMessages []*types.DiscordMessage) []*memory.Record {
+// currentMediaText returns the text the enabled modalities turn the media of
+// the message being answered into: image descriptions, sticker text, audio
+// transcripts and video descriptions. Results are cached by attachment (or
+// sticker) ID, so the reply prompt built later reuses them.
+func (b *Bot) currentMediaText(ctx context.Context, m *discordgo.MessageCreate, imageDescriptions []string) string {
+	var sb strings.Builder
+	for i, d := range imageDescriptions {
+		fmt.Fprintf(&sb, "\n[Image %d: %s]", i+1, d)
+	}
+	if p := b.mediaProcessor(); p != nil && m != nil && m.Message != nil && m.Author != nil {
+		cur := types.FromDiscordgo(m)
+		sb.WriteString(p.AnnotateStickers(ctx, &cur, true))
+		sb.WriteString(p.AnnotateAV(ctx, &cur, media.AnnotateOptions{Current: true}).Text)
+	}
+	return sb.String()
+}
+
+// memorySearchQuery builds the memory search query for the message being
+// answered: its content and recent context, plus the text of its media. A
+// voice message has no content, so without its transcript the query could be
+// empty, and embedding "" fails (400). An empty result means: skip the search.
+func memorySearchQuery(content, mediaText string, recentMessages []*types.DiscordMessage, ownBotID string) string {
+	query, _ := memory.BuildSearchQuery(content, recentMessages, ownBotID)
+	if t := strings.TrimSpace(mediaText); t != "" {
+		query = strings.TrimSpace(query + "\n" + t)
+	}
+	return strings.TrimSpace(query)
+}
+
+func (b *Bot) searchMemories(ctx context.Context, m *discordgo.MessageCreate, recentMessages []*types.DiscordMessage, mediaText string) []*memory.Record {
 	memories := []*memory.Record{}
 	if b.cfg().Memory.Retrieval.TopK > 0 {
-		query, _ := memory.BuildSearchQuery(m.Content, recentMessages, b.cfg().Discord.OwnBotID)
+		query := memorySearchQuery(m.Content, mediaText, recentMessages, b.cfg().Discord.OwnBotID)
+		if query == "" {
+			logger.Debugf("[processing] message %s has no text to search memories with, user memory search skipped", m.ID)
+		}
 
 		var wg sync.WaitGroup
 		var userMemories, mentionedMemories, channelMemories []*memory.Record
 
 		// 1. User memories (always)
 		wg.Go(func() {
+			if query == "" {
+				return
+			}
 			mems, searchErr := b.memoryStore.Search(ctx, m.Author.ID, query, nil)
 			if searchErr != nil {
 				logger.Warnf("[processing] Failed to search user memories: %v", searchErr)
@@ -305,6 +349,9 @@ func (b *Bot) fetchProfileAndDisplayName(ctx context.Context, m *discordgo.Messa
 		profile = nil
 	}
 	displayName = m.Author.GlobalName
+	if m.Member != nil && m.Member.Nick != "" {
+		displayName = m.Member.Nick
+	}
 	if displayName == "" {
 		displayName = m.Author.Username
 	}
@@ -314,14 +361,19 @@ func (b *Bot) fetchProfileAndDisplayName(ctx context.Context, m *discordgo.Messa
 	return profile, displayName
 }
 
-func (b *Bot) buildModeContexts(m *discordgo.MessageCreate, displayName, guildName string, imageURLs, imageDescriptions []string) (ModeContext, GenerateContext) {
+func (b *Bot) buildModeContexts(m *discordgo.MessageCreate, pm *ProcessingMessage, displayName, guildName string, imageURLs, imageDescriptions []string) (ModeContext, GenerateContext) {
 	replyToUsername, replyToContent := extractReplyInfo(m)
+	replyToID := ""
+	if m.MessageReference != nil {
+		replyToID = m.MessageReference.MessageID
+	}
 	mc := ModeContext{
 		AIClient:        ai.NewClient(&b.cfg().AI, b.toolRegistry),
-		UserContent:     m.Content,
+		UserContent:     types.JoinContentAndEmbeds(m.Content, types.SummarizeEmbeds(m.Embeds)),
 		Username:        m.Author.Username,
 		UserID:          m.Author.ID,
 		DisplayName:     displayName,
+		ReplyToID:       replyToID,
 		ReplyToUsername: replyToUsername,
 		ReplyToContent:  replyToContent,
 		GuildID:         m.GuildID,
@@ -329,6 +381,12 @@ func (b *Bot) buildModeContexts(m *discordgo.MessageCreate, displayName, guildNa
 		MessageID:       m.ID,
 		GuildName:       guildName,
 		Mentions:        m.Mentions,
+		Current:         types.FromDiscordgo(m),
+	}
+	if pm != nil {
+		pm.mu.RLock()
+		mc.InjectedContext = pm.InjectedContext
+		pm.mu.RUnlock()
 	}
 	gc := GenerateContext{
 		ImageURLs:         imageURLs,

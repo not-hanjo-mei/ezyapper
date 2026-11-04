@@ -10,12 +10,13 @@ import (
 	"syscall"
 	"time"
 
-	"ezyapper/internal/ai"
-	"ezyapper/internal/ai/tools"
-	"ezyapper/internal/ai/vision"
+	"ezyapper/internal/app"
 	"ezyapper/internal/bot"
 	"ezyapper/internal/config"
+	"ezyapper/internal/discordvis"
+	"ezyapper/internal/hotreload"
 	"ezyapper/internal/logger"
+	"ezyapper/internal/media"
 	"ezyapper/internal/memory"
 	"ezyapper/internal/plugin"
 	"ezyapper/internal/web"
@@ -35,65 +36,88 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := logger.Init(logger.Config{
-		Level:      cfg.Logging.Level,
-		File:       cfg.Logging.File,
-		MaxSize:    cfg.Logging.MaxSize,
-		MaxBackups: cfg.Logging.MaxBackups,
-		MaxAge:     cfg.Logging.MaxAge,
-	}); err != nil {
+	// ffmpeg is optional, but an enabled option that needs it must not
+	// fail on the first message: refuse to start instead.
+	if _, err := media.CheckFFmpeg(context.Background(), cfg.AI.Modalities); err != nil {
+		fmt.Fprintf(os.Stderr, "Refusing to start: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := logger.Init(app.LoggerConfig(cfg.Logging)); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
 
 	logger.Info("[main] Starting EZyapper")
 
-	memoryService, err := initMemoryService(cfg)
+	// One media cache (image descriptions, transcripts, video descriptions
+	// by attachment ID) shared by the bot and memory consolidation, so each
+	// attachment is turned into text once.
+	mediaCache := media.NewCache(time.Duration(cfg.Discord.ImageCacheTTLMin)*time.Minute, cfg.Discord.ImageCacheMaxEntries)
+
+	memoryService, err := app.BuildMemoryService(cfg, mediaCache)
 	if err != nil {
 		logger.Fatalf("[main] Failed to initialize memory service: %v", err)
 	}
-	defer memoryService.Close()
+	// Bot and dashboard hold the proxy, so hot reload can replace the
+	// memory service underneath them.
+	memoryProxy := memory.NewSwappable(memoryService)
+	defer memoryProxy.Close()
 	logger.Info("[main] Memory service initialized")
 
-	if err := memoryService.StartMaintenance(context.Background()); err != nil {
+	if err := memoryProxy.StartMaintenance(context.Background()); err != nil {
 		logger.Warnf("[main] maintenance start failed: %v", err)
 	}
 
-	pluginManager := plugin.NewManager(cfg.Plugins.DefaultToolTimeoutMs,
-		cfg.Plugins.StartupTimeoutSec,
-		cfg.Plugins.RPCTimeoutSec,
-		cfg.Plugins.BeforeSendTimeoutSec,
-		cfg.Plugins.CommandTimeoutSec,
-		cfg.Plugins.ShutdownTimeoutSec,
-		cfg.Plugins.DisableTimeoutSec,
-		cfg.Plugins.MaxRestarts,
+	ps := app.PluginSettings(cfg.Plugins)
+	pluginManager := plugin.NewManager(ps.DefaultToolTimeoutMs,
+		ps.StartupTimeoutSec,
+		ps.RPCTimeoutSec,
+		ps.BeforeSendTimeoutSec,
+		ps.CommandTimeoutSec,
+		ps.ShutdownTimeoutSec,
+		ps.DisableTimeoutSec,
+		ps.MaxRestarts,
 		cfg.Plugins.RestartCooldownSec,
 	)
 
-	// Create shared config store (copy-on-write via atomic.Value)
+	// Shared config store (copy-on-write via atomic.Value). Every
+	// subsystem reads the live config from it; hot reload publishes here.
 	cfgStore := &atomic.Value{}
 	cfgStore.Store(cfg)
+	currentCfg := func() *config.Config { return cfgStore.Load().(*config.Config) }
 
-	discordBot, err := bot.New(cfgStore, memoryService, memoryService, memoryService, pluginManager)
+	discordBot, err := bot.New(cfgStore, memoryProxy, memoryProxy, memoryProxy, pluginManager, bot.WithMediaCache(mediaCache))
 	if err != nil {
 		logger.Fatalf("[main] Failed to create Discord bot: %v", err)
 	}
+	// A plugin that reloads its own config may change its tools; it sends
+	// tools_changed and the registry is refreshed here.
+	pluginManager.SetToolsChangedHandler(discordBot.RefreshPluginTools)
 
-	ctx := context.Background()
-	if err := discordBot.Start(ctx); err != nil {
+	if err := discordBot.Start(context.Background()); err != nil {
 		logger.Fatalf("[main] Failed to start Discord bot: %v", err)
 	}
 
-	s := discordBot.GetSession()
+	// The adapter resolves the session per call: a token hot reload
+	// replaces it.
 	discordAdapter := web.NewDiscordAdapter(
 		func(channelID string) string {
-			ch, err := s.State.Channel(channelID)
+			// Hidden channels fall back to the ID like unknown ones, so
+			// the dashboard never shows Discord's "___hidden___"
+			// placeholder and the configured entry stays visible.
+			st := discordBot.GetSession().State
+			ch, err := st.Channel(channelID)
 			if err != nil || ch == nil {
 				return channelID
 			}
-			return ch.Name
+			if name, ok := discordvis.Name(ch, discordvis.StatePermissions(st, discordvis.StateBotID(st))); ok {
+				return name
+			}
+			return channelID
 		},
 		func(guildID, userID string) string {
+			s := discordBot.GetSession()
 			member, err := s.State.Member(guildID, userID)
 			if err == nil && member != nil && member.User != nil {
 				return member.User.Username
@@ -105,16 +129,32 @@ func main() {
 			return userID
 		},
 		func(guildID string) string {
-			g, err := s.State.Guild(guildID)
+			g, err := discordBot.GetSession().State.Guild(guildID)
 			if err != nil || g == nil {
 				return guildID
 			}
 			return g.Name
 		},
 	)
-	webServer := web.NewServer(cfgStore, memoryService, memoryService, memoryService, pluginManager, discordBot, discordAdapter)
+	webServer := web.NewServer(cfgStore, memoryProxy, memoryProxy, memoryProxy, pluginManager, discordBot, discordAdapter)
+
+	// Config hot reload. Components are prepared in this order and
+	// committed in the same order once all of them prepared.
+	reloader := hotreload.New(cfgStore,
+		app.LoggingComponent{},
+		app.NewMemoryComponent(memoryProxy, mediaCache),
+		discordBot,
+		app.PluginsComponent{Manager: pluginManager},
+		webServer,
+	)
+	reloader.Register(reloader.WatcherComponent())
+	webServer.SetConfigApplier(app.Applier{R: reloader})
+
 	if err := webServer.Start(); err != nil {
 		logger.Warnf("[main] Failed to start web server: %v", err)
+	}
+	if err := reloader.Start(); err != nil {
+		logger.Warnf("[main] Config hot reload unavailable: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -126,7 +166,7 @@ func main() {
 				logger.Errorf("[cleanup] panic in cleanup routine: %v", r)
 			}
 		}()
-		runCleanupRoutine(ctx, cfg, discordBot)
+		runCleanupRoutine(ctx, currentCfg, discordBot)
 	}()
 
 	logger.Info("[main] Bot is now running. Press CTRL+C to exit.")
@@ -136,9 +176,10 @@ func main() {
 	<-quit
 
 	logger.Info("[main] Shutting down...")
+	reloader.Stop()
 	cancel() // Cancel the context to stop the cleanup routine
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.Operations.ShutdownTimeoutSec)*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Duration(currentCfg().Operations.ShutdownTimeoutSec)*time.Second)
 	defer cancel()
 
 	if err := webServer.Stop(shutdownCtx); err != nil {
@@ -160,133 +201,11 @@ func main() {
 	logger.Info("[main] Bot stopped. Goodbye!")
 }
 
-// initMemoryService initializes the memory service with Qdrant
-func initMemoryService(cfg *config.Config) (memory.Service, error) {
-	memoryEnabled := cfg.Memory.Retrieval.TopK > 0 || cfg.Memory.Consolidation.Enabled
-	if !memoryEnabled {
-		logger.Info("[main] Memory subsystem is disabled by config (retrieval.top_k=0 and consolidation.enabled=false)")
-		return memory.NewNoopService(), nil
-	}
-
-	embeddingAIConfig := buildEmbeddingAIConfig(cfg)
-	embedderClient := ai.NewClient(embeddingAIConfig, tools.NewToolRegistry())
-
-	consolidationConfig := &config.AIConfig{
-		LLMConfig: config.LLMConfig{
-			APIBaseURL:  cfg.AI.APIBaseURL,
-			APIKey:      cfg.AI.APIKey,
-			Model:       cfg.AI.Model,
-			Timeout:     cfg.AI.Timeout,
-			RetryCount:  cfg.AI.RetryCount,
-			MaxTokens:   cfg.AI.MaxTokens,
-			Temperature: cfg.AI.Temperature,
-		},
-		Vision: cfg.AI.Vision,
-	}
-	if cfg.Memory.Consolidation.APIBaseURL != "" {
-		consolidationConfig.APIBaseURL = cfg.Memory.Consolidation.APIBaseURL
-	}
-	if cfg.Memory.Consolidation.APIKey != "" {
-		consolidationConfig.APIKey = cfg.Memory.Consolidation.APIKey
-	}
-	if cfg.Memory.Consolidation.Model != "" {
-		consolidationConfig.Model = cfg.Memory.Consolidation.Model
-	}
-	if cfg.Memory.Consolidation.Timeout > 0 {
-		consolidationConfig.Timeout = cfg.Memory.Consolidation.Timeout
-	}
-	if cfg.Memory.Consolidation.RetryCount > 0 {
-		consolidationConfig.RetryCount = cfg.Memory.Consolidation.RetryCount
-	}
-	if cfg.Memory.Consolidation.MaxTokens > 0 {
-		consolidationConfig.MaxTokens = cfg.Memory.Consolidation.MaxTokens
-	}
-	if cfg.Memory.Consolidation.Temperature > 0 {
-		consolidationConfig.Temperature = cfg.Memory.Consolidation.Temperature
-	}
-	// Copy extra params from consolidation config
-	consolidationConfig.ExtraParams = cfg.Memory.Consolidation.ExtraParams
-	consolidationAIClient := ai.NewClient(consolidationConfig, tools.NewToolRegistry())
-
-	visionConfig, visionAIConfig := buildConsolidationVisionConfig(cfg, consolidationConfig)
-	visionClient := ai.NewClient(visionAIConfig, tools.NewToolRegistry())
-	visionDescriber := vision.NewVisionDescriber(visionClient, visionConfig, visionAIConfig)
-
-	embedder, err := memory.NewAIEmbedder(embedderClient, cfg.Embedding.Model)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create embedder: %w", err)
-	}
-
-	qdrantClient, err := memory.NewQdrantClient(context.Background(), &cfg.Qdrant)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create qdrant client: %w", err)
-	}
-
-	memoryCfg := &memory.ServiceConfig{
-		ConsolidationInterval: cfg.Memory.ConsolidationInterval,
-		ShortTermLimit:        cfg.Memory.ShortTermLimit,
-		TopK:                  cfg.Memory.Retrieval.TopK,
-		MinScore:              cfg.Memory.Retrieval.MinScore,
-		Consolidation:         &cfg.Memory.Consolidation,
-		OwnBotID:              cfg.Discord.OwnBotID,
-		OtherBotPolicy:        cfg.Discord.OtherBotPolicy,
-		MemorySearchLimit:     cfg.Memory.Consolidation.MemorySearchLimit,
-		MaxPaginatedLimit:     cfg.Memory.MaxPaginatedLimit,
-
-		MaintenanceIntervalSec:       cfg.Memory.MaintenanceIntervalSec,
-		MergeCronHourUTC:             cfg.Memory.MergeCronHourUTC,
-		SummarizeCronDay:             cfg.Memory.SummarizeCronDay,
-		MergeCosineThreshold:         cfg.Memory.MergeCosineThreshold,
-		PruneDecayThreshold:          cfg.Memory.PruneDecayThreshold,
-		PruneAgeDays:                 cfg.Memory.PruneAgeDays,
-		RelationshipPruneAgeDays:     cfg.Memory.RelationshipPruneAgeDays,
-		MaxMaintenanceLLMCallsPerDay: cfg.Memory.MaxMaintenanceLLMCallsPerDay,
-		EntropyMinUniqueWordRatio:    cfg.Memory.EntropyMinUniqueWordRatio,
-		RRFK:                         cfg.Memory.RRFK,
-		ContextMaxMemories:           cfg.Memory.ContextMaxMemories,
-		Scoring: memory.ScoringConfig{
-			Weights: memory.ScoringWeights{
-				Importance: cfg.Memory.Scoring.ImportanceWeight,
-				Recency:    cfg.Memory.Scoring.RecencyWeight,
-				Access:     cfg.Memory.Scoring.AccessWeight,
-				Confidence: cfg.Memory.Scoring.ConfidenceWeight,
-			},
-			DecayRates: map[memory.Type]float64{
-				memory.TypeFact:     cfg.Memory.DecayRates.Fact,
-				memory.TypeEpisode:  cfg.Memory.DecayRates.Episode,
-				memory.TypeInterest: cfg.Memory.DecayRates.Interest,
-				memory.TypeSummary:  cfg.Memory.DecayRates.Summary,
-			},
-			MemoryStrengthMultiplier: cfg.Memory.MemoryStrengthMultiplier,
-		},
-	}
-
-	return memory.NewService(memoryCfg, &cfg.Qdrant, qdrantClient, embedder, consolidationAIClient, visionDescriber)
-}
-
-func buildEmbeddingAIConfig(cfg *config.Config) *config.AIConfig {
-	embeddingCfg := cfg.AI
-
-	if cfg.Embedding.APIBaseURL != "" {
-		embeddingCfg.APIBaseURL = cfg.Embedding.APIBaseURL
-	}
-	if cfg.Embedding.APIKey != "" {
-		embeddingCfg.APIKey = cfg.Embedding.APIKey
-	}
-	embeddingCfg.RetryCount = cfg.Embedding.RetryCount
-	if cfg.Embedding.Timeout > 0 {
-		embeddingCfg.Timeout = cfg.Embedding.Timeout
-	}
-	if cfg.Embedding.ExtraParams != nil {
-		embeddingCfg.ExtraParams = cfg.Embedding.ExtraParams
-	}
-
-	return &embeddingCfg
-}
-
-// runCleanupRoutine runs periodic cleanup tasks
-func runCleanupRoutine(ctx context.Context, cfg *config.Config, discordBot *bot.Bot) {
-	ticker := time.NewTicker(time.Duration(cfg.Operations.CleanupIntervalMin) * time.Minute)
+// runCleanupRoutine runs periodic cleanup tasks. The interval is re-read
+// after every run so operations.runtime.cleanup_interval_min hot reloads.
+func runCleanupRoutine(ctx context.Context, cfg func() *config.Config, discordBot *bot.Bot) {
+	interval := time.Duration(cfg().Operations.CleanupIntervalMin) * time.Minute
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
@@ -294,43 +213,12 @@ func runCleanupRoutine(ctx context.Context, cfg *config.Config, discordBot *bot.
 		case <-ticker.C:
 			discordBot.CleanupCache()
 			logger.Debug("[main] Cleanup routine completed")
+			if next := time.Duration(cfg().Operations.CleanupIntervalMin) * time.Minute; next > 0 && next != interval {
+				interval = next
+				ticker.Reset(interval)
+			}
 		case <-ctx.Done():
 			return
 		}
 	}
-}
-
-func buildConsolidationVisionConfig(cfg *config.Config, baseConfig *config.AIConfig) (*config.VisionConfig, *config.AIConfig) {
-	visionConfig := cfg.AI.Vision
-	visionAIConfig := *baseConfig
-
-	if cfg.Memory.Consolidation.Vision.Model != "" {
-		visionAIConfig.Vision.Model = cfg.Memory.Consolidation.Vision.Model
-	}
-	if cfg.Memory.Consolidation.Vision.APIBaseURL != "" {
-		visionAIConfig.APIBaseURL = cfg.Memory.Consolidation.Vision.APIBaseURL
-	}
-	if cfg.Memory.Consolidation.Vision.APIKey != "" {
-		visionAIConfig.APIKey = cfg.Memory.Consolidation.Vision.APIKey
-	}
-	if cfg.Memory.Consolidation.Vision.MaxTokens > 0 {
-		visionAIConfig.MaxTokens = cfg.Memory.Consolidation.Vision.MaxTokens
-	}
-	if cfg.Memory.Consolidation.Vision.Temperature > 0 {
-		visionAIConfig.Temperature = cfg.Memory.Consolidation.Vision.Temperature
-	}
-	if cfg.Memory.Consolidation.Vision.RetryCount > 0 {
-		visionAIConfig.RetryCount = cfg.Memory.Consolidation.Vision.RetryCount
-	}
-	if cfg.Memory.Consolidation.Vision.Timeout > 0 {
-		visionAIConfig.Timeout = cfg.Memory.Consolidation.Vision.Timeout
-	}
-
-	// VisionBase64 is a boolean override that is always applied (not zero-dependent)
-	visionAIConfig.Vision.Base64 = cfg.Memory.Consolidation.Vision.Base64
-
-	// Copy extra params from consolidation vision config (if any specific ones are set)
-	// Note: VisionConfig.ExtraParams is applied in VisionDescriber, not here
-
-	return &visionConfig, &visionAIConfig
 }

@@ -69,7 +69,7 @@ func callJSONRPCWithTimeout(
 	case err := <-done:
 		return err
 	case <-timer.C:
-		client.dead.Store(true)
+		client.markDead(fmt.Sprintf("call %s timed out after %dms", method, timeout/time.Millisecond))
 		client.Close() // Close pipes to unblock blocked Decode() calls
 		return fmt.Errorf("jsonrpc call timeout (%dms): %s", timeout/time.Millisecond, method)
 	}
@@ -87,23 +87,6 @@ func callPluginOnMessageWithTimeout(
 
 	if plugin.jsonrpc != nil {
 		return callJSONRPCWithTimeout(plugin.jsonrpc, plugin.wg, "on_message", msg, reply, timeout)
-	}
-
-	return fmt.Errorf("plugin %s has no jsonrpc transport", plugin.Name)
-}
-
-func callPluginOnResponseWithTimeout(
-	plugin *Client,
-	args ResponseArgs,
-	reply *struct{},
-	timeout time.Duration,
-) error {
-	if plugin == nil {
-		return fmt.Errorf("plugin is nil")
-	}
-
-	if plugin.jsonrpc != nil {
-		return callJSONRPCWithTimeout(plugin.jsonrpc, plugin.wg, "on_response", args, reply, timeout)
 	}
 
 	return fmt.Errorf("plugin %s has no jsonrpc transport", plugin.Name)

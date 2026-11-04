@@ -109,10 +109,6 @@ func (p *kimiToolsPlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	return true, nil
 }
 
-func (p *kimiToolsPlugin) OnResponse(msg types.DiscordMessage, response string) error {
-	return nil
-}
-
 func (p *kimiToolsPlugin) Shutdown() error {
 	p.http.CloseIdleConnections()
 	return nil
@@ -441,7 +437,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := pluginserver.Serve(p); err != nil {
+	r := &reloadingPlugin{}
+	r.cur.Store(p)
+	w := r.watch()
+	defer w.Close()
+
+	if err := pluginserver.Serve(r); err != nil {
 		fmt.Fprintf(os.Stderr, "[KIMI-TOOLS] Error: %v\n", err)
 		os.Exit(1)
 	}

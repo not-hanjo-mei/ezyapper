@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -11,7 +12,10 @@ import (
 	"ezyapper/internal/config"
 )
 
-func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier RuntimeConfigApplier) http.HandlerFunc {
+// ConfigHandler renders and saves the settings page. With an applier the new
+// config is applied through it (hot reload: prepare, commit or roll back)
+// before it is written to disk; without one it is only stored.
+func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, applier ConfigApplier) http.HandlerFunc {
 	var configMu sync.Mutex
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -55,21 +59,8 @@ func ConfigHandler(cfgStore *atomic.Value, ts *TemplateSet, runtimeApplier Runti
 				return
 			}
 
-			// Store new config first so ApplyRuntimeConfig reads the updated values
-			cfgStore.Store(&newCfg)
-
-			if runtimeApplier != nil {
-				if err := runtimeApplier.ApplyRuntimeConfig(); err != nil {
-					// Revert to old config on runtime apply failure
-					cfgStore.Store(oldCfg)
-					renderConfigError(w, r, ts, cfgStore, "Failed to apply runtime config: "+err.Error())
-					return
-				}
-			}
-
-			if err := newCfg.Save(); err != nil {
-				cfgStore.Store(oldCfg)
-				renderConfigError(w, r, ts, cfgStore, "Failed to save config: "+err.Error())
+			if err := commitConfig(r.Context(), cfgStore, applier, oldCfg, &newCfg); err != nil {
+				renderConfigError(w, r, ts, cfgStore, err.Error())
 				return
 			}
 
@@ -131,7 +122,6 @@ var configFormAppliers = []configFieldApplier{
 		return nil
 	}},
 	{formKey: "model", apply: func(c *config.Config, v string) error { c.AI.Model = v; return nil }},
-	{formKey: "vision_model", apply: func(c *config.Config, v string) error { c.AI.Vision.Model = v; return nil }},
 	{formKey: "max_tokens", apply: func(c *config.Config, v string) error {
 		tok, err := strconv.Atoi(v)
 		if err != nil {
@@ -150,8 +140,22 @@ var configFormAppliers = []configFieldApplier{
 		return nil
 	}},
 	{formKey: "system_prompt", apply: func(c *config.Config, v string) error { c.AI.SystemPrompt = v; return nil }},
-	{formKey: "vision_mode", apply: func(c *config.Config, v string) error { c.AI.Vision.Mode = config.VisionMode(v); return nil }},
-	{formKey: "vision_description_prompt", apply: func(c *config.Config, v string) error { c.AI.Vision.DescriptionPrompt = v; return nil }},
+	{formKey: "image_enabled", apply: boolApplier("image_enabled", func(c *config.Config, b bool) { c.AI.Modalities.Image.Enabled = b })},
+	{formKey: "image_model", apply: func(c *config.Config, v string) error { c.AI.Modalities.Image.Model = v; return nil }},
+	{formKey: "image_prompt", apply: func(c *config.Config, v string) error { c.AI.Modalities.Image.Prompt = v; return nil }},
+	{formKey: "image_max_items", apply: func(c *config.Config, v string) error {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("image_max_items must be a whole number")
+		}
+		c.AI.Modalities.Image.MaxItems = n
+		return nil
+	}},
+	{formKey: "audio_enabled", apply: boolApplier("audio_enabled", func(c *config.Config, b bool) { c.AI.Modalities.Audio.Enabled = b })},
+	{formKey: "audio_mode", apply: func(c *config.Config, v string) error { c.AI.Modalities.Audio.Mode = config.AudioMode(v); return nil }},
+	{formKey: "audio_model", apply: func(c *config.Config, v string) error { c.AI.Modalities.Audio.Model = v; return nil }},
+	{formKey: "video_enabled", apply: boolApplier("video_enabled", func(c *config.Config, b bool) { c.AI.Modalities.Video.Enabled = b })},
+	{formKey: "video_model", apply: func(c *config.Config, v string) error { c.AI.Modalities.Video.Model = v; return nil }},
 	{formKey: "consolidation_interval", apply: func(c *config.Config, v string) error {
 		val, err := strconv.Atoi(v)
 		if err != nil {
@@ -186,6 +190,18 @@ var configFormAppliers = []configFieldApplier{
 	}},
 }
 
+// boolApplier parses "true"/"false" select values.
+func boolApplier(key string, set func(*config.Config, bool)) func(*config.Config, string) error {
+	return func(c *config.Config, v string) error {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return fmt.Errorf("%s must be true or false", key)
+		}
+		set(c, b)
+		return nil
+	}
+}
+
 func renderConfigError(w http.ResponseWriter, r *http.Request, ts *TemplateSet, cfgStore *atomic.Value, message string) {
 	cfg, ok := cfgStore.Load().(*config.Config)
 	if !ok {
@@ -208,4 +224,29 @@ func renderConfigError(w http.ResponseWriter, r *http.Request, ts *TemplateSet, 
 		Data:     cfg,
 		NavItems: navItems,
 	})
+}
+
+// commitConfig makes next live and writes it to disk. With an applier,
+// next is applied first (a failure leaves the running config untouched);
+// if writing the file then fails, old is applied again so the running
+// state matches the file. Without an applier next is only stored.
+func commitConfig(ctx context.Context, cfgStore *atomic.Value, applier ConfigApplier, old, next *config.Config) error {
+	if applier != nil {
+		if err := applier.ApplyConfig(ctx, next); err != nil {
+			return fmt.Errorf("Failed to apply config: %w", err)
+		}
+	} else {
+		cfgStore.Store(next)
+	}
+	if err := next.Save(); err != nil {
+		if applier != nil {
+			if rerr := applier.ApplyConfig(ctx, old); rerr != nil {
+				return fmt.Errorf("Failed to save config: %v (and restoring the previous config failed: %v)", err, rerr)
+			}
+		} else {
+			cfgStore.Store(old)
+		}
+		return fmt.Errorf("Failed to save config: %w", err)
+	}
+	return nil
 }

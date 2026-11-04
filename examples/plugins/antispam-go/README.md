@@ -79,7 +79,6 @@ log_detection: true
 
 - `OnMessage` returns `false` when user exceeds limit, blocking normal bot processing for that message.
 - `OnMessage` returns `true` when under limit.
-- `OnResponse` is no-op.
 
 ## Troubleshooting
 

@@ -1,22 +1,53 @@
-// Package decision provides LLM-based reply decisions for whether the bot should respond to a message.
+// Package decision decides whether the bot should respond to a message,
+// using either a chat LLM or a System One decision model.
 package decision
 
 import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
 	"ezyapper/internal/ai"
 	"ezyapper/internal/ai/llmjson"
 	"ezyapper/internal/config"
+	"ezyapper/internal/httpcapture"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/retry"
 
 	openai "github.com/sashabaranov/go-openai"
 )
 
+// Decider decides whether the bot should reply to a message that neither
+// mentions it nor replies to it. The bot depends only on this interface, so
+// the decision backend (core.decision.provider) can change without touching
+// the message pipeline.
+type Decider interface {
+	// ShouldRespondWithInfo returns the verdict for msgInfo given the recent
+	// channel context. botName is the configured bot name; providers that
+	// do not substitute placeholders ignore it. An error means "no verdict":
+	// the caller applies its own fallback.
+	ShouldRespondWithInfo(ctx context.Context, botName string, msgInfo MessageInfo, imageCount int, recentMessages []ContextMessage) (*DecisionResult, error)
+}
+
+// New builds the Decider selected by cfg.Provider.
+func New(cfg *config.DecisionConfig) (Decider, error) {
+	switch p := cfg.EffectiveProvider(); p {
+	case config.DecisionProviderLLM:
+		return NewDecisionService(cfg)
+	case config.DecisionProviderSystemOne:
+		return NewSystemOneService(&cfg.SystemOne)
+	default:
+		return nil, fmt.Errorf("unsupported decision provider %q", p)
+	}
+}
+
+var _ Decider = (*DecisionService)(nil)
+
+// DecisionService is the "llm" provider: it asks an OpenAI-compatible chat
+// model for a JSON verdict.
 type DecisionService struct {
 	config     *config.DecisionConfig
 	client     *openai.Client
@@ -35,6 +66,10 @@ type MessageInfo struct {
 	Content    string
 	ReplyTo    string
 	ReplyToID  string
+	// IsBot and Timestamp are used by the system_one state; the llm
+	// prompt does not include them.
+	IsBot     bool
+	Timestamp time.Time
 }
 
 type ContextMessage struct {
@@ -43,6 +78,9 @@ type ContextMessage struct {
 	Content    string
 	IsBot      bool
 	Timestamp  time.Time
+	// ReplyTo is the username of the replied-to message's author, if any.
+	// Used by the system_one state; the llm prompt does not include it.
+	ReplyTo string
 }
 
 func NewDecisionService(cfg *config.DecisionConfig) (*DecisionService, error) {
@@ -58,7 +96,7 @@ func NewDecisionService(cfg *config.DecisionConfig) (*DecisionService, error) {
 	openaiConfig.BaseURL = cfg.APIBaseURL
 
 	httpTimeout := time.Duration(cfg.Timeout) * time.Second
-	httpClient := &http.Client{Timeout: httpTimeout}
+	httpClient := httpcapture.Wrap(&http.Client{Timeout: httpTimeout}, "decision:"+cfg.Model)
 	openaiConfig.HTTPClient = httpClient
 
 	return &DecisionService{
@@ -164,8 +202,12 @@ func (d *DecisionService) buildPromptsWithInfo(botName string, msgInfo MessageIn
 	var userPrompt strings.Builder
 
 	if len(recentMessages) > 0 {
+		// Discord returns history newest first; the model reads a
+		// conversation top to bottom, so render it oldest first.
+		ordered := slices.Clone(recentMessages)
+		slices.SortStableFunc(ordered, func(a, b ContextMessage) int { return a.Timestamp.Compare(b.Timestamp) })
 		userPrompt.WriteString("<context>\n")
-		for _, msg := range recentMessages {
+		for _, msg := range ordered {
 			timeStr := msg.Timestamp.UTC().Format(time.RFC3339)
 			fmt.Fprintf(&userPrompt, "\"%s\"{UserID=%s,Time=%s}: \"%s\"\n", msg.AuthorName, msg.AuthorID, timeStr, msg.Content)
 		}
@@ -179,9 +221,10 @@ func (d *DecisionService) buildPromptsWithInfo(botName string, msgInfo MessageIn
 	}
 	userPrompt.WriteString("</currentMessage>")
 
-	systemPrompt := strings.ReplaceAll(d.config.SystemPrompt, "{BotName}", botName)
-
-	return systemPrompt, userPrompt.String()
+	// The system prompt is sent unchanged (static, cacheable); the bot's name
+	// is written literally in it.
+	_ = botName
+	return d.config.SystemPrompt, userPrompt.String()
 }
 
 func (d *DecisionService) parseResponse(content string) (*DecisionResult, error) {

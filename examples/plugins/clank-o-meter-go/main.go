@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"ezyapper/internal/plugin"
+	"ezyapper/internal/plugin/pluginconfig"
 	pluginserver "ezyapper/internal/plugin/server"
 	"ezyapper/internal/types"
 
@@ -29,7 +30,8 @@ type Config struct {
 }
 
 type ClankOMeterPlugin struct {
-	config Config
+	// config is swapped when the config file is edited (see watchConfig).
+	config *pluginconfig.Value[Config]
 }
 
 func pluginConfigPath() string {
@@ -104,10 +106,6 @@ func (p *ClankOMeterPlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	return true, nil
 }
 
-func (p *ClankOMeterPlugin) OnResponse(msg types.DiscordMessage, response string) error {
-	return nil
-}
-
 func (p *ClankOMeterPlugin) Shutdown() error {
 	return nil
 }
@@ -117,7 +115,7 @@ func (p *ClankOMeterPlugin) ListTools() ([]plugin.ToolSpec, error) {
 		{
 			Name:        "get_clank_o_meter",
 			Description: "Return deterministic score (0-100) for a Discord user ID",
-			TimeoutMs:   p.config.GetClankOMeterMs,
+			TimeoutMs:   p.config.Load().GetClankOMeterMs,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -175,9 +173,34 @@ func main() {
 		os.Exit(1)
 	}
 
-	p := &ClankOMeterPlugin{config: config}
+	p := &ClankOMeterPlugin{config: pluginconfig.NewValue(config)}
+	w := watchConfig(p)
+	defer w.Close()
+
 	if err := pluginserver.Serve(p); err != nil {
 		fmt.Fprintf(os.Stderr, "[CLANK-O-METER] Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// watchConfig reloads the config file when it is saved: the new file is
+// fully validated before it replaces the running config, and the host is
+// told to re-read tools and the system prompt section (tool timeouts or
+// prompt text may have changed). An invalid file is logged and ignored.
+func watchConfig(p *ClankOMeterPlugin) *pluginconfig.Watcher {
+	w, err := pluginconfig.Watch(pluginConfigPath(), pluginconfig.Options{Name: "CLANK-O-METER"}, func() error {
+		next, err := loadConfig()
+		if err != nil {
+			return err
+		}
+		p.config.Store(next)
+		if err := pluginserver.NotifyToolsChanged(); err != nil {
+			fmt.Fprintf(os.Stderr, "[CLANK-O-METER] config reloaded but the host could not be notified: %v\n", err)
+		}
+		return nil
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[CLANK-O-METER] config hot reload unavailable: %v\n", err)
+	}
+	return w
 }

@@ -26,8 +26,8 @@ func minimalConfigStore() *atomic.Value {
 			},
 		},
 		AI: config.AIConfig{
-			Vision: config.VisionConfig{
-				Mode: config.VisionModeHybrid,
+			Modalities: config.ModalitiesConfig{
+				Image: config.ImageModalityConfig{Enabled: true},
 			},
 		},
 	})
@@ -128,12 +128,12 @@ func TestProcessMessageCore_GuildLookupError(t *testing.T) {
 
 	cfgStore := minimalConfigStore()
 	b := &Bot{
-		session:            s,
 		ctx:                ctx,
 		cancel:             func() {},
 		configStore:        cfgStore,
 		processingMessages: map[string]*ProcessingMessage{},
 	}
+	b.session.Store(s)
 
 	m := newTestMessage("msg-4", "chan-1", "nonexistent-guild", "user-4", "dave", "test")
 	pm := &ProcessingMessage{MessageID: "msg-4"}

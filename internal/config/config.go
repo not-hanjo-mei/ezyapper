@@ -2,10 +2,16 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"math"
 	"os"
+	"reflect"
 	"strings"
+
+	"ezyapper/internal/filter"
 
 	"github.com/spf13/viper"
 	"go.uber.org/zap/zapcore"
@@ -14,28 +20,58 @@ import (
 
 // Config represents the complete application configuration
 type Config struct {
-	Discord    DiscordConfig    `mapstructure:"discord" yaml:"discord"`
-	AI         AIConfig         `mapstructure:"ai" yaml:"ai"`
-	Embedding  EmbeddingConfig  `mapstructure:"embedding" yaml:"embedding"`
-	Memory     MemoryConfig     `mapstructure:"memory" yaml:"memory"`
-	Web        WebConfig        `mapstructure:"web" yaml:"web"`
-	Logging    LoggingConfig    `mapstructure:"logging" yaml:"logging"`
-	Qdrant     QdrantConfig     `mapstructure:"qdrant" yaml:"qdrant"`
-	Blacklist  BlacklistConfig  `mapstructure:"blacklist" yaml:"blacklist"`
-	Whitelist  WhitelistConfig  `mapstructure:"whitelist" yaml:"whitelist"`
-	Plugins    PluginsConfig    `mapstructure:"plugins" yaml:"plugins"`
-	MCP        MCPConfig        `mapstructure:"mcp" yaml:"mcp"`
-	Decision   DecisionConfig   `mapstructure:"decision" yaml:"decision"`
-	Operations OperationsConfig `mapstructure:"operations" yaml:"operations"`
+	Discord   DiscordConfig   `mapstructure:"discord" yaml:"discord"`
+	AI        AIConfig        `mapstructure:"ai" yaml:"ai"`
+	Embedding EmbeddingConfig `mapstructure:"embedding" yaml:"embedding"`
+	Memory    MemoryConfig    `mapstructure:"memory" yaml:"memory"`
+	Web       WebConfig       `mapstructure:"web" yaml:"web"`
+	Logging   LoggingConfig   `mapstructure:"logging" yaml:"logging"`
+	Qdrant    QdrantConfig    `mapstructure:"qdrant" yaml:"qdrant"`
+	Blacklist BlacklistConfig `mapstructure:"blacklist" yaml:"blacklist"`
+	Whitelist WhitelistConfig `mapstructure:"whitelist" yaml:"whitelist"`
+	// MessageFilters holds regex allow/ignore rules (access_control.message_filters).
+	MessageFilters filter.Config    `mapstructure:"message_filters" yaml:"message_filters"`
+	Plugins        PluginsConfig    `mapstructure:"plugins" yaml:"plugins"`
+	MCP            MCPConfig        `mapstructure:"mcp" yaml:"mcp"`
+	Decision       DecisionConfig   `mapstructure:"decision" yaml:"decision"`
+	Operations     OperationsConfig `mapstructure:"operations" yaml:"operations"`
 
 	configPath string `yaml:"-"`
+	// messageFilter is MessageFilters compiled during validation.
+	messageFilter *filter.Filter
+}
+
+// MessageFilter returns the compiled message filter (nil allows everything).
+func (c *Config) MessageFilter() *filter.Filter {
+	if c == nil {
+		return nil
+	}
+	return c.messageFilter
 }
 
 // OperationsConfig holds operational runtime settings.
 type OperationsConfig struct {
 	ShutdownTimeoutSec int `mapstructure:"shutdown_timeout_sec" yaml:"shutdown_timeout_sec"`
 	CleanupIntervalMin int `mapstructure:"cleanup_interval_min" yaml:"cleanup_interval_min"`
+	// HotReload controls watching the config file and applying changes
+	// without a restart (operations.runtime.hot_reload).
+	HotReload HotReloadConfig `mapstructure:"hot_reload" yaml:"hot_reload"`
 }
+
+// HotReloadConfig controls config file watching.
+type HotReloadConfig struct {
+	// Enabled turns the config file watcher on.
+	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
+	// DebounceMs is the quiet period after the last file event before the
+	// file is reloaded. Required when Enabled.
+	DebounceMs int `mapstructure:"debounce_ms" yaml:"debounce_ms"`
+}
+
+// Hot reload debounce bounds (milliseconds).
+const (
+	MinHotReloadDebounceMs = 50
+	MaxHotReloadDebounceMs = 60000
+)
 
 // LLMConfig is the shared LLM client configuration embedded by all LLM-using configs.
 type LLMConfig struct {
@@ -49,11 +85,73 @@ type LLMConfig struct {
 	ExtraParams map[string]any `mapstructure:"extra_params" yaml:"extra_params"`
 }
 
-// DecisionConfig holds LLM-based reply decision settings
+// DecisionProvider selects the backend that decides whether to reply.
+type DecisionProvider string
+
+const (
+	// DecisionProviderLLM asks an OpenAI-compatible chat model for a JSON
+	// verdict. It is the default when core.decision.provider is absent so
+	// configs written before the provider field existed keep working.
+	DecisionProviderLLM DecisionProvider = "llm"
+	// DecisionProviderSystemOne asks a System One decision model (TypeSafe
+	// Jev) a yes/no "noul" question and thresholds the returned P(yes).
+	DecisionProviderSystemOne DecisionProvider = "system_one"
+)
+
+// DecisionConfig holds reply decision settings. The embedded LLMConfig and
+// SystemPrompt belong to the "llm" provider; SystemOne holds the settings of
+// the "system_one" provider. Only the selected provider's fields are
+// validated, so both blocks can stay in the file while switching providers.
 type DecisionConfig struct {
-	LLMConfig    `mapstructure:",squash"`
-	Enabled      bool   `mapstructure:"enabled" yaml:"enabled"`
-	SystemPrompt string `mapstructure:"system_prompt" yaml:"system_prompt"`
+	LLMConfig    `mapstructure:",squash" yaml:",inline"`
+	Enabled      bool             `mapstructure:"enabled" yaml:"enabled"`
+	Provider     DecisionProvider `mapstructure:"provider" yaml:"provider,omitempty"`
+	SystemPrompt string           `mapstructure:"system_prompt" yaml:"system_prompt"`
+	SystemOne    SystemOneConfig  `mapstructure:"system_one" yaml:"system_one,omitempty"`
+}
+
+// EffectiveProvider returns the configured provider, treating an absent
+// value as DecisionProviderLLM.
+func (d DecisionConfig) EffectiveProvider() DecisionProvider {
+	if d.Provider == "" {
+		return DecisionProviderLLM
+	}
+	return d.Provider
+}
+
+// RequestBudget returns the per-attempt timeout (seconds) and retry count of
+// the selected provider, so callers can size the overall decision deadline
+// without knowing which provider is active.
+func (d DecisionConfig) RequestBudget() (timeoutSec, retryCount int) {
+	if d.EffectiveProvider() == DecisionProviderSystemOne {
+		return d.SystemOne.Timeout, d.SystemOne.RetryCount
+	}
+	return d.Timeout, d.RetryCount
+}
+
+// SystemOneConfig configures the System One (TypeSafe Jev) decision
+// provider. Instructions and criteria are sent verbatim: no placeholder such
+// as {BotName} is substituted, so write the bot's name literally.
+type SystemOneConfig struct {
+	APIBaseURL string `mapstructure:"api_base_url" yaml:"api_base_url"`
+	APIKey     string `mapstructure:"api_key" yaml:"api_key"`
+	Model      string `mapstructure:"model" yaml:"model"`
+	Timeout    int    `mapstructure:"timeout" yaml:"timeout"`
+	RetryCount int    `mapstructure:"retry_count" yaml:"retry_count"`
+	// Threshold is the P(yes) the answer must exceed, in [0, 1). The bot
+	// replies only when Jev says yes (P(yes) > 0.5) AND P(yes) > Threshold
+	// (both strict), so a threshold at or below 0.5 just means "Jev says
+	// yes".
+	Threshold float64 `mapstructure:"threshold" yaml:"threshold"`
+	// Instructions is the yes/no question asked about the state.
+	Instructions string `mapstructure:"instructions" yaml:"instructions"`
+	// CriteriaTrue / CriteriaFalse optionally describe what a yes and a no
+	// mean. Set both or neither.
+	CriteriaTrue  string `mapstructure:"criteria_true" yaml:"criteria_true,omitempty"`
+	CriteriaFalse string `mapstructure:"criteria_false" yaml:"criteria_false,omitempty"`
+	// MaxStateBytes caps the JSON-encoded state; the oldest context messages
+	// are dropped first to stay within it.
+	MaxStateBytes int `mapstructure:"max_state_bytes" yaml:"max_state_bytes"`
 }
 
 // RateLimitConfig holds per-user rate limiting window settings.
@@ -88,18 +186,41 @@ type DiscordConfig struct {
 	TypingIndicatorIntervalSec int             `mapstructure:"typing_indicator_interval_sec" yaml:"typing_indicator_interval_sec"`
 	LongResponseDelayMs        int             `mapstructure:"long_response_delay_ms" yaml:"long_response_delay_ms"`
 
+	// ImageCacheTTLMin / ImageCacheMaxEntries bound the media text cache
+	// (image, audio and video results). Media the prompt window still shows
+	// is pinned and never expires or is evicted; other entries expire after
+	// ImageCacheTTLMin minutes without a read and, over ImageCacheMaxEntries,
+	// the least recently used go first.
 	ImageCacheTTLMin     int `mapstructure:"image_cache_ttl_min" yaml:"image_cache_ttl_min"`
 	ImageCacheMaxEntries int `mapstructure:"image_cache_max_entries" yaml:"image_cache_max_entries"`
+
+	// ClearCommand configures the /clear-context slash command (optional).
+	ClearCommand ClearCommandConfig `mapstructure:"clear_command" yaml:"clear_command,omitempty"`
+}
+
+// ClearCommandConfig controls the /clear-context slash command, which makes
+// the bot forget the conversation context of the channel it is run in.
+type ClearCommandConfig struct {
+	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
+	// AllowedUserIDs are the Discord user IDs allowed to run the command.
+	AllowedUserIDs []string `mapstructure:"allowed_user_ids" yaml:"allowed_user_ids"`
 }
 
 // AIConfig holds AI/LLM settings for chat
 type AIConfig struct {
-	LLMConfig               `mapstructure:",squash"`
-	Vision                  VisionConfig `mapstructure:"vision" yaml:"vision"`
-	SystemPrompt            string       `mapstructure:"system_prompt" yaml:"system_prompt"`
-	MaxToolIterations       int          `mapstructure:"max_tool_iterations" yaml:"max_tool_iterations"`
-	MaxImageBytes           int          `mapstructure:"max_image_bytes" yaml:"max_image_bytes"`
-	RequireImageContentType bool         `mapstructure:"require_image_content_type" yaml:"require_image_content_type"`
+	LLMConfig `mapstructure:",squash" yaml:",inline"`
+	// Modalities configures image, audio and video handling (optional).
+	Modalities ModalitiesConfig `mapstructure:"modalities" yaml:"modalities"`
+	// Vision is the deprecated pre-modalities block. It is only read: Load
+	// maps it onto Modalities.Image and clears it (see mapLegacyVision).
+	Vision            VisionConfig `mapstructure:"vision" yaml:"vision,omitempty"`
+	SystemPrompt      string       `mapstructure:"system_prompt" yaml:"system_prompt"`
+	MaxToolIterations int          `mapstructure:"max_tool_iterations" yaml:"max_tool_iterations"`
+	MaxImageBytes     int          `mapstructure:"max_image_bytes" yaml:"max_image_bytes"`
+
+	// modalitiesSet records that core.ai.modalities was present in the file
+	// (even with only zero values), so the legacy vision block is ignored.
+	modalitiesSet bool
 }
 
 // EmbeddingConfig holds settings for embedding generation.
@@ -120,8 +241,13 @@ type LongTermMemoryConfig struct {
 }
 
 type MemoryConfig struct {
-	ConsolidationInterval      int                  `mapstructure:"consolidation_interval" yaml:"consolidation_interval"`
-	ShortTermLimit             int                  `mapstructure:"short_term_limit" yaml:"short_term_limit"`
+	ConsolidationInterval int `mapstructure:"consolidation_interval" yaml:"consolidation_interval"`
+	ShortTermLimit        int `mapstructure:"short_term_limit" yaml:"short_term_limit"`
+	// ContextFlushWindow enables the anchored context window when > 0: the
+	// history grows from short_term_limit up to short_term_limit+this many
+	// messages, then drops the oldest block at once (prompt-cache friendly).
+	// 0 keeps the plain sliding window.
+	ContextFlushWindow         int                  `mapstructure:"context_flush_window" yaml:"context_flush_window"`
 	MaxPaginatedLimit          int                  `mapstructure:"max_paginated_limit" yaml:"max_paginated_limit"`
 	Retrieval                  RetrievalConfig      `mapstructure:"retrieval" yaml:"retrieval"`
 	Consolidation              ConsolidationConfig  `mapstructure:"consolidation" yaml:"consolidation"`
@@ -153,7 +279,7 @@ type MemoryConfig struct {
 }
 
 type ConsolidationConfig struct {
-	LLMConfig         `mapstructure:",squash"`
+	LLMConfig         `mapstructure:",squash" yaml:",inline"`
 	Enabled           bool         `mapstructure:"enabled" yaml:"enabled"`
 	Vision            VisionConfig `mapstructure:"vision" yaml:"vision"`
 	SystemPrompt      string       `mapstructure:"system_prompt" yaml:"system_prompt"`
@@ -256,23 +382,19 @@ type MCPServer struct {
 	Headers map[string]string `mapstructure:"headers" yaml:"headers"`
 }
 
-// VisionMode represents the vision processing mode
-type VisionMode string
-
-const (
-	VisionModeTextOnly   VisionMode = "text_only"
-	VisionModeHybrid     VisionMode = "hybrid"
-	VisionModeMultimodal VisionMode = "multimodal"
-)
-
-// VisionConfig holds vision processing settings
+// VisionConfig is the shape of the deprecated core.ai.vision block (mapped
+// onto core.ai.modalities.image at load) and of the optional
+// memory_pipeline.memory.consolidation.vision override, which routes image
+// descriptions made during consolidation to another model or endpoint.
 type VisionConfig struct {
-	LLMConfig         `mapstructure:",squash"`
-	Mode              VisionMode `mapstructure:"mode" yaml:"mode"`
-	DescriptionPrompt string     `mapstructure:"description_prompt" yaml:"description_prompt"`
-	Model             string     `mapstructure:"model" yaml:"model"`
-	Base64            bool       `mapstructure:"base64" yaml:"base64"`
-	MaxImages         int        `mapstructure:"max_images" yaml:"max_images"`
+	LLMConfig `mapstructure:",squash"`
+	// Mode is only read from the deprecated core.ai.vision block
+	// (text_only | hybrid | multimodal).
+	Mode              string `mapstructure:"mode" yaml:"mode,omitempty"`
+	DescriptionPrompt string `mapstructure:"description_prompt" yaml:"description_prompt,omitempty"`
+	Model             string `mapstructure:"model" yaml:"model,omitempty"`
+	Base64            bool   `mapstructure:"base64" yaml:"base64,omitempty"`
+	MaxImages         int    `mapstructure:"max_images" yaml:"max_images,omitempty"`
 }
 
 func Load(configPath string) (*Config, error) {
@@ -299,6 +421,22 @@ func Load(configPath string) (*Config, error) {
 		}
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
+	// Re-read the file viper found and parse that one snapshot twice: viper
+	// lowercases every key, and the yaml.v3 tree keeps the file's spelling
+	// for the maps whose keys are user data (see restoreKeyCase). Reading
+	// the bytes once keeps both views consistent while a hot-reloaded file
+	// is being rewritten.
+	data, err := os.ReadFile(v.ConfigFileUsed())
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+	if err := v.ReadConfig(bytes.NewReader(data)); err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+	var fileTree any
+	if err := yaml.Unmarshal(data, &fileTree); err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
 
 	var raw struct {
 		Core struct {
@@ -314,6 +452,7 @@ func Load(configPath string) (*Config, error) {
 		Access struct {
 			Blacklist BlacklistConfig `mapstructure:"blacklist"`
 			Whitelist WhitelistConfig `mapstructure:"whitelist"`
+			Filters   filter.Config   `mapstructure:"message_filters"`
 		} `mapstructure:"access_control"`
 		Operations struct {
 			Web     WebConfig        `mapstructure:"web"`
@@ -326,21 +465,30 @@ func Load(configPath string) (*Config, error) {
 	if err := v.Unmarshal(&raw); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+	restoreKeyCase(reflect.ValueOf(&raw).Elem(), fileTree)
 
+	raw.Core.AI.modalitiesSet = v.IsSet("core.ai.modalities")
+	for _, key := range removedKeys {
+		if v.IsSet(key.path) {
+			fmt.Fprintf(warningOutput, "[config][WARNING] %s is deprecated and ignored: %s\n", key.path, key.why)
+		}
+	}
+	warnStickerMode(v)
 	cfg := Config{
-		Discord:    raw.Core.Discord,
-		AI:         raw.Core.AI,
-		Decision:   raw.Core.Decision,
-		Embedding:  raw.MemoryPipe.Embedding,
-		Memory:     raw.MemoryPipe.Memory,
-		Qdrant:     raw.MemoryPipe.Qdrant,
-		Blacklist:  raw.Access.Blacklist,
-		Whitelist:  raw.Access.Whitelist,
-		Web:        raw.Operations.Web,
-		Logging:    raw.Operations.Logging,
-		Plugins:    raw.Operations.Plugins,
-		MCP:        raw.Operations.MCP,
-		Operations: raw.Operations.Runtime,
+		Discord:        raw.Core.Discord,
+		AI:             raw.Core.AI,
+		Decision:       raw.Core.Decision,
+		Embedding:      raw.MemoryPipe.Embedding,
+		Memory:         raw.MemoryPipe.Memory,
+		Qdrant:         raw.MemoryPipe.Qdrant,
+		Blacklist:      raw.Access.Blacklist,
+		Whitelist:      raw.Access.Whitelist,
+		MessageFilters: raw.Access.Filters,
+		Web:            raw.Operations.Web,
+		Logging:        raw.Operations.Logging,
+		Plugins:        raw.Operations.Plugins,
+		MCP:            raw.Operations.MCP,
+		Operations:     raw.Operations.Runtime,
 	}
 
 	if err := validate(&cfg); err != nil {
@@ -350,6 +498,30 @@ func Load(configPath string) (*Config, error) {
 	cfg.configPath = v.ConfigFileUsed()
 
 	return &cfg, nil
+}
+
+// warningOutput receives config warnings (Load runs before the logger is
+// set up). Tests replace it.
+var warningOutput io.Writer = os.Stderr
+
+// removedKeys are settings that no longer exist. A config that still sets
+// one loads (unknown keys are ignored) and gets a deprecation warning.
+var removedKeys = []struct{ path, why string }{
+	{"core.ai.require_image_content_type", "image downloads already reject non-image content types; remove the key"},
+	{"core.ai.modalities.sticker.mode", "core.ai.modalities.sticker.enabled is the only switch: true has a vision model describe the sticker image (Lottie stickers fall back to text), false uses only the sticker's name, description and tags (no model call); remove the key"},
+}
+
+// warnStickerMode adds a second warning for an old sticker config whose
+// meaning changed: mode text with enabled true used to mean "text only";
+// now enabled true reads the image with a vision model.
+func warnStickerMode(v *viper.Viper) {
+	const key = "core.ai.modalities.sticker.mode"
+	if !v.IsSet(key) {
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(v.GetString(key)), "text") && v.GetBool("core.ai.modalities.sticker.enabled") {
+		fmt.Fprintf(warningOutput, "[config][WARNING] %s \"text\" is ignored: core.ai.modalities.sticker.enabled true now has a vision model describe the sticker image; set enabled to false to keep using only the sticker's name, description and tags\n", key)
+	}
 }
 
 func requireNonEmpty(val string, path string, errs *[]string) {
@@ -380,43 +552,6 @@ func validateAI(cfg *Config, errs *[]string) {
 	requirePositive(cfg.AI.RetryCount, "core.ai.retry_count", errs)
 	requirePositive(cfg.AI.MaxToolIterations, "core.ai.max_tool_iterations", errs)
 	requirePositive(cfg.AI.MaxImageBytes, "core.ai.max_image_bytes", errs)
-	if !cfg.AI.Vision.Base64 {
-		fmt.Fprintf(os.Stderr, "WARNING: core.ai.vision.base64 is false - images will be sent as URLs (may not work with local endpoints)\n")
-	}
-}
-
-func validateVision(cfg *Config, errs *[]string) {
-	requireNonEmpty(string(cfg.AI.Vision.Mode), "core.ai.vision.mode", errs)
-	validVisionModes := map[VisionMode]bool{
-		VisionModeTextOnly:   true,
-		VisionModeHybrid:     true,
-		VisionModeMultimodal: true,
-	}
-	if !validVisionModes[cfg.AI.Vision.Mode] {
-		*errs = append(*errs, "core.ai.vision.mode must be one of: text_only, hybrid, multimodal")
-	}
-	if cfg.AI.Vision.Mode != VisionModeTextOnly && cfg.AI.Vision.Model == "" {
-		*errs = append(*errs, "core.ai.vision.model is required when vision.mode is not text_only")
-	}
-	if cfg.AI.Vision.Mode == VisionModeHybrid && cfg.AI.Vision.DescriptionPrompt == "" {
-		*errs = append(*errs, "core.ai.vision.description_prompt is required when vision.mode is hybrid")
-	}
-	if cfg.AI.Vision.MaxTokens != 0 {
-		requirePositive(cfg.AI.Vision.MaxTokens, "core.ai.vision.max_tokens", errs)
-	}
-	if cfg.AI.Vision.Mode != VisionModeTextOnly && cfg.AI.Vision.MaxTokens == 0 {
-		*errs = append(*errs, "core.ai.vision.max_tokens is required when vision.mode is not text_only")
-	}
-	if cfg.AI.Vision.Mode != VisionModeTextOnly {
-		if cfg.AI.Vision.APIBaseURL == "" && cfg.AI.APIBaseURL == "" {
-			*errs = append(*errs, "core.ai.vision.api_base_url is required when vision.mode is not text_only (or set core.ai.api_base_url)")
-		}
-		if cfg.AI.Vision.APIKey == "" && cfg.AI.APIKey == "" {
-			*errs = append(*errs, "core.ai.vision.api_key is required when vision.mode is not text_only (or set core.ai.api_key)")
-		}
-		requirePositive(cfg.AI.Vision.RetryCount, "core.ai.vision.retry_count", errs)
-		requirePositive(cfg.AI.Vision.Timeout, "core.ai.vision.timeout", errs)
-	}
 }
 
 func validateDiscord(cfg *Config, errs *[]string) {
@@ -480,6 +615,9 @@ func validateQdrant(cfg *Config, errs *[]string) {
 func validateMemory(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Memory.ConsolidationInterval, "memory_pipeline.memory.consolidation_interval", errs)
 	requirePositive(cfg.Memory.ShortTermLimit, "memory_pipeline.memory.short_term_limit", errs)
+	if cfg.Memory.ContextFlushWindow < 0 {
+		*errs = append(*errs, "memory_pipeline.memory.context_flush_window must be >= 0")
+	}
 	requirePositive(cfg.Memory.MaxPaginatedLimit, "memory_pipeline.memory.max_paginated_limit", errs)
 	if cfg.Memory.Retrieval.TopK < 0 {
 		*errs = append(*errs, "memory_pipeline.memory.retrieval.top_k must be greater than or equal to 0")
@@ -620,6 +758,21 @@ func validateOperations(cfg *Config, errs *[]string) {
 	requirePositive(cfg.Logging.MaxAge, "operations.logging.max_age", errs)
 	requirePositive(cfg.Operations.ShutdownTimeoutSec, "operations.runtime.shutdown_timeout_sec", errs)
 	requirePositive(cfg.Operations.CleanupIntervalMin, "operations.runtime.cleanup_interval_min", errs)
+	validateHotReload(cfg, errs)
+}
+
+func validateHotReload(cfg *Config, errs *[]string) {
+	hr := cfg.Operations.HotReload
+	if !hr.Enabled {
+		if hr.DebounceMs < 0 {
+			*errs = append(*errs, "operations.runtime.hot_reload.debounce_ms must be greater than or equal to 0")
+		}
+		return
+	}
+	if hr.DebounceMs < MinHotReloadDebounceMs || hr.DebounceMs > MaxHotReloadDebounceMs {
+		*errs = append(*errs, fmt.Sprintf("operations.runtime.hot_reload.debounce_ms must be between %d and %d when hot_reload is enabled (got %d)",
+			MinHotReloadDebounceMs, MaxHotReloadDebounceMs, hr.DebounceMs))
+	}
 }
 
 func validatePrompt(cfg *Config, errs *[]string) {
@@ -663,25 +816,61 @@ func validateConsolidation(cfg *Config, errs *[]string) {
 }
 
 func validateDecision(cfg *Config, errs *[]string) {
-	if !cfg.Decision.Enabled {
+	d := &cfg.Decision
+	// A misspelled provider is reported even while the decision is disabled,
+	// so flipping enabled on later does not surface a surprise.
+	switch d.Provider {
+	case "", DecisionProviderLLM, DecisionProviderSystemOne:
+	default:
+		*errs = append(*errs, fmt.Sprintf("core.decision.provider %q is invalid (must be one of: llm, system_one)", d.Provider))
 		return
 	}
-	requireNonEmpty(cfg.Decision.Model, "core.decision.model", errs)
-	requireNonEmpty(cfg.Decision.APIBaseURL, "core.decision.api_base_url", errs)
-	requireNonEmpty(cfg.Decision.APIKey, "core.decision.api_key", errs)
-	requireNonEmpty(cfg.Decision.SystemPrompt, "core.decision.system_prompt", errs)
-	if cfg.Decision.MaxTokens <= 0 {
+	if !d.Enabled {
+		return
+	}
+	if d.EffectiveProvider() == DecisionProviderSystemOne {
+		validateSystemOneDecision(&d.SystemOne, errs)
+		return
+	}
+	requireNonEmpty(d.Model, "core.decision.model", errs)
+	requireNonEmpty(d.APIBaseURL, "core.decision.api_base_url", errs)
+	requireNonEmpty(d.APIKey, "core.decision.api_key", errs)
+	requireNonEmpty(d.SystemPrompt, "core.decision.system_prompt", errs)
+	if d.MaxTokens <= 0 {
 		*errs = append(*errs, "core.decision.max_tokens must be greater than 0 when decision is enabled")
 	}
-	if cfg.Decision.Temperature < 0 || cfg.Decision.Temperature > 2 {
+	if d.Temperature < 0 || d.Temperature > 2 {
 		*errs = append(*errs, "core.decision.temperature must be between 0 and 2")
 	}
-	if cfg.Decision.Timeout <= 0 {
+	if d.Timeout <= 0 {
 		*errs = append(*errs, "core.decision.timeout must be greater than 0 when decision is enabled")
 	}
-	if cfg.Decision.RetryCount < 0 {
+	if d.RetryCount < 0 {
 		*errs = append(*errs, "core.decision.retry_count must be greater than or equal to 0")
 	}
+}
+
+func validateSystemOneDecision(s *SystemOneConfig, errs *[]string) {
+	const p = "core.decision.system_one."
+	requireNonEmpty(s.APIBaseURL, p+"api_base_url", errs)
+	requireNonEmpty(s.APIKey, p+"api_key", errs)
+	requireNonEmpty(s.Model, p+"model", errs)
+	if strings.TrimSpace(s.Instructions) == "" {
+		*errs = append(*errs, p+"instructions is required")
+	}
+	requirePositive(s.Timeout, p+"timeout", errs)
+	if s.RetryCount < 0 {
+		*errs = append(*errs, p+"retry_count must be greater than or equal to 0")
+	}
+	// The reply needs P(yes) > threshold (strict), so 1 could never reply;
+	// 0 is valid and leaves only the "Jev says yes" check (P(yes) > 0.5).
+	if math.IsNaN(s.Threshold) || s.Threshold < 0 || s.Threshold >= 1 {
+		*errs = append(*errs, p+"threshold must be at least 0 and less than 1")
+	}
+	if (strings.TrimSpace(s.CriteriaTrue) == "") != (strings.TrimSpace(s.CriteriaFalse) == "") {
+		*errs = append(*errs, p+"criteria_true and criteria_false must be set together")
+	}
+	requirePositive(s.MaxStateBytes, p+"max_state_bytes", errs)
 }
 
 func validateSystem(cfg *Config, errs *[]string) {
@@ -716,9 +905,14 @@ func validateSystem(cfg *Config, errs *[]string) {
 
 func validate(cfg *Config) error {
 	errs := []string{}
+	rejectRemovedPlaceholders(cfg, &errs)
 	validateCore(cfg, &errs)
 	validateAI(cfg, &errs)
-	validateVision(cfg, &errs)
+	if notice := mapLegacyVision(&cfg.AI, &errs); notice != "" {
+		fmt.Fprintf(warningOutput, "[config][WARNING] %s\n", notice)
+	}
+	cfg.AI.Modalities.ApplyDefaults()
+	validateModalities(cfg, &errs)
 	validateDiscord(cfg, &errs)
 	validateQdrant(cfg, &errs)
 	validateMemory(cfg, &errs)
@@ -732,6 +926,10 @@ func validate(cfg *Config) error {
 	validateConsolidation(cfg, &errs)
 	validateDecision(cfg, &errs)
 	validateSystem(cfg, &errs)
+	validateMessageFilters(cfg, &errs)
+	if cfg.Discord.ClearCommand.Enabled && len(cfg.Discord.ClearCommand.AllowedUserIDs) == 0 {
+		errs = append(errs, "core.discord.clear_command.allowed_user_ids must list at least one user ID when the command is enabled")
+	}
 	if len(errs) > 0 {
 		errList := make([]error, len(errs))
 		for i, s := range errs {
@@ -742,97 +940,77 @@ func validate(cfg *Config) error {
 	return nil
 }
 
+func validateMessageFilters(cfg *Config, errs *[]string) {
+	f, err := filter.Compile(cfg.MessageFilters)
+	if err != nil {
+		*errs = append(*errs, "access_control.message_filters: "+err.Error())
+		return
+	}
+	cfg.messageFilter = f
+}
+
+// Path returns the file the config was loaded from ("" for configs built in
+// code). Hot reload watches this file.
+func (c *Config) Path() string {
+	if c == nil {
+		return ""
+	}
+	return c.configPath
+}
+
+// SetPath sets the file Save writes to and hot reload watches.
+func (c *Config) SetPath(path string) {
+	c.configPath = path
+}
+
 // Validate checks runtime config consistency and required fields.
 func Validate(cfg *Config) error {
 	return validate(cfg)
 }
 
-func (c *Config) FormatSystemPrompt(authorName, serverName, guildID, channelID string) string {
-	prompt := c.AI.SystemPrompt
-
-	replacements := map[string]string{
-		"{BotName}":    c.Discord.BotName,
-		"{AuthorName}": authorName,
-		"{ServerName}": serverName,
-		"{GuildID}":    guildID,
-		"{ChannelID}":  channelID,
+func filtersForSave(f filter.Config) *filter.Config {
+	if f.DefaultAction == "" && len(f.Rules) == 0 {
+		return nil
 	}
-
-	for placeholder, value := range replacements {
-		prompt = strings.ReplaceAll(prompt, placeholder, value)
-	}
-
-	return prompt
+	return &f
 }
 
+// Save writes the config to the file it was loaded from, in the file's
+// sectioned layout. Keys are derived from the mapstructure tags Load reads,
+// so the written file loads back to the same config (see fileNode).
 func (c *Config) Save() error {
 	if c.configPath == "" {
 		return fmt.Errorf("config path not set")
 	}
 
-	fileData := struct {
-		Core struct {
-			Discord  DiscordConfig  `yaml:"discord"`
-			AI       AIConfig       `yaml:"ai"`
-			Decision DecisionConfig `yaml:"decision"`
-		} `yaml:"core"`
-		MemoryPipe struct {
-			Embedding EmbeddingConfig `yaml:"embedding"`
-			Memory    MemoryConfig    `yaml:"memory"`
-			Qdrant    QdrantConfig    `yaml:"qdrant"`
-		} `yaml:"memory_pipeline"`
-		Access struct {
-			Blacklist BlacklistConfig `yaml:"blacklist"`
-			Whitelist WhitelistConfig `yaml:"whitelist"`
-		} `yaml:"access_control"`
-		Operations struct {
-			Web     WebConfig        `yaml:"web"`
-			Logging LoggingConfig    `yaml:"logging"`
-			Plugins PluginsConfig    `yaml:"plugins"`
-			MCP     MCPConfig        `yaml:"mcp"`
-			Runtime OperationsConfig `yaml:"runtime"`
-		} `yaml:"operations"`
-	}{
-		Core: struct {
-			Discord  DiscordConfig  `yaml:"discord"`
-			AI       AIConfig       `yaml:"ai"`
-			Decision DecisionConfig `yaml:"decision"`
-		}{
-			Discord:  c.Discord,
-			AI:       c.AI,
-			Decision: c.Decision,
-		},
-		MemoryPipe: struct {
-			Embedding EmbeddingConfig `yaml:"embedding"`
-			Memory    MemoryConfig    `yaml:"memory"`
-			Qdrant    QdrantConfig    `yaml:"qdrant"`
-		}{
-			Embedding: c.Embedding,
-			Memory:    c.Memory,
-			Qdrant:    c.Qdrant,
-		},
-		Access: struct {
-			Blacklist BlacklistConfig `yaml:"blacklist"`
-			Whitelist WhitelistConfig `yaml:"whitelist"`
-		}{
-			Blacklist: c.Blacklist,
-			Whitelist: c.Whitelist,
-		},
-		Operations: struct {
-			Web     WebConfig        `yaml:"web"`
-			Logging LoggingConfig    `yaml:"logging"`
-			Plugins PluginsConfig    `yaml:"plugins"`
-			MCP     MCPConfig        `yaml:"mcp"`
-			Runtime OperationsConfig `yaml:"runtime"`
-		}{
-			Web:     c.Web,
-			Logging: c.Logging,
-			Plugins: c.Plugins,
-			MCP:     c.MCP,
-			Runtime: c.Operations,
-		},
+	type entry struct {
+		key string
+		val any
 	}
-	data, err := yaml.Marshal(fileData)
+	section := func(entries ...entry) *yaml.Node {
+		n := &yaml.Node{Kind: yaml.MappingNode}
+		for _, e := range entries {
+			if e.val == nil {
+				continue
+			}
+			n.Content = append(n.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: e.key}, fileNode(reflect.ValueOf(e.val)))
+		}
+		return n
+	}
+	var filters any
+	if f := filtersForSave(c.MessageFilters); f != nil {
+		filters = *f
+	}
+	root := &yaml.Node{Kind: yaml.MappingNode}
+	add := func(key string, n *yaml.Node) {
+		root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: key}, n)
+	}
+	add("core", section(entry{"discord", c.Discord}, entry{"ai", c.AI}, entry{"decision", c.Decision}))
+	add("memory_pipeline", section(entry{"embedding", c.Embedding}, entry{"memory", c.Memory}, entry{"qdrant", c.Qdrant}))
+	add("access_control", section(entry{"blacklist", c.Blacklist}, entry{"whitelist", c.Whitelist}, entry{"message_filters", filters}))
+	add("operations", section(entry{"web", c.Web}, entry{"logging", c.Logging}, entry{"plugins", c.Plugins}, entry{"mcp", c.MCP}, entry{"runtime", c.Operations}))
+
+	data, err := yaml.Marshal(&yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{root}})
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
@@ -842,6 +1020,83 @@ func (c *Config) Save() error {
 	}
 
 	return nil
+}
+
+// fileNode encodes v the way Load decodes it: struct keys come from the
+// mapstructure tags and ",squash" embedded structs are written inline.
+//
+// Marshalling the structs with their yaml tags did not round-trip: the
+// embedded LLMConfig has no yaml tag, so yaml.v3 nested it under an
+// "llmconfig" key, and the dashboard's Save produced a file whose
+// api_key/model/... Load could no longer see (the next start or hot
+// reload then failed validation). Inlining it with yaml tags is not enough
+// either, because VisionConfig has its own "model" key next to the
+// embedded one. Fields after a squashed struct override its keys, matching
+// how mapstructure fills both from the same key.
+func fileNode(v reflect.Value) *yaml.Node {
+	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
+		if v.IsNil() {
+			return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!null", Value: "null"}
+		}
+		v = v.Elem()
+	}
+	switch v.Kind() {
+	case reflect.Struct:
+		n := &yaml.Node{Kind: yaml.MappingNode}
+		appendStructFields(n, v)
+		return n
+	case reflect.Slice, reflect.Array:
+		n := &yaml.Node{Kind: yaml.SequenceNode}
+		if v.Len() == 0 {
+			n.Style = yaml.FlowStyle
+		}
+		for i := 0; i < v.Len(); i++ {
+			n.Content = append(n.Content, fileNode(v.Index(i)))
+		}
+		return n
+	default:
+		n := &yaml.Node{}
+		if err := n.Encode(v.Interface()); err != nil {
+			return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!null", Value: "null"}
+		}
+		return n
+	}
+}
+
+func appendStructFields(n *yaml.Node, v reflect.Value) {
+	t := v.Type()
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if !f.IsExported() {
+			continue
+		}
+		name, opts, _ := strings.Cut(f.Tag.Get("mapstructure"), ",")
+		if strings.Contains(opts, "squash") {
+			appendStructFields(n, v.Field(i))
+			continue
+		}
+		if name == "-" || f.Tag.Get("yaml") == "-" {
+			continue
+		}
+		if name == "" {
+			name = strings.ToLower(f.Name)
+		}
+		if strings.Contains(f.Tag.Get("yaml"), "omitempty") && v.Field(i).IsZero() {
+			continue
+		}
+		val := fileNode(v.Field(i))
+		replaced := false
+		for k := 0; k+1 < len(n.Content); k += 2 {
+			if n.Content[k].Value == name {
+				n.Content[k+1] = val
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			n.Content = append(n.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: name}, val)
+		}
+	}
 }
 
 const (
@@ -860,4 +1115,21 @@ func expectedEmbeddingVectorSize(model string) int {
 	default:
 		return 0
 	}
+}
+
+// removedPromptPlaceholders were substituted into prompts by older versions.
+// Prompts are now static (for prompt caching): names are written literally
+// and per-request facts (author, server, channel) are in the user prompt.
+var removedPromptPlaceholders = []string{"{BotName}", "{AuthorName}", "{ServerName}", "{GuildID}", "{ChannelID}"}
+
+func rejectRemovedPlaceholders(cfg *Config, errs *[]string) {
+	check := func(field, prompt string) {
+		for _, ph := range removedPromptPlaceholders {
+			if strings.Contains(prompt, ph) {
+				*errs = append(*errs, fmt.Sprintf("%s contains %s, which is no longer substituted: write the value literally (server, channel and author details are sent in the user prompt)", field, ph))
+			}
+		}
+	}
+	check("core.ai.system_prompt", cfg.AI.SystemPrompt)
+	check("core.decision.system_prompt", cfg.Decision.SystemPrompt)
 }

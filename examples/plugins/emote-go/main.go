@@ -86,8 +86,10 @@ func (p *EmotePlugin) OnMessage(msg types.DiscordMessage) (bool, error) {
 	return true, nil
 }
 
-// OnResponse is called after the bot generates a response.
-func (p *EmotePlugin) OnResponse(msg types.DiscordMessage, response string) error {
+// AfterSend runs after the bot's reply was sent and posts the queued emote
+// right after it, so the emote follows the reply in the channel.
+func (p *EmotePlugin) AfterSend(args plugin.AfterSendArgs) error {
+	msg := args.Message
 	p.mu.Lock()
 	content, ok := p.sendQueue[msg.ChannelID]
 	if ok {
@@ -118,7 +120,7 @@ func (p *EmotePlugin) OnResponse(msg types.DiscordMessage, response string) erro
 			return fmt.Errorf("failed to send message: %w", err)
 		}
 	}
-	fmt.Fprintf(os.Stderr, "[EMOTE] OnResponse: sent URL to channel=%s\n", msg.ChannelID)
+	fmt.Fprintf(os.Stderr, "[EMOTE] AfterSend: sent emote to channel=%s\n", msg.ChannelID)
 	return nil
 }
 
@@ -325,7 +327,7 @@ func (p *EmotePlugin) executeSendEmote(args map[string]interface{}) (string, err
 		return "", fmt.Errorf("emote has neither URL nor file_name: %s", id)
 	}
 
-	// Queue for OnResponse
+	// Queue for AfterSend
 	p.mu.Lock()
 	if p.lastChannelID != "" {
 		p.sendQueue[p.lastChannelID] = sendContent
@@ -429,7 +431,12 @@ func main() {
 		fmt.Fprintf(os.Stderr, "[EMOTE] Config: data_dir=%s, auto_steal=%v\n", p.config.DataDir, p.config.AutoStealEnabled)
 	}
 
-	if err := pluginserver.Serve(p); err != nil {
+	r := &reloadingPlugin{}
+	r.cur.Store(p)
+	w := r.watch()
+	defer w.Close()
+
+	if err := pluginserver.Serve(r); err != nil {
 		fmt.Fprintf(os.Stderr, "[EMOTE] Error: %v\n", err)
 		os.Exit(1)
 	}

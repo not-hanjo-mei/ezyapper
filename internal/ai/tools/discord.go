@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"ezyapper/internal/discordvis"
 	"ezyapper/internal/logger"
 
 	"github.com/bwmarrin/discordgo"
@@ -22,10 +23,27 @@ const (
 
 type DiscordTools struct {
 	session *discordgo.Session
+	// getSession, when set, is used instead of session (see
+	// NewDiscordToolsFunc).
+	getSession func() *discordgo.Session
 }
 
 func NewDiscordTools(session *discordgo.Session) *DiscordTools {
 	return &DiscordTools{session: session}
+}
+
+// NewDiscordToolsFunc creates Discord tools that resolve the session on
+// every call, so they follow a Discord reconnect that replaced the session.
+func NewDiscordToolsFunc(get func() *discordgo.Session) *DiscordTools {
+	return &DiscordTools{getSession: get}
+}
+
+// sess returns the session to use for a call.
+func (d *DiscordTools) sess() *discordgo.Session {
+	if d.getSession != nil {
+		return d.getSession()
+	}
+	return d.session
 }
 
 type toolDef struct {
@@ -154,7 +172,7 @@ func (d *DiscordTools) getServerInfo(ctx context.Context, args map[string]any) (
 		return "", err
 	}
 
-	guild, err := d.session.Guild(guildID)
+	guild, err := d.sess().Guild(guildID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get guild: %w", err)
 	}
@@ -177,20 +195,12 @@ func (d *DiscordTools) getChannelInfo(ctx context.Context, args map[string]any) 
 		return "", err
 	}
 
-	channel, err := d.session.Channel(channelID)
+	channel, err := d.sess().Channel(channelID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get channel: %w", err)
 	}
 
-	result := map[string]any{
-		"id":       channel.ID,
-		"name":     channel.Name,
-		"type":     int(channel.Type),
-		"topic":    channel.Topic,
-		"guild_id": channel.GuildID,
-	}
-
-	return marshalJSON(result)
+	return marshalJSON(channelInfoResult(channel, d.botPermissions()))
 }
 
 func (d *DiscordTools) getUserInfo(ctx context.Context, args map[string]any) (string, error) {
@@ -204,7 +214,7 @@ func (d *DiscordTools) getUserInfo(ctx context.Context, args map[string]any) (st
 		return "", err
 	}
 
-	member, err := d.session.GuildMember(guildID, userID)
+	member, err := d.sess().GuildMember(guildID, userID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get member: %w", err)
 	}
@@ -227,21 +237,61 @@ func (d *DiscordTools) listChannels(ctx context.Context, args map[string]any) (s
 		return "", err
 	}
 
-	channels, err := d.session.GuildChannels(guildID)
+	channels, err := d.sess().GuildChannels(guildID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get channels: %w", err)
 	}
 
-	result := make([]map[string]any, 0, len(channels))
-	for _, ch := range channels {
+	return marshalJSON(listChannelsResult(channels, d.botPermissions()))
+}
+
+// botPermissions computes the bot's channel permissions from the session
+// state, or returns nil when they cannot be computed (then only obfuscated
+// channels are hidden).
+func (d *DiscordTools) botPermissions() discordvis.PermissionFunc {
+	s := d.sess()
+	if s == nil || s.State == nil {
+		return nil
+	}
+	return discordvis.StatePermissions(s.State, discordvis.StateBotID(s.State))
+}
+
+// listChannelsResult lists the channels the bot can view. Channels Discord
+// obfuscates (CHANNEL_OBFUSCATED, "___hidden___") or that the bot lacks View
+// Channel on are left out, so the model never sees their names.
+func listChannelsResult(channels []*discordgo.Channel, perms discordvis.PermissionFunc) []map[string]any {
+	visible := discordvis.FilterVisible(channels, perms)
+	result := make([]map[string]any, 0, len(visible))
+	for _, ch := range visible {
 		result = append(result, map[string]any{
 			"id":   ch.ID,
 			"name": ch.Name,
 			"type": int(ch.Type),
 		})
 	}
+	return result
+}
 
-	return marshalJSON(result)
+// channelInfoResult describes a channel. For a channel hidden from the bot
+// only the ID, type and guild are returned, with the neutral name
+// "unknown-channel" and accessible=false.
+func channelInfoResult(ch *discordgo.Channel, perms discordvis.PermissionFunc) map[string]any {
+	if !discordvis.Visible(ch, perms) {
+		return map[string]any{
+			"id":         ch.ID,
+			"name":       discordvis.UnknownChannelName,
+			"type":       int(ch.Type),
+			"guild_id":   ch.GuildID,
+			"accessible": false,
+		}
+	}
+	return map[string]any{
+		"id":       ch.ID,
+		"name":     ch.Name,
+		"type":     int(ch.Type),
+		"topic":    ch.Topic,
+		"guild_id": ch.GuildID,
+	}
 }
 
 func (d *DiscordTools) getRecentMessages(ctx context.Context, args map[string]any) (string, error) {
@@ -252,7 +302,7 @@ func (d *DiscordTools) getRecentMessages(ctx context.Context, args map[string]an
 
 	limit := extractLimit(args, "limit", 5, maxRecentMessageLimit)
 
-	messages, err := d.session.ChannelMessages(channelID, limit, "", "", "")
+	messages, err := d.sess().ChannelMessages(channelID, limit, "", "", "")
 	if err != nil {
 		return "", fmt.Errorf("failed to get messages: %w", err)
 	}
@@ -289,12 +339,12 @@ func (d *DiscordTools) createThread(ctx context.Context, args map[string]any) (s
 	var thread *discordgo.Channel
 
 	if messageID != "" {
-		thread, err = d.session.MessageThreadStartComplex(channelID, messageID, &discordgo.ThreadStart{
+		thread, err = d.sess().MessageThreadStartComplex(channelID, messageID, &discordgo.ThreadStart{
 			Name:                name,
 			AutoArchiveDuration: 60,
 		})
 	} else {
-		thread, err = d.session.ThreadStart(channelID, name, discordgo.ChannelTypeGuildPublicThread, 60)
+		thread, err = d.sess().ThreadStart(channelID, name, discordgo.ChannelTypeGuildPublicThread, 60)
 	}
 
 	if err != nil {
@@ -325,7 +375,7 @@ func (d *DiscordTools) addReaction(ctx context.Context, args map[string]any) (st
 		return "", err
 	}
 
-	err = d.session.MessageReactionAdd(channelID, messageID, emoji)
+	err = d.sess().MessageReactionAdd(channelID, messageID, emoji)
 	if err != nil {
 		return "", fmt.Errorf("failed to add reaction: %w", err)
 	}
@@ -341,7 +391,7 @@ func (d *DiscordTools) getChannelMembers(ctx context.Context, args map[string]an
 
 	limit := extractLimit(args, "limit", defaultChannelMemberLimit, maxChannelMemberLimit)
 
-	members, err := d.session.GuildMembers(guildID, "", limit)
+	members, err := d.sess().GuildMembers(guildID, "", limit)
 	if err != nil {
 		return "", fmt.Errorf("failed to get members: %w", err)
 	}
@@ -387,7 +437,7 @@ func (d *DiscordTools) searchGuildMembers(ctx context.Context, args map[string]a
 	result := make([]map[string]any, 0, limit)
 
 	// Try to get members from state cache first (enables substring search)
-	guild, err := d.session.State.Guild(guildID)
+	guild, err := d.sess().State.Guild(guildID)
 	if err == nil && len(guild.Members) > 0 {
 		for _, member := range guild.Members {
 			if matched, displayName := matchMember(member, queryLower); matched {
@@ -402,7 +452,7 @@ func (d *DiscordTools) searchGuildMembers(ctx context.Context, args map[string]a
 	// If no results from state cache, fetch members from API and search locally
 	// This handles large guilds where state might not have all members
 	if len(result) == 0 {
-		allMembers, err := d.session.GuildMembers(guildID, "", discordMemberFetchLimit)
+		allMembers, err := d.sess().GuildMembers(guildID, "", discordMemberFetchLimit)
 		if err != nil {
 			logger.Warnf("[tools] GuildMembers API fetch failed for guild=%s: %v, falling back to Discord search", guildID, err)
 		} else {
@@ -418,7 +468,7 @@ func (d *DiscordTools) searchGuildMembers(ctx context.Context, args map[string]a
 	}
 
 	if len(result) == 0 {
-		members, err := d.session.GuildMembersSearch(guildID, query, limit)
+		members, err := d.sess().GuildMembersSearch(guildID, query, limit)
 		if err != nil {
 			return "", fmt.Errorf("failed to search members: %w", err)
 		}
