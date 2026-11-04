@@ -42,6 +42,9 @@ func NewClient(cfg *config.AIConfig, toolRegistry *tools.ToolRegistry) *Client {
 // newClientWithHTTP builds a client on httpClient (tests inject one to see
 // the outgoing requests).
 func newClientWithHTTP(cfg *config.AIConfig, toolRegistry *tools.ToolRegistry, httpClient *http.Client) *Client {
+	if cfg.ExplicitZeroTemperature && cfg.Temperature == 0 {
+		httpClient = withZeroTemperature(httpClient)
+	}
 	// Create OpenAI config with custom base URL
 	openaiConfig := openai.DefaultConfig(cfg.APIKey)
 	openaiConfig.BaseURL = cfg.APIBaseURL
