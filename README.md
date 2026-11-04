@@ -63,7 +63,7 @@ make build-all
 
 ## Heads Up
 
-- **Strict config**: Most fields have no default and must be set; a missing required field stops startup, with every error listed at once. Start from `examples/config.yaml.example`. A few things are optional or have defaults (the media modalities, the decision provider, hot reload).
+- **Strict config, no built-in defaults**: the bot never fills in a missing value. Start from `examples/config.yaml.example`, whose values are suggestions. A missing required field stops startup, with every error listed at once; keys that a feature needs (a media modality, the decision provider, ...) must be set when you enable it. Absent optional sections are off.
 - **Needs Qdrant**: For memory features, you'll need a Qdrant instance running.
 - **Hot reload**: With `operations.runtime.hot_reload.enabled: true`, saved config changes are applied without a restart, or rejected as a whole if they don't validate or can't be applied. See [Hot reload](docs/CONFIGURATION.md#hot-reload).
 - **WebUI is experimental**: For stable production runs, consider disabling it with `operations.web.enabled: false`.

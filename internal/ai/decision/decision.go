@@ -34,7 +34,7 @@ type Decider interface {
 
 // New builds the Decider selected by cfg.Provider.
 func New(cfg *config.DecisionConfig) (Decider, error) {
-	switch p := cfg.EffectiveProvider(); p {
+	switch p := cfg.Provider; p {
 	case config.DecisionProviderLLM:
 		return NewDecisionService(cfg)
 	case config.DecisionProviderSystemOne:

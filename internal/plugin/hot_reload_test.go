@@ -130,7 +130,7 @@ func TestToolsChangedNotification_InvalidListKeepsOld(t *testing.T) {
 	f := &fakeRPCPlugin{tools: []ToolSpec{{Name: "good"}}}
 	client := startFakePlugin(t, pm, "fake", f)
 
-	f.setTools([]ToolSpec{{Name: "bad", TimeoutMs: -1}}, false)
+	f.setTools([]ToolSpec{{Name: "bad", TimeoutMs: new(-1)}}, false)
 	pm.refreshTools(client)
 
 	if handlerCalls.Load() != 0 {

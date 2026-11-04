@@ -71,6 +71,7 @@ func restoreKeyCase(v reflect.Value, raw any) {
 				name = f.Name
 			}
 			if child, ok := lookupFold(rm, name); ok {
+				keepEmptyMap(v.Field(i), child)
 				restoreKeyCase(v.Field(i), child)
 			}
 		}
@@ -123,6 +124,21 @@ func restoreKeyCase(v reflect.Value, raw any) {
 			}
 		}
 		v.Set(out)
+	}
+}
+
+// keepEmptyMap makes a string-keyed map field that the file sets to an
+// empty mapping ({}) an empty, non-nil map. Viper drops empty maps, so it
+// would otherwise decode to nil, which means "key absent": for an
+// inherited key such as memory_pipeline.embedding.extra_params, {} (send
+// no extra parameters) and absent (inherit core.ai.extra_params) differ.
+// An explicit null stays nil (absent).
+func keepEmptyMap(f reflect.Value, raw any) {
+	if f.Kind() != reflect.Map || !f.IsNil() || !f.CanSet() || f.Type().Key().Kind() != reflect.String {
+		return
+	}
+	if rm := stringKeyed(raw); rm != nil && len(rm) == 0 {
+		f.Set(reflect.MakeMap(f.Type()))
 	}
 }
 

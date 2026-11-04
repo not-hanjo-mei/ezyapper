@@ -2,11 +2,13 @@
 # EZyapper config example
 # ------------------------------------------------
 # Copy this file to config.yaml and fill in your values.
-# Uncommented keys are the ones a working config sets. Keys commented out with
-# "##" are optional, or only required when their section is enabled (the
-# comment says which). The bot has no built-in defaults outside
-# core.ai.modalities, core.decision.provider and operations.runtime.hot_reload:
-# a missing required key stops startup, and every problem is listed at once.
+# The bot has no built-in defaults: it never fills in a value you left out.
+# The values below are suggestions. Uncommented keys are the ones a working
+# config sets; a key that is required when its feature is enabled must be set
+# once you enable it. Keys commented out with "##" are optional, or only
+# required in a mode the comment names. A missing required key stops startup,
+# and every problem is listed at once. An optional section that is absent is
+# off (enabled: false, no rules, ...).
 #
 # Environment variables (EZYAPPER_<PATH>, e.g. EZYAPPER_CORE_DISCORD_TOKEN)
 # override keys that are present in this file. A key that is absent here (or
@@ -113,9 +115,14 @@ core:
     # and model, which turns the media into text lines on the message in the
     # user prompt ("[Image 1: ...]", "[Audio 1 transcript (...): ...]",
     # "[Video 1 (...): ...]"), cached by attachment ID.
-    # Endpoint fields left empty or 0 (api_base_url, api_key, timeout,
-    # max_tokens, temperature, retry_count, extra_params) fall back to the
-    # core.ai values. Defaults shown are applied when a field is omitted.
+    # Model fields (api_base_url, api_key, timeout, max_tokens, temperature,
+    # retry_count, extra_params) inherit by presence: a key that is ABSENT
+    # (commented out, as below) inherits the core.ai value; a key that is
+    # set is used as is, 0 included (temperature: 0 sends 0, retry_count: 0
+    # means no retries, extra_params: {} sends none). An explicit timeout: 0
+    # or max_tokens: 0 is rejected: remove the key to inherit.
+    # Every other key of an enabled modality is required: the values shown
+    # are suggestions, not defaults.
     # The old core.ai.vision block still loads (text_only=off, hybrid and
     # multimodal=image on) but is deprecated; it is ignored when this block
     # is present.
@@ -124,9 +131,9 @@ core:
         enabled: false
         # A vision model describes each image for the base model.
         model: "gpt-4o"            # required when enabled
-        ## prompt: "Describe this image in 1-2 sentences. Be compact but informative. Transcribe any visible text."
-        max_items: 4               # images per message
-        transport: "base64"        # base64 (inline data URI) or url (provider fetches the CDN URL)
+        prompt: "Describe this image in 1-2 sentences. Be compact but informative. Transcribe any visible text."  # required when enabled
+        max_items: 4               # required when enabled; images per message
+        transport: "base64"        # required when enabled; base64 (inline data URI) or url (provider fetches the CDN URL)
         ## api_base_url: ""
         ## api_key: ""
         ## timeout: 30
@@ -143,7 +150,7 @@ core:
         #           nvidia/nemotron-3-nano-omni-30b-a3b-reasoning, max_tokens
         #           ~12000) gets the audio as an audio_url data URI and
         #           returns a transcript or description.
-        mode: "asr"
+        mode: "asr"                # required when enabled
         model: "whisper-1"         # required when enabled
         ## api_base_url: "https://api.openai.com/v1"
         ## api_key: ""
@@ -153,16 +160,19 @@ core:
         ## retry_count: 3
         ## extra_params: {}        # describe mode: merged into the chat request
         ## language: "en"          # optional ISO-639-1 hint (asr)
-        ## prompt: ""              # asr: vocabulary hint; describe: instruction (built-in default)
-        max_items: 2
-        max_bytes: 26214400        # 25 MiB
-        max_duration_sec: 600      # checked when Discord reports a duration (voice messages)
+        # asr: optional vocabulary/spelling hint (empty sends none).
+        # describe: the instruction for the audio model, required in that mode:
+        ## prompt: "Transcribe the speech in this audio verbatim, in its original language. If there is no speech, describe the sound or music in one sentence. Reply with the transcript or description only."
+        max_items: 2               # required when enabled
+        max_bytes: 26214400        # required when enabled; 25 MiB (OpenAI transcription upload limit)
+        max_duration_sec: 600      # required when enabled; checked when Discord reports a duration (voice messages)
         # Optional ffmpeg conversion before sending: "mp3" or "wav" (empty =
         # send as is). Only needed for an ASR endpoint that rejects ogg/opus
         # voice messages, or for part_type input_audio. Requires ffmpeg.
         ## transcode: ""
-        # Describe-mode content part: audio_url (data URI, default) or
-        # input_audio (OpenAI format; mp3/wav only, so it needs transcode).
+        # Describe-mode content part, required in describe mode: audio_url
+        # (data URI) or input_audio (OpenAI format; mp3/wav only, so it
+        # needs transcode).
         ## part_type: "audio_url"
 
       video:
@@ -176,20 +186,22 @@ core:
         ## temperature: 0.8
         ## retry_count: 3
         ## extra_params: {}
-        ## prompt: "Describe this video in 2-4 sentences: ..."
-        max_items: 1
-        max_bytes: 52428800        # 50 MiB
-        max_duration_sec: 120
-        transport: "base64"
+        prompt: "Describe this video in 2-4 sentences: what happens, who or what appears, and any speech or on-screen text. Be compact but informative."  # required when enabled
+        max_items: 1               # required when enabled
+        max_bytes: 52428800        # required when enabled; 50 MiB
+        max_duration_sec: 120      # required when enabled
+        transport: "base64"        # required when enabled
         # Re-encode with ffmpeg before sending: trim to max_duration_sec
         # (instead of skipping longer videos) and scale down to max_height.
         # Requires ffmpeg and transport base64.
         ## transcode: false
-        ## max_height: 480
+        ## max_height: 480         # required when transcode is true
 
       # ffmpeg is optional. If an enabled option needs it (audio.transcode,
       # video.transcode) and it is missing, the bot refuses to start (and a
-      # hot reload that turns such an option on is rejected).
+      # hot reload that turns such an option on is rejected). ffmpeg_path (a
+      # name looked up in PATH, or a full path) is required when one of
+      # those options is on.
       ## ffmpeg_path: "ffmpeg"
 
       sticker:
@@ -199,7 +211,8 @@ core:
         #          ID (custom guild stickers included). Lottie stickers cannot
         #          be rendered and fall back to the text.
         enabled: false
-        # Vision model fields fall back to modalities.image, then core.ai;
+        # Absent vision model fields inherit modalities.image, then core.ai
+        # (an explicit value, 0 included, is used as is);
         # enabled: true needs a model from sticker.model or image.model.
         ## model: "gpt-4o"
         ## api_base_url: ""
@@ -209,8 +222,9 @@ core:
         ## temperature: 0.8
         ## retry_count: 3
         ## extra_params: {}
-        ## prompt: "Describe this Discord sticker in one short sentence: ..."
-        max_items: 3
+        prompt: "Describe this Discord sticker in one short sentence: what it shows and the emotion or reaction it conveys. Include any visible text."  # required when enabled
+        # Always required (stickers are always shown, even with enabled: false):
+        max_items: 3               # stickers per message
         cache_ttl_min: 1440        # sticker details/descriptions cached by sticker ID
         cache_max_entries: 1000
 
@@ -224,8 +238,8 @@ core:
     # Retries for transient API/network errors.
     retry_count: 3
 
-    # Per-request timeout in seconds. Must be > 0 (0 makes every request
-    # time out at once; the loader does not catch it).
+    # Per-request timeout in seconds. Required, > 0. Also the timeout of a
+    # modality that sets none (an ASR endpoint included).
     timeout: 30
 
     # Max tool-calling iterations in a single conversation turn.
@@ -257,7 +271,9 @@ core:
       - You have access to Discord tools. Use them when appropriate.
 
     # ── Optional: extra parameters forwarded to the API ──
-    # Nested keys keep the case you write.
+    # Nested keys keep the case you write. Also sent with modality requests
+    # whose extra_params is absent, and with embedding requests when
+    # memory_pipeline.embedding.extra_params is absent.
     ## extra_params: {}
 
     # ── Deprecated ──
@@ -274,11 +290,11 @@ core:
 
     # Which decision backend to use:
     #   llm        - an OpenAI-compatible chat model returns a JSON verdict
-    #                (default when this key is absent)
     #   system_one - a System One decision model (TypeSafe Jev) returns
     #                P(yes); the bot replies only when Jev says yes
     #                (P(yes) > 0.5) and P(yes) > threshold
-    ## provider: llm
+    # Required when enabled: true (there is no default provider).
+    provider: llm
 
     # provider: llm - fields below are required ONLY when enabled: true.
     ## model: "gpt-4o-mini"
@@ -330,6 +346,10 @@ memory_pipeline:
     timeout: 10
 
     # ── Optional: extra parameters ──
+    # ABSENT (commented out) -> inherits core.ai.extra_params: chat-only
+    # parameters there (chat_template_kwargs, top_p, reasoning flags, ...)
+    # are then sent to the embedding endpoint too. Set the parameters the
+    # embedding endpoint should get, or {} to send none.
     ## extra_params: {}
 
   # ── Memory Settings ───────────────────────────────────
@@ -379,11 +399,11 @@ memory_pipeline:
       include_channel_memories: true
 
       # Max memories to retrieve that mention the sender.
-      # 0 = disabled, uses top_k instead.
+      # Absent -> uses top_k; an explicit value is used as is (0 = none).
       max_mentioned_memories: 3
 
       # Max memories to retrieve that are scoped to the current channel.
-      # 0 = disabled, uses top_k instead.
+      # Absent -> uses top_k; an explicit value is used as is (0 = none).
       max_channel_memories: 5
 
     # ── Memory Consolidation ──
@@ -397,14 +417,15 @@ memory_pipeline:
       ## api_base_url: "https://api.openai.com/v1"    # optional, inherits from core.ai if empty
       ## api_key: "YOUR_API_KEY"                      # optional, inherits from core.ai if empty
       ## max_tokens: 4096
-      ## temperature: 0.8                             # 0 = use core.ai.temperature
+      ## temperature: 0.8                             # absent -> core.ai.temperature; 0 is used as 0
       ## retry_count: 5
       ## timeout: 30
 
       # ── Optional: separate image-description model for consolidation ──
-      # Used only when core.ai.modalities.image is enabled; fields left
-      # empty inherit from core.ai.modalities.image (then core.ai). Only the
-      # keys below are read.
+      # Used only when core.ai.modalities.image is enabled. Absent keys
+      # inherit from core.ai.modalities.image (then core.ai); an explicit
+      # value, 0 or {} included, is used as is (timeout: 0 / max_tokens: 0
+      # are rejected). Only the keys below are read.
       ## vision:
       ##   model: "gpt-4o"
       ##   description_prompt: ""
@@ -414,6 +435,7 @@ memory_pipeline:
       ##   temperature: 0.8
       ##   retry_count: 5
       ##   timeout: 30
+      ##   extra_params: {}
 
       # How many existing memories to search for deduplication/similarity.
       # Validated (> 0) even when consolidation is disabled.
@@ -565,7 +587,7 @@ access_control:
   #   kinds     = matches if the message has ANY listed kind
   #   kinds_all = matches if the message has ALL listed kinds
   message_filters:
-    default_action: allow   # allow | ignore (ignore = whitelist mode)
+    default_action: allow   # allow | ignore (ignore = whitelist mode); required when rules are set
     rules: []
     # rules:
     #   - name: "status bot embeds in #general"
@@ -618,6 +640,8 @@ operations:
     # All fields below are required ONLY when enabled: true, except
     # default_tool_timeout_ms (optional, >= 0, validated even when disabled;
     # 0 logs a warning because JSON-RPC tools without their own timeout fail).
+    # A tool's own timeout_ms (list_tools / plugin.json) wins when the key is
+    # present; an explicit timeout_ms: 0 is rejected.
     ## plugins_dir: "plugins"
     ## default_tool_timeout_ms: 30000
     ## startup_timeout_sec: 90

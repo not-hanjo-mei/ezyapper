@@ -103,17 +103,16 @@ func TestValidateDecision_UnknownProvider(t *testing.T) {
 	}
 }
 
-func TestValidateDecision_AbsentProviderIsLLM(t *testing.T) {
-	d := DecisionConfig{Enabled: true}
-	if d.EffectiveProvider() != DecisionProviderLLM {
-		t.Fatalf("expected llm default, got %q", d.EffectiveProvider())
+// There is no default provider: an enabled decision without one fails with
+// an error naming the key, and validates no provider's fields.
+func TestValidateDecision_ProviderRequiredWhenEnabled(t *testing.T) {
+	errs := decisionErrs(DecisionConfig{Enabled: true})
+	if len(errs) != 1 || !strings.Contains(errs[0], "core.decision.provider is required when core.decision.enabled is true") ||
+		!strings.Contains(errs[0], "examples/config.yaml.example") {
+		t.Fatalf("expected provider required error, got %v", errs)
 	}
-	errs := strings.Join(decisionErrs(d), "\n")
-	if !strings.Contains(errs, "core.decision.system_prompt is required") {
-		t.Fatalf("absent provider must validate llm fields, got %q", errs)
-	}
-	if strings.Contains(errs, "system_one") {
-		t.Fatalf("absent provider must not validate system_one fields, got %q", errs)
+	if errs := decisionErrs(DecisionConfig{Enabled: false}); len(errs) != 0 {
+		t.Fatalf("a disabled decision needs no provider, got %v", errs)
 	}
 }
 

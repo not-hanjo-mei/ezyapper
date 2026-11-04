@@ -578,7 +578,7 @@ func (p *openAITTSPlugin) ListTools() ([]plugin.ToolSpec, error) {
 				},
 				"required": []string{"text"},
 			},
-			TimeoutMs: p.cfg.GenerateTtsAudioMs,
+			TimeoutMs: new(p.cfg.GenerateTtsAudioMs),
 		},
 	}, nil
 }

@@ -18,7 +18,7 @@ func mustCompile(t *testing.T, cfg Config) *Filter {
 
 // The motivating example: ignore one bot's embed messages in one channel.
 func TestIgnoreSpecificBotEmbedsInChannel(t *testing.T) {
-	f := mustCompile(t, Config{Rules: []RuleConfig{{
+	f := mustCompile(t, Config{DefaultAction: "allow", Rules: []RuleConfig{{
 		Name: "clank embeds in #general", Action: "ignore",
 		Channel: "^456$", User: "^789$", Kinds: []string{types.KindEmbed},
 	}}})
@@ -60,7 +60,7 @@ func TestFirstMatchWinsAndWhitelistDefault(t *testing.T) {
 }
 
 func TestKindsAllAndContent(t *testing.T) {
-	f := mustCompile(t, Config{Rules: []RuleConfig{
+	f := mustCompile(t, Config{DefaultAction: "allow", Rules: []RuleConfig{
 		{Name: "bot replies with images", Action: "ignore", KindsAll: []string{types.KindBot, types.KindImage}},
 		{Name: "commands", Action: "ignore", Content: `^[!/]`},
 	}})
@@ -87,7 +87,7 @@ func TestCompileErrors(t *testing.T) {
 	if !strings.Contains(err.Error(), "default_action") {
 		t.Fatalf("expected default_action error first, got %v", err)
 	}
-	_, err = Compile(Config{Rules: []RuleConfig{
+	_, err = Compile(Config{DefaultAction: "allow", Rules: []RuleConfig{
 		{Action: "block", User: "("},
 		{Action: "ignore", Kinds: []string{"gif"}},
 		{Action: "ignore"},
@@ -110,10 +110,22 @@ func TestNilFilterAllowsAndEmptyConfigIsNil(t *testing.T) {
 }
 
 func TestMessagesDropsIgnored(t *testing.T) {
-	f := mustCompile(t, Config{Rules: []RuleConfig{{Action: "ignore", User: "^b$"}}})
+	f := mustCompile(t, Config{DefaultAction: "allow", Rules: []RuleConfig{{Action: "ignore", User: "^b$"}}})
 	in := []*types.DiscordMessage{{ID: "1", AuthorID: "a"}, {ID: "2", AuthorID: "b"}, {ID: "3", AuthorID: "a"}}
 	out := f.Messages(in)
 	if len(out) != 2 || out[0].ID != "1" || out[1].ID != "3" || len(in) != 3 {
 		t.Fatalf("unexpected result %v", out)
+	}
+}
+
+// There is no built-in default_action: rules without one fail to compile,
+// while an empty block (no rules) still filters nothing.
+func TestDefaultActionRequiredWithRules(t *testing.T) {
+	_, err := Compile(Config{Rules: []RuleConfig{{Action: "ignore", User: "^b$"}}})
+	if err == nil || !strings.Contains(err.Error(), "default_action is required when rules are set") {
+		t.Fatalf("expected default_action required error, got %v", err)
+	}
+	if f, err := Compile(Config{}); err != nil || f != nil {
+		t.Fatalf("empty config must compile to nil filter, got %v %v", f, err)
 	}
 }

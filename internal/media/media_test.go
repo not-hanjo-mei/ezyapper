@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"ezyapper/internal/config"
+	"ezyapper/internal/config/configtest"
 	"ezyapper/internal/types"
 )
 
@@ -114,7 +115,7 @@ func TestTranscriberPlainTextResponse(t *testing.T) {
 		_, _ = io.WriteString(w, "plain transcript\n")
 	}))
 	defer srv.Close()
-	tr := NewTranscriber(TranscriberConfig{BaseURL: srv.URL, Model: "m"})
+	tr := NewTranscriber(TranscriberConfig{BaseURL: srv.URL, Model: "m", Timeout: 5 * time.Second})
 	if text, err := tr.Transcribe(context.Background(), "a.mp3", "audio/mpeg", []byte("x")); err != nil || text != "plain transcript" {
 		t.Fatalf("got %q %v", text, err)
 	}
@@ -145,7 +146,7 @@ func TestAnnotateASRCurrentHistoryAndCache(t *testing.T) {
 
 	cfg := baseConfig("http://unused.invalid")
 	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeASR, ModalityModel: config.ModalityModel{Model: "asr", APIBaseURL: asr.URL}}
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, NewCache(time.Hour, 10))
 
 	msg := &types.DiscordMessage{ID: "m1", Media: []types.MediaAttachment{voice(files.URL)}}
@@ -177,7 +178,7 @@ func TestAnnotateAudioLimits(t *testing.T) {
 	chat := chatServer(t, "never", &calls, nil)
 	cfg := baseConfig(chat.URL)
 	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDescribe, MaxDurationSec: 2, ModalityModel: config.ModalityModel{Model: "omni"}}
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, NewCache(time.Hour, 10))
 	msg := &types.DiscordMessage{ID: "m1", Media: []types.MediaAttachment{voice(files.URL)}}
 	ann := p.AnnotateAV(context.Background(), msg, AnnotateOptions{Current: true})
@@ -195,7 +196,7 @@ func TestAnnotateDescribeAudio(t *testing.T) {
 	chat := chatServer(t, "hello\nthere", &calls, &bodies)
 	cfg := baseConfig(chat.URL)
 	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDescribe, ModalityModel: config.ModalityModel{Model: "omni"}}
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, NewCache(time.Hour, 10))
 	msg := &types.DiscordMessage{ID: "m1", Media: []types.MediaAttachment{voice(files.URL), {ID: "v1", Kind: types.MediaVideo, URL: files.URL + "/v.mp4"}}}
 
@@ -213,7 +214,7 @@ func TestAnnotateDescribeAudio(t *testing.T) {
 		t.Fatalf("model = %v", doc["model"])
 	}
 	content := doc["messages"].([]any)[0].(map[string]any)["content"].([]any)
-	if content[0].(map[string]any)["text"] != config.DefaultAudioPrompt {
+	if content[0].(map[string]any)["text"] != cfg.AI.Modalities.Audio.Prompt {
 		t.Fatalf("prompt = %v", content[0])
 	}
 	// Voice messages are ogg/opus; sent as an audio_url data URI as is.
@@ -235,8 +236,8 @@ func TestDescribeVideoTransportAndCache(t *testing.T) {
 	for _, transport := range []config.MediaTransport{config.TransportBase64, config.TransportURL} {
 		calls, bodies = 0, nil
 		cfg := baseConfig(chat.URL)
-		cfg.AI.Modalities.Video = config.VideoModalityConfig{Enabled: true, Transport: transport, ModalityModel: config.ModalityModel{Model: "omni", MaxTokens: 12000}}
-		cfg.AI.Modalities.ApplyDefaults()
+		cfg.AI.Modalities.Video = config.VideoModalityConfig{Enabled: true, Transport: transport, ModalityModel: config.ModalityModel{Model: "omni", MaxTokens: new(12000)}}
+		configtest.FillSuggested(t, &cfg.AI.Modalities)
 		p := New(cfg, NewCache(time.Hour, 10))
 		msg := &types.DiscordMessage{ID: "m1", Media: []types.MediaAttachment{{ID: "vid1", Kind: types.MediaVideo, URL: files.URL + "/v.mp4", Filename: "v.mp4", ContentType: "video/mp4", Size: 9}}}
 
@@ -271,14 +272,14 @@ func TestDescribeImagesDescribeMode(t *testing.T) {
 	chat := chatServer(t, "a red square", &calls, &bodies)
 	cfg := baseConfig(chat.URL)
 	cfg.AI.Modalities.Image = config.ImageModalityConfig{Enabled: true, ModalityModel: config.ModalityModel{Model: "vm"}}
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, nil)
 	got, err := p.ImageDescriber().DescribeImages(context.Background(), []string{files.URL + "/x.png"})
 	if err != nil || len(got) != 1 || got[0] != "a red square" {
 		t.Fatalf("got %v %v", got, err)
 	}
 	content := bodies[0]["messages"].([]any)[0].(map[string]any)["content"].([]any)
-	if content[0].(map[string]any)["text"] != config.DefaultImagePrompt {
+	if content[0].(map[string]any)["text"] != cfg.AI.Modalities.Image.Prompt {
 		t.Fatalf("prompt = %v", content[0])
 	}
 	if u := content[1].(map[string]any)["image_url"].(map[string]any)["url"]; u != "data:image/png;base64,cG5nLWJ5dGVz" {
@@ -288,7 +289,7 @@ func TestDescribeImagesDescribeMode(t *testing.T) {
 
 func TestDisabledModalitiesAreIgnored(t *testing.T) {
 	cfg := baseConfig("http://unused.invalid")
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, nil)
 	msg := &types.DiscordMessage{ID: "m1", Media: []types.MediaAttachment{{ID: "a", Kind: types.MediaVoice}, {ID: "v", Kind: types.MediaVideo}}}
 	if ann := p.AnnotateAV(context.Background(), msg, AnnotateOptions{Current: true}); ann.Text != "" {
@@ -353,7 +354,7 @@ func TestAudioPartNormalizesDiscordContentType(t *testing.T) {
 	files := serveBytes(t, map[string][]byte{"/a.mp3": []byte("ID3")}, "audio/mpeg")
 	cfg := baseConfig("http://unused.invalid")
 	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDescribe, ModalityModel: config.ModalityModel{Model: "omni"}}
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, nil)
 	part, err := p.AudioPart(context.Background(), types.MediaAttachment{ID: "a", Kind: types.MediaAudio, URL: files + "/a.mp3", ContentType: "audio/mpeg3"})
 	if err != nil {

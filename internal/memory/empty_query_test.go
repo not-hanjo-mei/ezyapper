@@ -51,7 +51,7 @@ func TestSearch_EmptyQuerySkipsSearch(t *testing.T) {
 		ConsolidationInterval: 10,
 		ShortTermLimit:        50,
 		TopK:                  5,
-		Consolidation:         &config.ConsolidationConfig{LLMConfig: config.LLMConfig{Model: "m"}, SystemPrompt: "p"},
+		Consolidation:         &config.ConsolidationConfig{Model: "m", SystemPrompt: "p"},
 	}
 	svc, err := NewService(cfg, testQdrantCfg, &QdrantClient{}, emb, nil, nil)
 	if err != nil {

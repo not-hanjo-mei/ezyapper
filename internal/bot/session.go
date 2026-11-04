@@ -896,7 +896,7 @@ func (b *Bot) shouldRespond(ctx context.Context, m *discordgo.MessageCreate, rec
 			msgInfo.ReplyToID = m.ReferencedMessage.Author.ID
 		}
 
-		provider := b.cfg().Decision.EffectiveProvider()
+		provider := b.cfg().Decision.Provider
 		result, err := decider.ShouldRespondWithInfo(decisionCtx, b.cfg().Discord.BotName, msgInfo, imageCount, decisionMessages)
 		if err != nil {
 			logger.Warnf("[bot] decision service failed: %v, using fallback", err)

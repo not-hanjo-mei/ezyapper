@@ -246,41 +246,37 @@ func buildServiceConfig(cfg *config.Config) memory.ServiceConfig {
 }
 
 func buildConsolidationAIConfig(cfg *config.Config) *config.AIConfig {
-	consolidationConfig := &config.AIConfig{
+	c := cfg.Memory.Consolidation
+	// Endpoint and model inherit core.ai's when empty. max_tokens,
+	// retry_count and timeout are required when consolidation is enabled
+	// and are used as set. temperature inherits core.ai's only when the key
+	// is absent; an explicit 0 is used as 0. extra_params is not inherited.
+	out := &config.AIConfig{
 		LLMConfig: config.LLMConfig{
 			APIBaseURL:  cfg.AI.APIBaseURL,
 			APIKey:      cfg.AI.APIKey,
 			Model:       cfg.AI.Model,
-			Timeout:     cfg.AI.Timeout,
-			RetryCount:  cfg.AI.RetryCount,
-			MaxTokens:   cfg.AI.MaxTokens,
+			Timeout:     c.Timeout,
+			RetryCount:  c.RetryCount,
+			MaxTokens:   c.MaxTokens,
 			Temperature: cfg.AI.Temperature,
+			ExtraParams: c.ExtraParams,
 		},
 	}
-	if cfg.Memory.Consolidation.APIBaseURL != "" {
-		consolidationConfig.APIBaseURL = cfg.Memory.Consolidation.APIBaseURL
+	if c.APIBaseURL != "" {
+		out.APIBaseURL = c.APIBaseURL
 	}
-	if cfg.Memory.Consolidation.APIKey != "" {
-		consolidationConfig.APIKey = cfg.Memory.Consolidation.APIKey
+	if c.APIKey != "" {
+		out.APIKey = c.APIKey
 	}
-	if cfg.Memory.Consolidation.Model != "" {
-		consolidationConfig.Model = cfg.Memory.Consolidation.Model
+	if c.Model != "" {
+		out.Model = c.Model
 	}
-	if cfg.Memory.Consolidation.Timeout > 0 {
-		consolidationConfig.Timeout = cfg.Memory.Consolidation.Timeout
+	if c.Temperature != nil {
+		out.Temperature = *c.Temperature
+		out.ExplicitZeroTemperature = *c.Temperature == 0
 	}
-	if cfg.Memory.Consolidation.RetryCount > 0 {
-		consolidationConfig.RetryCount = cfg.Memory.Consolidation.RetryCount
-	}
-	if cfg.Memory.Consolidation.MaxTokens > 0 {
-		consolidationConfig.MaxTokens = cfg.Memory.Consolidation.MaxTokens
-	}
-	if cfg.Memory.Consolidation.Temperature > 0 {
-		consolidationConfig.Temperature = cfg.Memory.Consolidation.Temperature
-	}
-	// Copy extra params from consolidation config
-	consolidationConfig.ExtraParams = cfg.Memory.Consolidation.ExtraParams
-	return consolidationConfig
+	return out
 }
 
 func buildEmbeddingAIConfig(cfg *config.Config) *config.AIConfig {
@@ -292,10 +288,12 @@ func buildEmbeddingAIConfig(cfg *config.Config) *config.AIConfig {
 	if cfg.Embedding.APIKey != "" {
 		embeddingCfg.APIKey = cfg.Embedding.APIKey
 	}
+	// retry_count and timeout are the embedding's own (required when
+	// memory is on), never core.ai's.
 	embeddingCfg.RetryCount = cfg.Embedding.RetryCount
-	if cfg.Embedding.Timeout > 0 {
-		embeddingCfg.Timeout = cfg.Embedding.Timeout
-	}
+	embeddingCfg.Timeout = cfg.Embedding.Timeout
+	// extra_params inherits core.ai.extra_params only when the key is
+	// absent (nil). An explicit value is used as is; {} sends none.
 	if cfg.Embedding.ExtraParams != nil {
 		embeddingCfg.ExtraParams = cfg.Embedding.ExtraParams
 	}
@@ -305,31 +303,14 @@ func buildEmbeddingAIConfig(cfg *config.Config) *config.AIConfig {
 
 // buildConsolidationImageAI returns the client settings that describe
 // images during consolidation: core.ai's LLM fields and image modality, with
-// memory_pipeline.consolidation.vision overrides applied to the modality.
+// memory_pipeline.memory.consolidation.vision overrides applied to the
+// modality. Each override key applies when it is set (an explicit 0 or {}
+// included); absent keys keep image's, which in turn fall back to core.ai's
+// when the client is built (ModalityModel.Resolve).
 func buildConsolidationImageAI(cfg *config.Config) config.AIConfig {
 	img := cfg.AI.Modalities.Image
 	o := cfg.Memory.Consolidation.Vision
-	if o.Model != "" {
-		img.Model = o.Model
-	}
-	if o.APIBaseURL != "" {
-		img.APIBaseURL = o.APIBaseURL
-	}
-	if o.APIKey != "" {
-		img.APIKey = o.APIKey
-	}
-	if o.MaxTokens > 0 {
-		img.MaxTokens = o.MaxTokens
-	}
-	if o.Temperature > 0 {
-		img.Temperature = o.Temperature
-	}
-	if o.RetryCount > 0 {
-		img.RetryCount = o.RetryCount
-	}
-	if o.Timeout > 0 {
-		img.Timeout = o.Timeout
-	}
+	img.ModalityModel = o.ModalityModel.Over(img.ModalityModel)
 	if o.DescriptionPrompt != "" {
 		img.Prompt = o.DescriptionPrompt
 	}

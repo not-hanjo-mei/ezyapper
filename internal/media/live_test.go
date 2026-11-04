@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"ezyapper/internal/config"
+	"ezyapper/internal/config/configtest"
 	"ezyapper/internal/types"
 )
 
@@ -72,9 +73,9 @@ func TestLiveASR(t *testing.T) {
 		Model:      liveEnv(t, "EZYAPPER_LIVE_ASR_MODEL", "IFM/Jais-ASR"),
 		APIBaseURL: liveEnv(t, "EZYAPPER_LIVE_ASR_URL", "https://api.ifm.ai/v1"),
 		APIKey:     os.Getenv("EZYAPPER_LIVE_ASR_KEY"),
-		Timeout:    120,
+		Timeout:    new(120),
 	}}
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, NewCache(time.Hour, 10))
 	for _, f := range []struct{ name, ct string }{{"a.ogg", "audio/ogg"}, {"a.mp3", "audio/mpeg"}} {
 		start := time.Now()
@@ -93,7 +94,7 @@ func TestLiveDescribeAudio(t *testing.T) {
 	cfg, base := liveSetup(t)
 	dir := os.Getenv("EZYAPPER_LIVE_MEDIA_DIR")
 	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDescribe, ModalityModel: config.ModalityModel{Model: cfg.AI.Model}}
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, NewCache(time.Hour, 10))
 	for _, f := range []struct{ name, ct string }{{"a.ogg", "audio/ogg"}, {"a.mp3", "audio/mpeg"}} {
 		start := time.Now()
@@ -108,8 +109,8 @@ func TestLiveDescribeAudio(t *testing.T) {
 func TestLiveVideoDescribe(t *testing.T) {
 	cfg, base := liveSetup(t)
 	dir := os.Getenv("EZYAPPER_LIVE_MEDIA_DIR")
-	cfg.AI.Modalities.Video = config.VideoModalityConfig{Enabled: true, ModalityModel: config.ModalityModel{Model: cfg.AI.Model, MaxTokens: 12000}}
-	cfg.AI.Modalities.ApplyDefaults()
+	cfg.AI.Modalities.Video = config.VideoModalityConfig{Enabled: true, ModalityModel: config.ModalityModel{Model: cfg.AI.Model, MaxTokens: new(12000)}}
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, NewCache(time.Hour, 10))
 	start := time.Now()
 	text, err := p.DescribeVideo(context.Background(), liveAttachment(t, base, dir, "v.mp4", types.MediaVideo, "video/mp4"))
@@ -122,7 +123,7 @@ func TestLiveVideoDescribe(t *testing.T) {
 func TestLiveImageDescribe(t *testing.T) {
 	cfg, base := liveSetup(t)
 	cfg.AI.Modalities.Image = config.ImageModalityConfig{Enabled: true, ModalityModel: config.ModalityModel{Model: liveEnv(t, "EZYAPPER_LIVE_IMAGE_MODEL", "nvidia/nemotron-3.5-super-vl-120b-a12b")}}
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, nil)
 	start := time.Now()
 	got, err := p.DescribeImages(context.Background(), []string{base + "/img.webp"})
@@ -142,7 +143,7 @@ func TestLiveStickerVision(t *testing.T) {
 	}
 	cfg.AI.Modalities.Image.Model = liveEnv(t, "EZYAPPER_LIVE_IMAGE_MODEL", "nvidia/nemotron-3.5-super-vl-120b-a12b")
 	cfg.AI.Modalities.Sticker = config.StickerModalityConfig{Enabled: true}
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, nil)
 	p.SetStickers(nil, NewCache(time.Hour, 10))
 	start := time.Now()
@@ -160,7 +161,7 @@ func TestLiveDescribeAudioInputAudio(t *testing.T) {
 	realFFmpeg(t)
 	dir := os.Getenv("EZYAPPER_LIVE_MEDIA_DIR")
 	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDescribe, Transcode: "mp3", PartType: config.AudioPartInput, ModalityModel: config.ModalityModel{Model: cfg.AI.Model}}
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, nil)
 	start := time.Now()
 	text, err := p.DescribeAudio(context.Background(), liveAttachment(t, base, dir, "a.ogg", types.MediaVoice, "audio/ogg"))

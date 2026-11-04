@@ -27,7 +27,7 @@
           "command": { "type": "string" },
           "args": { "type": "array", "items": { "type": "string" } },
           "arg_keys": { "type": "array", "items": { "type": "string" } },
-          "timeout_ms": { "type": "integer", "minimum": 0, "maximum": 300000 }
+          "timeout_ms": { "type": "integer", "minimum": 1, "maximum": 300000, "description": "Per-tool timeout in ms. Absent: operations.plugins.command_timeout_sec applies. An explicit value must be > 0 (0 is rejected; remove the key to inherit)." }
         }
       }
     }

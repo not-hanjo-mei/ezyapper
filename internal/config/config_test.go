@@ -381,8 +381,8 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 				TopK:                   5,
 				MinScore:               0.75,
 				IncludeChannelMemories: true,
-				MaxMentionedMemories:   3,
-				MaxChannelMemories:     5,
+				MaxMentionedMemories:   new(3),
+				MaxChannelMemories:     new(5),
 			},
 			Consolidation: ConsolidationConfig{
 				Enabled:           true,
@@ -431,7 +431,7 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 		},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Error("Expected error for invalid reply_percentage, got nil")
 	}
@@ -476,8 +476,8 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 				TopK:                   5,
 				MinScore:               0.75,
 				IncludeChannelMemories: true,
-				MaxMentionedMemories:   3,
-				MaxChannelMemories:     5,
+				MaxMentionedMemories:   new(3),
+				MaxChannelMemories:     new(5),
 			},
 			Consolidation: ConsolidationConfig{
 				Enabled:           true,
@@ -526,7 +526,7 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 		},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Error("Expected error for invalid temperature, got nil")
 	}
@@ -575,8 +575,8 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 				TopK:                   0,
 				MinScore:               0.75,
 				IncludeChannelMemories: true,
-				MaxMentionedMemories:   3,
-				MaxChannelMemories:     5,
+				MaxMentionedMemories:   new(3),
+				MaxChannelMemories:     new(5),
 			},
 			Consolidation: ConsolidationConfig{
 				Enabled:           false,
@@ -652,7 +652,7 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 		},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err != nil {
 		t.Errorf("Expected top_k=0 to be valid when on-demand memory is disabled, got: %v", err)
 	}
@@ -680,7 +680,7 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			MaintenanceIntervalSec:       3600,
 			MergeCronHourUTC:             3,
@@ -715,7 +715,7 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err != nil {
 		t.Fatalf("Expected validation to pass with memory features disabled, got: %v", err)
 	}
@@ -742,7 +742,7 @@ func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T
 			ConsolidationInterval:        1,
 			ShortTermLimit:               1,
 			MaxPaginatedLimit:            100,
-			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			MaintenanceIntervalSec:       3600,
 			MergeCronHourUTC:             3,
@@ -777,7 +777,7 @@ func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("Expected validation error for missing memory_pipeline.qdrant.retry_base_delay_ms when memory is enabled")
 	}
@@ -809,7 +809,7 @@ func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:                  RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:                  RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:              ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
 			MaxMentionedUsersPerMemory: 3,
@@ -821,7 +821,7 @@ func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("Expected vector size relation validation error")
 	}
@@ -852,7 +852,7 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:                  RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:                  RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:              ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
 			MaxMentionedUsersPerMemory: 3,
@@ -864,6 +864,7 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 		Decision: DecisionConfig{
+			Provider: DecisionProviderLLM,
 			LLMConfig: LLMConfig{
 				Model:       "gpt-4o-mini",
 				MaxTokens:   64,
@@ -875,7 +876,7 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 			SystemPrompt: "decide",
 		},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation failure for missing decision credentials")
 	}
@@ -1048,7 +1049,7 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			MaintenanceIntervalSec:       3600,
 			MergeCronHourUTC:             3,
@@ -1083,6 +1084,7 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 		Decision: DecisionConfig{
+			Provider: DecisionProviderLLM,
 			LLMConfig: LLMConfig{
 				Model:       "gpt-4o-mini",
 				APIBaseURL:  "https://decision.example.com/v1",
@@ -1096,7 +1098,7 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 			SystemPrompt: "decide",
 		},
 	}
-	if err := validate(cfg); err != nil {
+	if err := validate(stickerKeysSet(cfg)); err != nil {
 		t.Fatalf("expected validation success with explicit decision credentials, got: %v", err)
 	}
 }
@@ -1124,7 +1126,7 @@ func TestValidate_ConsolidationEnabled_RequiresOwnBotID(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:                  RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:                  RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:              ConsolidationConfig{Enabled: true, SystemPrompt: "sp", MemorySearchLimit: 20},
 			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
 			MaxMentionedUsersPerMemory: 3,
@@ -1136,7 +1138,7 @@ func TestValidate_ConsolidationEnabled_RequiresOwnBotID(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation failure when consolidation enabled but discord.own_bot_id is empty")
 	}
@@ -1168,7 +1170,7 @@ func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			MaintenanceIntervalSec:       3600,
 			MergeCronHourUTC:             3,
@@ -1203,7 +1205,7 @@ func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	if err := validate(cfg); err != nil {
+	if err := validate(stickerKeysSet(cfg)); err != nil {
 		t.Fatalf("expected validation success when consolidation disabled even without discord.own_bot_id, got: %v", err)
 	}
 }
@@ -1230,7 +1232,7 @@ func TestValidate_TopKEnabled_RequiresOwnBotID(t *testing.T) {
 			ConsolidationInterval:      1,
 			ShortTermLimit:             1,
 			MaxPaginatedLimit:          100,
-			Retrieval:                  RetrievalConfig{TopK: 5, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:                  RetrievalConfig{TopK: 5, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:              ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
 			MaxMentionedUsersPerMemory: 3,
@@ -1242,7 +1244,7 @@ func TestValidate_TopKEnabled_RequiresOwnBotID(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation failure when top_k > 0 but discord.own_bot_id is empty")
 	}
@@ -1273,7 +1275,7 @@ func TestValidate_MemoryDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 			ConsolidationInterval:        1,
 			ShortTermLimit:               1,
 			MaxPaginatedLimit:            100,
-			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			MaintenanceIntervalSec:       3600,
 			MergeCronHourUTC:             3,
@@ -1308,7 +1310,7 @@ func TestValidate_MemoryDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	if err := validate(cfg); err != nil {
+	if err := validate(stickerKeysSet(cfg)); err != nil {
 		t.Fatalf("expected validation success when memory is disabled (top_k=0, consolidation.off) even without discord.own_bot_id, got: %v", err)
 	}
 }
@@ -1336,17 +1338,15 @@ func TestValidate_ConsolidationEnabled_WithCoreAIFallback(t *testing.T) {
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
-			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation: ConsolidationConfig{
 				Enabled:           true,
 				SystemPrompt:      "cp",
 				MemorySearchLimit: 20,
-				LLMConfig: LLMConfig{
-					MaxTokens:   1,
-					Temperature: 0.1,
-					RetryCount:  1,
-					Timeout:     30,
-				},
+				MaxTokens:         1,
+				Temperature:       new(float32(0.1)),
+				RetryCount:        1,
+				Timeout:           30,
 			},
 			MaintenanceIntervalSec:       3600,
 			MergeCronHourUTC:             3,
@@ -1381,7 +1381,7 @@ func TestValidate_ConsolidationEnabled_WithCoreAIFallback(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	if err := validate(cfg); err != nil {
+	if err := validate(stickerKeysSet(cfg)); err != nil {
 		t.Fatalf("expected validation success with core.ai fallback for consolidation, got: %v", err)
 	}
 }
@@ -1406,17 +1406,15 @@ func TestValidate_ConsolidationEnabled_BothEmpty(t *testing.T) {
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
-			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation: ConsolidationConfig{
 				Enabled:           true,
 				SystemPrompt:      "cp",
 				MemorySearchLimit: 20,
-				LLMConfig: LLMConfig{
-					MaxTokens:   1,
-					Temperature: 0.1,
-					RetryCount:  1,
-					Timeout:     30,
-				},
+				MaxTokens:         1,
+				Temperature:       new(float32(0.1)),
+				RetryCount:        1,
+				Timeout:           30,
 			},
 			MaintenanceIntervalSec:       3600,
 			MergeCronHourUTC:             3,
@@ -1451,7 +1449,7 @@ func TestValidate_ConsolidationEnabled_BothEmpty(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation failure when both consolidation and core.ai API fields are empty")
 	}
@@ -1463,7 +1461,7 @@ func TestValidate_ConsolidationEnabled_BothEmpty(t *testing.T) {
 	}
 }
 
-func TestValidateAI_MissingTimeout(t *testing.T) {
+func TestValidateAI_MissingTimeoutRequired(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.75, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
@@ -1485,7 +1483,7 @@ func TestValidateAI_MissingTimeout(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:                    RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			MaintenanceIntervalSec:       3600,
 			MergeCronHourUTC:             3,
@@ -1520,8 +1518,9 @@ func TestValidateAI_MissingTimeout(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	if err := validate(cfg); err != nil {
-		t.Fatalf("expected validation success (old http_timeout_sec field removed), got: %v", err)
+	err := validate(stickerKeysSet(cfg))
+	if err == nil || !strings.Contains(err.Error(), "core.ai.timeout must be greater than 0") {
+		t.Fatalf("core.ai.timeout has no built-in default and must be required, got: %v", err)
 	}
 }
 
@@ -1549,7 +1548,7 @@ func TestValidateAI_MissingMaxToolIterations(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:                  RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:                  RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:              ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
 			MaxMentionedUsersPerMemory: 3,
@@ -1561,7 +1560,7 @@ func TestValidateAI_MissingMaxToolIterations(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation error for missing ai.max_tool_iterations")
 	}
@@ -1585,8 +1584,7 @@ func TestValidate_VisionMaxTokensNegative(t *testing.T) {
 			},
 			SystemPrompt: "sp",
 			Vision: VisionConfig{
-				LLMConfig:         LLMConfig{MaxTokens: -1},
-				Model:             "vm",
+				ModalityModel:     ModalityModel{Model: "vm", MaxTokens: new(-1)},
 				Mode:              "hybrid",
 				DescriptionPrompt: "desc",
 			},
@@ -1598,7 +1596,7 @@ func TestValidate_VisionMaxTokensNegative(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:                  RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:                  RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:              ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
 			MaxMentionedUsersPerMemory: 3,
@@ -1610,7 +1608,7 @@ func TestValidate_VisionMaxTokensNegative(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation error for negative ai.vision.max_tokens")
 	}
@@ -1644,7 +1642,7 @@ func TestValidate_EmbeddingTimeoutZero(t *testing.T) {
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
 
-			Retrieval:                  RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:                  RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:              ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			LongTermMemory:             LongTermMemoryConfig{Enabled: true},
 			MaxMentionedUsersPerMemory: 3,
@@ -1656,7 +1654,7 @@ func TestValidate_EmbeddingTimeoutZero(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation error for embedding.timeout = 0 when memory is enabled")
 	}
@@ -1687,7 +1685,7 @@ func TestValidate_OtherBotPolicy_Missing(t *testing.T) {
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
-			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{},
@@ -1696,7 +1694,7 @@ func TestValidate_OtherBotPolicy_Missing(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation error for missing other_bot_policy")
 	}
@@ -1727,7 +1725,7 @@ func TestValidate_OtherBotPolicy_Invalid(t *testing.T) {
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
-			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{},
@@ -1736,7 +1734,7 @@ func TestValidate_OtherBotPolicy_Invalid(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation error for invalid other_bot_policy")
 	}
@@ -1767,7 +1765,7 @@ func TestValidate_MCP_HTTP_RequiresURL(t *testing.T) {
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
-			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{},
@@ -1777,7 +1775,7 @@ func TestValidate_MCP_HTTP_RequiresURL(t *testing.T) {
 		MCP:        MCPConfig{Enabled: true, Servers: []MCPServer{{Name: "remote", Type: "http"}}},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation error for http MCP server missing url")
 	}
@@ -1808,7 +1806,7 @@ func TestValidate_MCP_InvalidType(t *testing.T) {
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
-			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:             RetrievalConfig{TopK: 0, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:     QdrantConfig{},
@@ -1818,7 +1816,7 @@ func TestValidate_MCP_InvalidType(t *testing.T) {
 		MCP:        MCPConfig{Enabled: true, Servers: []MCPServer{{Name: "bad", Type: "foo"}}},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation error for invalid MCP transport type")
 	}
@@ -2080,7 +2078,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsNegative(t *testing.T) {
 			ConsolidationInterval: 1,
 			ShortTermLimit:        1,
 			MaxPaginatedLimit:     100,
-			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:             RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:         ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 		},
 		Qdrant:  QdrantConfig{Host: "h", Port: 1, VectorSize: 1, RetryBaseDelayMs: 1000, RetryMaxDelayMs: 30000, MaxRetries: 3},
@@ -2101,7 +2099,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsNegative(t *testing.T) {
 		},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation error for negative plugins.default_tool_timeout_ms")
 	}
@@ -2132,7 +2130,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
 			ConsolidationInterval:        1,
 			ShortTermLimit:               1,
 			MaxPaginatedLimit:            100,
-			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: 3, MaxChannelMemories: 5},
+			Retrieval:                    RetrievalConfig{TopK: 1, MinScore: 0.5, IncludeChannelMemories: true, MaxMentionedMemories: new(3), MaxChannelMemories: new(5)},
 			Consolidation:                ConsolidationConfig{Enabled: false, MemorySearchLimit: 20},
 			MaintenanceIntervalSec:       3600,
 			MergeCronHourUTC:             3,
@@ -2179,7 +2177,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
 		},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err != nil {
 		t.Fatalf("expected validation to pass with positive default_tool_timeout_ms, got: %v", err)
 	}
@@ -2199,17 +2197,34 @@ func TestMemoryConfig_MaxBufferSize_NotExist(t *testing.T) {
 }
 
 func TestValidateMessageFilters(t *testing.T) {
-	cfg := &Config{MessageFilters: filter.Config{Rules: []filter.RuleConfig{{Action: "ignore", Channel: "^1$", Kinds: []string{"embed"}}}}}
+	cfg := &Config{MessageFilters: filter.Config{DefaultAction: "allow", Rules: []filter.RuleConfig{{Action: "ignore", Channel: "^1$", Kinds: []string{"embed"}}}}}
 	var errs []string
 	validateMessageFilters(cfg, &errs)
 	if len(errs) != 0 || cfg.MessageFilter() == nil {
 		t.Fatalf("expected a compiled filter, errs=%v", errs)
 	}
 
-	bad := &Config{MessageFilters: filter.Config{Rules: []filter.RuleConfig{{Action: "ignore", User: "("}}}}
+	bad := &Config{MessageFilters: filter.Config{DefaultAction: "allow", Rules: []filter.RuleConfig{{Action: "ignore", User: "("}}}}
 	errs = nil
 	validateMessageFilters(bad, &errs)
 	if len(errs) != 1 || !strings.Contains(errs[0], "access_control.message_filters") {
 		t.Fatalf("expected a prefixed regex error, got %v", errs)
 	}
+}
+
+// stickerKeysSet sets the always-required sticker keys (stickers are always
+// annotated) to the example's suggested values when a test leaves them out,
+// and returns cfg.
+func stickerKeysSet(cfg *Config) *Config {
+	st := &cfg.AI.Modalities.Sticker
+	if st.MaxItems == 0 {
+		st.MaxItems = 3
+	}
+	if st.CacheTTLMin == 0 {
+		st.CacheTTLMin = 1440
+	}
+	if st.CacheMaxEntries == 0 {
+		st.CacheMaxEntries = 1000
+	}
+	return cfg
 }

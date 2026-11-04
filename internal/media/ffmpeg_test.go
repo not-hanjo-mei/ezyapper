@@ -11,6 +11,7 @@ import (
 
 	"ezyapper/internal/ai"
 	"ezyapper/internal/config"
+	"ezyapper/internal/config/configtest"
 	"ezyapper/internal/types"
 )
 
@@ -69,7 +70,7 @@ func realFFmpeg(t *testing.T) string {
 
 func TestCheckFFmpeg_Real(t *testing.T) {
 	bin := realFFmpeg(t)
-	mods := config.ModalitiesConfig{}
+	mods := config.ModalitiesConfig{FFmpegPath: "ffmpeg"}
 	mods.Audio = config.AudioModalityConfig{Enabled: true, Transcode: "wav"}
 	if path, err := CheckFFmpeg(context.Background(), mods); err != nil || path != bin {
 		t.Fatalf("got %q %v", path, err)
@@ -98,7 +99,7 @@ func TestTranscodeAudioAndInputAudioPart(t *testing.T) {
 
 	cfg := baseConfig("http://unused.invalid")
 	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDescribe, Transcode: "mp3", PartType: config.AudioPartInput, ModalityModel: config.ModalityModel{Model: "omni"}}
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, nil)
 	part, err := p.AudioPart(context.Background(), types.MediaAttachment{ID: "a", Kind: types.MediaVoice, URL: files + "/voice.ogg", Filename: "voice-message.ogg", ContentType: "audio/ogg", Size: len(ogg)})
 	if err != nil {
@@ -144,7 +145,7 @@ func TestTranscodedTranscriptionUploadsMP3(t *testing.T) {
 	asr := serveASR(t, func(name, ct string) { gotName, gotCT = name, ct })
 	cfg := baseConfig("http://unused.invalid")
 	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeASR, Transcode: "mp3", ModalityModel: config.ModalityModel{Model: "asr", APIBaseURL: asr}}
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, NewCache(time.Hour, 10))
 	if _, err := p.Transcribe(context.Background(), types.MediaAttachment{ID: "a", Kind: types.MediaVoice, URL: files + "/voice.ogg", Filename: "voice-message.ogg", ContentType: "audio/ogg"}); err != nil {
 		t.Fatal(err)

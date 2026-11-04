@@ -54,7 +54,7 @@ func extractReplyInfo(m *discordgo.MessageCreate) (username string, content stri
 	}
 	if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
 		username = m.ReferencedMessage.Author.Username
-		content = m.ReferencedMessage.Content
+		content = types.QuoteText(m.ReferencedMessage)
 		return
 	}
 	return "(deleted message)", ""
@@ -166,7 +166,7 @@ func (b *Bot) renderMemories(memories []*memory.Record) string {
 	}
 	cfg := b.cfg().Memory
 	logger.Debugf("[memory] adding %d memories to the prompt", len(memories))
-	return memory.FormatMemoriesForContext(memories, cfg.MemoryStrengthMultiplier, time.Now(), cfg.Retrieval.MaxMentionedMemories, cfg.Retrieval.MaxChannelMemories)
+	return memory.FormatMemoriesForContext(memories, cfg.MemoryStrengthMultiplier, time.Now(), cfg.Retrieval.MentionedLimit(), cfg.Retrieval.ChannelLimit())
 }
 
 // annotateCurrent applies the enabled modalities to the message being

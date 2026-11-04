@@ -83,7 +83,12 @@ func SubjectOf(m *types.DiscordMessage) Subject {
 func Compile(cfg Config) (*Filter, error) {
 	def := Action(strings.TrimSpace(cfg.DefaultAction))
 	if def == "" {
-		def = ActionAllow
+		// No built-in default: an absent block (no rules) filters nothing,
+		// but rules need an explicit default_action.
+		if len(cfg.Rules) == 0 {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("default_action is required when rules are set (allow or ignore; no built-in default, see examples/config.yaml.example)")
 	}
 	if def != ActionAllow && def != ActionIgnore {
 		return nil, fmt.Errorf("default_action must be allow or ignore, got %q", cfg.DefaultAction)

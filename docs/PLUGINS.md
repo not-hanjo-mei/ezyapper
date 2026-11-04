@@ -111,6 +111,8 @@ type ToolProvider interface {
 
 Implements LLM-callable tools. Returned `ToolSpec`s are merged into the bot's tool registry alongside the built-in Discord tools and any MCP tools.
 
+`ToolSpec.TimeoutMs` is a `*int` (JSON `timeout_ms`). Leave it `nil` (the key is then absent on the wire) to inherit `operations.plugins.default_tool_timeout_ms`; set it with `new(15000)` to use your own. An explicit value must be greater than 0: a tool list with `timeout_ms: 0` is rejected (at startup the plugin fails to load; on `tools_changed` the previous list is kept). Before this was a pointer, `TimeoutMs: 0` meant "inherit"; that zero-means-absent rule is gone.
+
 ### Optional: `plugin.BeforeSendProvider`
 
 ```go
@@ -166,7 +168,7 @@ A directory-based plugin should ship a `plugin.json` manifest. The bot uses it t
       "command": "./datetime-zig",
       "args": ["get_current_datetime"],
       "arg_keys": [],
-      "timeout_ms": 0
+      "timeout_ms": 5000
     }
   ]
 }
@@ -181,7 +183,7 @@ Field notes:
   - `command` — executable path. Relative paths are resolved against the plugin directory.
   - `args` — static arguments always passed first.
   - `arg_keys` — argument names appended in order. The host pulls each name from the LLM-supplied `arguments` object and appends its value to the command line.
-  - `timeout_ms` — per-tool timeout. `0` (or absent) falls back to `operations.plugins.command_timeout_sec`. `default_tool_timeout_ms` is not used for command tools.
+  - `timeout_ms` — per-tool timeout in ms. Absent → inherits `operations.plugins.command_timeout_sec`; an explicit value must be greater than 0 (`0` is rejected when the plugin loads; remove the key to inherit). `default_tool_timeout_ms` is not used for command tools.
 
 ---
 
@@ -336,7 +338,7 @@ Lifecycle:
 2. Tools registered with the AI tool registry.
 3. On a tool call: `exec.CommandContext` runs `command + args + arg_keys-mapped-values`.
 4. stdout is captured and returned to the LLM as the tool result. stderr is logged.
-5. Timeout: per-tool `timeout_ms` if set, else `command_timeout_sec`. The process is killed when it runs out.
+5. Timeout: per-tool `timeout_ms` if the key is present, else `command_timeout_sec`. The process is killed when it runs out.
 
 The host injects two environment variables into every plugin process:
 
@@ -379,11 +381,11 @@ If a value fails sanitization, the tool call fails with an error and the LLM get
 
 | Setting | What it controls | Where |
 |---------|------------------|-------|
-| `default_tool_timeout_ms` | `execute_tool` timeout for a JSON-RPC tool whose spec sets no `timeout_ms` (not used by command tools) | `operations.plugins.default_tool_timeout_ms` |
+| `default_tool_timeout_ms` | `execute_tool` timeout for a JSON-RPC tool whose spec has no `timeout_ms` key (not used by command tools) | `operations.plugins.default_tool_timeout_ms` |
 | `startup_timeout_sec` | Time to wait for the first `info` probe at boot | `operations.plugins.startup_timeout_sec` |
 | `rpc_timeout_sec` | JSON-RPC calls other than `info`, `before_send` and `execute_tool`: `on_message`, `after_decision`, `after_send`, `system_prompt`, `list_tools`, `shutdown` | `operations.plugins.rpc_timeout_sec` |
 | `before_send_timeout_sec` | Specifically for `before_send` (longer because TTS, image gen, etc.) | `operations.plugins.before_send_timeout_sec` |
-| `command_timeout_sec` | Command-runtime tool execution when the manifest's `timeout_ms` is `0` or absent | `operations.plugins.command_timeout_sec` |
+| `command_timeout_sec` | Command-runtime tool execution when the manifest has no `timeout_ms` key | `operations.plugins.command_timeout_sec` |
 | `max_restarts` | Consecutive failed automatic restarts before the cooldown applies | `operations.plugins.max_restarts` |
 | `restart_cooldown_sec` | Wait after `max_restarts` failed restarts before trying again | `operations.plugins.restart_cooldown_sec` |
 | `shutdown_timeout_sec` | Grace period during graceful shutdown | `operations.plugins.shutdown_timeout_sec` |

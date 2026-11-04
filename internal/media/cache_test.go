@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"ezyapper/internal/config"
+	"ezyapper/internal/config/configtest"
 	"ezyapper/internal/types"
 )
 
@@ -220,7 +221,7 @@ func TestDescribeImagesCachesPermanentModelFailure(t *testing.T) {
 	defer srv.Close()
 	cfg := baseConfig(srv.URL)
 	cfg.AI.Modalities.Image = config.ImageModalityConfig{Enabled: true, Transport: config.TransportURL}
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, NewCache(time.Hour, 10))
 	url := []string{"https://cdn.discordapp.com/attachments/1/2/a.png?ex=1"}
 	for range 3 {
@@ -253,7 +254,7 @@ func TestTranscribeCachesSizeAndDownloadFailures(t *testing.T) {
 	defer asr.Close()
 	cfg := baseConfig("http://unused.invalid")
 	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeASR, MaxBytes: 5, ModalityModel: config.ModalityModel{Model: "asr", APIBaseURL: asr.URL}}
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	cache := NewCache(time.Hour, 10)
 	p := New(cfg, cache)
 
@@ -284,7 +285,7 @@ func TestTranscodeErrorIsCached(t *testing.T) {
 	cfg := baseConfig("http://unused.invalid")
 	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeASR, Transcode: "mp3", ModalityModel: config.ModalityModel{Model: "asr", APIBaseURL: "http://unused.invalid"}}
 	cfg.AI.Modalities.FFmpegPath = "/nonexistent/ffmpeg"
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	cache := NewCache(time.Hour, 10)
 	p := New(cfg, cache)
 	_, err := p.Transcribe(context.Background(), voice(files.URL))
@@ -354,7 +355,7 @@ func TestWindowKeys(t *testing.T) {
 // gets a new fingerprint.
 func TestFingerprintsChangedKinds(t *testing.T) {
 	base := baseConfig("http://a")
-	base.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &base.AI.Modalities)
 	fp := Fingerprints(base)
 	if ChangedKinds(nil, fp) != nil {
 		t.Fatal("first load changes nothing")

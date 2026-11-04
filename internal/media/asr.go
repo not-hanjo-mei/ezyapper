@@ -39,10 +39,8 @@ type TranscriberConfig struct {
 }
 
 // NewTranscriber creates a transcriber.
+// cfg.Timeout comes from audio.timeout or core.ai.timeout (required > 0).
 func NewTranscriber(cfg TranscriberConfig) *Transcriber {
-	if cfg.Timeout <= 0 {
-		cfg.Timeout = 60 * time.Second
-	}
 	return &Transcriber{
 		httpClient: httpcapture.Wrap(&http.Client{Timeout: cfg.Timeout}, "asr:"+cfg.Model),
 		baseURL:    strings.TrimRight(cfg.BaseURL, "/"),

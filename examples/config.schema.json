@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/not-hanjo-mei/ezyapper/main/examples/config.schema.json",
   "title": "EZyapper Configuration",
-  "description": "JSON Schema for config.yaml. Mirrors internal/config validation: a key is listed as required when the bot refuses to start without it (a key whose zero value is valid, such as reply_percentage or temperature, is optional). Conditional requirements (memory on, web/plugins/mcp/decision enabled) follow the Go validators.",
+  "description": "JSON Schema for config.yaml. The bot has no built-in defaults: values under \"examples\" are suggestions (they match examples/config.yaml.example), never filled in by the loader. Mirrors internal/config validation: a key is listed as required when the bot refuses to start without it (a key whose zero value is valid, such as reply_percentage or temperature, is optional). Conditional requirements (memory on, web/plugins/mcp/decision enabled) follow the Go validators.",
   "type": "object",
   "required": ["core", "memory_pipeline", "operations"],
   "additionalProperties": false,
@@ -71,7 +71,7 @@
         },
         "ai": {
           "type": "object",
-          "required": ["api_base_url", "api_key", "model", "max_tokens", "retry_count", "timeout", "system_prompt", "max_tool_iterations", "max_image_bytes"],
+          "required": ["api_base_url", "api_key", "model", "max_tokens", "retry_count", "timeout", "system_prompt", "max_tool_iterations", "max_image_bytes", "modalities"],
           "additionalProperties": false,
           "properties": {
             "api_base_url":   { "type": "string", "minLength": 1 },
@@ -80,7 +80,7 @@
             "max_tokens":     { "type": "integer", "minimum": 1 },
             "temperature":    { "type": "number", "minimum": 0, "maximum": 2 },
             "retry_count":    { "type": "integer", "minimum": 1 },
-            "timeout":        { "type": "integer", "minimum": 1, "$comment": "Not checked by the Go loader, but 0 makes every request time out at once, so the schema requires it." },
+            "timeout":        { "type": "integer", "minimum": 1, "description": "Per-request timeout (s); also used by a modality that sets none." },
             "max_tool_iterations":        { "type": "integer", "minimum": 1 },
             "max_image_bytes":            { "type": "integer", "minimum": 1 },
             "require_image_content_type": { "type": "boolean", "deprecated": true, "description": "Removed and ignored (a config that sets it logs a deprecation warning)." },
@@ -88,111 +88,120 @@
             "extra_params":   { "type": "object" },
             "modalities": {
               "type": "object",
-              "description": "Optional per-modality models that turn media into text. Text is always core.ai, which is text-only (the reply request never carries media). Empty endpoint fields fall back to core.ai.",
+              "description": "Per-modality models that turn media into text. Text is always core.ai, which is text-only (the reply request never carries media). Empty endpoint fields fall back to core.ai. Every other key an enabled modality uses is required (no built-in defaults); sticker.max_items/cache_ttl_min/cache_max_entries are always required because stickers are always annotated.",
               "additionalProperties": false,
+              "required": ["sticker"],
+              "allOf": [
+                { "if": { "required": ["audio"], "properties": { "audio": { "required": ["enabled", "transcode"], "properties": { "enabled": { "const": true }, "transcode": { "enum": ["mp3", "wav"] } } } } }, "then": { "required": ["ffmpeg_path"] } },
+                { "if": { "required": ["video"], "properties": { "video": { "required": ["enabled", "transcode"], "properties": { "enabled": { "const": true }, "transcode": { "const": true } } } } }, "then": { "required": ["ffmpeg_path"] } }
+              ],
               "properties": {
                 "image": {
                   "type": "object",
                   "additionalProperties": false,
-                  "allOf": [{ "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }, "then": { "required": ["model"] } }],
+                  "allOf": [{ "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }, "then": { "required": ["model", "prompt", "max_items", "transport"], "properties": { "prompt": { "minLength": 1 }, "max_items": { "minimum": 1 } } } }],
                   "properties": {
-                    "enabled":      { "type": "boolean", "default": false },
+                    "enabled":      { "type": "boolean" },
                     "mode":         { "not": {}, "deprecated": true, "description": "Removed: images are always described into text by the image model. A config that sets it fails validation." },
                     "model":        { "type": "string" },
                     "api_base_url": { "type": "string" },
                     "api_key":      { "type": "string" },
-                    "timeout":      { "type": "integer", "minimum": 0 },
-                    "max_tokens":   { "type": "integer", "minimum": 0 },
-                    "temperature":  { "type": "number", "minimum": 0, "maximum": 2 },
-                    "retry_count":  { "type": "integer", "minimum": 0 },
-                    "extra_params": { "type": "object" },
+                    "timeout":      { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.timeout. An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                    "max_tokens":   { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.max_tokens. An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                    "temperature":  { "type": "number", "minimum": 0, "maximum": 2, "description": "Absent: inherits core.ai.temperature. An explicit value, including 0, is used as is." },
+                    "retry_count":  { "type": "integer", "minimum": 0, "description": "Absent: inherits core.ai.retry_count. An explicit value, including 0 (no retries), is used as is." },
+                    "extra_params": { "type": "object", "description": "Absent: inherits core.ai.extra_params. An explicit map is used as is; {} sends none." },
                     "prompt":       { "type": "string" },
-                    "max_items":    { "type": "integer", "minimum": 0, "default": 4 },
-                    "transport":    { "type": "string", "enum": ["base64", "url"], "default": "base64" }
+                    "max_items":    { "type": "integer", "minimum": 0, "examples": [4] },
+                    "transport":    { "type": "string", "enum": ["base64", "url"], "examples": ["base64"] }
                   }
                 },
                 "audio": {
                   "type": "object",
                   "additionalProperties": false,
                   "allOf": [
-                    { "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }, "then": { "required": ["model"] } },
+                    { "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }, "then": { "required": ["model", "mode", "max_items", "max_bytes", "max_duration_sec"], "properties": { "max_items": { "minimum": 1 }, "max_bytes": { "minimum": 1 }, "max_duration_sec": { "minimum": 1 } } } },
+                    { "if": { "properties": { "enabled": { "const": true }, "mode": { "const": "describe" } }, "required": ["enabled", "mode"] }, "then": { "required": ["prompt", "part_type"], "properties": { "prompt": { "minLength": 1 } } } },
                     { "if": { "properties": { "part_type": { "const": "input_audio" } }, "required": ["part_type"] }, "then": { "required": ["transcode"], "properties": { "transcode": { "enum": ["mp3", "wav"] } } } }
                   ],
                   "properties": {
-                    "enabled":          { "type": "boolean", "default": false },
-                    "mode":             { "type": "string", "enum": ["asr", "describe"], "default": "asr", "description": "asr: /audio/transcriptions endpoint; describe: audio-capable chat model. The old \"direct\" mode was removed and fails validation." },
+                    "enabled":          { "type": "boolean" },
+                    "mode":             { "type": "string", "enum": ["asr", "describe"], "examples": ["asr"], "description": "asr: /audio/transcriptions endpoint; describe: audio-capable chat model. The old \"direct\" mode was removed and fails validation." },
                     "model":            { "type": "string" },
                     "api_base_url":     { "type": "string" },
                     "api_key":          { "type": "string" },
-                    "timeout":          { "type": "integer", "minimum": 0 },
-                    "max_tokens":       { "type": "integer", "minimum": 0 },
-                    "temperature":      { "type": "number", "minimum": 0, "maximum": 2 },
-                    "retry_count":      { "type": "integer", "minimum": 0 },
-                    "extra_params":     { "type": "object" },
+                    "timeout":          { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.timeout. An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                    "max_tokens":       { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.max_tokens. An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                    "temperature":      { "type": "number", "minimum": 0, "maximum": 2, "description": "Absent: inherits core.ai.temperature. An explicit value, including 0, is used as is." },
+                    "retry_count":      { "type": "integer", "minimum": 0, "description": "Absent: inherits core.ai.retry_count. An explicit value, including 0 (no retries), is used as is." },
+                    "extra_params":     { "type": "object", "description": "Absent: inherits core.ai.extra_params. An explicit map is used as is; {} sends none." },
                     "language":         { "type": "string" },
                     "prompt":           { "type": "string" },
-                    "max_items":        { "type": "integer", "minimum": 0, "default": 2 },
-                    "max_bytes":        { "type": "integer", "minimum": 0, "default": 26214400 },
-                    "max_duration_sec": { "type": "integer", "minimum": 0, "default": 600 },
-                    "transcode":        { "type": "string", "enum": ["", "mp3", "wav"], "default": "", "description": "Convert with ffmpeg before sending (requires ffmpeg)." },
-                    "part_type":        { "type": "string", "enum": ["audio_url", "input_audio"], "default": "audio_url" }
+                    "max_items":        { "type": "integer", "minimum": 0, "examples": [2] },
+                    "max_bytes":        { "type": "integer", "minimum": 0, "examples": [26214400] },
+                    "max_duration_sec": { "type": "integer", "minimum": 0, "examples": [600] },
+                    "transcode":        { "type": "string", "enum": ["", "mp3", "wav"], "description": "Convert with ffmpeg before sending (requires ffmpeg)." },
+                    "part_type":        { "type": "string", "enum": ["audio_url", "input_audio"], "examples": ["audio_url"] }
                   }
                 },
                 "video": {
                   "type": "object",
                   "additionalProperties": false,
                   "allOf": [
-                    { "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }, "then": { "required": ["model"] } },
+                    { "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }, "then": { "required": ["model", "prompt", "max_items", "max_bytes", "max_duration_sec", "transport"], "properties": { "prompt": { "minLength": 1 }, "max_items": { "minimum": 1 }, "max_bytes": { "minimum": 1 }, "max_duration_sec": { "minimum": 1 } } } },
+                    { "if": { "properties": { "enabled": { "const": true }, "transcode": { "const": true } }, "required": ["enabled", "transcode"] }, "then": { "required": ["max_height"], "properties": { "max_height": { "minimum": 1 } } } },
                     { "if": { "properties": { "transcode": { "const": true } }, "required": ["transcode"] }, "then": { "properties": { "transport": { "const": "base64" } } } }
                   ],
                   "properties": {
-                    "enabled":          { "type": "boolean", "default": false },
+                    "enabled":          { "type": "boolean" },
                     "mode":             { "not": {}, "deprecated": true, "description": "Removed: videos are always described into text by the video model. A config that sets it fails validation." },
                     "model":            { "type": "string" },
                     "api_base_url":     { "type": "string" },
                     "api_key":          { "type": "string" },
-                    "timeout":          { "type": "integer", "minimum": 0 },
-                    "max_tokens":       { "type": "integer", "minimum": 0 },
-                    "temperature":      { "type": "number", "minimum": 0, "maximum": 2 },
-                    "retry_count":      { "type": "integer", "minimum": 0 },
-                    "extra_params":     { "type": "object" },
+                    "timeout":          { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.timeout. An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                    "max_tokens":       { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.max_tokens. An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                    "temperature":      { "type": "number", "minimum": 0, "maximum": 2, "description": "Absent: inherits core.ai.temperature. An explicit value, including 0, is used as is." },
+                    "retry_count":      { "type": "integer", "minimum": 0, "description": "Absent: inherits core.ai.retry_count. An explicit value, including 0 (no retries), is used as is." },
+                    "extra_params":     { "type": "object", "description": "Absent: inherits core.ai.extra_params. An explicit map is used as is; {} sends none." },
                     "prompt":           { "type": "string" },
-                    "max_items":        { "type": "integer", "minimum": 0, "default": 1 },
-                    "max_bytes":        { "type": "integer", "minimum": 0, "default": 52428800 },
-                    "max_duration_sec": { "type": "integer", "minimum": 0, "default": 120 },
-                    "transport":        { "type": "string", "enum": ["base64", "url"], "default": "base64" },
-                    "transcode":        { "type": "boolean", "default": false, "description": "Re-encode with ffmpeg (requires ffmpeg and transport base64)." },
-                    "max_height":       { "type": "integer", "minimum": 0, "default": 480 }
+                    "max_items":        { "type": "integer", "minimum": 0, "examples": [1] },
+                    "max_bytes":        { "type": "integer", "minimum": 0, "examples": [52428800] },
+                    "max_duration_sec": { "type": "integer", "minimum": 0, "examples": [120] },
+                    "transport":        { "type": "string", "enum": ["base64", "url"], "examples": ["base64"] },
+                    "transcode":        { "type": "boolean", "description": "Re-encode with ffmpeg (requires ffmpeg and transport base64)." },
+                    "max_height":       { "type": "integer", "minimum": 0, "examples": [480] }
                   }
                 },
                 "sticker": {
                   "type": "object",
                   "additionalProperties": false,
                   "$comment": "enabled: true (vision) needs a model from sticker.model or image.model (not expressible here; the Go loader checks it).",
+                  "required": ["max_items", "cache_ttl_min", "cache_max_entries"],
+                  "allOf": [{ "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }, "then": { "required": ["prompt"], "properties": { "prompt": { "minLength": 1 } } } }],
                   "properties": {
-                    "enabled":           { "type": "boolean", "default": false, "description": "true: a vision model describes the sticker image (Lottie falls back to text); false: Discord name/description/tags only, no model call." },
+                    "enabled":           { "type": "boolean", "description": "true: a vision model describes the sticker image (Lottie falls back to text); false: Discord name/description/tags only, no model call." },
                     "mode":              { "type": "string", "deprecated": true, "description": "Removed and ignored (a config that sets it logs a deprecation warning); sticker.enabled is the only switch." },
                     "model":             { "type": "string" },
                     "api_base_url":      { "type": "string" },
                     "api_key":           { "type": "string" },
-                    "timeout":           { "type": "integer", "minimum": 0 },
-                    "max_tokens":        { "type": "integer", "minimum": 0 },
-                    "temperature":       { "type": "number", "minimum": 0, "maximum": 2 },
-                    "retry_count":       { "type": "integer", "minimum": 0 },
-                    "extra_params":      { "type": "object" },
+                    "timeout":           { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.modalities.image.timeout (then core.ai.timeout). An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                    "max_tokens":        { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.modalities.image.max_tokens (then core.ai.max_tokens). An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                    "temperature":       { "type": "number", "minimum": 0, "maximum": 2, "description": "Absent: inherits core.ai.modalities.image.temperature (then core.ai.temperature). An explicit value, including 0, is used as is." },
+                    "retry_count":       { "type": "integer", "minimum": 0, "description": "Absent: inherits core.ai.modalities.image.retry_count (then core.ai.retry_count). An explicit value, including 0 (no retries), is used as is." },
+                    "extra_params":      { "type": "object", "description": "Absent: inherits core.ai.modalities.image.extra_params (then core.ai.extra_params). An explicit map is used as is; {} sends none." },
                     "prompt":            { "type": "string" },
-                    "max_items":         { "type": "integer", "minimum": 0, "default": 3 },
-                    "cache_ttl_min":     { "type": "integer", "minimum": 0, "default": 1440 },
-                    "cache_max_entries": { "type": "integer", "minimum": 0, "default": 1000 }
+                    "max_items":         { "type": "integer", "minimum": 1, "examples": [3] },
+                    "cache_ttl_min":     { "type": "integer", "minimum": 1, "examples": [1440] },
+                    "cache_max_entries": { "type": "integer", "minimum": 1, "examples": [1000] }
                   }
                 },
-                "ffmpeg_path": { "type": "string", "default": "ffmpeg" }
+                "ffmpeg_path": { "type": "string", "minLength": 1, "examples": ["ffmpeg"], "description": "ffmpeg binary (name looked up in PATH, or a path). Required when audio.transcode or video.transcode is on." }
               }
             },
             "vision": {
               "type": "object",
               "deprecated": true,
-              "description": "Deprecated: mapped onto modalities.image at load (text_only or empty mode = image off; hybrid and multimodal = image described by vision.model). Ignored when modalities is set.",
+              "description": "Deprecated: mapped onto modalities.image at load (text_only or empty mode = image off; hybrid and multimodal = image described by vision.model). Ignored when modalities.image is set. The mapped image modality needs description_prompt and max_images (no built-in defaults).",
               "additionalProperties": false,
               "properties": {
                 "mode":               { "type": "string", "enum": ["", "text_only", "hybrid", "multimodal"] },
@@ -202,11 +211,11 @@
                 "description_prompt": { "type": "string" },
                 "api_base_url":       { "type": "string" },
                 "api_key":            { "type": "string" },
-                "max_tokens":         { "type": "integer", "minimum": 0 },
-                "temperature":        { "type": "number", "minimum": 0, "maximum": 2 },
-                "retry_count":        { "type": "integer", "minimum": 0 },
-                "timeout":            { "type": "integer", "minimum": 0 },
-                "extra_params":       { "type": "object" }
+                "max_tokens":         { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.max_tokens. An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                "temperature":        { "type": "number", "minimum": 0, "maximum": 2, "description": "Absent: inherits core.ai.temperature. An explicit value, including 0, is used as is." },
+                "retry_count":        { "type": "integer", "minimum": 0, "description": "Absent: inherits core.ai.retry_count. An explicit value, including 0 (no retries), is used as is." },
+                "timeout":            { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.timeout. An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                "extra_params":       { "type": "object", "description": "Absent: inherits core.ai.extra_params. An explicit map is used as is; {} sends none." }
               }
             }
           }
@@ -215,9 +224,13 @@
           "type": "object",
           "allOf": [
             {
+              "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+              "then": { "required": ["provider"] }
+            },
+            {
               "if": {
                 "properties": { "enabled": { "const": true }, "provider": { "const": "llm" } },
-                "required": ["enabled"]
+                "required": ["enabled", "provider"]
               },
               "then": {
                 "required": ["model", "api_base_url", "api_key", "system_prompt", "max_tokens", "timeout"]
@@ -233,8 +246,8 @@
           ],
           "additionalProperties": false,
           "properties": {
-            "enabled":       { "type": "boolean", "default": false },
-            "provider":      { "type": "string", "enum": ["llm", "system_one"], "default": "llm" },
+            "enabled":       { "type": "boolean" },
+            "provider":      { "type": "string", "enum": ["llm", "system_one"], "description": "Required when enabled (no default provider)." },
             "model":         { "type": "string" },
             "api_base_url":  { "type": "string" },
             "api_key":       { "type": "string" },
@@ -294,7 +307,7 @@
             "model":        { "type": "string" },
             "retry_count":  { "type": "integer", "minimum": 0 },
             "timeout":      { "type": "integer", "minimum": 1 },
-            "extra_params": { "type": "object" }
+            "extra_params": { "type": "object", "description": "Absent: inherits core.ai.extra_params (chat-only parameters there are then sent to the embedding endpoint too). An explicit map is used as is; {} sends none." }
           }
         },
         "memory": {
@@ -304,7 +317,7 @@
           "properties": {
             "consolidation_interval": { "type": "integer", "minimum": 1 },
             "short_term_limit":       { "type": "integer", "minimum": 1 },
-            "context_flush_window":   { "type": "integer", "minimum": 0, "default": 0 },
+            "context_flush_window":   { "type": "integer", "minimum": 0, "examples": [0] },
             "max_paginated_limit":    { "type": "integer", "minimum": 1 },
             "retrieval": {
               "type": "object",
@@ -313,8 +326,8 @@
                 "top_k":                    { "type": "integer", "minimum": 0, "description": "0 disables retrieval." },
                 "min_score":                { "type": "number", "minimum": 0, "maximum": 1 },
                 "include_channel_memories": { "type": "boolean" },
-                "max_mentioned_memories":   { "type": "integer", "minimum": 0, "description": "0 = use top_k." },
-                "max_channel_memories":     { "type": "integer", "minimum": 0, "description": "0 = use top_k." }
+                "max_mentioned_memories":   { "type": "integer", "minimum": 0, "description": "Absent: inherits retrieval.top_k. An explicit value is used as is; 0 = none." },
+                "max_channel_memories":     { "type": "integer", "minimum": 0, "description": "Absent: inherits retrieval.top_k. An explicit value is used as is; 0 = none." }
               }
             },
             "consolidation": {
@@ -331,31 +344,31 @@
                 }
               ],
               "properties": {
-                "enabled":             { "type": "boolean", "default": false },
+                "enabled":             { "type": "boolean" },
                 "model":               { "type": "string", "description": "Empty = core.ai.model." },
                 "api_base_url":        { "type": "string", "description": "Empty = core.ai.api_base_url." },
                 "api_key":             { "type": "string", "description": "Empty = core.ai.api_key." },
                 "max_tokens":          { "type": "integer", "minimum": 1 },
-                "temperature":         { "type": "number", "minimum": 0, "maximum": 2 },
+                "temperature":         { "type": "number", "minimum": 0, "maximum": 2, "description": "Absent: inherits core.ai.temperature. An explicit value, including 0, is used as is." },
                 "retry_count":         { "type": "integer", "minimum": 0 },
                 "timeout":             { "type": "integer", "minimum": 1 },
                 "vision": {
                   "type": "object",
                   "additionalProperties": false,
-                  "description": "Optional overrides for describing images during consolidation; empty fields use core.ai.modalities.image (then core.ai). Only used when the image modality is enabled.",
+                  "description": "Optional overrides for describing images during consolidation. Absent keys (and empty strings) use core.ai.modalities.image (then core.ai); an explicit value, including 0 or {}, is used as is. Only used when the image modality is enabled.",
                   "properties": {
                     "model":              { "type": "string" },
                     "api_base_url":       { "type": "string" },
                     "api_key":            { "type": "string" },
-                    "max_tokens":         { "type": "integer", "minimum": 0 },
-                    "temperature":        { "type": "number", "minimum": 0, "maximum": 2 },
-                    "retry_count":        { "type": "integer", "minimum": 0 },
-                    "timeout":            { "type": "integer", "minimum": 0 },
+                    "max_tokens":         { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.modalities.image.max_tokens (then core.ai.max_tokens). An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                    "temperature":        { "type": "number", "minimum": 0, "maximum": 2, "description": "Absent: inherits core.ai.modalities.image.temperature (then core.ai.temperature). An explicit value, including 0, is used as is." },
+                    "retry_count":        { "type": "integer", "minimum": 0, "description": "Absent: inherits core.ai.modalities.image.retry_count (then core.ai.retry_count). An explicit value, including 0 (no retries), is used as is." },
+                    "timeout":            { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.modalities.image.timeout (then core.ai.timeout). An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
                     "description_prompt": { "type": "string" },
                     "mode":               { "type": "string", "deprecated": true, "description": "Ignored." },
                     "base64":             { "type": "boolean", "deprecated": true, "description": "Ignored (the image modality's transport is used)." },
                     "max_images":         { "type": "integer", "deprecated": true, "description": "Ignored (the image modality's max_items is used)." },
-                    "extra_params":       { "type": "object", "deprecated": true, "description": "Ignored (the image modality's extra_params are used)." }
+                    "extra_params":       { "type": "object", "description": "Absent: inherits core.ai.modalities.image.extra_params (then core.ai.extra_params). An explicit map is used as is; {} sends none." }
                   }
                 },
                 "system_prompt":       { "type": "string" },
@@ -452,8 +465,9 @@
           "type": "object",
           "additionalProperties": false,
           "description": "Regex allow/ignore rules for incoming messages. First matching rule wins; ignored messages are not answered and are hidden from context and consolidation. The bot's own messages are never filtered.",
+          "allOf": [{ "if": { "required": ["rules"], "properties": { "rules": { "minItems": 1 } } }, "then": { "required": ["default_action"] } }],
           "properties": {
-            "default_action": { "type": "string", "enum": ["allow", "ignore"], "default": "allow" },
+            "default_action": { "type": "string", "enum": ["allow", "ignore"], "examples": ["allow"], "description": "Required when rules are set (no built-in default)." },
             "rules": {
               "type": "array",
               "items": {
@@ -500,7 +514,7 @@
             }
           ],
           "properties": {
-            "enabled":  { "type": "boolean", "default": false },
+            "enabled":  { "type": "boolean" },
             "port":     { "type": "integer", "minimum": 1, "maximum": 65535 },
             "username": { "type": "string", "minLength": 1 },
             "password": { "type": "string", "minLength": 1 },
@@ -537,7 +551,7 @@
             }
           ],
           "properties": {
-            "enabled":     { "type": "boolean", "default": false },
+            "enabled":     { "type": "boolean" },
             "plugins_dir": { "type": "string", "minLength": 1 },
             "default_tool_timeout_ms":  { "type": "integer", "minimum": 0, "description": "Validated even when plugins are disabled. 0 logs a warning: JSON-RPC tools without their own timeout then fail." },
             "startup_timeout_sec":      { "type": "integer", "minimum": 1 },
@@ -560,7 +574,7 @@
             }
           ],
           "properties": {
-            "enabled": { "type": "boolean", "default": false },
+            "enabled": { "type": "boolean" },
             "servers": {
               "type": "array",
               "items": {
@@ -601,7 +615,7 @@
                 }
               ],
               "properties": {
-                "enabled":     { "type": "boolean", "default": false },
+                "enabled":     { "type": "boolean" },
                 "debounce_ms": { "type": "integer", "minimum": 0, "maximum": 60000, "description": "50-60000 when enabled." }
               }
             }

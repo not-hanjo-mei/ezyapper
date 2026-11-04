@@ -15,8 +15,15 @@ import (
 // description or a transcript) that is added to the message in the user
 // prompt ("[Image N: ...]", "[Audio N ...]", "[Video N ...]"). Results are
 // cached by attachment ID, so the same media is not processed again on later
-// turns. Endpoint fields left empty (or 0) fall back to the matching core.ai
-// value, so a modality served by the same gateway only needs enabled + model.
+// turns. Endpoint fields whose key is absent fall back to the matching
+// core.ai value (documented inheritance between config keys), so a modality
+// served by the same gateway does not repeat the endpoint. Presence, not
+// the value, decides: an explicit 0 (temperature: 0, retry_count: 0) is
+// used as is, and an explicit timeout: 0 or max_tokens: 0 is rejected.
+//
+// There are no built-in defaults: every other field an enabled modality
+// uses (prompt, item and size limits, transport, ...) must be set in the
+// config file. examples/config.yaml.example carries suggested values.
 
 // AudioMode selects how audio attachments and voice messages become text.
 type AudioMode string
@@ -55,43 +62,36 @@ const (
 	TransportURL MediaTransport = "url"
 )
 
-// Defaults applied to an enabled modality when the field is left empty.
+// Notices for removed and deprecated modality settings.
 const (
-	DefaultImagePrompt        = "Describe this image in 1-2 sentences. Be compact but informative. Transcribe any visible text."
-	DefaultAudioPrompt        = "Transcribe the speech in this audio verbatim, in its original language. If there is no speech, describe the sound or music in one sentence. Reply with the transcript or description only."
-	DefaultVideoPrompt        = "Describe this video in 2-4 sentences: what happens, who or what appears, and any speech or on-screen text. Be compact but informative."
-	DefaultStickerPrompt      = "Describe this Discord sticker in one short sentence: what it shows and the emotion or reaction it conveys. Include any visible text."
-	DefaultStickerMaxItems    = 3
-	DefaultStickerCacheTTL    = 1440 // minutes
-	DefaultStickerCacheMax    = 1000
-	DefaultVideoMaxHeight     = 480
-	DefaultImageMaxItems      = 4
-	DefaultAudioMaxItems      = 2
-	DefaultVideoMaxItems      = 1
-	DefaultAudioMaxBytes      = 25 << 20 // OpenAI transcription upload limit
-	DefaultVideoMaxBytes      = 50 << 20
-	DefaultAudioMaxDuration   = 600
-	DefaultVideoMaxDuration   = 120
 	legacyVisionDeprecation   = "core.ai.vision is deprecated: it was mapped onto core.ai.modalities.image; move the settings there"
-	legacyVisionIgnoredNotice = "core.ai.vision is ignored because core.ai.modalities is set; remove core.ai.vision"
+	legacyVisionIgnoredNotice = "core.ai.vision is ignored because core.ai.modalities.image is set; remove core.ai.vision"
 	removedModeNotice         = "was removed: %s are always described into text by the %s model (the reply model core.ai.model is text-only and never receives media; direct mode no longer exists) - remove the mode field"
 )
 
-// ModalityModel is the model endpoint a modality calls. Empty fields fall
-// back to core.ai (see Resolve).
+// ModalityModel is the model endpoint a modality calls (also the shape of
+// the sticker and consolidation.vision overrides). Empty strings and absent
+// keys fall back to the next model in the chain (see Resolve and
+// StickerVisionModel). The numeric fields are pointers and ExtraParams is
+// nil when its key is absent, so an absent key is distinct from an
+// explicit 0 or {}: Load leaves an absent key nil, an explicit value
+// (including 0 and {}) is kept, and Save writes back only what is set, so
+// hot reload and the dashboard's Save keep the distinction.
 type ModalityModel struct {
 	Model       string         `mapstructure:"model" yaml:"model,omitempty"`
 	APIBaseURL  string         `mapstructure:"api_base_url" yaml:"api_base_url,omitempty"`
 	APIKey      string         `mapstructure:"api_key" yaml:"api_key,omitempty"`
-	Timeout     int            `mapstructure:"timeout" yaml:"timeout,omitempty"`
-	MaxTokens   int            `mapstructure:"max_tokens" yaml:"max_tokens,omitempty"`
-	Temperature float32        `mapstructure:"temperature" yaml:"temperature,omitempty"`
-	RetryCount  int            `mapstructure:"retry_count" yaml:"retry_count,omitempty"`
+	Timeout     *int           `mapstructure:"timeout" yaml:"timeout,omitempty"`
+	MaxTokens   *int           `mapstructure:"max_tokens" yaml:"max_tokens,omitempty"`
+	Temperature *float32       `mapstructure:"temperature" yaml:"temperature,omitempty"`
+	RetryCount  *int           `mapstructure:"retry_count" yaml:"retry_count,omitempty"`
 	ExtraParams map[string]any `mapstructure:"extra_params" yaml:"extra_params,omitempty"`
 }
 
-// Resolve returns a copy of base with this modality's non-empty fields
-// applied. The result is a complete AIConfig an ai.Client can be built from.
+// Resolve returns a copy of base with this modality's set fields applied:
+// non-empty strings and every key present in the config, whatever its
+// value (temperature 0 is sent as 0, extra_params {} sends none). The
+// result is a complete AIConfig an ai.Client can be built from.
 func (m ModalityModel) Resolve(base AIConfig) AIConfig {
 	out := base
 	if m.Model != "" {
@@ -103,22 +103,73 @@ func (m ModalityModel) Resolve(base AIConfig) AIConfig {
 	if m.APIKey != "" {
 		out.APIKey = m.APIKey
 	}
-	if m.Timeout > 0 {
-		out.Timeout = m.Timeout
+	if m.Timeout != nil {
+		out.Timeout = *m.Timeout
 	}
-	if m.MaxTokens > 0 {
-		out.MaxTokens = m.MaxTokens
+	if m.MaxTokens != nil {
+		out.MaxTokens = *m.MaxTokens
 	}
-	if m.Temperature > 0 {
-		out.Temperature = m.Temperature
+	if m.Temperature != nil {
+		out.Temperature = *m.Temperature
+		out.ExplicitZeroTemperature = *m.Temperature == 0
 	}
-	if m.RetryCount > 0 {
-		out.RetryCount = m.RetryCount
+	if m.RetryCount != nil {
+		out.RetryCount = *m.RetryCount
 	}
 	if m.ExtraParams != nil {
 		out.ExtraParams = m.ExtraParams
 	}
 	return out
+}
+
+// Over returns m with every field it leaves unset (empty string, absent
+// key) taken from parent: the sticker -> image and consolidation.vision ->
+// image steps of the inheritance chain.
+func (m ModalityModel) Over(parent ModalityModel) ModalityModel {
+	if m.Model == "" {
+		m.Model = parent.Model
+	}
+	if m.APIBaseURL == "" {
+		m.APIBaseURL = parent.APIBaseURL
+	}
+	if m.APIKey == "" {
+		m.APIKey = parent.APIKey
+	}
+	if m.Timeout == nil {
+		m.Timeout = parent.Timeout
+	}
+	if m.MaxTokens == nil {
+		m.MaxTokens = parent.MaxTokens
+	}
+	if m.Temperature == nil {
+		m.Temperature = parent.Temperature
+	}
+	if m.RetryCount == nil {
+		m.RetryCount = parent.RetryCount
+	}
+	if m.ExtraParams == nil {
+		m.ExtraParams = parent.ExtraParams
+	}
+	return m
+}
+
+// checkModalityModel validates the keys of a model override that are set.
+// Absent keys inherit (parent names what they inherit from); an explicit
+// timeout or max_tokens of 0 is rejected instead of inherited, because 0
+// would time out at once or allow no output.
+func checkModalityModel(prefix string, mm ModalityModel, parent string, errs *[]string) {
+	if mm.Timeout != nil && *mm.Timeout <= 0 {
+		*errs = append(*errs, fmt.Sprintf("%stimeout must be greater than 0 (omit the key to use %s.timeout)", prefix, parent))
+	}
+	if mm.MaxTokens != nil && *mm.MaxTokens <= 0 {
+		*errs = append(*errs, fmt.Sprintf("%smax_tokens must be greater than 0 (omit the key to use %s.max_tokens)", prefix, parent))
+	}
+	if mm.RetryCount != nil && *mm.RetryCount < 0 {
+		*errs = append(*errs, fmt.Sprintf("%sretry_count must be greater than or equal to 0 (omit the key to use %s.retry_count)", prefix, parent))
+	}
+	if mm.Temperature != nil && (*mm.Temperature < 0 || *mm.Temperature > 2) {
+		*errs = append(*errs, fmt.Sprintf("%stemperature must be between 0 and 2 (omit the key to use %s.temperature)", prefix, parent))
+	}
 }
 
 // ImageModalityConfig configures images (attachments and image embeds).
@@ -143,9 +194,9 @@ type AudioModalityConfig struct {
 	// Language is an optional ISO-639-1 hint for the ASR endpoint (asr
 	// mode).
 	Language string `mapstructure:"language" yaml:"language,omitempty"`
-	// Prompt is the ASR prompt (vocabulary / spelling hints; optional) in
-	// asr mode, and the instruction for the audio model in describe mode
-	// (empty uses DefaultAudioPrompt).
+	// Prompt is the ASR prompt (vocabulary / spelling hints; optional, empty
+	// sends none) in asr mode, and the instruction for the audio model in
+	// describe mode (required there).
 	Prompt         string `mapstructure:"prompt" yaml:"prompt,omitempty"`
 	MaxItems       int    `mapstructure:"max_items" yaml:"max_items,omitempty"`
 	MaxBytes       int    `mapstructure:"max_bytes" yaml:"max_bytes,omitempty"`
@@ -154,8 +205,8 @@ type AudioModalityConfig struct {
 	// "wav"; empty sends it as is). Needed for an ASR endpoint that rejects
 	// ogg/opus voice messages, and for part_type input_audio.
 	Transcode string `mapstructure:"transcode" yaml:"transcode,omitempty"`
-	// PartType is the content part describe mode sends: audio_url
-	// (default) or input_audio.
+	// PartType is the content part describe mode sends: audio_url or
+	// input_audio. Required in describe mode.
 	PartType AudioPartType `mapstructure:"part_type" yaml:"part_type,omitempty"`
 }
 
@@ -179,8 +230,9 @@ type VideoModalityConfig struct {
 }
 
 // StickerModalityConfig configures stickers. Stickers are always shown to
-// the base model as "[Sticker: ...]" lines; Enabled only decides whether
-// the image is read:
+// the base model as "[Sticker: ...]" lines, so MaxItems, CacheTTLMin and
+// CacheMaxEntries are always required; Enabled only decides whether the
+// image is read:
 //
 //   - true: a vision model describes the sticker image once per sticker ID.
 //     Lottie stickers cannot be rendered and fall back to the text below.
@@ -201,35 +253,11 @@ type StickerModalityConfig struct {
 	CacheMaxEntries int `mapstructure:"cache_max_entries" yaml:"cache_max_entries,omitempty"`
 }
 
-// StickerVisionModel returns the model settings sticker vision uses: the sticker's
-// own fields, then modalities.image's.
+// StickerVisionModel returns the model settings sticker vision uses: the
+// sticker's own set fields, then modalities.image's (then core.ai's, when
+// the result is resolved).
 func (m ModalitiesConfig) StickerVisionModel() ModalityModel {
-	s, img := m.Sticker.ModalityModel, m.Image.ModalityModel
-	if s.Model == "" {
-		s.Model = img.Model
-	}
-	if s.APIBaseURL == "" {
-		s.APIBaseURL = img.APIBaseURL
-	}
-	if s.APIKey == "" {
-		s.APIKey = img.APIKey
-	}
-	if s.Timeout == 0 {
-		s.Timeout = img.Timeout
-	}
-	if s.MaxTokens == 0 {
-		s.MaxTokens = img.MaxTokens
-	}
-	if s.Temperature == 0 {
-		s.Temperature = img.Temperature
-	}
-	if s.RetryCount == 0 {
-		s.RetryCount = img.RetryCount
-	}
-	if s.ExtraParams == nil {
-		s.ExtraParams = img.ExtraParams
-	}
-	return s
+	return m.Sticker.ModalityModel.Over(m.Image.ModalityModel)
 }
 
 // ModalitiesConfig is core.ai.modalities. Every section is optional.
@@ -238,8 +266,9 @@ type ModalitiesConfig struct {
 	Audio   AudioModalityConfig   `mapstructure:"audio" yaml:"audio"`
 	Video   VideoModalityConfig   `mapstructure:"video" yaml:"video"`
 	Sticker StickerModalityConfig `mapstructure:"sticker" yaml:"sticker"`
-	// FFmpegPath is the ffmpeg binary (default: "ffmpeg" from PATH). ffmpeg
-	// is optional; it is only needed by audio.transcode and video.transcode.
+	// FFmpegPath is the ffmpeg binary (a name looked up in PATH, or a path).
+	// ffmpeg is optional; it is only needed by audio.transcode and
+	// video.transcode, and this key is required when one of them is on.
 	FFmpegPath string `mapstructure:"ffmpeg_path" yaml:"ffmpeg_path,omitempty"`
 }
 
@@ -262,78 +291,8 @@ func (m ModalitiesConfig) AnyEnabled() bool {
 	return m.Image.Enabled || m.Audio.Enabled || m.Video.Enabled || m.Sticker.Enabled
 }
 
-func (m ModalitiesConfig) isZero() bool {
-	return reflect.ValueOf(m).IsZero()
-}
-
-// ApplyDefaults fills empty fields of the modalities with their defaults.
-// It is idempotent.
-func (m *ModalitiesConfig) ApplyDefaults() {
-	img := &m.Image
-	if img.Prompt == "" {
-		img.Prompt = DefaultImagePrompt
-	}
-	if img.MaxItems == 0 {
-		img.MaxItems = DefaultImageMaxItems
-	}
-	if img.Transport == "" {
-		img.Transport = TransportBase64
-	}
-
-	au := &m.Audio
-	if au.Mode == "" {
-		au.Mode = AudioModeASR
-	}
-	if au.MaxItems == 0 {
-		au.MaxItems = DefaultAudioMaxItems
-	}
-	if au.MaxBytes == 0 {
-		au.MaxBytes = DefaultAudioMaxBytes
-	}
-	if au.MaxDurationSec == 0 {
-		au.MaxDurationSec = DefaultAudioMaxDuration
-	}
-	if au.PartType == "" {
-		au.PartType = AudioPartURL
-	}
-
-	v := &m.Video
-	if v.Prompt == "" {
-		v.Prompt = DefaultVideoPrompt
-	}
-	if v.MaxItems == 0 {
-		v.MaxItems = DefaultVideoMaxItems
-	}
-	if v.MaxBytes == 0 {
-		v.MaxBytes = DefaultVideoMaxBytes
-	}
-	if v.MaxDurationSec == 0 {
-		v.MaxDurationSec = DefaultVideoMaxDuration
-	}
-	if v.Transport == "" {
-		v.Transport = TransportBase64
-	}
-	if v.MaxHeight == 0 {
-		v.MaxHeight = DefaultVideoMaxHeight
-	}
-
-	st := &m.Sticker
-	if st.Prompt == "" {
-		st.Prompt = DefaultStickerPrompt
-	}
-	if st.MaxItems == 0 {
-		st.MaxItems = DefaultStickerMaxItems
-	}
-	if st.CacheTTLMin == 0 {
-		st.CacheTTLMin = DefaultStickerCacheTTL
-	}
-	if st.CacheMaxEntries == 0 {
-		st.CacheMaxEntries = DefaultStickerCacheMax
-	}
-}
-
 // mapLegacyVision maps the deprecated core.ai.vision block onto
-// core.ai.modalities.image when the new block is not set, then clears the
+// core.ai.modalities.image when that block is not set, then clears the
 // legacy block so it is not written back by Save. It returns a notice for
 // the operator (empty when there was nothing to map).
 //
@@ -346,27 +305,14 @@ func mapLegacyVision(ai *AIConfig, errs *[]string) string {
 	if reflect.ValueOf(legacy).IsZero() {
 		return ""
 	}
-	if ai.modalitiesSet || !ai.Modalities.isZero() {
+	if ai.imageSet || !reflect.ValueOf(ai.Modalities.Image).IsZero() {
 		ai.Vision = VisionConfig{}
 		return legacyVisionIgnoredNotice
 	}
-	model := legacy.Model
-	if model == "" {
-		model = legacy.LLMConfig.Model
-	}
 	img := ImageModalityConfig{
-		ModalityModel: ModalityModel{
-			Model:       model,
-			APIBaseURL:  legacy.APIBaseURL,
-			APIKey:      legacy.APIKey,
-			Timeout:     legacy.Timeout,
-			MaxTokens:   legacy.MaxTokens,
-			Temperature: legacy.Temperature,
-			RetryCount:  legacy.RetryCount,
-			ExtraParams: legacy.ExtraParams,
-		},
-		Prompt:   legacy.DescriptionPrompt,
-		MaxItems: legacy.MaxImages,
+		ModalityModel: legacy.ModalityModel,
+		Prompt:        legacy.DescriptionPrompt,
+		MaxItems:      legacy.MaxImages,
 	}
 	if legacy.Base64 {
 		img.Transport = TransportBase64
@@ -394,26 +340,23 @@ func validateModalities(cfg *Config, errs *[]string) {
 		if needsModel && mm.Model == "" {
 			*errs = append(*errs, prefix+"model is required when the modality is enabled in this mode")
 		}
-		if mm.Timeout < 0 {
-			*errs = append(*errs, prefix+"timeout must be greater than or equal to 0")
-		}
-		if mm.MaxTokens < 0 {
-			*errs = append(*errs, prefix+"max_tokens must be greater than 0 (or omitted to use core.ai.max_tokens)")
-		}
-		if mm.RetryCount < 0 {
-			*errs = append(*errs, prefix+"retry_count must be greater than or equal to 0")
-		}
-		if mm.Temperature < 0 || mm.Temperature > 2 {
-			*errs = append(*errs, prefix+"temperature must be between 0 and 2")
-		}
+		checkModalityModel(prefix, mm, "core.ai", errs)
 	}
 	nonNegative := func(path string, v int) {
 		if v < 0 {
 			*errs = append(*errs, path+" must be greater than or equal to 0")
 		}
 	}
-	checkTransport := func(path string, t MediaTransport) {
-		if t != TransportBase64 && t != TransportURL {
+	// checkTransport validates a set transport; an enabled modality must
+	// set one (there is no built-in default).
+	checkTransport := func(path string, t MediaTransport, enabled bool, cond string) {
+		switch t {
+		case TransportBase64, TransportURL:
+		case "":
+			if enabled {
+				*errs = append(*errs, requiredWhen(path, cond)+" (one of: base64, url)")
+			}
+		default:
 			*errs = append(*errs, fmt.Sprintf("%s %q is invalid (must be one of: base64, url)", path, t))
 		}
 	}
@@ -426,16 +369,24 @@ func validateModalities(cfg *Config, errs *[]string) {
 	}
 
 	img := m.Image
+	const imgOn = p + "image.enabled is true"
 	removedMode("image", "images", img.RemovedMode)
 	nonNegative(p+"image.max_items", img.MaxItems)
-	checkTransport(p+"image.transport", img.Transport)
+	checkTransport(p+"image.transport", img.Transport, img.Enabled, imgOn)
 	if img.Enabled {
 		checkModel(p+"image.", img.ModalityModel, true)
+		requireTextWhen(img.Prompt, p+"image.prompt", imgOn, errs)
+		requirePositiveWhen(img.MaxItems, p+"image.max_items", imgOn, errs)
 	}
 
 	au := m.Audio
+	const auOn = p + "audio.enabled is true"
 	switch au.Mode {
 	case AudioModeASR, AudioModeDescribe:
+	case "":
+		if au.Enabled {
+			*errs = append(*errs, requiredWhen(p+"audio.mode", auOn)+" (one of: asr, describe)")
+		}
 	case "direct":
 		*errs = append(*errs, p+"audio.mode \"direct\" was removed: the reply model core.ai.model is text-only and never receives media - use mode asr (a transcription endpoint) or describe (an audio-capable chat model writes a transcript)")
 	default:
@@ -455,35 +406,61 @@ func validateModalities(cfg *Config, errs *[]string) {
 		if au.Transcode == "" {
 			*errs = append(*errs, p+"audio.part_type input_audio only accepts mp3 or wav: set "+p+"audio.transcode to mp3 or wav")
 		}
+	case "":
+		if au.Enabled && au.Mode == AudioModeDescribe {
+			*errs = append(*errs, requiredWhen(p+"audio.part_type", auOn+" and audio.mode is describe")+" (one of: audio_url, input_audio)")
+		}
 	default:
 		*errs = append(*errs, fmt.Sprintf(p+"audio.part_type %q is invalid (must be one of: audio_url, input_audio)", au.PartType))
 	}
 	if au.Enabled {
 		checkModel(p+"audio.", au.ModalityModel, true)
+		requirePositiveWhen(au.MaxItems, p+"audio.max_items", auOn, errs)
+		requirePositiveWhen(au.MaxBytes, p+"audio.max_bytes", auOn, errs)
+		requirePositiveWhen(au.MaxDurationSec, p+"audio.max_duration_sec", auOn, errs)
+		if au.Mode == AudioModeDescribe {
+			requireTextWhen(au.Prompt, p+"audio.prompt", auOn+" and audio.mode is describe", errs)
+		}
 	}
 
 	v := m.Video
+	const viOn = p + "video.enabled is true"
 	removedMode("video", "videos", v.RemovedMode)
 	nonNegative(p+"video.max_items", v.MaxItems)
 	nonNegative(p+"video.max_bytes", v.MaxBytes)
 	nonNegative(p+"video.max_duration_sec", v.MaxDurationSec)
-	checkTransport(p+"video.transport", v.Transport)
+	checkTransport(p+"video.transport", v.Transport, v.Enabled, viOn)
 	nonNegative(p+"video.max_height", v.MaxHeight)
 	if v.Transcode && v.Transport == TransportURL {
 		*errs = append(*errs, p+"video.transcode needs transport base64 (a transcoded video has no URL)")
 	}
 	if v.Enabled {
 		checkModel(p+"video.", v.ModalityModel, true)
+		requireTextWhen(v.Prompt, p+"video.prompt", viOn, errs)
+		requirePositiveWhen(v.MaxItems, p+"video.max_items", viOn, errs)
+		requirePositiveWhen(v.MaxBytes, p+"video.max_bytes", viOn, errs)
+		requirePositiveWhen(v.MaxDurationSec, p+"video.max_duration_sec", viOn, errs)
+		if v.Transcode {
+			requirePositiveWhen(v.MaxHeight, p+"video.max_height", viOn+" and video.transcode is true", errs)
+		}
 	}
 
+	if reasons := m.FFmpegRequirements(); len(reasons) > 0 && strings.TrimSpace(m.FFmpegPath) == "" {
+		*errs = append(*errs, requiredWhen(p+"ffmpeg_path", strings.Join(reasons, ", ")+" is set"))
+	}
+
+	// Stickers are always annotated (the text from Discord when enabled is
+	// false), so the item cap and the sticker cache bounds are always used.
 	st := m.Sticker
-	nonNegative(p+"sticker.max_items", st.MaxItems)
-	nonNegative(p+"sticker.cache_ttl_min", st.CacheTTLMin)
-	nonNegative(p+"sticker.cache_max_entries", st.CacheMaxEntries)
+	const stAlways = "stickers are always added to the message"
+	requirePositiveWhen(st.MaxItems, p+"sticker.max_items", stAlways, errs)
+	requirePositiveWhen(st.CacheTTLMin, p+"sticker.cache_ttl_min", stAlways, errs)
+	requirePositiveWhen(st.CacheMaxEntries, p+"sticker.cache_max_entries", stAlways, errs)
 	if st.Enabled {
-		checkModel(p+"sticker.", st.ModalityModel, false)
+		checkModalityModel(p+"sticker.", st.ModalityModel, p+"image", errs)
 		if m.StickerVisionModel().Model == "" {
 			*errs = append(*errs, p+"sticker.model is required when sticker.enabled is true (or set "+p+"image.model); set sticker.enabled to false to use only the sticker's name, description and tags")
 		}
+		requireTextWhen(st.Prompt, p+"sticker.prompt", p+"sticker.enabled is true", errs)
 	}
 }

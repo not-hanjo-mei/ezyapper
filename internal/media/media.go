@@ -283,11 +283,8 @@ func (p *Processor) DescribeAudio(ctx context.Context, a types.MediaAttachment) 
 		if err != nil {
 			return "", err
 		}
-		prompt := p.mods.Audio.Prompt
-		if strings.TrimSpace(prompt) == "" {
-			prompt = config.DefaultAudioPrompt
-		}
-		return p.audioClient.DescribeMedia(ctx, prompt, part)
+		// audio.prompt is required in describe mode (validated at load).
+		return p.audioClient.DescribeMedia(ctx, p.mods.Audio.Prompt, part)
 	})
 }
 

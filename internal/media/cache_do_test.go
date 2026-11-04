@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"ezyapper/internal/config"
+	"ezyapper/internal/config/configtest"
 	"ezyapper/internal/types"
 )
 
@@ -80,7 +81,7 @@ func TestTranscribeConcurrentSameAttachmentOnce(t *testing.T) {
 	cache := NewCache(time.Hour, 10)
 	cfg := baseConfig("http://unused.invalid")
 	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeASR, ModalityModel: config.ModalityModel{Model: "asr", APIBaseURL: asr.URL}}
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	reply, cons := New(cfg, cache), New(cfg, cache)
 
 	msg := &types.DiscordMessage{ID: "m1", Media: []types.MediaAttachment{voice(files.URL)}}

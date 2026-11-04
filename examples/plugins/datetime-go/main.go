@@ -170,7 +170,7 @@ func (p *DateTimePlugin) ListTools() ([]plugin.ToolSpec, error) {
 		{
 			Name:        "get_current_datetime",
 			Description: "Get the current date and time",
-			TimeoutMs:   p.config.Load().GetCurrentDatetimeMs,
+			TimeoutMs:   new(p.config.Load().GetCurrentDatetimeMs),
 			Parameters: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},

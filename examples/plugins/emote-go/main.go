@@ -140,7 +140,7 @@ func (p *EmotePlugin) ListTools() ([]plugin.ToolSpec, error) {
 		{
 			Name:        "search_emote",
 			Description: "Search for emotes by describing what you want",
-			TimeoutMs:   p.config.SearchEmoteMs,
+			TimeoutMs:   new(p.config.SearchEmoteMs),
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -159,7 +159,7 @@ func (p *EmotePlugin) ListTools() ([]plugin.ToolSpec, error) {
 		{
 			Name:        "send_emote",
 			Description: "Send an emote to the channel, requires the emote ID from search_emote results",
-			TimeoutMs:   p.config.SendEmoteMs,
+			TimeoutMs:   new(p.config.SendEmoteMs),
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

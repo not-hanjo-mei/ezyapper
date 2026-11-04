@@ -35,9 +35,7 @@ func TestNewService_Valid(t *testing.T) {
 		TopK:                  5,
 		MinScore:              0.5,
 		Consolidation: &config.ConsolidationConfig{
-			LLMConfig: config.LLMConfig{
-				Model: "gpt-4",
-			},
+			Model:        "gpt-4",
 			SystemPrompt: "test",
 		},
 	}
@@ -57,7 +55,7 @@ func TestNewService_NilQdrant(t *testing.T) {
 		ShortTermLimit:        50,
 		TopK:                  5,
 		MinScore:              0.5,
-		Consolidation:         &config.ConsolidationConfig{LLMConfig: config.LLMConfig{Model: "gpt-4"}, SystemPrompt: "test"},
+		Consolidation:         &config.ConsolidationConfig{Model: "gpt-4", SystemPrompt: "test"},
 	}
 	_, err := NewService(cfg, testQdrantCfg, nil, &svcEmbedder{}, nil, nil)
 	if err == nil {
@@ -74,7 +72,7 @@ func TestNewService_NilEmbedder(t *testing.T) {
 		ShortTermLimit:        50,
 		TopK:                  5,
 		MinScore:              0.5,
-		Consolidation:         &config.ConsolidationConfig{LLMConfig: config.LLMConfig{Model: "gpt-4"}, SystemPrompt: "test"},
+		Consolidation:         &config.ConsolidationConfig{Model: "gpt-4", SystemPrompt: "test"},
 	}
 	_, err := NewService(cfg, testQdrantCfg, &QdrantClient{}, nil, nil, nil)
 	if err == nil {
@@ -88,7 +86,7 @@ func TestNewService_InvalidConsolidationInterval(t *testing.T) {
 		ShortTermLimit:        50,
 		TopK:                  5,
 		MinScore:              0.5,
-		Consolidation:         &config.ConsolidationConfig{LLMConfig: config.LLMConfig{Model: "gpt-4"}, SystemPrompt: "test"},
+		Consolidation:         &config.ConsolidationConfig{Model: "gpt-4", SystemPrompt: "test"},
 	}
 	_, err := NewService(cfg, testQdrantCfg, &QdrantClient{}, &svcEmbedder{}, nil, nil)
 	if err == nil {
@@ -102,7 +100,7 @@ func TestNewService_InvalidShortTermLimit(t *testing.T) {
 		ShortTermLimit:        0,
 		TopK:                  5,
 		MinScore:              0.5,
-		Consolidation:         &config.ConsolidationConfig{LLMConfig: config.LLMConfig{Model: "gpt-4"}, SystemPrompt: "test"},
+		Consolidation:         &config.ConsolidationConfig{Model: "gpt-4", SystemPrompt: "test"},
 	}
 	_, err := NewService(cfg, testQdrantCfg, &QdrantClient{}, &svcEmbedder{}, nil, nil)
 	if err == nil {
@@ -116,7 +114,7 @@ func TestNewService_InvalidTopK(t *testing.T) {
 		ShortTermLimit:        50,
 		TopK:                  -1,
 		MinScore:              0.5,
-		Consolidation:         &config.ConsolidationConfig{LLMConfig: config.LLMConfig{Model: "gpt-4"}, SystemPrompt: "test"},
+		Consolidation:         &config.ConsolidationConfig{Model: "gpt-4", SystemPrompt: "test"},
 	}
 	_, err := NewService(cfg, testQdrantCfg, &QdrantClient{}, &svcEmbedder{}, nil, nil)
 	if err == nil {
@@ -130,7 +128,7 @@ func TestNewService_InvalidMinScore(t *testing.T) {
 		ShortTermLimit:        50,
 		TopK:                  5,
 		MinScore:              2.0,
-		Consolidation:         &config.ConsolidationConfig{LLMConfig: config.LLMConfig{Model: "gpt-4"}, SystemPrompt: "test"},
+		Consolidation:         &config.ConsolidationConfig{Model: "gpt-4", SystemPrompt: "test"},
 	}
 	_, err := NewService(cfg, testQdrantCfg, &QdrantClient{}, &svcEmbedder{}, nil, nil)
 	if err == nil {

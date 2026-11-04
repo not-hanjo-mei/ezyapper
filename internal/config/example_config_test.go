@@ -24,18 +24,33 @@ func TestExampleConfigLoads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("examples/config.yaml.example does not load: %v", err)
 	}
-	// The modality values written in the example are the defaults.
-	want := ModalitiesConfig{}
-	want.ApplyDefaults()
-	got := cfg.AI.Modalities
-	if got.Image.MaxItems != want.Image.MaxItems || got.Image.Transport != want.Image.Transport ||
-		got.Audio.Mode != want.Audio.Mode || got.Audio.MaxItems != want.Audio.MaxItems ||
-		got.Audio.MaxBytes != want.Audio.MaxBytes || got.Audio.MaxDurationSec != want.Audio.MaxDurationSec ||
-		got.Video.MaxItems != want.Video.MaxItems || got.Video.MaxBytes != want.Video.MaxBytes ||
-		got.Video.MaxDurationSec != want.Video.MaxDurationSec || got.Video.Transport != want.Video.Transport ||
-		got.Sticker.Enabled != want.Sticker.Enabled || got.Sticker.MaxItems != want.Sticker.MaxItems ||
-		got.Sticker.CacheTTLMin != want.Sticker.CacheTTLMin || got.Sticker.CacheMaxEntries != want.Sticker.CacheMaxEntries {
-		t.Errorf("example modality values differ from the defaults:\n got %+v\nwant %+v", got, want)
+	// The bot has no built-in defaults, so the example itself must carry a
+	// suggested value for every key a modality needs once it is enabled.
+	m := cfg.AI.Modalities
+	if m.Image.Prompt == "" || m.Image.MaxItems <= 0 || m.Image.Transport == "" ||
+		m.Audio.Mode == "" || m.Audio.MaxItems <= 0 || m.Audio.MaxBytes <= 0 || m.Audio.MaxDurationSec <= 0 ||
+		m.Video.Prompt == "" || m.Video.MaxItems <= 0 || m.Video.MaxBytes <= 0 || m.Video.MaxDurationSec <= 0 || m.Video.Transport == "" ||
+		m.Sticker.Prompt == "" || m.Sticker.MaxItems <= 0 || m.Sticker.CacheTTLMin <= 0 || m.Sticker.CacheMaxEntries <= 0 {
+		t.Errorf("example is missing a suggested modality value: %+v", m)
+	}
+	if cfg.Decision.Provider == "" {
+		t.Error("example must set core.decision.provider")
+	}
+}
+
+// TestExampleConfigEnabledFeaturesLoad turns on every modality of the
+// example: the keys required when a feature is enabled must already be
+// set there, so enabling one is a one-line change.
+func TestExampleConfigEnabledFeaturesLoad(t *testing.T) {
+	quietWarnings(t)
+	cfg, err := Load(exampleConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := &cfg.AI.Modalities
+	m.Image.Enabled, m.Audio.Enabled, m.Video.Enabled, m.Sticker.Enabled = true, true, true, true
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("example with every modality enabled does not validate: %v", err)
 	}
 }
 

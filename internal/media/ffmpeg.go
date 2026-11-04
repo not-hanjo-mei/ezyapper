@@ -18,12 +18,10 @@ import (
 // video.transcode; when one of those is on and ffmpeg is missing the bot
 // refuses to start (CheckFFmpeg) instead of failing on the first message.
 
-// ffmpegBinary returns the configured binary name or path.
+// ffmpegBinary returns the configured binary name or path
+// (core.ai.modalities.ffmpeg_path, required whenever an option needs ffmpeg).
 func ffmpegBinary(mods config.ModalitiesConfig) string {
-	if p := strings.TrimSpace(mods.FFmpegPath); p != "" {
-		return p
-	}
-	return "ffmpeg"
+	return strings.TrimSpace(mods.FFmpegPath)
 }
 
 // CheckFFmpeg verifies that ffmpeg is usable when an enabled option needs
@@ -38,6 +36,9 @@ func CheckFFmpeg(ctx context.Context, mods config.ModalitiesConfig) (string, err
 		return fmt.Errorf("ffmpeg is required by %s, but %s: install ffmpeg, set core.ai.modalities.ffmpeg_path, or turn those options off", strings.Join(reasons, ", "), cause)
 	}
 	bin := ffmpegBinary(mods)
+	if bin == "" {
+		return "", fail("core.ai.modalities.ffmpeg_path is not set (no built-in default)")
+	}
 	path, err := exec.LookPath(bin)
 	if err != nil {
 		return "", fail(fmt.Sprintf("%q was not found (%v)", bin, err))
