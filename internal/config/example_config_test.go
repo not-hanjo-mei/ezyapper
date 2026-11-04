@@ -33,7 +33,7 @@ func TestExampleConfigLoads(t *testing.T) {
 		got.Audio.MaxBytes != want.Audio.MaxBytes || got.Audio.MaxDurationSec != want.Audio.MaxDurationSec ||
 		got.Video.MaxItems != want.Video.MaxItems || got.Video.MaxBytes != want.Video.MaxBytes ||
 		got.Video.MaxDurationSec != want.Video.MaxDurationSec || got.Video.Transport != want.Video.Transport ||
-		got.Sticker.Mode != want.Sticker.Mode || got.Sticker.MaxItems != want.Sticker.MaxItems ||
+		got.Sticker.Enabled != want.Sticker.Enabled || got.Sticker.MaxItems != want.Sticker.MaxItems ||
 		got.Sticker.CacheTTLMin != want.Sticker.CacheTTLMin || got.Sticker.CacheMaxEntries != want.Sticker.CacheMaxEntries {
 		t.Errorf("example modality values differ from the defaults:\n got %+v\nwant %+v", got, want)
 	}

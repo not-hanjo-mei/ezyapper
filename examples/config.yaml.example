@@ -19,6 +19,7 @@
 #   core.ai.modalities.image.mode       removed; fails validation
 #   core.ai.modalities.video.mode       removed; fails validation
 #   core.ai.modalities.audio.mode: direct  removed; use asr or describe
+#   core.ai.modalities.sticker.mode     removed; ignored with a warning (use sticker.enabled)
 #
 # Quick start:
 # 1) Fill core.discord + core.ai first
@@ -188,14 +189,14 @@ core:
       ## ffmpeg_path: "ffmpeg"
 
       sticker:
+        # Stickers are always shown. enabled only decides whether the image is read:
+        #   false: "[Sticker: name — description (tags: ...)]" from Discord, no model call.
+        #   true:  a vision model describes the sticker image once per sticker
+        #          ID (custom guild stickers included). Lottie stickers cannot
+        #          be rendered and fall back to the text.
         enabled: false
-        # text:   "[Sticker: name — description (tags: ...)]" from Discord, no model call.
-        # vision: a vision model describes the sticker image once per sticker
-        #         ID (custom guild stickers included). Lottie stickers cannot
-        #         be rendered and fall back to text.
-        mode: "text"
         # Vision model fields fall back to modalities.image, then core.ai;
-        # vision mode needs a model from sticker.model or image.model.
+        # enabled: true needs a model from sticker.model or image.model.
         ## model: "gpt-4o"
         ## api_base_url: ""
         ## api_key: ""

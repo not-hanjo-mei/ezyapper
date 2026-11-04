@@ -122,13 +122,15 @@ func TestEnrichHistory_ASRBoundedAndCached(t *testing.T) {
 func TestEnrichHistory_AllModalitiesOffIsNoop(t *testing.T) {
 	b, files := mediaTestBot(t, config.ModalitiesConfig{})
 	history := []*types.DiscordMessage{voiceMsg("a", files.URL)}
-	if out := b.enrichHistory(context.Background(), history, "cur", planRecentImageEnrichment("voice", "a")); out[0] != history[0] {
+	if out := b.enrichHistory(context.Background(), history, "cur", planRecentImageEnrichment("voice", "a")); out[0] != history[0] || out[0].Content != "" {
 		t.Fatal("history must be returned unchanged when no modality is enabled")
 	}
 }
 
+// With every modality off (sticker.enabled false) stickers are still shown,
+// as their Discord name/description text; no model is called.
 func TestStickersInCurrentAndHistory(t *testing.T) {
-	b, _ := mediaTestBot(t, config.ModalitiesConfig{Sticker: config.StickerModalityConfig{Enabled: true}})
+	b, _ := mediaTestBot(t, config.ModalitiesConfig{})
 	b.media.SetStickers(func(ctx context.Context, id string) (media.StickerInfo, error) {
 		return media.StickerInfo{Name: "wave", Description: "waves hello"}, nil
 	}, media.NewCache(time.Hour, 10))

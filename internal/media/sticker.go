@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"ezyapper/internal/ai"
-	"ezyapper/internal/config"
 	"ezyapper/internal/logger"
 	"ezyapper/internal/types"
 )
@@ -105,13 +104,14 @@ func (p *Processor) describeSticker(ctx context.Context, s types.StickerRef) (st
 
 // AnnotateStickers returns "[Sticker: ...]" lines for msg's stickers.
 //
-// Text mode: name, description and tags from Discord (looked up once per
-// sticker ID, for history messages too: it is a cheap Discord API call, not
-// a model call). Vision mode: the cached vision description; a missing one
-// is only computed for the message being answered (current), history falls
+// Stickers are always annotated. The text is the name, description and tags
+// from Discord (looked up once per sticker ID, for history messages too: it
+// is a cheap Discord API call, not a model call). With sticker.enabled the
+// cached vision description of the image is used instead; a missing one is
+// only computed for the message being answered (current), history falls
 // back to text. Lottie stickers cannot be rendered and always use text.
 func (p *Processor) AnnotateStickers(ctx context.Context, msg *types.DiscordMessage, current bool) string {
-	if p == nil || msg == nil || !p.mods.Sticker.Enabled || len(msg.Stickers) == 0 {
+	if p == nil || msg == nil || len(msg.Stickers) == 0 {
 		return ""
 	}
 	st := p.mods.Sticker
@@ -121,7 +121,7 @@ func (p *Processor) AnnotateStickers(ctx context.Context, msg *types.DiscordMess
 			break
 		}
 		info := p.stickerInfo(ctx, s)
-		if st.Mode == config.StickerModeVision && s.FormatType != types.StickerLottie {
+		if st.Enabled && s.FormatType != types.StickerLottie {
 			desc, ok := p.stickerCache.Get("sticker:vision:" + s.ID)
 			if !ok && current {
 				var err error

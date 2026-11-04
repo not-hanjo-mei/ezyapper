@@ -14,10 +14,10 @@ import (
 	"ezyapper/internal/types"
 )
 
-func stickerProcessor(t *testing.T, mode config.StickerMode, chatURL string) (*Processor, *int32) {
+func stickerProcessor(t *testing.T, enabled bool, chatURL string) (*Processor, *int32) {
 	t.Helper()
 	cfg := baseConfig(chatURL)
-	cfg.AI.Modalities.Sticker = config.StickerModalityConfig{Enabled: true, Mode: mode}
+	cfg.AI.Modalities.Sticker = config.StickerModalityConfig{Enabled: enabled}
 	// Sticker vision falls back to the image modality's model.
 	cfg.AI.Modalities.Image.Model = "vm"
 	cfg.AI.Modalities.ApplyDefaults()
@@ -37,8 +37,13 @@ func stickerMsg(s ...types.StickerRef) *types.DiscordMessage {
 	return &types.DiscordMessage{ID: "m", Stickers: s}
 }
 
-func TestStickerTextMode(t *testing.T) {
-	p, lookups := stickerProcessor(t, config.StickerModeText, "http://unused.invalid")
+// sticker.enabled false: Discord name/description/tags only, no model call
+// (the chat endpoint is unreachable, so a call would fail the test).
+func TestStickerDisabledUsesText(t *testing.T) {
+	p, lookups := stickerProcessor(t, false, "http://unused.invalid")
+	if p.stickerClient != nil {
+		t.Fatal("no sticker vision client may be built when sticker.enabled is false")
+	}
 	msg := stickerMsg(types.StickerRef{ID: "s1", Name: "Amika Thumbs Up", FormatType: types.StickerPNG})
 	want := "\n[Sticker: Amika Thumbs Up — Amika gives a thumbs up (tags: 👍)]"
 	if got := p.AnnotateStickers(context.Background(), msg, true); got != want {
@@ -60,7 +65,7 @@ func TestStickerTextMode(t *testing.T) {
 	}
 }
 
-func TestStickerVisionModeCacheAndFallbacks(t *testing.T) {
+func TestStickerEnabledVisionCacheAndFallbacks(t *testing.T) {
 	var fetched []string
 	host := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fetched = append(fetched, r.URL.Path)
@@ -79,7 +84,7 @@ func TestStickerVisionModeCacheAndFallbacks(t *testing.T) {
 	var calls int32
 	var bodies []map[string]any
 	chat := chatServer(t, "an anime girl\ngiving a thumbs up", &calls, &bodies)
-	p, _ := stickerProcessor(t, config.StickerModeVision, chat.URL)
+	p, _ := stickerProcessor(t, true, chat.URL)
 
 	guild := types.StickerRef{ID: "123", Name: "Amika Thumbs Up", FormatType: types.StickerPNG}
 	// History before the sticker was ever described: text, no model call.
@@ -115,11 +120,14 @@ func TestStickerVisionModeCacheAndFallbacks(t *testing.T) {
 	}
 }
 
-func TestStickerDisabled(t *testing.T) {
+// A default config (sticker.enabled false, no lookup wired) still names the
+// sticker.
+func TestStickerDefaultConfigShowsName(t *testing.T) {
 	cfg := baseConfig("http://unused.invalid")
 	cfg.AI.Modalities.ApplyDefaults()
 	p := New(cfg, nil)
-	if got := p.AnnotateStickers(context.Background(), stickerMsg(types.StickerRef{ID: "1", Name: "x"}), true); got != "" {
-		t.Fatalf("disabled sticker modality must add nothing, got %q", got)
+	p.SetStickers(nil, NewCache(time.Hour, 10))
+	if got := p.AnnotateStickers(context.Background(), stickerMsg(types.StickerRef{ID: "1", Name: "x", FormatType: types.StickerPNG}), true); got != "\n[Sticker: x]" {
+		t.Fatalf("got %q", got)
 	}
 }

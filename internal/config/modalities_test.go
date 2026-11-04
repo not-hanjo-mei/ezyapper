@@ -357,21 +357,78 @@ func TestSave_RoundTripsModalities(t *testing.T) {
 }
 
 func TestValidateStickerModality(t *testing.T) {
-	if e := modalityErrors(ModalitiesConfig{Sticker: StickerModalityConfig{Enabled: true}}); e != "" {
-		t.Fatalf("text mode needs no model: %s", e)
+	if e := modalityErrors(ModalitiesConfig{}); e != "" {
+		t.Fatalf("sticker.enabled false (text only) needs no model: %s", e)
 	}
-	if e := modalityErrors(ModalitiesConfig{Sticker: StickerModalityConfig{Enabled: true, Mode: StickerModeVision}}); !strings.Contains(e, "sticker.model is required") {
-		t.Fatalf("vision without any model: %s", e)
+	if e := modalityErrors(ModalitiesConfig{Sticker: StickerModalityConfig{Enabled: true}}); !strings.Contains(e, "sticker.model is required when sticker.enabled is true") {
+		t.Fatalf("enabled (vision) without any model: %s", e)
 	}
-	withImage := ModalitiesConfig{Sticker: StickerModalityConfig{Enabled: true, Mode: StickerModeVision}, Image: ImageModalityConfig{ModalityModel: ModalityModel{Model: "vm", APIKey: "ik"}}}
+	if e := modalityErrors(ModalitiesConfig{Sticker: StickerModalityConfig{Enabled: true, ModalityModel: ModalityModel{Model: "sm"}}}); e != "" {
+		t.Fatalf("enabled with its own model: %s", e)
+	}
+	withImage := ModalitiesConfig{Sticker: StickerModalityConfig{Enabled: true}, Image: ImageModalityConfig{ModalityModel: ModalityModel{Model: "vm", APIKey: "ik"}}}
 	if e := modalityErrors(withImage); e != "" {
 		t.Fatalf("sticker vision may borrow the image model: %s", e)
 	}
 	if mm := withImage.StickerVisionModel(); mm.Model != "vm" || mm.APIKey != "ik" {
 		t.Fatalf("fallback: %+v", mm)
 	}
-	if e := modalityErrors(ModalitiesConfig{Sticker: StickerModalityConfig{Mode: "ocr"}}); !strings.Contains(e, "sticker.mode") {
-		t.Fatalf("bad mode: %s", e)
+	if e := modalityErrors(ModalitiesConfig{Sticker: StickerModalityConfig{Enabled: true, ModalityModel: ModalityModel{Model: "sm", Temperature: 3}}}); !strings.Contains(e, "sticker.temperature") {
+		t.Fatalf("endpoint fields are still checked when enabled: %s", e)
+	}
+}
+
+// core.ai.modalities.sticker.mode was removed: an old config that sets it
+// still loads, with a deprecation warning; mode text with enabled true also
+// warns that the mode is ignored (enabled now reads the image).
+func TestLoad_RemovedStickerModeWarns(t *testing.T) {
+	var buf bytes.Buffer
+	old := warningOutput
+	warningOutput = &buf
+	defer func() { warningOutput = old }()
+	sticker := func(body string) string {
+		return "    modalities:\n      image:\n        model: vm\n      sticker:\n" + body
+	}
+
+	cases := []struct {
+		name, yaml string
+		enabled    bool
+		ignored    bool
+	}{
+		{"text+enabled", sticker("        enabled: true\n        mode: text\n"), true, true},
+		{"vision+enabled", sticker("        enabled: true\n        mode: vision\n"), true, false},
+		{"text+disabled", sticker("        enabled: false\n        mode: text\n"), false, false},
+		{"vision+disabled", sticker("        mode: vision\n"), false, false},
+	}
+	for _, c := range cases {
+		buf.Reset()
+		cfg, err := loadModalitiesYAML(t, c.yaml)
+		if err != nil {
+			t.Fatalf("%s: a config that still sets sticker.mode must load: %v", c.name, err)
+		}
+		if cfg.AI.Modalities.Sticker.Enabled != c.enabled {
+			t.Fatalf("%s: enabled=%v", c.name, cfg.AI.Modalities.Sticker.Enabled)
+		}
+		out := buf.String()
+		if !strings.Contains(out, "core.ai.modalities.sticker.mode is deprecated and ignored") {
+			t.Fatalf("%s: missing deprecation warning, got %q", c.name, out)
+		}
+		if got := strings.Contains(out, `sticker.mode "text" is ignored`); got != c.ignored {
+			t.Fatalf("%s: mode-ignored warning=%v, got %q", c.name, got, out)
+		}
+	}
+
+	buf.Reset()
+	if _, err := loadModalitiesYAML(t, sticker("        enabled: true\n")); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "sticker.mode") {
+		t.Fatalf("no warning expected without the key, got %q", buf.String())
+	}
+	// An old "enabled + mode text" config with no model anywhere now fails
+	// with an error that says how to keep text only.
+	if _, err := loadModalitiesYAML(t, "    modalities:\n      sticker:\n        enabled: true\n        mode: text\n"); err == nil || !strings.Contains(err.Error(), "set sticker.enabled to false") {
+		t.Fatalf("expected model-required error, got %v", err)
 	}
 }
 

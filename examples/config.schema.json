@@ -168,10 +168,10 @@
                 "sticker": {
                   "type": "object",
                   "additionalProperties": false,
-                  "$comment": "In vision mode a model is required from sticker.model or image.model (not expressible here; the Go loader checks it).",
+                  "$comment": "enabled: true (vision) needs a model from sticker.model or image.model (not expressible here; the Go loader checks it).",
                   "properties": {
-                    "enabled":           { "type": "boolean", "default": false },
-                    "mode":              { "type": "string", "enum": ["text", "vision"], "default": "text" },
+                    "enabled":           { "type": "boolean", "default": false, "description": "true: a vision model describes the sticker image (Lottie falls back to text); false: Discord name/description/tags only, no model call." },
+                    "mode":              { "type": "string", "deprecated": true, "description": "Removed and ignored (a config that sets it logs a deprecation warning); sticker.enabled is the only switch." },
                     "model":             { "type": "string" },
                     "api_base_url":      { "type": "string" },
                     "api_key":           { "type": "string" },

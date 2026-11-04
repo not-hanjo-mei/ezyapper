@@ -106,7 +106,7 @@ func (p recentImageEnrichment) allows(messageID string) bool {
 // planRecentImageEnrichment). The input slice is not modified.
 func (b *Bot) enrichHistory(ctx context.Context, messages []*types.DiscordMessage, currentMsgID string, enrichment recentImageEnrichment) []*types.DiscordMessage {
 	mods := b.cfg().AI.Modalities
-	if len(messages) == 0 || !mods.AnyEnabled() {
+	if len(messages) == 0 {
 		return messages
 	}
 	proc := b.mediaProcessor()

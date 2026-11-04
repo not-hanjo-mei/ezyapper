@@ -141,7 +141,7 @@ func TestLiveStickerVision(t *testing.T) {
 		t.Skip("set EZYAPPER_LIVE_STICKER_ID")
 	}
 	cfg.AI.Modalities.Image.Model = liveEnv(t, "EZYAPPER_LIVE_IMAGE_MODEL", "nvidia/nemotron-3.5-super-vl-120b-a12b")
-	cfg.AI.Modalities.Sticker = config.StickerModalityConfig{Enabled: true, Mode: config.StickerModeVision}
+	cfg.AI.Modalities.Sticker = config.StickerModalityConfig{Enabled: true}
 	cfg.AI.Modalities.ApplyDefaults()
 	p := New(cfg, nil)
 	p.SetStickers(nil, NewCache(time.Hour, 10))

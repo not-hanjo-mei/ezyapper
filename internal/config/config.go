@@ -464,6 +464,7 @@ func Load(configPath string) (*Config, error) {
 			fmt.Fprintf(warningOutput, "[config][WARNING] %s is deprecated and ignored: %s\n", key.path, key.why)
 		}
 	}
+	warnStickerMode(v)
 	cfg := Config{
 		Discord:        raw.Core.Discord,
 		AI:             raw.Core.AI,
@@ -498,6 +499,20 @@ var warningOutput io.Writer = os.Stderr
 // one loads (unknown keys are ignored) and gets a deprecation warning.
 var removedKeys = []struct{ path, why string }{
 	{"core.ai.require_image_content_type", "image downloads already reject non-image content types; remove the key"},
+	{"core.ai.modalities.sticker.mode", "core.ai.modalities.sticker.enabled is the only switch: true has a vision model describe the sticker image (Lottie stickers fall back to text), false uses only the sticker's name, description and tags (no model call); remove the key"},
+}
+
+// warnStickerMode adds a second warning for an old sticker config whose
+// meaning changed: mode text with enabled true used to mean "text only";
+// now enabled true reads the image with a vision model.
+func warnStickerMode(v *viper.Viper) {
+	const key = "core.ai.modalities.sticker.mode"
+	if !v.IsSet(key) {
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(v.GetString(key)), "text") && v.GetBool("core.ai.modalities.sticker.enabled") {
+		fmt.Fprintf(warningOutput, "[config][WARNING] %s \"text\" is ignored: core.ai.modalities.sticker.enabled true now has a vision model describe the sticker image; set enabled to false to keep using only the sticker's name, description and tags\n", key)
+	}
 }
 
 func requireNonEmpty(val string, path string, errs *[]string) {

@@ -31,19 +31,6 @@ const (
 	AudioModeDescribe AudioMode = "describe"
 )
 
-// StickerMode selects how stickers are shown to the base model.
-type StickerMode string
-
-const (
-	// StickerModeText uses the sticker's name, description and tags (from
-	// Discord; no model call).
-	StickerModeText StickerMode = "text"
-	// StickerModeVision has a vision model describe the sticker image once
-	// per sticker ID. Lottie stickers cannot be rendered and fall back to
-	// text.
-	StickerModeVision StickerMode = "vision"
-)
-
 // AudioPartType selects the content part used for audio in describe mode.
 type AudioPartType string
 
@@ -191,14 +178,23 @@ type VideoModalityConfig struct {
 	RemovedMode string `mapstructure:"mode" yaml:"-"`
 }
 
-// StickerModalityConfig configures stickers. In vision mode the endpoint
-// fields fall back to modalities.image, then core.ai.
+// StickerModalityConfig configures stickers. Stickers are always shown to
+// the base model as "[Sticker: ...]" lines; Enabled only decides whether
+// the image is read:
+//
+//   - true: a vision model describes the sticker image once per sticker ID.
+//     Lottie stickers cannot be rendered and fall back to the text below.
+//     The endpoint fields fall back to modalities.image, then core.ai.
+//   - false: only the sticker's name, description and tags from Discord are
+//     used; no model is called.
+//
+// The former mode key (text/vision) was removed; an old config that still
+// sets it loads with a deprecation warning (see warnStickerMode).
 type StickerModalityConfig struct {
 	ModalityModel `mapstructure:",squash" yaml:",inline"`
-	Enabled       bool        `mapstructure:"enabled" yaml:"enabled"`
-	Mode          StickerMode `mapstructure:"mode" yaml:"mode,omitempty"`
-	Prompt        string      `mapstructure:"prompt" yaml:"prompt,omitempty"`
-	MaxItems      int         `mapstructure:"max_items" yaml:"max_items,omitempty"`
+	Enabled       bool   `mapstructure:"enabled" yaml:"enabled"`
+	Prompt        string `mapstructure:"prompt" yaml:"prompt,omitempty"`
+	MaxItems      int    `mapstructure:"max_items" yaml:"max_items,omitempty"`
 	// Sticker details and vision results are cached by sticker ID. Stickers
 	// rarely change, so the cache is long-lived.
 	CacheTTLMin     int `mapstructure:"cache_ttl_min" yaml:"cache_ttl_min,omitempty"`
@@ -260,7 +256,8 @@ func (m ModalitiesConfig) FFmpegRequirements() []string {
 	return out
 }
 
-// AnyEnabled reports whether any non-text modality is on.
+// AnyEnabled reports whether any non-text modality is on (calls a model).
+// Stickers are annotated with their Discord text even when it is false.
 func (m ModalitiesConfig) AnyEnabled() bool {
 	return m.Image.Enabled || m.Audio.Enabled || m.Video.Enabled || m.Sticker.Enabled
 }
@@ -321,9 +318,6 @@ func (m *ModalitiesConfig) ApplyDefaults() {
 	}
 
 	st := &m.Sticker
-	if st.Mode == "" {
-		st.Mode = StickerModeText
-	}
 	if st.Prompt == "" {
 		st.Prompt = DefaultStickerPrompt
 	}
@@ -483,18 +477,13 @@ func validateModalities(cfg *Config, errs *[]string) {
 	}
 
 	st := m.Sticker
-	switch st.Mode {
-	case StickerModeText, StickerModeVision:
-	default:
-		*errs = append(*errs, fmt.Sprintf(p+"sticker.mode %q is invalid (must be one of: text, vision)", st.Mode))
-	}
 	nonNegative(p+"sticker.max_items", st.MaxItems)
 	nonNegative(p+"sticker.cache_ttl_min", st.CacheTTLMin)
 	nonNegative(p+"sticker.cache_max_entries", st.CacheMaxEntries)
-	if st.Enabled && st.Mode == StickerModeVision {
+	if st.Enabled {
 		checkModel(p+"sticker.", st.ModalityModel, false)
 		if m.StickerVisionModel().Model == "" {
-			*errs = append(*errs, p+"sticker.model is required when sticker.mode is vision (or set "+p+"image.model)")
+			*errs = append(*errs, p+"sticker.model is required when sticker.enabled is true (or set "+p+"image.model); set sticker.enabled to false to use only the sticker's name, description and tags")
 		}
 	}
 }

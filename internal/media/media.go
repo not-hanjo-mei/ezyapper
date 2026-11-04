@@ -31,7 +31,7 @@ type Processor struct {
 	// audioClient transcribes or describes audio (audio mode describe).
 	audioClient *ai.Client
 
-	// stickerClient describes sticker images (sticker mode vision).
+	// stickerClient describes sticker images (sticker.enabled).
 	stickerClient *ai.Client
 	stickerLookup StickerLookup
 	stickerCache  *Cache
@@ -81,7 +81,7 @@ func New(cfg *config.Config, cache *Cache) *Processor {
 		ac := mods.Audio.Resolve(cfg.AI)
 		p.audioClient = ai.NewClient(&ac, tools.NewToolRegistry())
 	}
-	if mods.Sticker.Enabled && mods.Sticker.Mode == config.StickerModeVision {
+	if mods.Sticker.Enabled {
 		sc := mods.StickerVisionModel().Resolve(cfg.AI)
 		p.stickerClient = ai.NewClient(&sc, tools.NewToolRegistry())
 	}

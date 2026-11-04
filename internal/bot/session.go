@@ -642,10 +642,9 @@ func (b *Bot) ApplyRuntimeConfig() error {
 	b.mediaCache.SetLimits(time.Duration(cfg.Discord.ImageCacheTTLMin)*time.Minute, cfg.Discord.ImageCacheMaxEntries)
 	st := cfg.AI.Modalities.Sticker
 	b.stickerCache.SetLimits(time.Duration(st.CacheTTLMin)*time.Minute, st.CacheMaxEntries)
-	if !cfg.AI.Modalities.AnyEnabled() {
-		b.media = nil
-		return nil
-	}
+	// The processor is always built: stickers are annotated with their
+	// Discord text even when no modality is enabled. It calls no model
+	// for a modality that is off.
 	if _, err := media.CheckFFmpeg(b.ctx, cfg.AI.Modalities); err != nil {
 		return err
 	}
@@ -685,8 +684,8 @@ func (b *Bot) lookupSticker(ctx context.Context, id string) (media.StickerInfo, 
 	return media.StickerInfo{Name: s.Name, Description: s.Description, Tags: s.Tags}, nil
 }
 
-// mediaProcessor returns the modality processor, or nil when no modality
-// besides text is enabled.
+// mediaProcessor returns the modality processor (nil before the first
+// ApplyRuntimeConfig).
 func (b *Bot) mediaProcessor() *media.Processor {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
