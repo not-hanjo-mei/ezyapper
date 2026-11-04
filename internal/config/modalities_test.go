@@ -114,7 +114,36 @@ operations:
     cleanup_interval_min: 5
 `
 
+// stickerRequiredYAML holds the sticker keys that are always required
+// (stickers are always annotated), with the example's suggested values.
+const stickerRequiredYAML = `      sticker:
+        max_items: 3
+        cache_ttl_min: 1440
+        cache_max_entries: 1000
+`
+
+// withStickerKeys adds the always-required sticker keys to aiExtra unless it
+// configures the sticker section itself.
+func withStickerKeys(aiExtra string) string {
+	if strings.Contains(aiExtra, "      sticker:") {
+		return aiExtra
+	}
+	if i := strings.Index(aiExtra, "    modalities:\n"); i >= 0 {
+		j := i + len("    modalities:\n")
+		return aiExtra[:j] + stickerRequiredYAML + aiExtra[j:]
+	}
+	return aiExtra + "    modalities:\n" + stickerRequiredYAML
+}
+
+// loadModalitiesYAML loads the base config with aiExtra under core.ai and
+// the always-required sticker keys added (see withStickerKeys).
 func loadModalitiesYAML(t *testing.T, aiExtra string) (*Config, error) {
+	t.Helper()
+	return loadModalitiesYAMLRaw(t, withStickerKeys(aiExtra))
+}
+
+// loadModalitiesYAMLRaw loads the base config with exactly aiExtra added.
+func loadModalitiesYAMLRaw(t *testing.T, aiExtra string) (*Config, error) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	data := strings.Replace(modalitiesBaseYAML, "{{AI_EXTRA}}", aiExtra, 1)
@@ -124,17 +153,69 @@ func loadModalitiesYAML(t *testing.T, aiExtra string) (*Config, error) {
 	return Load(path)
 }
 
-func TestLoad_NoModalitiesBlock_AllOptional(t *testing.T) {
+// There are no built-in defaults. Stickers are always annotated, so their
+// item cap and cache bounds are required even with no modalities block; the
+// error names each key and points at the example.
+func TestLoad_NoModalitiesBlock_RequiresStickerKeys(t *testing.T) {
+	_, err := loadModalitiesYAMLRaw(t, "")
+	if err == nil {
+		t.Fatal("a config without the sticker keys must not load")
+	}
+	for _, key := range []string{"core.ai.modalities.sticker.max_items", "core.ai.modalities.sticker.cache_ttl_min", "core.ai.modalities.sticker.cache_max_entries"} {
+		if !strings.Contains(err.Error(), key+" is required and must be greater than 0 when stickers are always added to the message (no built-in default; see examples/config.yaml.example") {
+			t.Errorf("missing error for %s: %v", key, err)
+		}
+	}
+}
+
+// With only the always-required sticker keys every modality is off and no
+// value is filled in by the loader.
+func TestLoad_StickerKeysOnly_AllDisabledNothingFilled(t *testing.T) {
 	cfg, err := loadModalitiesYAML(t, "")
 	if err != nil {
-		t.Fatalf("config without modalities must load: %v", err)
+		t.Fatalf("config with only the sticker keys must load: %v", err)
 	}
 	m := cfg.AI.Modalities
 	if m.AnyEnabled() {
-		t.Fatalf("no modality may be enabled by default: %+v", m)
+		t.Fatalf("no modality may be enabled: %+v", m)
 	}
-	if m.Audio.Mode != AudioModeASR || m.Image.Prompt != DefaultImagePrompt || m.Video.Prompt != DefaultVideoPrompt {
-		t.Fatalf("defaults not applied: %+v", m)
+	if m.Audio.Mode != "" || m.Image.Prompt != "" || m.Image.MaxItems != 0 || m.Image.Transport != "" ||
+		m.Video.Prompt != "" || m.Video.MaxHeight != 0 || m.Sticker.Prompt != "" || m.FFmpegPath != "" {
+		t.Fatalf("the loader must not fill in values: %+v", m)
+	}
+}
+
+// An enabled modality must set every key it uses; each missing one is
+// reported by name with a pointer to the example.
+func TestLoad_EnabledModalityMissingKeys(t *testing.T) {
+	cases := []struct {
+		name, yaml string
+		keys       []string
+	}{
+		{"image", "    modalities:\n      image:\n        enabled: true\n        model: vl\n",
+			[]string{"image.prompt is required when core.ai.modalities.image.enabled is true", "image.max_items is required and must be greater than 0", "image.transport is required"}},
+		{"audio asr", "    modalities:\n      audio:\n        enabled: true\n        model: whisper-1\n",
+			[]string{"audio.mode is required", "audio.max_items is required", "audio.max_bytes is required", "audio.max_duration_sec is required"}},
+		{"audio describe", "    modalities:\n      audio:\n        enabled: true\n        mode: describe\n        model: omni\n        max_items: 2\n        max_bytes: 100\n        max_duration_sec: 60\n",
+			[]string{"audio.prompt is required when core.ai.modalities.audio.enabled is true and audio.mode is describe", "audio.part_type is required"}},
+		{"video", "    modalities:\n      video:\n        enabled: true\n        model: omni\n        transcode: true\n",
+			[]string{"video.prompt is required", "video.max_items is required", "video.max_bytes is required", "video.max_duration_sec is required", "video.transport is required", "video.max_height is required", "ffmpeg_path is required when core.ai.modalities.video.transcode=true is set"}},
+		{"sticker", "    modalities:\n      sticker:\n        enabled: true\n        model: sm\n        max_items: 3\n        cache_ttl_min: 10\n        cache_max_entries: 10\n",
+			[]string{"sticker.prompt is required when core.ai.modalities.sticker.enabled is true"}},
+	}
+	for _, c := range cases {
+		_, err := loadModalitiesYAML(t, c.yaml)
+		if err == nil {
+			t.Fatalf("%s: expected validation errors", c.name)
+		}
+		for _, k := range c.keys {
+			if !strings.Contains(err.Error(), "core.ai.modalities."+k) {
+				t.Errorf("%s: missing %q in:\n%v", c.name, k, err)
+			}
+		}
+		if !strings.Contains(err.Error(), "see examples/config.yaml.example") {
+			t.Errorf("%s: error must point at the example: %v", c.name, err)
+		}
 	}
 }
 
@@ -173,18 +254,27 @@ func TestLoad_ModalitiesBlock(t *testing.T) {
       image:
         enabled: true
         model: "vl"
+        prompt: "describe"
+        max_items: 4
+        transport: base64
       audio:
         enabled: true
         mode: asr
         model: "IFM/Jais-ASR"
         api_base_url: "https://api.ifm.ai/v1"
         api_key: "ak"
+        max_items: 2
+        max_bytes: 1000
         max_duration_sec: 60
       video:
         enabled: true
         model: "omni"
         max_tokens: 12000
         transport: url
+        prompt: "describe the video"
+        max_items: 1
+        max_bytes: 2000
+        max_duration_sec: 120
 `)
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -193,10 +283,10 @@ func TestLoad_ModalitiesBlock(t *testing.T) {
 	if !m.Image.Enabled || m.Image.Model != "vl" || m.Image.RemovedMode != "" {
 		t.Fatalf("image: %+v", m.Image)
 	}
-	if m.Audio.Model != "IFM/Jais-ASR" || m.Audio.APIBaseURL != "https://api.ifm.ai/v1" || m.Audio.MaxDurationSec != 60 || m.Audio.MaxBytes != DefaultAudioMaxBytes {
+	if m.Audio.Model != "IFM/Jais-ASR" || m.Audio.APIBaseURL != "https://api.ifm.ai/v1" || m.Audio.MaxDurationSec != 60 || m.Audio.MaxBytes != 1000 {
 		t.Fatalf("audio: %+v", m.Audio)
 	}
-	if m.Video.MaxTokens != 12000 || m.Video.Transport != TransportURL || m.Video.Prompt != DefaultVideoPrompt {
+	if m.Video.MaxTokens != 12000 || m.Video.Transport != TransportURL || m.Video.Prompt != "describe the video" {
 		t.Fatalf("video: %+v", m.Video)
 	}
 	// Endpoint fields left empty fall back to core.ai.
@@ -279,9 +369,55 @@ func TestMapLegacyVision(t *testing.T) {
 	}
 }
 
+// fillSuggested sets the empty non-endpoint fields of m to the values
+// suggested in examples/config.yaml.example (configtest.FillSuggested for
+// this package, which configtest cannot be imported into).
+func fillSuggested(m *ModalitiesConfig) {
+	str := func(dst *string, v string) {
+		if *dst == "" {
+			*dst = v
+		}
+	}
+	num := func(dst *int, v int) {
+		if *dst == 0 {
+			*dst = v
+		}
+	}
+	str(&m.Image.Prompt, "Describe this image.")
+	num(&m.Image.MaxItems, 4)
+	if m.Image.Transport == "" {
+		m.Image.Transport = TransportBase64
+	}
+	if m.Audio.Mode == "" {
+		m.Audio.Mode = AudioModeASR
+	}
+	num(&m.Audio.MaxItems, 2)
+	num(&m.Audio.MaxBytes, 25<<20)
+	num(&m.Audio.MaxDurationSec, 600)
+	if m.Audio.PartType == "" {
+		m.Audio.PartType = AudioPartURL
+	}
+	if m.Audio.Mode == AudioModeDescribe {
+		str(&m.Audio.Prompt, "Transcribe this audio.")
+	}
+	str(&m.Video.Prompt, "Describe this video.")
+	num(&m.Video.MaxItems, 1)
+	num(&m.Video.MaxBytes, 50<<20)
+	num(&m.Video.MaxDurationSec, 120)
+	if m.Video.Transport == "" {
+		m.Video.Transport = TransportBase64
+	}
+	num(&m.Video.MaxHeight, 480)
+	str(&m.Sticker.Prompt, "Describe this sticker.")
+	num(&m.Sticker.MaxItems, 3)
+	num(&m.Sticker.CacheTTLMin, 1440)
+	num(&m.Sticker.CacheMaxEntries, 1000)
+	str(&m.FFmpegPath, "ffmpeg")
+}
+
 func modalityErrors(m ModalitiesConfig) string {
 	cfg := &Config{AI: AIConfig{Modalities: m}}
-	cfg.AI.Modalities.ApplyDefaults()
+	fillSuggested(&cfg.AI.Modalities)
 	var errs []string
 	validateModalities(cfg, &errs)
 	return strings.Join(errs, "\n")
@@ -333,6 +469,8 @@ func TestSave_RoundTripsModalities(t *testing.T) {
 	cfg, err := loadModalitiesYAML(t, `    vision:
       mode: "hybrid"
       model: "vm"
+      description_prompt: "describe it"
+      max_images: 2
 `)
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -387,7 +525,7 @@ func TestLoad_RemovedStickerModeWarns(t *testing.T) {
 	warningOutput = &buf
 	defer func() { warningOutput = old }()
 	sticker := func(body string) string {
-		return "    modalities:\n      image:\n        model: vm\n      sticker:\n" + body
+		return "    modalities:\n      image:\n        model: vm\n      sticker:\n        prompt: describe\n        max_items: 3\n        cache_ttl_min: 1440\n        cache_max_entries: 1000\n" + body
 	}
 
 	cases := []struct {

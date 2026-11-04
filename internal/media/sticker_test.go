@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"ezyapper/internal/config"
+	"ezyapper/internal/config/configtest"
 	"ezyapper/internal/types"
 )
 
@@ -20,7 +21,7 @@ func stickerProcessor(t *testing.T, enabled bool, chatURL string) (*Processor, *
 	cfg.AI.Modalities.Sticker = config.StickerModalityConfig{Enabled: enabled}
 	// Sticker vision falls back to the image modality's model.
 	cfg.AI.Modalities.Image.Model = "vm"
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, NewCache(time.Hour, 10))
 	var lookups int32
 	p.SetStickers(func(ctx context.Context, id string) (StickerInfo, error) {
@@ -137,7 +138,7 @@ func TestStickerEnabledVisionCacheAndFallbacks(t *testing.T) {
 // sticker.
 func TestStickerDefaultConfigShowsName(t *testing.T) {
 	cfg := baseConfig("http://unused.invalid")
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, nil)
 	p.SetStickers(nil, NewCache(time.Hour, 10))
 	if got := p.AnnotateStickers(context.Background(), stickerMsg(types.StickerRef{ID: "1", Name: "x", FormatType: types.StickerPNG}), true); got != "\n[Sticker: x]" {

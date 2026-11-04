@@ -209,9 +209,11 @@ type AIConfig struct {
 	MaxToolIterations int          `mapstructure:"max_tool_iterations" yaml:"max_tool_iterations"`
 	MaxImageBytes     int          `mapstructure:"max_image_bytes" yaml:"max_image_bytes"`
 
-	// modalitiesSet records that core.ai.modalities was present in the file
-	// (even with only zero values), so the legacy vision block is ignored.
-	modalitiesSet bool
+	// imageSet records that core.ai.modalities.image was present in the
+	// file (even with only zero values), so the legacy vision block, which
+	// maps onto it, is ignored. Other modality sections (the sticker keys
+	// are always required) do not shadow the legacy block.
+	imageSet bool
 }
 
 // EmbeddingConfig holds settings for embedding generation.
@@ -458,7 +460,7 @@ func Load(configPath string) (*Config, error) {
 	}
 	restoreKeyCase(reflect.ValueOf(&raw).Elem(), fileTree)
 
-	raw.Core.AI.modalitiesSet = v.IsSet("core.ai.modalities")
+	raw.Core.AI.imageSet = v.IsSet("core.ai.modalities.image")
 	for _, key := range removedKeys {
 		if v.IsSet(key.path) {
 			fmt.Fprintf(warningOutput, "[config][WARNING] %s is deprecated and ignored: %s\n", key.path, key.why)
@@ -565,6 +567,7 @@ func validateAI(cfg *Config, errs *[]string) {
 	}
 	requireNonEmpty(cfg.AI.SystemPrompt, "core.ai.system_prompt", errs)
 	requirePositive(cfg.AI.RetryCount, "core.ai.retry_count", errs)
+	requirePositive(cfg.AI.Timeout, "core.ai.timeout", errs)
 	requirePositive(cfg.AI.MaxToolIterations, "core.ai.max_tool_iterations", errs)
 	requirePositive(cfg.AI.MaxImageBytes, "core.ai.max_image_bytes", errs)
 }
@@ -930,7 +933,6 @@ func validate(cfg *Config) error {
 	if notice := mapLegacyVision(&cfg.AI, &errs); notice != "" {
 		fmt.Fprintf(warningOutput, "[config][WARNING] %s\n", notice)
 	}
-	cfg.AI.Modalities.ApplyDefaults()
 	validateModalities(cfg, &errs)
 	validateDiscord(cfg, &errs)
 	validateQdrant(cfg, &errs)

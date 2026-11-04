@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"ezyapper/internal/config"
+	"ezyapper/internal/config/configtest"
 	"ezyapper/internal/types"
 )
 
@@ -28,7 +29,7 @@ func TestAnnotateForMemory(t *testing.T) {
 	cfg := baseConfig("http://unused.invalid")
 	cfg.AI.Modalities.Audio = config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeASR, ModalityModel: config.ModalityModel{Model: "asr", APIBaseURL: asr.URL}}
 	cfg.AI.Modalities.Video = config.VideoModalityConfig{Enabled: true, Transport: config.TransportURL, ModalityModel: config.ModalityModel{Model: "omni", APIBaseURL: chat.URL}}
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, NewCache(time.Hour, 10))
 
 	voiceMsg := &types.DiscordMessage{ID: "m1", Media: []types.MediaAttachment{voice(files.URL)}}
@@ -67,7 +68,7 @@ func TestAnnotateForMemory(t *testing.T) {
 
 func TestAnnotateForMemory_DisabledIsNoop(t *testing.T) {
 	cfg := baseConfig("http://unused.invalid")
-	cfg.AI.Modalities.ApplyDefaults()
+	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, nil)
 	in := []*types.DiscordMessage{{ID: "m", Media: []types.MediaAttachment{{ID: "a", Kind: types.MediaVoice}}}}
 	if out := p.AnnotateForMemory(context.Background(), in); out[0] != in[0] {
@@ -95,7 +96,7 @@ func TestDescribeImages_SharedCacheDescribesOnce(t *testing.T) {
 	mk := func(url string) *Processor {
 		cfg := baseConfig("http://unused.invalid")
 		cfg.AI.Modalities.Image = config.ImageModalityConfig{Enabled: true, Transport: config.TransportURL, ModalityModel: config.ModalityModel{Model: "vl", APIBaseURL: url}}
-		cfg.AI.Modalities.ApplyDefaults()
+		configtest.FillSuggested(t, &cfg.AI.Modalities)
 		return New(cfg, cache)
 	}
 	reply, cons := mk(replyVL.URL), mk(consVL.URL)

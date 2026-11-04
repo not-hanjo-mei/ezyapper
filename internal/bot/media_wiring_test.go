@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"ezyapper/internal/config"
+	"ezyapper/internal/config/configtest"
 	"ezyapper/internal/media"
 	"ezyapper/internal/ratelimit"
 	"ezyapper/internal/types"
@@ -28,7 +29,7 @@ func mediaTestBot(t *testing.T, mods config.ModalitiesConfig) (*Bot, *httptest.S
 	cfg.AI.APIBaseURL, cfg.AI.APIKey, cfg.AI.Model = "http://unused.invalid", "k", "base"
 	cfg.AI.Timeout, cfg.AI.MaxTokens = 5, 100
 	cfg.Discord.ImageCacheTTLMin, cfg.Discord.ImageCacheMaxEntries = 60, 10
-	mods.ApplyDefaults()
+	configtest.FillSuggested(t, &mods)
 	cfg.AI.Modalities = mods
 	store := &atomic.Value{}
 	store.Store(cfg)

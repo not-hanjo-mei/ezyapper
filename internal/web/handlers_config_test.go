@@ -53,6 +53,11 @@ const testConfigYAML = `core:
     max_tool_iterations: 10
     max_image_bytes: 5242880
     system_prompt: "test"
+    modalities:
+      sticker:
+        max_items: 3
+        cache_ttl_min: 1440
+        cache_max_entries: 1000
   decision:
     enabled: false
 memory_pipeline:

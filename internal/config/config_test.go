@@ -431,7 +431,7 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 		},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Error("Expected error for invalid reply_percentage, got nil")
 	}
@@ -526,7 +526,7 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 		},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Error("Expected error for invalid temperature, got nil")
 	}
@@ -652,7 +652,7 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 		},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err != nil {
 		t.Errorf("Expected top_k=0 to be valid when on-demand memory is disabled, got: %v", err)
 	}
@@ -715,7 +715,7 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err != nil {
 		t.Fatalf("Expected validation to pass with memory features disabled, got: %v", err)
 	}
@@ -777,7 +777,7 @@ func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("Expected validation error for missing memory_pipeline.qdrant.retry_base_delay_ms when memory is enabled")
 	}
@@ -821,7 +821,7 @@ func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("Expected vector size relation validation error")
 	}
@@ -876,7 +876,7 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 			SystemPrompt: "decide",
 		},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation failure for missing decision credentials")
 	}
@@ -1098,7 +1098,7 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 			SystemPrompt: "decide",
 		},
 	}
-	if err := validate(cfg); err != nil {
+	if err := validate(stickerKeysSet(cfg)); err != nil {
 		t.Fatalf("expected validation success with explicit decision credentials, got: %v", err)
 	}
 }
@@ -1138,7 +1138,7 @@ func TestValidate_ConsolidationEnabled_RequiresOwnBotID(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation failure when consolidation enabled but discord.own_bot_id is empty")
 	}
@@ -1205,7 +1205,7 @@ func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	if err := validate(cfg); err != nil {
+	if err := validate(stickerKeysSet(cfg)); err != nil {
 		t.Fatalf("expected validation success when consolidation disabled even without discord.own_bot_id, got: %v", err)
 	}
 }
@@ -1244,7 +1244,7 @@ func TestValidate_TopKEnabled_RequiresOwnBotID(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation failure when top_k > 0 but discord.own_bot_id is empty")
 	}
@@ -1310,7 +1310,7 @@ func TestValidate_MemoryDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	if err := validate(cfg); err != nil {
+	if err := validate(stickerKeysSet(cfg)); err != nil {
 		t.Fatalf("expected validation success when memory is disabled (top_k=0, consolidation.off) even without discord.own_bot_id, got: %v", err)
 	}
 }
@@ -1383,7 +1383,7 @@ func TestValidate_ConsolidationEnabled_WithCoreAIFallback(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	if err := validate(cfg); err != nil {
+	if err := validate(stickerKeysSet(cfg)); err != nil {
 		t.Fatalf("expected validation success with core.ai fallback for consolidation, got: %v", err)
 	}
 }
@@ -1453,7 +1453,7 @@ func TestValidate_ConsolidationEnabled_BothEmpty(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation failure when both consolidation and core.ai API fields are empty")
 	}
@@ -1465,7 +1465,7 @@ func TestValidate_ConsolidationEnabled_BothEmpty(t *testing.T) {
 	}
 }
 
-func TestValidateAI_MissingTimeout(t *testing.T) {
+func TestValidateAI_MissingTimeoutRequired(t *testing.T) {
 	cfg := &Config{
 		Discord: DiscordConfig{Token: "t", BotName: "b", OtherBotPolicy: OtherBotFull, ReplyPercentage: 0.75, CooldownSeconds: 1, MaxResponsesPerMin: 1, ConsolidationTimeoutSec: 300, TypingIndicatorIntervalSec: 5, LongResponseDelayMs: 500, ImageCacheTTLMin: 60, ImageCacheMaxEntries: 100, RateLimit: RateLimitConfig{ResetPeriodSeconds: 1}},
 		AI: AIConfig{
@@ -1522,8 +1522,9 @@ func TestValidateAI_MissingTimeout(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	if err := validate(cfg); err != nil {
-		t.Fatalf("expected validation success (old http_timeout_sec field removed), got: %v", err)
+	err := validate(stickerKeysSet(cfg))
+	if err == nil || !strings.Contains(err.Error(), "core.ai.timeout must be greater than 0") {
+		t.Fatalf("core.ai.timeout has no built-in default and must be required, got: %v", err)
 	}
 }
 
@@ -1563,7 +1564,7 @@ func TestValidateAI_MissingMaxToolIterations(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation error for missing ai.max_tool_iterations")
 	}
@@ -1612,7 +1613,7 @@ func TestValidate_VisionMaxTokensNegative(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation error for negative ai.vision.max_tokens")
 	}
@@ -1658,7 +1659,7 @@ func TestValidate_EmbeddingTimeoutZero(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation error for embedding.timeout = 0 when memory is enabled")
 	}
@@ -1698,7 +1699,7 @@ func TestValidate_OtherBotPolicy_Missing(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation error for missing other_bot_policy")
 	}
@@ -1738,7 +1739,7 @@ func TestValidate_OtherBotPolicy_Invalid(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation error for invalid other_bot_policy")
 	}
@@ -1779,7 +1780,7 @@ func TestValidate_MCP_HTTP_RequiresURL(t *testing.T) {
 		MCP:        MCPConfig{Enabled: true, Servers: []MCPServer{{Name: "remote", Type: "http"}}},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation error for http MCP server missing url")
 	}
@@ -1820,7 +1821,7 @@ func TestValidate_MCP_InvalidType(t *testing.T) {
 		MCP:        MCPConfig{Enabled: true, Servers: []MCPServer{{Name: "bad", Type: "foo"}}},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation error for invalid MCP transport type")
 	}
@@ -2103,7 +2104,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsNegative(t *testing.T) {
 		},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err == nil {
 		t.Fatal("expected validation error for negative plugins.default_tool_timeout_ms")
 	}
@@ -2181,7 +2182,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
 		},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 	}
-	err := validate(cfg)
+	err := validate(stickerKeysSet(cfg))
 	if err != nil {
 		t.Fatalf("expected validation to pass with positive default_tool_timeout_ms, got: %v", err)
 	}
@@ -2214,4 +2215,21 @@ func TestValidateMessageFilters(t *testing.T) {
 	if len(errs) != 1 || !strings.Contains(errs[0], "access_control.message_filters") {
 		t.Fatalf("expected a prefixed regex error, got %v", errs)
 	}
+}
+
+// stickerKeysSet sets the always-required sticker keys (stickers are always
+// annotated) to the example's suggested values when a test leaves them out,
+// and returns cfg.
+func stickerKeysSet(cfg *Config) *Config {
+	st := &cfg.AI.Modalities.Sticker
+	if st.MaxItems == 0 {
+		st.MaxItems = 3
+	}
+	if st.CacheTTLMin == 0 {
+		st.CacheTTLMin = 1440
+	}
+	if st.CacheMaxEntries == 0 {
+		st.CacheMaxEntries = 1000
+	}
+	return cfg
 }
