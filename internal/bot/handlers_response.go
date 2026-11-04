@@ -54,7 +54,7 @@ func extractReplyInfo(m *discordgo.MessageCreate) (username string, content stri
 	}
 	if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
 		username = m.ReferencedMessage.Author.Username
-		content = m.ReferencedMessage.Content
+		content = types.QuoteText(m.ReferencedMessage)
 		return
 	}
 	return "(deleted message)", ""

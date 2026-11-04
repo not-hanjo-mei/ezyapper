@@ -78,8 +78,7 @@ func FromDiscordgo(m *discordgo.MessageCreate) DiscordMessage {
 		if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
 			msg.ReplyToUsername = m.ReferencedMessage.Author.Username
 			msg.ReplyToAuthorID = m.ReferencedMessage.Author.ID
-			content := m.ReferencedMessage.Content
-			msg.ReplyToContent = content
+			msg.ReplyToContent = QuoteText(m.ReferencedMessage)
 		} else {
 			msg.ReplyToUsername = "(deleted message)"
 		}

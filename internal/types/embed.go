@@ -122,6 +122,17 @@ func RenderEmbeds(embeds []EmbedSummary) string {
 	return strings.Join(lines, "\n")
 }
 
+// QuoteText is the text of a replied-to message for the "[reply to X: ...]"
+// marker: its content followed by its rendered embeds, so a reply to an
+// embed-only message (a bot card, a link preview) still says what it replies
+// to.
+func QuoteText(ref *discordgo.Message) string {
+	if ref == nil {
+		return ""
+	}
+	return JoinContentAndEmbeds(ref.Content, SummarizeEmbeds(ref.Embeds))
+}
+
 // FullText returns the message content followed by its rendered embeds.
 func (m DiscordMessage) FullText() string {
 	return JoinContentAndEmbeds(m.Content, m.Embeds)

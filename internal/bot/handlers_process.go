@@ -188,8 +188,7 @@ func (b *Bot) extractMessageImages(ctx context.Context, m *discordgo.MessageCrea
 			if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
 				msg.ReplyToUsername = m.ReferencedMessage.Author.Username
 				msg.ReplyToAuthorID = m.ReferencedMessage.Author.ID
-				content := m.ReferencedMessage.Content
-				msg.ReplyToContent = content
+				msg.ReplyToContent = types.QuoteText(m.ReferencedMessage)
 			} else {
 				msg.ReplyToUsername = "(deleted message)"
 			}

@@ -50,3 +50,31 @@ func TestRenderTruncatesHugeEmbeds(t *testing.T) {
 		t.Fatalf("expected at most %d runes, got %d", maxEmbedTextRunes, n)
 	}
 }
+
+// A reply to an embed-only message (no text content) quotes the embed, so
+// the "[reply to X: ...]" marker says what is being replied to even when
+// the embed is no longer in the history window.
+func TestQuoteTextIncludesEmbeds(t *testing.T) {
+	ref := &discordgo.Message{Embeds: []*discordgo.MessageEmbed{{
+		Type:        discordgo.EmbedTypeRich,
+		Title:       "Server Maintenance Window",
+		Description: "Database cluster b-14 will be offline.",
+		Author:      &discordgo.MessageEmbedAuthor{Name: "status-bot"},
+		Fields:      []*discordgo.MessageEmbedField{{Name: "Start", Value: "Saturday 02:00 UTC"}, {Name: "Owner", Value: "team Halcyon"}},
+		Footer:      &discordgo.MessageEmbedFooter{Text: "Posted by infra on-call"},
+	}}}
+	want := `[Embed "Server Maintenance Window" by status-bot: Database cluster b-14 will be offline. | Start: Saturday 02:00 UTC | Owner: team Halcyon | Posted by infra on-call]`
+	if got := QuoteText(ref); got != want {
+		t.Fatalf("embed-only quote:\n got %q\nwant %q", got, want)
+	}
+	ref.Content = "see below"
+	if got := QuoteText(ref); got != "see below\n"+want {
+		t.Fatalf("content + embed quote: %q", got)
+	}
+	if got := QuoteText(&discordgo.Message{Content: "plain"}); got != "plain" {
+		t.Fatalf("plain quote: %q", got)
+	}
+	if QuoteText(nil) != "" {
+		t.Fatal("nil quote must be empty")
+	}
+}

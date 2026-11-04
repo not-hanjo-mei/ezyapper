@@ -251,7 +251,7 @@ func (f *DiscordMessageFetcher) convertMessage(msg *discordgo.Message) types.Dis
 		if msg.ReferencedMessage != nil && msg.ReferencedMessage.Author != nil {
 			d.ReplyToUsername = msg.ReferencedMessage.Author.Username
 			d.ReplyToAuthorID = msg.ReferencedMessage.Author.ID
-			d.ReplyToContent = msg.ReferencedMessage.Content
+			d.ReplyToContent = types.QuoteText(msg.ReferencedMessage)
 		} else {
 			d.ReplyToUsername = "(deleted message)"
 		}
