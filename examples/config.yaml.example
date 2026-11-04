@@ -2,8 +2,23 @@
 # EZyapper config example
 # ------------------------------------------------
 # Copy this file to config.yaml and fill in your values.
-# ALL fields shown here are required unless marked "optional override".
-# Missing any required field = bot refuses to start.
+# Uncommented keys are the ones a working config sets. Keys commented out with
+# "##" are optional, or only required when their section is enabled (the
+# comment says which). The bot has no built-in defaults outside
+# core.ai.modalities, core.decision.provider and operations.runtime.hot_reload:
+# a missing required key stops startup, and every problem is listed at once.
+#
+# Environment variables (EZYAPPER_<PATH>, e.g. EZYAPPER_CORE_DISCORD_TOKEN)
+# override keys that are present in this file. A key that is absent here (or
+# commented out) is not picked up from the environment, so keep a placeholder
+# value for anything you want to set via env.
+#
+# Deprecated / removed keys (do not use):
+#   core.ai.vision                      deprecated; mapped onto core.ai.modalities.image
+#   core.ai.require_image_content_type  removed; ignored with a warning
+#   core.ai.modalities.image.mode       removed; fails validation
+#   core.ai.modalities.video.mode       removed; fails validation
+#   core.ai.modalities.audio.mode: direct  removed; use asr or describe
 #
 # Quick start:
 # 1) Fill core.discord + core.ai first
@@ -22,21 +37,18 @@ core:
     # Bot display name used in prompts and logs.
     bot_name: "EZyapper"
 
-    # Bot user ID. Used to identify self-messages.
-    # NOTE: own_bot_id is unconditionally required in JSON Schema (cross-subtree
-    # conditional validation is not expressible in JSON Schema draft 2020-12).
-    # Go only requires it when memory consolidation is enabled.
+    # Bot user ID. Used to identify self-messages in memory.
     # Required when memory retrieval (memory_pipeline.memory.retrieval.top_k > 0)
-    # or memory consolidation (memory_pipeline.memory.consolidation.enabled) is active.
+    # or memory consolidation (memory_pipeline.memory.consolidation.enabled) is on.
     own_bot_id: "YOUR_BOT_USER_ID"
 
     # Random reply probability when bot is NOT mentioned (0.0-1.0).
     reply_percentage: 0.15
 
-    # Minimum seconds between replies for the same user+channel.
+    # Cooldown after each reply to a user, in seconds (applies in every channel).
     cooldown_seconds: 5
 
-    # Hard cap: max responses per minute across all channels.
+    # Max replies to one user in one channel per rate_limit.reset_period_seconds.
     max_responses_per_minute: 10
 
     # How to treat messages from OTHER bots (not this bot itself).
@@ -47,23 +59,24 @@ core:
 
     # ── Rate limit window settings ──
     rate_limit:
-      # Window size for per-user rate limiting (seconds).
+      # Window for max_responses_per_minute (seconds; a fixed window per user+channel).
       reset_period_seconds: 60
 
     # ── Behavior tuning ──
-    # Timeout for consolidation-triggered response generation (seconds).
+    # Timeout for one memory consolidation run of a channel batch (seconds).
     consolidation_timeout_sec: 300
 
     # Interval between typing indicator updates (seconds).
     typing_indicator_interval_sec: 5
 
-    # Delay before sending a response flagged as "long" (milliseconds).
+    # Pause between the chunks of a reply that is split for Discord's
+    # 2000-character limit (milliseconds).
     long_response_delay_ms: 500
 
-    # TTL for cached Discord image data (minutes).
+    # Media cache: image descriptions, audio transcripts and video
+    # descriptions, keyed by attachment, shared by replies and memory
+    # consolidation. TTL in minutes and max entries.
     image_cache_ttl_min: 60
-
-    # Max number of images kept in the in-memory cache.
     image_cache_max_entries: 100
 
     # Optional /clear-context slash command: makes the bot forget the
@@ -95,22 +108,27 @@ core:
     # and model, which turns the media into text lines on the message in the
     # user prompt ("[Image 1: ...]", "[Audio 1 transcript (...): ...]",
     # "[Video 1 (...): ...]"), cached by attachment ID.
-    # Endpoint fields left empty (api_base_url, api_key, timeout, max_tokens,
-    # temperature, retry_count, extra_params) fall back to the core.ai values.
+    # Endpoint fields left empty or 0 (api_base_url, api_key, timeout,
+    # max_tokens, temperature, retry_count, extra_params) fall back to the
+    # core.ai values. Defaults shown are applied when a field is omitted.
     # The old core.ai.vision block still loads (text_only=off, hybrid and
-    # multimodal=image on) but is deprecated.
+    # multimodal=image on) but is deprecated; it is ignored when this block
+    # is present.
     modalities:
       image:
         enabled: false
         # A vision model describes each image for the base model.
-        model: "gpt-4o"            # required
-        # prompt: "Describe this image in 1-2 sentences. Be compact but informative. Transcribe any visible text."
+        model: "gpt-4o"            # required when enabled
+        ## prompt: "Describe this image in 1-2 sentences. Be compact but informative. Transcribe any visible text."
         max_items: 4               # images per message
         transport: "base64"        # base64 (inline data URI) or url (provider fetches the CDN URL)
         ## api_base_url: ""
         ## api_key: ""
-        ## max_tokens: 1024
         ## timeout: 30
+        ## max_tokens: 1024
+        ## temperature: 0.8
+        ## retry_count: 3
+        ## extra_params: {}
 
       audio:
         enabled: false
@@ -121,9 +139,14 @@ core:
         #           ~12000) gets the audio as an audio_url data URI and
         #           returns a transcript or description.
         mode: "asr"
-        model: "whisper-1"         # required
+        model: "whisper-1"         # required when enabled
         ## api_base_url: "https://api.openai.com/v1"
         ## api_key: ""
+        ## timeout: 60
+        ## max_tokens: 12000       # describe mode; reasoning models need room
+        ## temperature: 0.2        # describe mode
+        ## retry_count: 3
+        ## extra_params: {}        # describe mode: merged into the chat request
         ## language: "en"          # optional ISO-639-1 hint (asr)
         ## prompt: ""              # asr: vocabulary hint; describe: instruction (built-in default)
         max_items: 2
@@ -139,9 +162,15 @@ core:
 
       video:
         enabled: false
-        model: "gpt-4o"            # required; describes each video, must accept video_url parts
+        model: "gpt-4o"            # required when enabled; describes each video, must accept video_url parts
+        ## api_base_url: ""
+        ## api_key: ""
+        ## timeout: 120
         # Reasoning models need room: with too few tokens they return no content.
         ## max_tokens: 12000
+        ## temperature: 0.8
+        ## retry_count: 3
+        ## extra_params: {}
         ## prompt: "Describe this video in 2-4 sentences: ..."
         max_items: 1
         max_bytes: 52428800        # 50 MiB
@@ -154,7 +183,8 @@ core:
         ## max_height: 480
 
       # ffmpeg is optional. If an enabled option needs it (audio.transcode,
-      # video.transcode) and it is missing, the bot refuses to start.
+      # video.transcode) and it is missing, the bot refuses to start (and a
+      # hot reload that turns such an option on is rejected).
       ## ffmpeg_path: "ffmpeg"
 
       sticker:
@@ -164,8 +194,16 @@ core:
         #         ID (custom guild stickers included). Lottie stickers cannot
         #         be rendered and fall back to text.
         mode: "text"
-        # Vision model fields fall back to modalities.image, then core.ai.
+        # Vision model fields fall back to modalities.image, then core.ai;
+        # vision mode needs a model from sticker.model or image.model.
         ## model: "gpt-4o"
+        ## api_base_url: ""
+        ## api_key: ""
+        ## timeout: 30
+        ## max_tokens: 1024
+        ## temperature: 0.8
+        ## retry_count: 3
+        ## extra_params: {}
         ## prompt: "Describe this Discord sticker in one short sentence: ..."
         max_items: 3
         cache_ttl_min: 1440        # sticker details/descriptions cached by sticker ID
@@ -181,8 +219,8 @@ core:
     # Retries for transient API/network errors.
     retry_count: 3
 
-    # timeout controls per-request LLM API call timeout (~30s);
-    # global pipeline timeout is auto-calculated from this value.
+    # Per-request timeout in seconds. Must be > 0 (0 makes every request
+    # time out at once; the loader does not catch it).
     timeout: 30
 
     # Max tool-calling iterations in a single conversation turn.
@@ -214,7 +252,13 @@ core:
       - You have access to Discord tools. Use them when appropriate.
 
     # ── Optional: extra parameters forwarded to the API ──
+    # Nested keys keep the case you write.
     ## extra_params: {}
+
+    # ── Deprecated ──
+    # core.ai.vision (text_only | hybrid | multimodal) is mapped onto
+    # modalities.image with a warning; use modalities.image instead.
+    # core.ai.require_image_content_type was removed (ignored, logs a warning).
 
   # ── Decision Classifier ───────────────────────────────
   # When enabled, a model decides whether the bot should respond to messages
@@ -292,20 +336,19 @@ memory_pipeline:
     # Anchored context window (prompt-cache friendly). When > 0 the history
     # grows from short_term_limit up to short_term_limit + this many messages
     # and then drops the oldest block at once, instead of sliding by one
-    # message per request. 0 = plain sliding window.
+    # message per request. 0 (or omitted) = plain sliding window.
     context_flush_window: 20
 
     # Pagination limit for fetching older messages.
     max_paginated_limit: 100
 
     # ── Long-Term Memory ──
+    # Accepted for compatibility but currently not read by the bot: long-term
+    # memory is controlled by retrieval.top_k and consolidation.enabled.
     long_term_memory:
-      # When enabled, memories are consolidated into long-term storage
-      # for cross-session recall and user profiling.
       enabled: true
 
-    # Max number of mentioned users tracked per memory entry.
-    # Higher values capture more conversational context but increase token usage.
+    # Accepted but currently not read by the bot.
     max_mentioned_users_per_memory: 3
 
     # Strength multiplier for memory importance scoring (must be > 0 and <= 100).
@@ -342,35 +385,42 @@ memory_pipeline:
       # Enable writing new long-term memories.
       enabled: false
 
-      # All fields below are required ONLY when enabled: true.
+      # max_tokens, retry_count (> 0), timeout and system_prompt are required
+      # ONLY when enabled: true. model/api_base_url/api_key inherit from core.ai.
       ## model: "gpt-4o-mini"                         # optional, inherits from core.ai if empty
       ## api_base_url: "https://api.openai.com/v1"    # optional, inherits from core.ai if empty
       ## api_key: "YOUR_API_KEY"                      # optional, inherits from core.ai if empty
       ## max_tokens: 4096
-      ## temperature: 0.8
+      ## temperature: 0.8                             # 0 = use core.ai.temperature
       ## retry_count: 5
       ## timeout: 30
 
       # ── Optional: separate image-description model for consolidation ──
       # Used only when core.ai.modalities.image is enabled; fields left
-      # empty inherit from core.ai.modalities.image (then core.ai).
+      # empty inherit from core.ai.modalities.image (then core.ai). Only the
+      # keys below are read.
       ## vision:
       ##   model: "gpt-4o"
       ##   description_prompt: ""
-      ##   api_base_url: ""    # optional, inherits from core.ai if empty
-      ##   api_key: ""         # optional, inherits from core.ai if empty
+      ##   api_base_url: ""
+      ##   api_key: ""
       ##   max_tokens: 1024
       ##   temperature: 0.8
       ##   retry_count: 5
       ##   timeout: 30
 
       # How many existing memories to search for deduplication/similarity.
+      # Validated (> 0) even when consolidation is disabled.
       memory_search_limit: 20
 
-      # ── Optional: extra parameters ──
+      # ── Optional: extra parameters (not inherited from core.ai) ──
       ## extra_params: {}
 
       # Consolidation system prompt. Required when enabled.
+      # Audio transcripts and video descriptions (when those modalities are
+      # on) and image descriptions are added to the messages consolidation
+      # sees, as "[Attached Audio N transcript: ...]", "[Attached Video N: ...]"
+      # and "[Attached Image N: ...]" lines.
       #
       # Message format: "Username"{UserID=xxx,Time=...,BOT=SELF|OTHERS}: "content"
       #   BOT=SELF   = this bot's own messages - always conversational context only, never extract
@@ -559,7 +609,9 @@ operations:
   plugins:
     enabled: false
 
-    # All fields below are required ONLY when enabled: true.
+    # All fields below are required ONLY when enabled: true, except
+    # default_tool_timeout_ms (optional, >= 0, validated even when disabled;
+    # 0 logs a warning because JSON-RPC tools without their own timeout fail).
     ## plugins_dir: "plugins"
     ## default_tool_timeout_ms: 30000
     ## startup_timeout_sec: 90
@@ -579,6 +631,9 @@ operations:
     # Servers can use "stdio" (subprocess), "sse" (Server-Sent Events),
     # or "http" (Streamable HTTP, MCP 2025-03-26 spec) transport.
     servers: []
+    # enabled: true needs at least one server. stdio needs command; sse and
+    # http need url. http takes optional headers, with $VAR expanded from the
+    # bot's environment. env and headers keep the case of their keys.
     # Example server list:
     # servers:
     #   - name: datetime
@@ -586,7 +641,7 @@ operations:
     #     command: npx
     #     args: ["-y", "@pinkpixel/datetime-mcp"]
     #     env:
-    #       "TZ": "UTC"
+    #       TZ: "UTC"
     #   - name: remote-sse
     #     type: sse
     #     url: "http://localhost:8080/sse"
@@ -608,7 +663,8 @@ operations:
     # restart. Invalid edits are rejected (errors logged) and the running
     # config is kept. Fields that need a new connection (Discord token,
     # Qdrant address, embedding endpoint, web port, MCP servers, plugins dir)
-    # are reconnected automatically. See docs/CONFIGURATION.md "Hot reload".
+    # are reconnected automatically. Optional block: omitted = off.
+    # See docs/CONFIGURATION.md "Hot reload".
     hot_reload:
       enabled: true
       # Quiet period after the last file event before reloading (50-60000 ms).

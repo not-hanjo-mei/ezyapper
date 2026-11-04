@@ -2,10 +2,30 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/not-hanjo-mei/ezyapper/main/examples/config.schema.json",
   "title": "EZyapper Configuration",
-  "description": "JSON Schema for config.yaml. Mirrors internal/config validation constraints.",
+  "description": "JSON Schema for config.yaml. Mirrors internal/config validation: a key is listed as required when the bot refuses to start without it (a key whose zero value is valid, such as reply_percentage or temperature, is optional). Conditional requirements (memory on, web/plugins/mcp/decision enabled) follow the Go validators.",
   "type": "object",
   "required": ["core", "memory_pipeline", "operations"],
   "additionalProperties": false,
+  "$defs": {
+    "id":       { "anyOf": [{ "type": "string" }, { "type": "integer" }] },
+    "idList":   { "type": "array", "items": { "$ref": "#/$defs/id" } },
+    "nonEmpty": { "type": "array", "minItems": 1 },
+    "memoryEnabled": {
+      "$comment": "Memory is on when memory.retrieval.top_k > 0 or memory.consolidation.enabled is true (evaluated against memory_pipeline).",
+      "anyOf": [
+        { "required": ["memory"], "properties": { "memory": { "required": ["retrieval"], "properties": { "retrieval": { "required": ["top_k"], "properties": { "top_k": { "minimum": 1 } } } } } } },
+        { "required": ["memory"], "properties": { "memory": { "required": ["consolidation"], "properties": { "consolidation": { "required": ["enabled"], "properties": { "enabled": { "const": true } } } } } } }
+      ]
+    },
+    "kinds": { "type": "array", "items": { "type": "string", "enum": ["text", "embed", "image", "sticker", "audio", "voice", "video", "file", "reply", "bot", "webhook"] } }
+  },
+  "allOf": [
+    {
+      "$comment": "core.discord.own_bot_id is required when memory retrieval or consolidation is on.",
+      "if": { "required": ["memory_pipeline"], "properties": { "memory_pipeline": { "$ref": "#/$defs/memoryEnabled" } } },
+      "then": { "properties": { "core": { "properties": { "discord": { "required": ["own_bot_id"] } } } } }
+    }
+  ],
   "properties": {
     "core": {
       "type": "object",
@@ -14,15 +34,15 @@
       "properties": {
         "discord": {
           "type": "object",
-          "required": ["token", "bot_name", "own_bot_id", "reply_percentage", "cooldown_seconds", "max_responses_per_minute", "rate_limit", "consolidation_timeout_sec", "typing_indicator_interval_sec", "long_response_delay_ms", "image_cache_ttl_min", "image_cache_max_entries", "other_bot_policy"],
+          "required": ["token", "bot_name", "cooldown_seconds", "max_responses_per_minute", "rate_limit", "consolidation_timeout_sec", "typing_indicator_interval_sec", "long_response_delay_ms", "image_cache_ttl_min", "image_cache_max_entries", "other_bot_policy"],
           "additionalProperties": false,
           "properties": {
-            "token":                    { "type": "string" },
-            "bot_name":                 { "type": "string" },
-            "own_bot_id":               { "type": "string", "$comment": "Stays in required even though some conditions (consolidation disabled, top_k=0) don't need it — JSON Schema can't express cross-subtree conditionals. Always provided for safety." },
+            "token":                    { "type": "string", "minLength": 1 },
+            "bot_name":                 { "type": "string", "minLength": 1 },
+            "own_bot_id":               { "type": "string", "description": "The bot's user ID. Required when memory retrieval (top_k > 0) or consolidation is enabled." },
             "reply_percentage":         { "type": "number", "minimum": 0, "maximum": 1 },
-            "cooldown_seconds":         { "type": "integer", "minimum": 1 },
-            "max_responses_per_minute": { "type": "integer", "minimum": 1 },
+            "cooldown_seconds":         { "type": "integer", "minimum": 1, "description": "Per-user cooldown after each reply (all channels)." },
+            "max_responses_per_minute": { "type": "integer", "minimum": 1, "description": "Replies per user per channel within rate_limit.reset_period_seconds." },
             "other_bot_policy":         { "type": "string", "enum": ["ignore", "context_only", "full"] },
             "rate_limit": {
               "type": "object",
@@ -34,37 +54,37 @@
             },
             "consolidation_timeout_sec":     { "type": "integer", "minimum": 1 },
             "typing_indicator_interval_sec": { "type": "integer", "minimum": 1 },
-            "long_response_delay_ms":        { "type": "integer", "minimum": 1 },
-
-            "image_cache_ttl_min":           { "type": "integer", "minimum": 1 },
-            "image_cache_max_entries":       { "type": "integer", "minimum": 1 },
+            "long_response_delay_ms":        { "type": "integer", "minimum": 1, "description": "Pause between the chunks of a reply split for Discord's length limit." },
+            "image_cache_ttl_min":           { "type": "integer", "minimum": 1, "description": "TTL of the media cache (image descriptions, audio transcripts, video descriptions)." },
+            "image_cache_max_entries":       { "type": "integer", "minimum": 1, "description": "Size bound of the media cache." },
             "clear_command": {
               "type": "object",
               "additionalProperties": false,
               "description": "Optional /clear-context slash command; only allowed_user_ids may run it.",
+              "allOf": [{ "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }, "then": { "required": ["allowed_user_ids"], "properties": { "allowed_user_ids": { "minItems": 1 } } } }],
               "properties": {
                 "enabled":          { "type": "boolean" },
-                "allowed_user_ids": { "type": "array", "items": { "anyOf": [{ "type": "string" }, { "type": "integer" }] } }
+                "allowed_user_ids": { "$ref": "#/$defs/idList" }
               }
             }
           }
         },
         "ai": {
           "type": "object",
-          "required": ["api_base_url", "api_key", "model", "max_tokens", "temperature", "retry_count", "timeout", "system_prompt", "max_tool_iterations", "max_image_bytes"],
+          "required": ["api_base_url", "api_key", "model", "max_tokens", "retry_count", "timeout", "system_prompt", "max_tool_iterations", "max_image_bytes"],
           "additionalProperties": false,
           "properties": {
-            "api_base_url":   { "type": "string" },
-            "api_key":        { "type": "string" },
-            "model":          { "type": "string" },
+            "api_base_url":   { "type": "string", "minLength": 1 },
+            "api_key":        { "type": "string", "minLength": 1 },
+            "model":          { "type": "string", "minLength": 1 },
             "max_tokens":     { "type": "integer", "minimum": 1 },
             "temperature":    { "type": "number", "minimum": 0, "maximum": 2 },
             "retry_count":    { "type": "integer", "minimum": 1 },
-            "timeout":        { "type": "integer", "minimum": 1 },
+            "timeout":        { "type": "integer", "minimum": 1, "$comment": "Not checked by the Go loader, but 0 makes every request time out at once, so the schema requires it." },
             "max_tool_iterations":        { "type": "integer", "minimum": 1 },
             "max_image_bytes":            { "type": "integer", "minimum": 1 },
             "require_image_content_type": { "type": "boolean", "deprecated": true, "description": "Removed and ignored (a config that sets it logs a deprecation warning)." },
-            "system_prompt":  { "type": "string" },
+            "system_prompt":  { "type": "string", "minLength": 1, "not": { "pattern": "\\{(BotName|AuthorName|ServerName|GuildID|ChannelID)\\}" }, "description": "Sent unchanged; the removed {BotName}-style placeholders fail validation." },
             "extra_params":   { "type": "object" },
             "modalities": {
               "type": "object",
@@ -76,128 +96,116 @@
                   "additionalProperties": false,
                   "allOf": [{ "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }, "then": { "required": ["model"] } }],
                   "properties": {
-                    "enabled":      { "type": "boolean" },
+                    "enabled":      { "type": "boolean", "default": false },
+                    "mode":         { "not": {}, "deprecated": true, "description": "Removed: images are always described into text by the image model. A config that sets it fails validation." },
                     "model":        { "type": "string" },
                     "api_base_url": { "type": "string" },
                     "api_key":      { "type": "string" },
                     "timeout":      { "type": "integer", "minimum": 0 },
-                    "max_tokens":   { "type": "integer", "minimum": 1 },
+                    "max_tokens":   { "type": "integer", "minimum": 0 },
                     "temperature":  { "type": "number", "minimum": 0, "maximum": 2 },
                     "retry_count":  { "type": "integer", "minimum": 0 },
                     "extra_params": { "type": "object" },
                     "prompt":       { "type": "string" },
-                    "max_items":    { "type": "integer", "minimum": 0 },
-                    "transport":    { "type": "string", "enum": ["base64", "url"] }
+                    "max_items":    { "type": "integer", "minimum": 0, "default": 4 },
+                    "transport":    { "type": "string", "enum": ["base64", "url"], "default": "base64" }
                   }
                 },
                 "audio": {
                   "type": "object",
                   "additionalProperties": false,
-                  "allOf": [{ "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }, "then": { "required": ["model"] } }],
+                  "allOf": [
+                    { "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }, "then": { "required": ["model"] } },
+                    { "if": { "properties": { "part_type": { "const": "input_audio" } }, "required": ["part_type"] }, "then": { "required": ["transcode"], "properties": { "transcode": { "enum": ["mp3", "wav"] } } } }
+                  ],
                   "properties": {
-                    "enabled":          { "type": "boolean" },
-                    "mode":             { "type": "string", "enum": ["asr", "describe"] },
+                    "enabled":          { "type": "boolean", "default": false },
+                    "mode":             { "type": "string", "enum": ["asr", "describe"], "default": "asr", "description": "asr: /audio/transcriptions endpoint; describe: audio-capable chat model. The old \"direct\" mode was removed and fails validation." },
                     "model":            { "type": "string" },
                     "api_base_url":     { "type": "string" },
                     "api_key":          { "type": "string" },
                     "timeout":          { "type": "integer", "minimum": 0 },
-                    "max_tokens":       { "type": "integer", "minimum": 1 },
+                    "max_tokens":       { "type": "integer", "minimum": 0 },
                     "temperature":      { "type": "number", "minimum": 0, "maximum": 2 },
                     "retry_count":      { "type": "integer", "minimum": 0 },
                     "extra_params":     { "type": "object" },
                     "language":         { "type": "string" },
                     "prompt":           { "type": "string" },
-                    "max_items":        { "type": "integer", "minimum": 0 },
-                    "max_bytes":        { "type": "integer", "minimum": 0 },
-                    "max_duration_sec": { "type": "integer", "minimum": 0 },
-                    "transcode":        { "type": "string", "enum": ["", "mp3", "wav"] },
-                    "part_type":        { "type": "string", "enum": ["audio_url", "input_audio"] }
+                    "max_items":        { "type": "integer", "minimum": 0, "default": 2 },
+                    "max_bytes":        { "type": "integer", "minimum": 0, "default": 26214400 },
+                    "max_duration_sec": { "type": "integer", "minimum": 0, "default": 600 },
+                    "transcode":        { "type": "string", "enum": ["", "mp3", "wav"], "default": "", "description": "Convert with ffmpeg before sending (requires ffmpeg)." },
+                    "part_type":        { "type": "string", "enum": ["audio_url", "input_audio"], "default": "audio_url" }
                   }
                 },
                 "video": {
                   "type": "object",
                   "additionalProperties": false,
-                  "allOf": [{ "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }, "then": { "required": ["model"] } }],
+                  "allOf": [
+                    { "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] }, "then": { "required": ["model"] } },
+                    { "if": { "properties": { "transcode": { "const": true } }, "required": ["transcode"] }, "then": { "properties": { "transport": { "const": "base64" } } } }
+                  ],
                   "properties": {
-                    "enabled":          { "type": "boolean" },
+                    "enabled":          { "type": "boolean", "default": false },
+                    "mode":             { "not": {}, "deprecated": true, "description": "Removed: videos are always described into text by the video model. A config that sets it fails validation." },
                     "model":            { "type": "string" },
                     "api_base_url":     { "type": "string" },
                     "api_key":          { "type": "string" },
                     "timeout":          { "type": "integer", "minimum": 0 },
-                    "max_tokens":       { "type": "integer", "minimum": 1 },
+                    "max_tokens":       { "type": "integer", "minimum": 0 },
                     "temperature":      { "type": "number", "minimum": 0, "maximum": 2 },
                     "retry_count":      { "type": "integer", "minimum": 0 },
                     "extra_params":     { "type": "object" },
                     "prompt":           { "type": "string" },
-                    "max_items":        { "type": "integer", "minimum": 0 },
-                    "max_bytes":        { "type": "integer", "minimum": 0 },
-                    "max_duration_sec": { "type": "integer", "minimum": 0 },
-                    "transport":        { "type": "string", "enum": ["base64", "url"] },
-                    "transcode":        { "type": "boolean" },
-                    "max_height":       { "type": "integer", "minimum": 0 }
+                    "max_items":        { "type": "integer", "minimum": 0, "default": 1 },
+                    "max_bytes":        { "type": "integer", "minimum": 0, "default": 52428800 },
+                    "max_duration_sec": { "type": "integer", "minimum": 0, "default": 120 },
+                    "transport":        { "type": "string", "enum": ["base64", "url"], "default": "base64" },
+                    "transcode":        { "type": "boolean", "default": false, "description": "Re-encode with ffmpeg (requires ffmpeg and transport base64)." },
+                    "max_height":       { "type": "integer", "minimum": 0, "default": 480 }
                   }
                 },
                 "sticker": {
                   "type": "object",
                   "additionalProperties": false,
+                  "$comment": "In vision mode a model is required from sticker.model or image.model (not expressible here; the Go loader checks it).",
                   "properties": {
-                    "enabled":           { "type": "boolean" },
-                    "mode":              { "type": "string", "enum": ["text", "vision"] },
+                    "enabled":           { "type": "boolean", "default": false },
+                    "mode":              { "type": "string", "enum": ["text", "vision"], "default": "text" },
                     "model":             { "type": "string" },
                     "api_base_url":      { "type": "string" },
                     "api_key":           { "type": "string" },
                     "timeout":           { "type": "integer", "minimum": 0 },
-                    "max_tokens":        { "type": "integer", "minimum": 1 },
+                    "max_tokens":        { "type": "integer", "minimum": 0 },
                     "temperature":       { "type": "number", "minimum": 0, "maximum": 2 },
                     "retry_count":       { "type": "integer", "minimum": 0 },
                     "extra_params":      { "type": "object" },
                     "prompt":            { "type": "string" },
-                    "max_items":         { "type": "integer", "minimum": 0 },
-                    "cache_ttl_min":     { "type": "integer", "minimum": 0 },
-                    "cache_max_entries": { "type": "integer", "minimum": 0 }
+                    "max_items":         { "type": "integer", "minimum": 0, "default": 3 },
+                    "cache_ttl_min":     { "type": "integer", "minimum": 0, "default": 1440 },
+                    "cache_max_entries": { "type": "integer", "minimum": 0, "default": 1000 }
                   }
                 },
-                "ffmpeg_path": { "type": "string" }
+                "ffmpeg_path": { "type": "string", "default": "ffmpeg" }
               }
             },
             "vision": {
               "type": "object",
               "deprecated": true,
-              "description": "Deprecated: mapped onto modalities.image (text_only=off, hybrid and multimodal=image described by vision.model). Ignored when modalities is set.",
-              "required": ["mode"],
+              "description": "Deprecated: mapped onto modalities.image at load (text_only or empty mode = image off; hybrid and multimodal = image described by vision.model). Ignored when modalities is set.",
               "additionalProperties": false,
-              "allOf": [
-                {
-                  "if": {
-                    "properties": { "mode": { "not": { "const": "text_only" } } },
-                    "required": ["mode"]
-                  },
-                  "then": {
-                    "required": ["model", "max_tokens", "retry_count", "timeout"]
-                  }
-                },
-                {
-                  "if": {
-                    "properties": { "mode": { "const": "hybrid" } },
-                    "required": ["mode"]
-                  },
-                  "then": {
-                    "required": ["description_prompt"]
-                  }
-                }
-              ],
               "properties": {
-                "mode":               { "type": "string", "enum": ["text_only", "hybrid", "multimodal"] },
+                "mode":               { "type": "string", "enum": ["", "text_only", "hybrid", "multimodal"] },
                 "model":              { "type": "string" },
-                "base64":             { "type": "boolean" },
-                "max_images":         { "type": "integer", "minimum": 1 },
+                "base64":             { "type": "boolean", "description": "true = transport base64, false = transport url." },
+                "max_images":         { "type": "integer", "minimum": 0 },
                 "description_prompt": { "type": "string" },
                 "api_base_url":       { "type": "string" },
                 "api_key":            { "type": "string" },
-                "max_tokens":         { "type": "integer", "minimum": 1 },
+                "max_tokens":         { "type": "integer", "minimum": 0 },
                 "temperature":        { "type": "number", "minimum": 0, "maximum": 2 },
-                "retry_count":        { "type": "integer", "minimum": 1 },
-                "timeout":            { "type": "integer", "minimum": 1 },
+                "retry_count":        { "type": "integer", "minimum": 0 },
+                "timeout":            { "type": "integer", "minimum": 0 },
                 "extra_params":       { "type": "object" }
               }
             }
@@ -205,11 +213,10 @@
         },
         "decision": {
           "type": "object",
-          "required": ["enabled"],
           "allOf": [
             {
               "if": {
-                "properties": { "enabled": { "const": true }, "provider": { "enum": ["llm"] } },
+                "properties": { "enabled": { "const": true }, "provider": { "const": "llm" } },
                 "required": ["enabled"]
               },
               "then": {
@@ -226,8 +233,8 @@
           ],
           "additionalProperties": false,
           "properties": {
-            "enabled":       { "type": "boolean" },
-            "provider":      { "type": "string", "enum": ["llm", "system_one"] },
+            "enabled":       { "type": "boolean", "default": false },
+            "provider":      { "type": "string", "enum": ["llm", "system_one"], "default": "llm" },
             "model":         { "type": "string" },
             "api_base_url":  { "type": "string" },
             "api_key":       { "type": "string" },
@@ -235,7 +242,7 @@
             "temperature":   { "type": "number", "minimum": 0, "maximum": 2 },
             "retry_count":   { "type": "integer", "minimum": 0 },
             "timeout":       { "type": "integer", "minimum": 1 },
-            "system_prompt": { "type": "string" },
+            "system_prompt": { "type": "string", "not": { "pattern": "\\{(BotName|AuthorName|ServerName|GuildID|ChannelID)\\}" } },
             "extra_params":  { "type": "object" },
             "system_one": {
               "type": "object",
@@ -262,16 +269,28 @@
 
     "memory_pipeline": {
       "type": "object",
-      "required": ["embedding", "memory", "qdrant"],
+      "required": ["memory"],
       "additionalProperties": false,
+      "allOf": [
+        {
+          "$comment": "Embedding and Qdrant settings are only required when memory retrieval or consolidation is on.",
+          "if": { "$ref": "#/$defs/memoryEnabled" },
+          "then": {
+            "required": ["embedding", "qdrant"],
+            "properties": {
+              "embedding": { "required": ["model", "timeout"] },
+              "qdrant":    { "required": ["host", "port", "vector_size", "retry_base_delay_ms", "retry_max_delay_ms", "max_retries"] }
+            }
+          }
+        }
+      ],
       "properties": {
         "embedding": {
           "type": "object",
-          "required": ["model", "timeout"],
           "additionalProperties": false,
           "properties": {
-            "api_base_url": { "type": "string" },
-            "api_key":      { "type": "string" },
+            "api_base_url": { "type": "string", "description": "Empty = core.ai.api_base_url." },
+            "api_key":      { "type": "string", "description": "Empty = core.ai.api_key." },
             "model":        { "type": "string" },
             "retry_count":  { "type": "integer", "minimum": 0 },
             "timeout":      { "type": "integer", "minimum": 1 },
@@ -280,42 +299,42 @@
         },
         "memory": {
           "type": "object",
-          "required": ["consolidation_interval", "short_term_limit", "max_paginated_limit", "retrieval", "consolidation", "long_term_memory", "max_mentioned_users_per_memory", "memory_strength_multiplier", "maintenance_interval_sec", "merge_cron_hour_utc", "summarize_cron_day", "merge_cosine_threshold", "prune_decay_threshold", "prune_age_days", "relationship_prune_age_days", "max_maintenance_llm_calls_per_day", "entropy_min_unique_word_ratio", "decay_rates", "scoring", "rrf_k", "context_max_memories"],
+          "required": ["consolidation_interval", "short_term_limit", "max_paginated_limit", "consolidation", "memory_strength_multiplier", "maintenance_interval_sec", "prune_age_days", "relationship_prune_age_days", "decay_rates", "rrf_k", "context_max_memories"],
           "additionalProperties": false,
           "properties": {
             "consolidation_interval": { "type": "integer", "minimum": 1 },
-            "short_term_limit":       { "type": "integer", "minimum": 1, "maximum": 500 },
-            "context_flush_window":   { "type": "integer", "minimum": 0, "maximum": 500 },
+            "short_term_limit":       { "type": "integer", "minimum": 1 },
+            "context_flush_window":   { "type": "integer", "minimum": 0, "default": 0 },
             "max_paginated_limit":    { "type": "integer", "minimum": 1 },
             "retrieval": {
               "type": "object",
-              "required": ["top_k", "min_score"],
               "additionalProperties": false,
               "properties": {
-                "top_k":    { "type": "integer", "minimum": 0 },
-                 "min_score": { "type": "number", "minimum": 0, "maximum": 1 },
-                 "include_channel_memories": { "type": "boolean" },
-                 "max_mentioned_memories": { "type": "integer", "minimum": 0 },
-                 "max_channel_memories": { "type": "integer", "minimum": 0 }
-               }
+                "top_k":                    { "type": "integer", "minimum": 0, "description": "0 disables retrieval." },
+                "min_score":                { "type": "number", "minimum": 0, "maximum": 1 },
+                "include_channel_memories": { "type": "boolean" },
+                "max_mentioned_memories":   { "type": "integer", "minimum": 0, "description": "0 = use top_k." },
+                "max_channel_memories":     { "type": "integer", "minimum": 0, "description": "0 = use top_k." }
+              }
             },
             "consolidation": {
               "type": "object",
-              "required": ["enabled", "memory_search_limit"],
+              "required": ["memory_search_limit"],
               "additionalProperties": false,
               "allOf": [
                 {
                   "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
                   "then": {
-                    "required": ["model", "max_tokens", "retry_count", "timeout", "system_prompt"]
+                    "required": ["max_tokens", "retry_count", "timeout", "system_prompt"],
+                    "properties": { "retry_count": { "minimum": 1 }, "system_prompt": { "minLength": 1 } }
                   }
                 }
               ],
               "properties": {
-                "enabled":             { "type": "boolean" },
-                "model":               { "type": "string" },
-                "api_base_url":        { "type": "string" },
-                "api_key":             { "type": "string" },
+                "enabled":             { "type": "boolean", "default": false },
+                "model":               { "type": "string", "description": "Empty = core.ai.model." },
+                "api_base_url":        { "type": "string", "description": "Empty = core.ai.api_base_url." },
+                "api_key":             { "type": "string", "description": "Empty = core.ai.api_key." },
                 "max_tokens":          { "type": "integer", "minimum": 1 },
                 "temperature":         { "type": "number", "minimum": 0, "maximum": 2 },
                 "retry_count":         { "type": "integer", "minimum": 0 },
@@ -323,81 +342,80 @@
                 "vision": {
                   "type": "object",
                   "additionalProperties": false,
+                  "description": "Optional overrides for describing images during consolidation; empty fields use core.ai.modalities.image (then core.ai). Only used when the image modality is enabled.",
                   "properties": {
-                    "mode":               { "type": "string", "enum": ["text_only", "hybrid", "multimodal"] },
                     "model":              { "type": "string" },
-                    "base64":             { "type": "boolean" },
                     "api_base_url":       { "type": "string" },
                     "api_key":            { "type": "string" },
-                    "max_tokens":         { "type": "integer", "minimum": 1 },
+                    "max_tokens":         { "type": "integer", "minimum": 0 },
                     "temperature":        { "type": "number", "minimum": 0, "maximum": 2 },
                     "retry_count":        { "type": "integer", "minimum": 0 },
-                    "timeout":            { "type": "integer", "minimum": 1 },
+                    "timeout":            { "type": "integer", "minimum": 0 },
                     "description_prompt": { "type": "string" },
-                    "extra_params":       { "type": "object" }
+                    "mode":               { "type": "string", "deprecated": true, "description": "Ignored." },
+                    "base64":             { "type": "boolean", "deprecated": true, "description": "Ignored (the image modality's transport is used)." },
+                    "max_images":         { "type": "integer", "deprecated": true, "description": "Ignored (the image modality's max_items is used)." },
+                    "extra_params":       { "type": "object", "deprecated": true, "description": "Ignored (the image modality's extra_params are used)." }
                   }
                 },
                 "system_prompt":       { "type": "string" },
-                "extra_params":        { "type": "object" },
+                "extra_params":        { "type": "object", "description": "Not inherited from core.ai." },
                 "memory_search_limit": { "type": "integer", "minimum": 1 }
               }
-             },
-              "long_term_memory": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["enabled"],
-                "properties": { "enabled": { "type": "boolean" } }
-              },
-              "max_mentioned_users_per_memory": { "type": "integer", "minimum": 0 },
-              "memory_strength_multiplier": { "type": "number", "exclusiveMinimum": 0, "maximum": 100 },
-              "relationship_prune_age_days": { "type": "integer", "minimum": 1 },
-              "maintenance_interval_sec": { "type": "integer", "minimum": 1 },
-             "merge_cron_hour_utc": { "type": "integer", "minimum": 0, "maximum": 23 },
-             "summarize_cron_day": { "type": "integer", "minimum": 0, "maximum": 6 },
-             "merge_cosine_threshold": { "type": "number", "minimum": 0, "maximum": 1 },
-             "prune_decay_threshold": { "type": "number", "minimum": 0, "maximum": 1 },
-             "prune_age_days": { "type": "integer", "minimum": 1 },
-             "max_maintenance_llm_calls_per_day": { "type": "integer", "minimum": 0 },
-
-             "entropy_min_unique_word_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
-             "decay_rates": {
-               "type": "object",
-               "additionalProperties": false,
-               "required": ["fact", "episode", "interest", "summary"],
-               "properties": {
-                 "fact": { "type": "number", "exclusiveMinimum": 0 },
-                 "episode": { "type": "number", "exclusiveMinimum": 0 },
-                 "interest": { "type": "number", "exclusiveMinimum": 0 },
-                 "summary": { "type": "number", "exclusiveMinimum": 0 }
-               }
-             },
-             "scoring": {
-               "type": "object", "additionalProperties": false,
-               "required": ["importance_weight", "recency_weight", "access_weight", "confidence_weight"],
-               "properties": {
-                 "importance_weight": { "type": "number", "minimum": 0 },
-                 "recency_weight": { "type": "number", "minimum": 0 },
-                 "access_weight": { "type": "number", "minimum": 0 },
-                 "confidence_weight": { "type": "number", "minimum": 0 }
-               }
-             },
-             "rrf_k": { "type": "integer", "minimum": 1 },
-             "context_max_memories": { "type": "integer", "minimum": 1 }
-           }
-         },
-         "qdrant": {
+            },
+            "long_term_memory": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": { "enabled": { "type": "boolean", "description": "Accepted but currently not read by the bot." } }
+            },
+            "max_mentioned_users_per_memory": { "type": "integer", "minimum": 0, "description": "Accepted but currently not read by the bot." },
+            "memory_strength_multiplier":     { "type": "number", "exclusiveMinimum": 0, "maximum": 100 },
+            "maintenance_interval_sec":       { "type": "integer", "minimum": 1 },
+            "merge_cron_hour_utc":            { "type": "integer", "minimum": 0, "maximum": 23 },
+            "summarize_cron_day":             { "type": "integer", "minimum": 0, "maximum": 6 },
+            "merge_cosine_threshold":         { "type": "number", "minimum": 0, "maximum": 1 },
+            "prune_decay_threshold":          { "type": "number", "minimum": 0, "maximum": 1 },
+            "prune_age_days":                 { "type": "integer", "minimum": 1 },
+            "relationship_prune_age_days":    { "type": "integer", "minimum": 1 },
+            "max_maintenance_llm_calls_per_day": { "type": "integer", "minimum": 0 },
+            "entropy_min_unique_word_ratio":  { "type": "number", "minimum": 0, "maximum": 1 },
+            "decay_rates": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["fact", "episode", "interest", "summary"],
+              "properties": {
+                "fact":     { "type": "number", "exclusiveMinimum": 0 },
+                "episode":  { "type": "number", "exclusiveMinimum": 0 },
+                "interest": { "type": "number", "exclusiveMinimum": 0 },
+                "summary":  { "type": "number", "exclusiveMinimum": 0 }
+              }
+            },
+            "scoring": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "importance_weight": { "type": "number", "minimum": 0 },
+                "recency_weight":    { "type": "number", "minimum": 0 },
+                "access_weight":     { "type": "number", "minimum": 0 },
+                "confidence_weight": { "type": "number", "minimum": 0 }
+              }
+            },
+            "rrf_k":                { "type": "integer", "minimum": 1 },
+            "context_max_memories": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "qdrant": {
           "type": "object",
-          "required": ["host", "port", "vector_size"],
-           "additionalProperties": false,
-           "properties": {
-             "host":              { "type": "string" },
-             "port":              { "type": "integer", "minimum": 1, "maximum": 65535 },
-             "api_key":           { "type": "string" },
-             "vector_size":       { "type": "integer", "minimum": 1 },
-             "retry_base_delay_ms": { "type": "integer", "minimum": 1 },
-             "retry_max_delay_ms":  { "type": "integer", "minimum": 1 },
-             "max_retries":         { "type": "integer", "minimum": 1 }
-           }
+          "additionalProperties": false,
+          "properties": {
+            "host":                { "type": "string", "minLength": 1 },
+            "port":                { "type": "integer", "minimum": 1, "maximum": 65535, "description": "gRPC port (Qdrant's default is 6334)." },
+            "api_key":             { "type": "string" },
+            "vector_size":         { "type": "integer", "minimum": 1 },
+            "retry_base_delay_ms": { "type": "integer", "minimum": 1 },
+            "retry_max_delay_ms":  { "type": "integer", "minimum": 1 },
+            "max_retries":         { "type": "integer", "minimum": 1 }
+          }
         }
       }
     },
@@ -405,23 +423,29 @@
     "access_control": {
       "type": "object",
       "additionalProperties": false,
+      "$comment": "Blacklist and whitelist cannot both be non-empty for the same category.",
+      "allOf": [
+        { "not": { "required": ["blacklist", "whitelist"], "properties": { "blacklist": { "required": ["users"], "properties": { "users": { "$ref": "#/$defs/nonEmpty" } } }, "whitelist": { "required": ["users"], "properties": { "users": { "$ref": "#/$defs/nonEmpty" } } } } } },
+        { "not": { "required": ["blacklist", "whitelist"], "properties": { "blacklist": { "required": ["guilds"], "properties": { "guilds": { "$ref": "#/$defs/nonEmpty" } } }, "whitelist": { "required": ["guilds"], "properties": { "guilds": { "$ref": "#/$defs/nonEmpty" } } } } } },
+        { "not": { "required": ["blacklist", "whitelist"], "properties": { "blacklist": { "required": ["channels"], "properties": { "channels": { "$ref": "#/$defs/nonEmpty" } } }, "whitelist": { "required": ["channels"], "properties": { "channels": { "$ref": "#/$defs/nonEmpty" } } } } } }
+      ],
       "properties": {
         "blacklist": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "users":    { "type": "array", "items": { "anyOf": [{"type": "string"}, {"type": "integer"}] } },
-            "guilds":   { "type": "array", "items": { "anyOf": [{"type": "string"}, {"type": "integer"}] } },
-            "channels": { "type": "array", "items": { "anyOf": [{"type": "string"}, {"type": "integer"}] } }
+            "users":    { "$ref": "#/$defs/idList" },
+            "guilds":   { "$ref": "#/$defs/idList" },
+            "channels": { "$ref": "#/$defs/idList" }
           }
         },
         "whitelist": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "users":    { "type": "array", "items": { "anyOf": [{"type": "string"}, {"type": "integer"}] } },
-            "guilds":   { "type": "array", "items": { "anyOf": [{"type": "string"}, {"type": "integer"}] } },
-            "channels": { "type": "array", "items": { "anyOf": [{"type": "string"}, {"type": "integer"}] } }
+            "users":    { "$ref": "#/$defs/idList" },
+            "guilds":   { "$ref": "#/$defs/idList" },
+            "channels": { "$ref": "#/$defs/idList" }
           }
         },
         "message_filters": {
@@ -429,23 +453,27 @@
           "additionalProperties": false,
           "description": "Regex allow/ignore rules for incoming messages. First matching rule wins; ignored messages are not answered and are hidden from context and consolidation. The bot's own messages are never filtered.",
           "properties": {
-            "default_action": { "type": "string", "enum": ["allow", "ignore"] },
+            "default_action": { "type": "string", "enum": ["allow", "ignore"], "default": "allow" },
             "rules": {
               "type": "array",
               "items": {
                 "type": "object",
                 "additionalProperties": false,
                 "required": ["action"],
+                "anyOf": [
+                  { "required": ["guild"] }, { "required": ["channel"] }, { "required": ["user"] }, { "required": ["username"] },
+                  { "required": ["content"] }, { "required": ["kinds"] }, { "required": ["kinds_all"] }
+                ],
                 "properties": {
-                  "name": { "type": "string", "description": "Label shown in logs when the rule matches." },
-                  "action": { "type": "string", "enum": ["allow", "ignore"] },
-                  "guild": { "type": "string", "description": "Regex searched in the guild ID (anchor with ^...$ for exact)." },
-                  "channel": { "type": "string", "description": "Regex searched in the channel ID." },
-                  "user": { "type": "string", "description": "Regex searched in the author ID." },
-                  "username": { "type": "string", "description": "Regex searched in the author username." },
-                  "content": { "type": "string", "description": "Regex searched in the message text plus rendered embeds." },
-                  "kinds": { "type": "array", "items": { "type": "string", "enum": ["text", "embed", "image", "sticker", "audio", "voice", "video", "file", "reply", "bot", "webhook"] }, "description": "Matches when the message has ANY of these kinds." },
-                  "kinds_all": { "type": "array", "items": { "type": "string", "enum": ["text", "embed", "image", "sticker", "audio", "voice", "video", "file", "reply", "bot", "webhook"] }, "description": "Matches when the message has ALL of these kinds." }
+                  "name":      { "type": "string", "description": "Label shown in logs when the rule matches." },
+                  "action":    { "type": "string", "enum": ["allow", "ignore"] },
+                  "guild":     { "type": "string", "description": "Regex searched in the guild ID (anchor with ^...$ for exact)." },
+                  "channel":   { "type": "string", "description": "Regex searched in the channel ID." },
+                  "user":      { "type": "string", "description": "Regex searched in the author ID." },
+                  "username":  { "type": "string", "description": "Regex searched in the author username." },
+                  "content":   { "type": "string", "description": "Regex searched in the message text plus rendered embeds." },
+                  "kinds":     { "$ref": "#/$defs/kinds", "description": "Matches when the message has ANY of these kinds." },
+                  "kinds_all": { "$ref": "#/$defs/kinds", "description": "Matches when the message has ALL of these kinds." }
                 }
               }
             }
@@ -456,13 +484,13 @@
 
     "operations": {
       "type": "object",
-          "required": ["web", "logging", "plugins", "runtime"],
-          "additionalProperties": false,
-          "properties": {
+      "required": ["logging", "runtime"],
+      "additionalProperties": false,
+      "properties": {
         "web": {
           "type": "object",
-          "required": ["enabled"],
           "additionalProperties": false,
+          "required": ["enabled"],
           "allOf": [
             {
               "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
@@ -472,12 +500,11 @@
             }
           ],
           "properties": {
+            "enabled":  { "type": "boolean", "default": false },
             "port":     { "type": "integer", "minimum": 1, "maximum": 65535 },
-            "username": { "type": "string" },
-            "password": { "type": "string" },
-            "enabled":  { "type": "boolean" },
+            "username": { "type": "string", "minLength": 1 },
+            "password": { "type": "string", "minLength": 1 },
             "memories_page_limit":          { "type": "integer", "minimum": 1 },
-
             "session_ttl_min":              { "type": "integer", "minimum": 1 },
             "session_cleanup_interval_min": { "type": "integer", "minimum": 1 },
             "stats_query_timeout_sec":      { "type": "integer", "minimum": 1 },
@@ -491,8 +518,8 @@
           "required": ["level", "file", "max_size", "max_backups", "max_age"],
           "additionalProperties": false,
           "properties": {
-            "level":       { "type": "string", "enum": ["debug", "info", "warn", "error"] },
-            "file":        { "type": "string" },
+            "level":       { "type": "string", "enum": ["debug", "info", "warn", "error", "dpanic", "panic", "fatal", "DEBUG", "INFO", "WARN", "ERROR", "DPANIC", "PANIC", "FATAL"], "description": "Parsed by zapcore.ParseLevel." },
+            "file":        { "type": "string", "minLength": 1 },
             "max_size":    { "type": "integer", "minimum": 1 },
             "max_backups": { "type": "integer", "minimum": 1 },
             "max_age":     { "type": "integer", "minimum": 1 }
@@ -500,28 +527,27 @@
         },
         "plugins": {
           "type": "object",
-          "required": ["enabled"],
           "additionalProperties": false,
           "allOf": [
             {
               "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
               "then": {
-                "required": ["plugins_dir", "default_tool_timeout_ms", "startup_timeout_sec", "rpc_timeout_sec", "before_send_timeout_sec", "command_timeout_sec", "shutdown_timeout_sec", "disable_timeout_sec", "max_restarts", "restart_cooldown_sec"]
+                "required": ["plugins_dir", "startup_timeout_sec", "rpc_timeout_sec", "before_send_timeout_sec", "command_timeout_sec", "shutdown_timeout_sec", "disable_timeout_sec", "max_restarts", "restart_cooldown_sec"]
               }
             }
           ],
           "properties": {
-            "enabled":     { "type": "boolean" },
-            "plugins_dir": { "type": "string" },
-            "default_tool_timeout_ms":  { "type": "integer", "minimum": 0 },
+            "enabled":     { "type": "boolean", "default": false },
+            "plugins_dir": { "type": "string", "minLength": 1 },
+            "default_tool_timeout_ms":  { "type": "integer", "minimum": 0, "description": "Validated even when plugins are disabled. 0 logs a warning: JSON-RPC tools without their own timeout then fail." },
             "startup_timeout_sec":      { "type": "integer", "minimum": 1 },
             "rpc_timeout_sec":          { "type": "integer", "minimum": 1 },
             "before_send_timeout_sec":  { "type": "integer", "minimum": 1 },
             "command_timeout_sec":      { "type": "integer", "minimum": 1 },
             "shutdown_timeout_sec":     { "type": "integer", "minimum": 1 },
             "disable_timeout_sec":      { "type": "integer", "minimum": 1 },
-            "max_restarts":             { "type": "integer", "minimum": 1 },
-            "restart_cooldown_sec":     { "type": "integer", "minimum": 1 }
+            "max_restarts":             { "type": "integer", "minimum": 1, "description": "Values above 10 log a warning." },
+            "restart_cooldown_sec":     { "type": "integer", "minimum": 1, "description": "Values above 3600 log a warning." }
           }
         },
         "mcp": {
@@ -530,28 +556,29 @@
           "allOf": [
             {
               "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
-              "then": {
-                "required": ["servers"]
-              }
+              "then": { "required": ["servers"], "properties": { "servers": { "minItems": 1 } } }
             }
           ],
           "properties": {
-            "enabled": { "type": "boolean" },
+            "enabled": { "type": "boolean", "default": false },
             "servers": {
               "type": "array",
-              "minItems": 1,
               "items": {
                 "type": "object",
                 "required": ["name", "type"],
                 "additionalProperties": false,
+                "allOf": [
+                  { "if": { "properties": { "type": { "const": "stdio" } }, "required": ["type"] }, "then": { "required": ["command"] } },
+                  { "if": { "properties": { "type": { "enum": ["sse", "http"] } }, "required": ["type"] }, "then": { "required": ["url"] } }
+                ],
                 "properties": {
-                  "name":    { "type": "string" },
+                  "name":    { "type": "string", "minLength": 1 },
                   "type":    { "type": "string", "enum": ["stdio", "sse", "http"] },
-                  "command": { "type": "string" },
-                  "args":    { "type": "array", "items": {"type": "string"} },
-                  "env":     { "type": "object" },
-                  "url":     { "type": "string" },
-                  "headers": { "type": "object", "additionalProperties": {"type": "string"} }
+                  "command": { "type": "string", "description": "stdio: executable name or path." },
+                  "args":    { "type": "array", "items": { "type": "string" } },
+                  "env":     { "type": "object", "additionalProperties": { "type": "string" }, "description": "stdio: environment for the subprocess; names keep their case." },
+                  "url":     { "type": "string", "description": "sse/http: endpoint URL." },
+                  "headers": { "type": "object", "additionalProperties": { "type": "string" }, "description": "http only: sent with every request; $VAR is expanded from the bot's environment." }
                 }
               }
             }
@@ -570,12 +597,12 @@
               "allOf": [
                 {
                   "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
-                  "then": { "required": ["debounce_ms"] }
+                  "then": { "required": ["debounce_ms"], "properties": { "debounce_ms": { "minimum": 50 } } }
                 }
               ],
               "properties": {
-                "enabled":     { "type": "boolean" },
-                "debounce_ms": { "type": "integer", "minimum": 0, "maximum": 60000 }
+                "enabled":     { "type": "boolean", "default": false },
+                "debounce_ms": { "type": "integer", "minimum": 0, "maximum": 60000, "description": "50-60000 when enabled." }
               }
             }
           }
