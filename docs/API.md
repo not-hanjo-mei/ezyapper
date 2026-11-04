@@ -3,7 +3,7 @@
 > [!IMPORTANT]
 > **There is no JSON REST API.** The WebUI is a server-rendered HTML dashboard. Earlier versions of these docs described a `/api/*` JSON surface — that surface never shipped. If you need to manage the bot programmatically, edit `config.yaml` (with `operations.runtime.hot_reload.enabled: true` the bot applies the saved file without a restart; otherwise restart it), or use the dashboard's HTML forms.
 
-EZyapper's WebUI is a small admin dashboard built directly on `net/http`. It's optional, disabled by default, and considered experimental — keep `operations.web.enabled: false` for production unless you explicitly need it.
+EZyapper's WebUI is a small admin dashboard built directly on `net/http`. It's optional, off unless `operations.web.enabled` is true, and considered experimental — keep `operations.web.enabled: false` for production unless you explicitly need it.
 
 ---
 

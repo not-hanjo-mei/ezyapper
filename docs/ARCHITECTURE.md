@@ -55,7 +55,7 @@ Eleven sequential phases. Anything that fails is fatal — the bot does not star
 | # | Phase | What happens |
 |---|-------|--------------|
 | 1 | CLI flags | `pflag` parses `--config` / `-c`. Without it, `config.yaml` is looked up in `.`, `./config` and `/etc/ezyapper`. |
-| 2 | Config load | `config.Load(path)` reads YAML, applies env overrides (only for keys present in the file), fills the modality defaults and runs every validator. All errors joined and reported at once. |
+| 2 | Config load | `config.Load(path)` reads YAML, applies env overrides (only for keys present in the file) and runs every validator. It fills in no values: there are no built-in defaults. All errors joined and reported at once. |
 | 3 | Logger init | Zap logger with file rotation via lumberjack. The global `logger.L()` helper returns a no-op logger before this runs (so `init()`-free packages don't NPE). |
 | 4 | Memory service | Builds the embedding client, Qdrant gRPC client, embedder, image describer, consolidator. If both `retrieval.top_k=0` and `consolidation.enabled=false`, returns a `NoopService` instead. Calls `RepairOrDeleteDamagedMemories()` (best-effort startup repair) and starts the maintenance worker. |
 | 5 | Plugin manager | `plugin.NewManager(...)` with all the configured timeouts (startup, RPC, before-send, command, shutdown, disable). Plugins aren't loaded yet. |
@@ -78,7 +78,7 @@ Viper-backed YAML loader with env overrides. The runtime `Config` struct has 13 
 
 Key invariants:
 
-- Most fields have no in-code default and must be set in the file; a few do (the `core.ai.modalities` fields, `core.decision.provider`, `operations.runtime.hot_reload`). See [CONFIGURATION.md](CONFIGURATION.md).
+- No field has an in-code default. Every required key must be set in the file, and a key required by a feature must be set when that feature is enabled; the values in `examples/config.yaml.example` are suggestions. An absent optional section is off, a few zero values have a documented meaning, and some keys explicitly inherit another key when empty. See [CONFIGURATION.md](CONFIGURATION.md).
 - Environment overrides (`EZYAPPER_...`) apply only to keys present in the file.
 - The validators run in sequence; errors are collected via `errors.Join` and reported all at once.
 - Updates persisted via `Save()` go through the same validation path before being written.
@@ -197,7 +197,7 @@ See [PLUGINS.md](PLUGINS.md) for the full contract.
 
 ### `internal/web` — Optional Admin Dashboard
 
-Pure `net/http`. Server-rendered HTML with embedded templates, on-disk static assets, session cookies, CSRF protection, and a secrets-aware config editor. Off by default.
+Pure `net/http`. Server-rendered HTML with embedded templates, on-disk static assets, session cookies, CSRF protection, and a secrets-aware config editor. Off unless `operations.web.enabled` is true.
 
 See [API.md](API.md) for routes, auth, and page data shapes.
 

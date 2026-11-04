@@ -1,6 +1,6 @@
 # Media Modalities (images, audio, video, stickers)
 
-Text is always handled by the base model (`core.ai`), which is treated as text-only: the reply request never carries media. Images, audio, video and stickers are the four optional modalities configured under `core.ai.modalities`, each with its own on/off switch and its own model (for stickers the switch only decides whether the image is read; they are always shown as text otherwise). Field reference: [CONFIGURATION.md](CONFIGURATION.md#coreaimodalities-optional).
+Text is always handled by the base model (`core.ai`), which is treated as text-only: the reply request never carries media. Images, audio, video and stickers are the four modalities configured under `core.ai.modalities`, each with its own on/off switch and its own model (for stickers the switch only decides whether the image is read; they are always shown as text otherwise, so the sticker item cap and cache keys are always required). There are no built-in defaults: an enabled modality must set its prompt, limits and transport; `examples/config.yaml.example` carries suggested values. Field reference: [CONFIGURATION.md](CONFIGURATION.md#coreaimodalities).
 
 ## Pipeline ("fake multimodal")
 
@@ -20,7 +20,7 @@ The same text is reused for the memory search query of the current message and f
 | audio | `asr` | Speech is transcribed by an `/audio/transcriptions` endpoint; `[Audio N transcript (...): ...]` is added. | 1 per audio (cached) |
 | audio | `describe` | An audio-capable chat model gets the audio as an `audio_url` data URI part (ogg/opus voice messages work as is) and returns a transcript or description; `[Audio N (...): ...]` is added. | 1 per audio (cached) |
 | video | (always describe) | A video-capable model describes each video (`video_url` part); `[Video N (...): ...]` is added. | 1 per video (cached) |
-| sticker | `enabled: false` (default) | `[Sticker: name — description (tags: ...)]` from Discord's sticker details. | none (1 Discord API call per sticker, cached) |
+| sticker | `enabled: false` (or absent) | `[Sticker: name — description (tags: ...)]` from Discord's sticker details. | none (1 Discord API call per sticker, cached) |
 | sticker | `enabled: true` | A vision model describes the sticker image: `[Sticker: name — ...]`. Lottie stickers fall back to the text. | 1 per sticker ID (cached) |
 
 Every modality turns media into text with its own model, and the result is reused on later turns (cached by attachment ID or CDN path, which survives Discord re-signing CDN URLs; see [Shared media cache](#shared-media-cache)). The base model only sees the text. There is no "direct" mode that sends media to the reply model: omni models given media inside the long, tool-carrying reply request tended to ignore it. `image.mode` and `video.mode` were removed: a config that sets either fails validation and asks you to remove the key. `audio.mode` accepts only `asr` and `describe`; `direct` fails validation.
@@ -59,11 +59,11 @@ Sticker details and descriptions use a separate cache keyed by sticker ID that f
 
 ## Limits
 
-`max_items` caps media per message; `max_bytes` and `max_duration_sec` skip oversized audio/video (the duration is known for Discord voice messages). Images use `core.ai.max_image_bytes`. Skipped media still shows a placeholder line so the model knows it was there.
+`max_items` caps media per message; `max_bytes` and `max_duration_sec` skip oversized audio/video (all three are required when the modality is enabled) (the duration is known for Discord voice messages). Images use `core.ai.max_image_bytes`. Skipped media still shows a placeholder line so the model knows it was there.
 
 ## ffmpeg
 
-Optional. Only `audio.transcode` (mp3/wav, e.g. for an ASR endpoint that rejects ogg/opus, or for `part_type: input_audio`) and `video.transcode` (trim + downscale) use it. When one of them is enabled and ffmpeg is missing, the bot refuses to start with a clear error instead of failing on the first message.
+Optional. Only `audio.transcode` (mp3/wav, e.g. for an ASR endpoint that rejects ogg/opus, or for `part_type: input_audio`) and `video.transcode` (trim + downscale) use it. When one of them is enabled, `core.ai.modalities.ffmpeg_path` must be set (for example `ffmpeg`, looked up in `PATH`), and if ffmpeg is missing the bot refuses to start with a clear error instead of failing on the first message.
 
 The Docker image built from the repository's `Dockerfile` does not include ffmpeg. To use transcoding in Docker, add it to the runtime stage; see [DEPLOYMENT.md](DEPLOYMENT.md#ffmpeg-in-docker).
 
@@ -77,4 +77,4 @@ The old block still loads, with a warning, and is mapped onto `core.ai.modalitie
 | `hybrid` | `image.enabled: true` (`vision.model` describes images) |
 | `multimodal` | `image.enabled: true`, same as `hybrid`: images are described, never sent to the reply model |
 
-`description_prompt` → `prompt`, `max_images` → `max_items`, `base64` → `transport` (`base64`/`url`); endpoint fields carry over. If `core.ai.modalities` is present, `core.ai.vision` is ignored.
+`description_prompt` → `prompt`, `max_images` → `max_items`, `base64` → `transport` (`base64`/`url`); endpoint fields carry over. With no built-in defaults, an enabled legacy block must set `description_prompt` and `max_images`. If `core.ai.modalities.image` is present, `core.ai.vision` is ignored.

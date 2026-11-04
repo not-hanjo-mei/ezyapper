@@ -9,7 +9,9 @@ EZyapper is configured via a single YAML file. Pass its path with `--config` (sh
 Without the flag the bot looks for `config.yaml` in `.`, `./config` and `/etc/ezyapper`, in that order.
 
 > [!CAUTION]
-> **Strict config.** Most fields have no default in code: a required field that is missing or zero stops the bot at startup. Validation errors are batched: if you have ten missing fields, you'll see all ten in one go. Some fields do have defaults: every field of `core.ai.modalities` (see the tables below), `core.decision.provider` (`llm`), `operations.runtime.hot_reload.enabled` (`false`) and `memory_pipeline.memory.context_flush_window` (`0`, sliding window). Optional maps such as `extra_params` can be left out. Start from `examples/config.yaml.example`, which sets every field.
+> **Strict config — no built-in defaults.** The bot never fills in a value you left out. The values in `examples/config.yaml.example` (and the "Suggested (example)" columns below) are suggestions to copy, not defaults. A required field that is missing or zero stops the bot at startup, and a key that is required when its feature is enabled (a modality, the decision model, the dashboard, plugins, a filter rule list, ...) must be set as soon as you enable that feature. Validation errors are batched: if you have ten missing fields, you'll see all ten in one go, each naming the key and pointing at the example.
+>
+> What is *not* a default: an optional section or switch that is absent is off (`enabled: false`, no rules, no servers); a few zero values have a documented meaning (`retrieval.top_k: 0` turns retrieval off, `context_flush_window: 0` is the plain sliding window, `reply_percentage: 0` never replies at random); and some keys explicitly inherit another key when empty (a modality's endpoint fields inherit `core.ai`, see the tables). Optional maps such as `extra_params` can be left out. Start from `examples/config.yaml.example`, which sets every field.
 
 > [!TIP]
 > **Hot reload.** With `operations.runtime.hot_reload.enabled: true` the bot watches its config file and applies every change on save, without a restart: the Discord token, models, prompts, the decision provider, Qdrant, MCP servers and the dashboard port included. A file that does not validate, or a change that cannot be applied (bad token, unreachable server, port in use), is rejected as a whole and the bot keeps running on the previous config. See [Hot reload](#hot-reload).
@@ -113,7 +115,7 @@ The main chat model. All sub-fields here are required.
 | `max_tokens` | int (>0) | Max tokens in completion. |
 | `temperature` | float (0.0–2.0) | Higher = more creative. |
 | `retry_count` | int (>0) | Retries for transient API errors. |
-| `timeout` | int (seconds) | Per-request timeout. **Not validated**, but required in practice: every request runs under a deadline of this many seconds, so `0` or a missing value makes each chat request fail at once. Set it to a positive value. The per-message processing deadline is derived from it: `(timeout + max plugin timeout) × max_tool_iterations + 10 s`. |
+| `timeout` | int (>0, seconds) | Per-request timeout. Required. It is also the timeout of a modality that sets none (an ASR endpoint included). The per-message processing deadline is derived from it: `(timeout + max plugin timeout) × max_tool_iterations + 10 s`. |
 | `extra_params` | map | Optional. Forwarded to the API via reflection. Unknown keys log a warning at runtime. Nested keys keep their case. Also used for embedding requests when `memory_pipeline.embedding.extra_params` is empty. |
 | `system_prompt` | string | The static system prompt. Sent unchanged on every request (no placeholders); see [System prompt](#system-prompt). |
 | `max_tool_iterations` | int (>0) | Cap on tool-calling loops per turn. Prevents infinite tool-call cycles. |
@@ -123,17 +125,19 @@ The main chat model. All sub-fields here are required.
 
 `core.ai.modalities.sticker.mode` was removed: `sticker.enabled` is the only switch (`true` reads the image with a vision model, `false` uses the Discord text). A config that still sets it loads and logs a deprecation warning.
 
-#### `core.ai.modalities` (optional)
+#### `core.ai.modalities`
 
-Text is always on: `core.ai` is the base model that reasons, runs tools and writes every reply. It is treated as text-only: the reply request never carries media. There are four media modalities: image, audio, video and sticker. Each is optional, with its own `enabled` switch and its own model. The whole block, and every field in it, is optional: a config without it loads with image, audio and video off, and stickers shown as their Discord text (no model call). See [MEDIA.md](MEDIA.md) for how the pipeline works.
+Text is always on: `core.ai` is the base model that reasons, runs tools and writes every reply. It is treated as text-only: the reply request never carries media. There are four media modalities: image, audio, video and sticker. Image, audio and video are optional, each with its own `enabled` switch and its own model; an absent section is off. Stickers are always added to the message (as their Discord text when `sticker.enabled` is false), so `sticker.max_items`, `sticker.cache_ttl_min` and `sticker.cache_max_entries` are **always required**. See [MEDIA.md](MEDIA.md) for how the pipeline works.
 
-Every modality accepts these endpoint fields. Left empty (or 0) they fall back to the matching `core.ai` value, so a modality on the same gateway only needs `enabled` and `model`.
+There are no built-in defaults here either: when a modality is enabled, every key marked "required when enabled" below must be set. The "Suggested (example)" column shows the value `examples/config.yaml.example` uses.
+
+Every modality accepts these endpoint fields. Left empty (or 0) they inherit the matching `core.ai` value (documented inheritance between keys, not a built-in value), so a modality on the same gateway does not repeat the endpoint.
 
 | Field | Type | Notes |
 |-------|------|-------|
 | `model` | string | The modality's model. Required when the modality is enabled (an enabled sticker modality may fall back to `modalities.image.model`). |
 | `api_base_url`, `api_key` | string | Fall back to `core.ai`. |
-| `timeout` | int (≥0, s) | Per-request timeout. Falls back to `core.ai.timeout`. An ASR endpoint with no timeout from either uses 60 s. |
+| `timeout` | int (≥0, s) | Per-request timeout. Falls back to `core.ai.timeout` (ASR endpoints included). |
 | `max_tokens` | int (>0) | Falls back to `core.ai.max_tokens`. Reasoning models describing video need a lot (≈12000) or they return no content. |
 | `temperature` | float (0–2) | Falls back to `core.ai.temperature`. |
 | `retry_count` | int (≥0) | Falls back to `core.ai.retry_count`. |
@@ -149,56 +153,57 @@ The system prompt stays byte-identical: everything media-related is in the user 
 
 **`image`**
 
-| Field | Type | Default | Notes |
-|-------|------|---------|-------|
-| `enabled` | bool | `false` | |
-| `model` | string | | Required: the vision model that describes each image (`image_url` part). |
-| `prompt` | string | built-in | Description prompt. |
-| `max_items` | int (≥0) | `4` | Images processed per message. |
-| `transport` | enum | `base64` | `base64` downloads the image (limit `core.ai.max_image_bytes`) and inlines it as a data URI; `url` passes the Discord CDN URL. |
+| Field | Type | Suggested (example) | Notes |
+|-------|------|---------------------|-------|
+| `enabled` | bool | `false` | Absent = off. |
+| `model` | string | `gpt-4o` | Required when enabled: the vision model that describes each image (`image_url` part). |
+| `prompt` | string | "Describe this image in 1-2 sentences. Be compact but informative. Transcribe any visible text." | Required when enabled. Description prompt. |
+| `max_items` | int (>0) | `4` | Required when enabled. Images processed per message. |
+| `transport` | enum | `base64` | Required when enabled. `base64` downloads the image (limit `core.ai.max_image_bytes`) and inlines it as a data URI; `url` passes the Discord CDN URL. |
 
 **`audio`** (audio attachments and Discord voice messages)
 
-| Field | Type | Default | Notes |
-|-------|------|---------|-------|
-| `enabled` | bool | `false` | |
-| `mode` | enum | `asr` | `asr`: speech-to-text via an OpenAI-compatible `POST {api_base_url}/audio/transcriptions` (multipart `file` + `model`), e.g. Whisper or `IFM/Jais-ASR`; added as `[Audio 1 transcript (voice message, 4s): ...]`. `describe`: an audio-capable chat-completions model receives the audio (an `audio_url` data URI by default; ogg/opus voice messages work as is) and returns a transcript or description, added as `[Audio 1 (voice message, 4s): ...]`. |
-| `language` | string | | Optional ISO-639-1 hint (asr). |
-| `prompt` | string | | asr: optional vocabulary/spelling hint. describe: the instruction for the audio model (built-in default asks for a verbatim transcript, or a one-sentence description when there is no speech). |
-| `max_items` | int (≥0) | `2` | |
-| `max_bytes` | int (≥0) | 25 MiB | Larger attachments are skipped. |
-| `max_duration_sec` | int (≥0) | `600` | Checked when Discord reports a duration (voice messages). |
-| `transcode` | enum | (empty) | `mp3` or `wav`: convert with ffmpeg (mono, 16 kHz) before sending. Only needed for an ASR endpoint that rejects ogg/opus voice messages, or for `part_type: input_audio`. Requires ffmpeg, which the Docker image does not include (see [DEPLOYMENT.md](DEPLOYMENT.md#ffmpeg-in-docker)). |
-| `part_type` | enum | `audio_url` | Describe mode: `audio_url` (data URI, any format the model accepts) or `input_audio` (OpenAI format, mp3/wav only, so `transcode` is required). |
+| Field | Type | Suggested (example) | Notes |
+|-------|------|---------------------|-------|
+| `enabled` | bool | `false` | Absent = off. |
+| `mode` | enum | `asr` | Required when enabled. `asr`: speech-to-text via an OpenAI-compatible `POST {api_base_url}/audio/transcriptions` (multipart `file` + `model`), e.g. Whisper or `IFM/Jais-ASR`; added as `[Audio 1 transcript (voice message, 4s): ...]`. `describe`: an audio-capable chat-completions model receives the audio (as set by `part_type`) and returns a transcript or description, added as `[Audio 1 (voice message, 4s): ...]`. |
+| `model` | string | `whisper-1` | Required when enabled. |
+| `language` | string | | Optional ISO-639-1 hint (asr); empty sends none. |
+| `prompt` | string | describe: "Transcribe the speech in this audio verbatim, in its original language. If there is no speech, describe the sound or music in one sentence. Reply with the transcript or description only." | asr: optional vocabulary/spelling hint (empty sends none). describe: required, the instruction for the audio model. |
+| `max_items` | int (>0) | `2` | Required when enabled. |
+| `max_bytes` | int (>0) | `26214400` (25 MiB) | Required when enabled. Larger attachments are skipped. |
+| `max_duration_sec` | int (>0) | `600` | Required when enabled. Checked when Discord reports a duration (voice messages). |
+| `transcode` | enum | (empty) | Optional. `mp3` or `wav`: convert with ffmpeg (mono, 16 kHz) before sending; empty sends the audio as is. Only needed for an ASR endpoint that rejects ogg/opus voice messages, or for `part_type: input_audio`. Requires ffmpeg (and `ffmpeg_path`), which the Docker image does not include (see [DEPLOYMENT.md](DEPLOYMENT.md#ffmpeg-in-docker)). |
+| `part_type` | enum | `audio_url` | Required in describe mode: `audio_url` (data URI, any format the model accepts; ogg/opus voice messages work as is) or `input_audio` (OpenAI format, mp3/wav only, so `transcode` is required). |
 
 **`video`**
 
-| Field | Type | Default | Notes |
-|-------|------|---------|-------|
-| `enabled` | bool | `false` | |
-| `model` | string | | Required: a video-capable model (`video_url` parts) that describes each video. |
-| `prompt` | string | built-in | |
-| `max_items` | int (≥0) | `1` | |
-| `max_bytes` | int (≥0) | 50 MiB | |
-| `max_duration_sec` | int (≥0) | `120` | Checked when Discord reports a duration. |
-| `transport` | enum | `base64` | `base64` (data URI) or `url` (provider fetches the CDN URL; slower on some gateways). |
-| `transcode` | bool | `false` | Re-encode with ffmpeg before sending (H.264/AAC mp4): trimmed to `max_duration_sec` instead of skipping longer videos, scaled down to `max_height`. Needs `transport: base64`. Requires ffmpeg. |
-| `max_height` | int (≥0) | `480` | Used by `transcode`. |
+| Field | Type | Suggested (example) | Notes |
+|-------|------|---------------------|-------|
+| `enabled` | bool | `false` | Absent = off. |
+| `model` | string | `gpt-4o` | Required when enabled: a video-capable model (`video_url` parts) that describes each video. |
+| `prompt` | string | "Describe this video in 2-4 sentences: what happens, who or what appears, and any speech or on-screen text. Be compact but informative." | Required when enabled. |
+| `max_items` | int (>0) | `1` | Required when enabled. |
+| `max_bytes` | int (>0) | `52428800` (50 MiB) | Required when enabled. |
+| `max_duration_sec` | int (>0) | `120` | Required when enabled. Checked when Discord reports a duration. |
+| `transport` | enum | `base64` | Required when enabled. `base64` (data URI) or `url` (provider fetches the CDN URL; slower on some gateways). |
+| `transcode` | bool | `false` | Optional. Re-encode with ffmpeg before sending (H.264/AAC mp4): trimmed to `max_duration_sec` instead of skipping longer videos, scaled down to `max_height`. Needs `transport: base64`. Requires ffmpeg (and `ffmpeg_path`). |
+| `max_height` | int (>0) | `480` | Required when `transcode` is true. |
 
 **ffmpeg**
 
-ffmpeg is an optional dependency. It is only needed by `audio.transcode` and `video.transcode`; nothing else calls it, and without those options the bot never looks for it. The published Dockerfile does not install it. When an enabled modality uses one of them, the bot checks at startup (and on a WebUI config reload) that the binary exists and `ffmpeg -version` runs; if not, it refuses to start with an error naming the options that need it. `core.ai.modalities.ffmpeg_path` sets the binary (default `ffmpeg` from `PATH`).
+ffmpeg is an optional dependency. It is only needed by `audio.transcode` and `video.transcode`; nothing else calls it, and without those options the bot never looks for it. The published Dockerfile does not install it. When an enabled modality uses one of them, `core.ai.modalities.ffmpeg_path` is required (suggested: `ffmpeg`, looked up in `PATH`, or a full path), and the bot checks at startup (and on a WebUI config reload) that the binary exists and `ffmpeg -version` runs; if not, it refuses to start with an error naming the options that need it.
 
 **`sticker`**
 
-| Field | Type | Default | Notes |
-|-------|------|---------|-------|
+| Field | Type | Suggested (example) | Notes |
+|-------|------|---------------------|-------|
 | `enabled` | bool | `false` | The only sticker switch; it decides whether the image is read. Stickers are always added to the message. `false`: `[Sticker: name — description (tags: ...)]` from Discord (one `GET /stickers/{id}` per sticker, cached; no model call). `true`: a vision model describes the sticker image (`media.discordapp.net/stickers/{id}.png`/`.gif`) once per sticker ID; custom guild stickers included. Lottie stickers cannot be rendered and always use the text. In history, a sticker without a cached description falls back to the text (no model call). |
-| model fields | | | When enabled, empty fields fall back to `modalities.image`, then `core.ai`. `enabled: true` needs a model from `sticker.model` or `image.model`. |
-| `prompt` | string | built-in | Vision prompt. |
-| `max_items` | int (≥0) | `3` | |
-| `cache_ttl_min` | int (≥0) | `1440` | Sticker details and descriptions are cached by sticker ID (not by URL). Stickers in a channel's prompt window are pinned; others expire after this long unused. |
-| `cache_max_entries` | int (≥0) | `1000` | Least recently used unpinned entries are dropped first. |
+| model fields | | | When enabled, empty fields inherit `modalities.image`, then `core.ai`. `enabled: true` needs a model from `sticker.model` or `image.model`. |
+| `prompt` | string | "Describe this Discord sticker in one short sentence: what it shows and the emotion or reaction it conveys. Include any visible text." | Required when enabled. Vision prompt. |
+| `max_items` | int (>0) | `3` | **Always required.** Stickers annotated per message. |
+| `cache_ttl_min` | int (>0) | `1440` | **Always required.** Sticker details and descriptions are cached by sticker ID (not by URL). Stickers in a channel's prompt window are pinned; others expire after this long unused. |
+| `cache_max_entries` | int (>0) | `1000` | **Always required.** Least recently used unpinned entries are dropped first. |
 
 `sticker.mode` was removed. A config that still sets it loads and logs a deprecation warning. `mode: text` together with `enabled: true` logs a second warning: that combination used to mean text only and now reads the image, so set `enabled: false` to keep text only (without any `sticker.model`/`image.model` it fails validation with that hint).
 
@@ -214,35 +219,51 @@ core:
       image:
         enabled: true
         model: "nvidia/nemotron-3.5-super-vl-120b-a12b"
+        prompt: "Describe this image in 1-2 sentences. Be compact but informative. Transcribe any visible text."
+        max_items: 4
+        transport: base64
       audio:
         enabled: true
         mode: asr
         model: "IFM/Jais-ASR"
         api_base_url: "https://api.ifm.ai/v1"
         api_key: "..."
+        max_items: 2
+        max_bytes: 26214400
+        max_duration_sec: 600
       video:
         enabled: true
         model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
         max_tokens: 12000
+        prompt: "Describe this video in 2-4 sentences: what happens, who or what appears, and any speech or on-screen text. Be compact but informative."
+        max_items: 1
+        max_bytes: 52428800
+        max_duration_sec: 120
+        transport: base64
+      sticker:
+        enabled: false
+        max_items: 3
+        cache_ttl_min: 1440
+        cache_max_entries: 1000
 ```
 
-For `audio.mode: describe`, point the audio modality at an audio-capable chat model instead, e.g. `model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"` with `max_tokens: 12000`.
+For `audio.mode: describe`, point the audio modality at an audio-capable chat model instead, e.g. `model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"` with `max_tokens: 12000`, and set `prompt` and `part_type` (both required in that mode).
 
 #### `core.ai.vision` (deprecated)
 
-The pre-modalities block still loads and is mapped onto `core.ai.modalities.image` with a startup warning: `text_only` → image off, `hybrid` and `multimodal` → image on (`vision.model` describes images; `multimodal` no longer sends images to the reply model). `model`, `description_prompt` (→ `prompt`), `max_images` (→ `max_items`), `base64` (→ `transport`), and the endpoint fields carry over. When `core.ai.modalities` is present, `core.ai.vision` is ignored. Saving the config from the WebUI writes the new block.
+The pre-modalities block still loads and is mapped onto `core.ai.modalities.image` with a startup warning: `text_only` → image off, `hybrid` and `multimodal` → image on (`vision.model` describes images; `multimodal` no longer sends images to the reply model). `model`, `description_prompt` (→ `prompt`), `max_images` (→ `max_items`), `base64` (→ `transport`), and the endpoint fields carry over. There are no built-in defaults for the mapped block either: a legacy `hybrid`/`multimodal` block must set `description_prompt` and `max_images`. When `core.ai.modalities.image` is present, `core.ai.vision` is ignored. Saving the config from the WebUI writes the new block.
 
 ### `core.decision`
 
 The optional reply classifier. When enabled, every message that neither mentions the bot nor replies to it is sent to a decision model, and the bot replies only when the model says so. Two providers are available:
 
-- `llm` (default): a (typically small/fast) chat model returns `{"should_respond": ..., "reason": ..., "confidence": ...}`.
+- `llm`: a (typically small/fast) chat model returns `{"should_respond": ..., "reason": ..., "confidence": ...}`.
 - `system_one`: a [System One](https://docs.typesafe.ai/concepts/system-one.md) decision model such as TypeSafe Jev answers one yes/no ("noul") question with a calibrated probability P(yes). It is not an LLM: it generates no text, so there is no prompt or JSON format to get wrong.
 
 | Field | Type | Required when | Notes |
 |-------|------|---------------|-------|
 | `enabled` | bool | always | If false, all fields below are skipped (an invalid `provider` is still reported). |
-| `provider` | `llm` \| `system_one` | optional | Defaults to `llm` when absent, so existing configs keep working. Only the selected provider's fields are validated. |
+| `provider` | `llm` \| `system_one` | enabled | No default provider: required when `enabled` is true (suggested in the example: `llm`). Only the selected provider's fields are validated. |
 
 #### `provider: llm`
 
@@ -307,7 +328,7 @@ Empty `api_base_url`, `api_key` and `extra_params` are taken from `core.ai`. `re
 | `model` | string | memory enabled | Embedding model. **The vector size of this model must match `qdrant.vector_size`.** |
 | `retry_count` | int (≥0) | memory enabled | |
 | `timeout` | int (>0) | memory enabled | |
-| `extra_params` | map | optional | Falls back to `core.ai.extra_params` when empty. |
+| `extra_params` | map | optional | Falls back to `core.ai.extra_params` when empty (under review: chat-only parameters may not suit embedding requests). |
 
 ### `memory_pipeline.memory`
 
@@ -319,7 +340,7 @@ The biggest subsection. Skim it in two passes — first the basics, then the mai
 |-------|------|-------|
 | `consolidation_interval` | int (>0) | Trigger consolidation every N bot-handled messages. |
 | `short_term_limit` | int (>0) | Recent Discord messages to fetch for short-term context. |
-| `context_flush_window` | int (>=0, optional) | Anchored window: history grows up to `short_term_limit` + this many messages, then the oldest block is dropped at once so the prompt prefix stays cacheable between flushes. `0` (default) = sliding window. See [PROMPT_OPTIMIZATION.md](PROMPT_OPTIMIZATION.md). |
+| `context_flush_window` | int (>=0, optional) | Anchored window: history grows up to `short_term_limit` + this many messages, then the oldest block is dropped at once so the prompt prefix stays cacheable between flushes. `0` (or absent) = plain sliding window. See [PROMPT_OPTIMIZATION.md](PROMPT_OPTIMIZATION.md). |
 | `max_paginated_limit` | int (>0) | Max page size when paginating older messages. |
 | `max_mentioned_users_per_memory` | int (≥0) | Cap on mentioned users tracked per memory entry. |
 | `memory_strength_multiplier` | float (>0, ≤100) | Importance scoring multiplier. Presets: `0.0001` extreme, `0.1` goldfish, `1.0` human, `>1.0` elephant. |
@@ -393,7 +414,7 @@ The maintenance worker runs cron-style; these settings shape its behavior.
 | Field | Type | Required when | Notes |
 |-------|------|---------------|-------|
 | `host` | string | memory enabled | Qdrant host. |
-| `port` | int (>0) | memory enabled | gRPC port (default 6334). |
+| `port` | int (>0) | memory enabled | gRPC port (Qdrant serves gRPC on 6334 unless configured otherwise). |
 | `api_key` | string | optional | For Qdrant Cloud or secured instances. |
 | `vector_size` | int (>0) | memory enabled | Vector dimensions. **Must match your embedding model** (cross-checked at startup for known OpenAI models). |
 | `retry_base_delay_ms` | int (>0) | memory enabled | Exponential backoff base. |
@@ -447,8 +468,10 @@ When a category has whitelist entries, the bot **only** responds in/from those t
 ### `access_control.message_filters`
 
 Optional regex rules for incoming messages. Rules run in order and the first
-match wins; if none matches, `default_action` applies (`allow` by default,
-`ignore` turns the list into a whitelist). An ignored message is not
+match wins; if none matches, `default_action` applies (`allow` lets it
+through, `ignore` turns the list into a whitelist). `default_action` has no
+built-in default: it is required as soon as `rules` is non-empty. An absent
+block filters nothing. An ignored message is not
 answered, and it is left out of history, the decision model and memory
 consolidation. The bot's own messages are never filtered.
 
@@ -481,7 +504,7 @@ condition. Invalid regexes and unknown kinds fail config validation.
 
 ### `operations.web`
 
-The optional admin dashboard. Off by default. See [API.md](API.md) for what it actually does.
+The optional admin dashboard. Off when `enabled` is false or absent. See [API.md](API.md) for what it actually does.
 
 | Field | Type | Required when | Notes |
 |-------|------|---------------|-------|
@@ -515,11 +538,11 @@ See [PLUGINS.md](PLUGINS.md) for what each timeout actually does.
 |-------|------|---------------|-------|
 | `enabled` | bool | always | If false, plugin-specific fields are skipped, but `default_tool_timeout_ms` is still validated. |
 | `plugins_dir` | string | enabled | Directory scanned at startup. |
-| `default_tool_timeout_ms` | int (≥0) | always | Fallback per-tool timeout. **0 will cause tool calls to hang** — emits a warning. |
+| `default_tool_timeout_ms` | int (≥0) | always | Timeout of a JSON-RPC tool whose plugin sets none. `0` means no fallback: such a tool call fails (a warning is logged). |
 | `startup_timeout_sec` | int (>0) | enabled | `info` probe timeout. |
-| `rpc_timeout_sec` | int (>0) | enabled | Default JSON-RPC call timeout. |
+| `rpc_timeout_sec` | int (>0) | enabled | Timeout of the JSON-RPC lifecycle and hook calls (`info`, `on_message`, `after_*`, shutdown). |
 | `before_send_timeout_sec` | int (>0) | enabled | `before_send` hook timeout. |
-| `command_timeout_sec` | int (>0) | enabled | Default command-runtime tool timeout. |
+| `command_timeout_sec` | int (>0) | enabled | Timeout of a command-runtime tool whose plugin.json sets no `timeout_ms`. |
 | `shutdown_timeout_sec` | int (>0) | enabled | Graceful shutdown grace period. |
 | `disable_timeout_sec` | int (>0) | enabled | Grace period for runtime disable via WebUI. |
 | `max_restarts` | int (>0) | enabled | Max auto-restart attempts before cooldown. Warns if >10. |
@@ -572,7 +595,7 @@ operations:
 |-------|------|-------|
 | `shutdown_timeout_sec` | int (>0) | Total grace period for graceful shutdown. |
 | `cleanup_interval_min` | int (>0) | Periodic cleanup ticker (rate limiter pruning, image cache eviction, etc.). |
-| `hot_reload.enabled` | bool | Watch the config file and apply changes on save without a restart. Default `false` when omitted. See [Hot reload](#hot-reload). |
+| `hot_reload.enabled` | bool | Watch the config file and apply changes on save without a restart. Absent = off. See [Hot reload](#hot-reload). |
 | `hot_reload.debounce_ms` | int (50-60000) | Required when `hot_reload.enabled` is true. Quiet period after the last file event before the file is re-read (editors emit several events per save). Must be `>= 0` when disabled. |
 ---
 
@@ -696,13 +719,13 @@ core:
     model: "local-model"
 ```
 
-If you enable a modality against a local endpoint, keep `transport: base64` (the default): a local server usually cannot fetch Discord CDN URLs itself.
+If you enable a modality against a local endpoint, keep `transport: base64` (as in the example): a local server usually cannot fetch Discord CDN URLs itself.
 
 ---
 
 ## Mixing Endpoints
 
-Each LLM-using component can have its own endpoint, key, and model. Empty fields fall back to `core.ai.*`. So you can run, say, the main chat on Qwen, embeddings on a local model, decisions on a fast cheap model, and consolidation on `gpt-4o-mini`:
+Each LLM-using component can have its own endpoint, key, and model. Where the tables above say so, empty endpoint fields inherit `core.ai.*` (modalities, consolidation's model/endpoint/key, embedding's endpoint/key); the decision model and System One take no inherited values. So you can run, say, the main chat on Qwen, embeddings on a local model, decisions on a fast cheap model, and consolidation on `gpt-4o-mini`:
 
 ```yaml
 core:
@@ -712,6 +735,7 @@ core:
     model: "qwen-plus"
   decision:
     enabled: true
+    provider: llm
     api_base_url: "https://api.openai.com/v1"
     api_key: "sk-openai"
     model: "gpt-4o-mini"

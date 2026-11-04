@@ -67,7 +67,7 @@ The fastest path to a running EZyapper. For full configuration details and tunin
     Copy-Item examples/config.yaml.example config.yaml
     ```
 
-2. Edit `config.yaml` and fill in the required fields. EZyapper's config is strict — a missing required field stops startup, and you'll see *all* errors at once. Some fields are optional or have defaults (for example everything under `core.ai.modalities`); see [CONFIGURATION.md](CONFIGURATION.md).
+2. Edit `config.yaml` and fill in the required fields. EZyapper's config is strict — a missing required field stops startup, and you'll see *all* errors at once. There are no built-in defaults: the values in the example are suggestions, and keys that a feature needs (for example an enabled modality's prompt and limits) must be set once you enable it. See [CONFIGURATION.md](CONFIGURATION.md).
 
 3. Build and run:
 
@@ -99,7 +99,7 @@ If validation fails at startup, the log lists every missing/invalid field. Fix t
 
 ## Next Steps
 
-- [Configuration](CONFIGURATION.md) — every field, which ones have defaults, and tuning notes
+- [Configuration](CONFIGURATION.md) — every field, which ones are required when, suggested values, and tuning notes
 - [Architecture](ARCHITECTURE.md) — how the pieces fit together
 - [Media Modalities](MEDIA.md) — image, audio and video handling
 - [Plugins](PLUGINS.md) — write or install extensions
