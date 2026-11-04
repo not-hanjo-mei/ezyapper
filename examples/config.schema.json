@@ -106,11 +106,11 @@
                     "model":        { "type": "string" },
                     "api_base_url": { "type": "string" },
                     "api_key":      { "type": "string" },
-                    "timeout":      { "type": "integer", "minimum": 0 },
-                    "max_tokens":   { "type": "integer", "minimum": 0 },
-                    "temperature":  { "type": "number", "minimum": 0, "maximum": 2 },
-                    "retry_count":  { "type": "integer", "minimum": 0 },
-                    "extra_params": { "type": "object" },
+                    "timeout":      { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.timeout. An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                    "max_tokens":   { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.max_tokens. An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                    "temperature":  { "type": "number", "minimum": 0, "maximum": 2, "description": "Absent: inherits core.ai.temperature. An explicit value, including 0, is used as is." },
+                    "retry_count":  { "type": "integer", "minimum": 0, "description": "Absent: inherits core.ai.retry_count. An explicit value, including 0 (no retries), is used as is." },
+                    "extra_params": { "type": "object", "description": "Absent: inherits core.ai.extra_params. An explicit map is used as is; {} sends none." },
                     "prompt":       { "type": "string" },
                     "max_items":    { "type": "integer", "minimum": 0, "examples": [4] },
                     "transport":    { "type": "string", "enum": ["base64", "url"], "examples": ["base64"] }
@@ -130,11 +130,11 @@
                     "model":            { "type": "string" },
                     "api_base_url":     { "type": "string" },
                     "api_key":          { "type": "string" },
-                    "timeout":          { "type": "integer", "minimum": 0 },
-                    "max_tokens":       { "type": "integer", "minimum": 0 },
-                    "temperature":      { "type": "number", "minimum": 0, "maximum": 2 },
-                    "retry_count":      { "type": "integer", "minimum": 0 },
-                    "extra_params":     { "type": "object" },
+                    "timeout":          { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.timeout. An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                    "max_tokens":       { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.max_tokens. An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                    "temperature":      { "type": "number", "minimum": 0, "maximum": 2, "description": "Absent: inherits core.ai.temperature. An explicit value, including 0, is used as is." },
+                    "retry_count":      { "type": "integer", "minimum": 0, "description": "Absent: inherits core.ai.retry_count. An explicit value, including 0 (no retries), is used as is." },
+                    "extra_params":     { "type": "object", "description": "Absent: inherits core.ai.extra_params. An explicit map is used as is; {} sends none." },
                     "language":         { "type": "string" },
                     "prompt":           { "type": "string" },
                     "max_items":        { "type": "integer", "minimum": 0, "examples": [2] },
@@ -158,11 +158,11 @@
                     "model":            { "type": "string" },
                     "api_base_url":     { "type": "string" },
                     "api_key":          { "type": "string" },
-                    "timeout":          { "type": "integer", "minimum": 0 },
-                    "max_tokens":       { "type": "integer", "minimum": 0 },
-                    "temperature":      { "type": "number", "minimum": 0, "maximum": 2 },
-                    "retry_count":      { "type": "integer", "minimum": 0 },
-                    "extra_params":     { "type": "object" },
+                    "timeout":          { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.timeout. An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                    "max_tokens":       { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.max_tokens. An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                    "temperature":      { "type": "number", "minimum": 0, "maximum": 2, "description": "Absent: inherits core.ai.temperature. An explicit value, including 0, is used as is." },
+                    "retry_count":      { "type": "integer", "minimum": 0, "description": "Absent: inherits core.ai.retry_count. An explicit value, including 0 (no retries), is used as is." },
+                    "extra_params":     { "type": "object", "description": "Absent: inherits core.ai.extra_params. An explicit map is used as is; {} sends none." },
                     "prompt":           { "type": "string" },
                     "max_items":        { "type": "integer", "minimum": 0, "examples": [1] },
                     "max_bytes":        { "type": "integer", "minimum": 0, "examples": [52428800] },
@@ -184,11 +184,11 @@
                     "model":             { "type": "string" },
                     "api_base_url":      { "type": "string" },
                     "api_key":           { "type": "string" },
-                    "timeout":           { "type": "integer", "minimum": 0 },
-                    "max_tokens":        { "type": "integer", "minimum": 0 },
-                    "temperature":       { "type": "number", "minimum": 0, "maximum": 2 },
-                    "retry_count":       { "type": "integer", "minimum": 0 },
-                    "extra_params":      { "type": "object" },
+                    "timeout":           { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.modalities.image.timeout (then core.ai.timeout). An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                    "max_tokens":        { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.modalities.image.max_tokens (then core.ai.max_tokens). An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                    "temperature":       { "type": "number", "minimum": 0, "maximum": 2, "description": "Absent: inherits core.ai.modalities.image.temperature (then core.ai.temperature). An explicit value, including 0, is used as is." },
+                    "retry_count":       { "type": "integer", "minimum": 0, "description": "Absent: inherits core.ai.modalities.image.retry_count (then core.ai.retry_count). An explicit value, including 0 (no retries), is used as is." },
+                    "extra_params":      { "type": "object", "description": "Absent: inherits core.ai.modalities.image.extra_params (then core.ai.extra_params). An explicit map is used as is; {} sends none." },
                     "prompt":            { "type": "string" },
                     "max_items":         { "type": "integer", "minimum": 1, "examples": [3] },
                     "cache_ttl_min":     { "type": "integer", "minimum": 1, "examples": [1440] },
@@ -211,11 +211,11 @@
                 "description_prompt": { "type": "string" },
                 "api_base_url":       { "type": "string" },
                 "api_key":            { "type": "string" },
-                "max_tokens":         { "type": "integer", "minimum": 0 },
-                "temperature":        { "type": "number", "minimum": 0, "maximum": 2 },
-                "retry_count":        { "type": "integer", "minimum": 0 },
-                "timeout":            { "type": "integer", "minimum": 0 },
-                "extra_params":       { "type": "object" }
+                "max_tokens":         { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.max_tokens. An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                "temperature":        { "type": "number", "minimum": 0, "maximum": 2, "description": "Absent: inherits core.ai.temperature. An explicit value, including 0, is used as is." },
+                "retry_count":        { "type": "integer", "minimum": 0, "description": "Absent: inherits core.ai.retry_count. An explicit value, including 0 (no retries), is used as is." },
+                "timeout":            { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.timeout. An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                "extra_params":       { "type": "object", "description": "Absent: inherits core.ai.extra_params. An explicit map is used as is; {} sends none." }
               }
             }
           }
@@ -307,7 +307,7 @@
             "model":        { "type": "string" },
             "retry_count":  { "type": "integer", "minimum": 0 },
             "timeout":      { "type": "integer", "minimum": 1 },
-            "extra_params": { "type": "object" }
+            "extra_params": { "type": "object", "description": "Absent: inherits core.ai.extra_params (chat-only parameters there are then sent to the embedding endpoint too). An explicit map is used as is; {} sends none." }
           }
         },
         "memory": {
@@ -326,8 +326,8 @@
                 "top_k":                    { "type": "integer", "minimum": 0, "description": "0 disables retrieval." },
                 "min_score":                { "type": "number", "minimum": 0, "maximum": 1 },
                 "include_channel_memories": { "type": "boolean" },
-                "max_mentioned_memories":   { "type": "integer", "minimum": 0, "description": "0 = use top_k." },
-                "max_channel_memories":     { "type": "integer", "minimum": 0, "description": "0 = use top_k." }
+                "max_mentioned_memories":   { "type": "integer", "minimum": 0, "description": "Absent: inherits retrieval.top_k. An explicit value is used as is; 0 = none." },
+                "max_channel_memories":     { "type": "integer", "minimum": 0, "description": "Absent: inherits retrieval.top_k. An explicit value is used as is; 0 = none." }
               }
             },
             "consolidation": {
@@ -349,26 +349,26 @@
                 "api_base_url":        { "type": "string", "description": "Empty = core.ai.api_base_url." },
                 "api_key":             { "type": "string", "description": "Empty = core.ai.api_key." },
                 "max_tokens":          { "type": "integer", "minimum": 1 },
-                "temperature":         { "type": "number", "minimum": 0, "maximum": 2 },
+                "temperature":         { "type": "number", "minimum": 0, "maximum": 2, "description": "Absent: inherits core.ai.temperature. An explicit value, including 0, is used as is." },
                 "retry_count":         { "type": "integer", "minimum": 0 },
                 "timeout":             { "type": "integer", "minimum": 1 },
                 "vision": {
                   "type": "object",
                   "additionalProperties": false,
-                  "description": "Optional overrides for describing images during consolidation; empty fields use core.ai.modalities.image (then core.ai). Only used when the image modality is enabled.",
+                  "description": "Optional overrides for describing images during consolidation. Absent keys (and empty strings) use core.ai.modalities.image (then core.ai); an explicit value, including 0 or {}, is used as is. Only used when the image modality is enabled.",
                   "properties": {
                     "model":              { "type": "string" },
                     "api_base_url":       { "type": "string" },
                     "api_key":            { "type": "string" },
-                    "max_tokens":         { "type": "integer", "minimum": 0 },
-                    "temperature":        { "type": "number", "minimum": 0, "maximum": 2 },
-                    "retry_count":        { "type": "integer", "minimum": 0 },
-                    "timeout":            { "type": "integer", "minimum": 0 },
+                    "max_tokens":         { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.modalities.image.max_tokens (then core.ai.max_tokens). An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
+                    "temperature":        { "type": "number", "minimum": 0, "maximum": 2, "description": "Absent: inherits core.ai.modalities.image.temperature (then core.ai.temperature). An explicit value, including 0, is used as is." },
+                    "retry_count":        { "type": "integer", "minimum": 0, "description": "Absent: inherits core.ai.modalities.image.retry_count (then core.ai.retry_count). An explicit value, including 0 (no retries), is used as is." },
+                    "timeout":            { "type": "integer", "minimum": 1, "description": "Absent: inherits core.ai.modalities.image.timeout (then core.ai.timeout). An explicit value is used as is; 0 is rejected (remove the key to inherit)." },
                     "description_prompt": { "type": "string" },
                     "mode":               { "type": "string", "deprecated": true, "description": "Ignored." },
                     "base64":             { "type": "boolean", "deprecated": true, "description": "Ignored (the image modality's transport is used)." },
                     "max_images":         { "type": "integer", "deprecated": true, "description": "Ignored (the image modality's max_items is used)." },
-                    "extra_params":       { "type": "object", "deprecated": true, "description": "Ignored (the image modality's extra_params are used)." }
+                    "extra_params":       { "type": "object", "description": "Absent: inherits core.ai.modalities.image.extra_params (then core.ai.extra_params). An explicit map is used as is; {} sends none." }
                   }
                 },
                 "system_prompt":       { "type": "string" },

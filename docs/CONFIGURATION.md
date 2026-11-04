@@ -11,7 +11,31 @@ Without the flag the bot looks for `config.yaml` in `.`, `./config` and `/etc/ez
 > [!CAUTION]
 > **Strict config — no built-in defaults.** The bot never fills in a value you left out. The values in `examples/config.yaml.example` (and the "Suggested (example)" columns below) are suggestions to copy, not defaults. A required field that is missing or zero stops the bot at startup, and a key that is required when its feature is enabled (a modality, the decision model, the dashboard, plugins, a filter rule list, ...) must be set as soon as you enable that feature. Validation errors are batched: if you have ten missing fields, you'll see all ten in one go, each naming the key and pointing at the example.
 >
-> What is *not* a default: an optional section or switch that is absent is off (`enabled: false`, no rules, no servers); a few zero values have a documented meaning (`retrieval.top_k: 0` turns retrieval off, `context_flush_window: 0` is the plain sliding window, `reply_percentage: 0` never replies at random); and some keys explicitly inherit another key when empty (a modality's endpoint fields inherit `core.ai`, see the tables). Optional maps such as `extra_params` can be left out. Start from `examples/config.yaml.example`, which sets every field.
+> What is *not* a default: an optional section or switch that is absent is off (`enabled: false`, no rules, no servers); a few zero values have a documented meaning (`retrieval.top_k: 0` turns retrieval off, `context_flush_window: 0` is the plain sliding window, `reply_percentage: 0` never replies at random); and some keys explicitly inherit another key (a modality's endpoint fields inherit `core.ai`, see the tables and [Inheritance between keys](#inheritance-between-keys)). Optional maps such as `extra_params` can be left out. Start from `examples/config.yaml.example`, which sets every field.
+
+### Inheritance between keys
+
+Some keys take another key's value when you leave them out. **Presence decides, not the value:**
+
+- **Absent** (the key is not in the file, or is `null`) → inherits the key named in the tables below.
+- **Explicit value, including `0` and `{}`** → used as is. `temperature: 0` sends temperature 0, `retry_count: 0` means no retries, `max_mentioned_memories: 0` means none, `extra_params: {}` sends no extra parameters.
+- **Explicit `0` where 0 makes no sense** (`timeout: 0` would time out at once, `max_tokens: 0` allows no output, a plugin tool's `timeout_ms: 0`) → rejected at validation with an error that tells you to remove the key to inherit. It is never silently treated as "absent".
+
+Endpoint strings (`model`, `api_base_url`, `api_key`) inherit when empty.
+
+| Key (absent →) | Inherits |
+|---|---|
+| `core.ai.modalities.<image\|audio\|video>.{timeout,max_tokens,temperature,retry_count,extra_params}` | `core.ai.*` |
+| `core.ai.modalities.sticker.*` model fields | `core.ai.modalities.image.*`, then `core.ai.*` |
+| `memory_pipeline.memory.consolidation.temperature` | `core.ai.temperature` |
+| `memory_pipeline.memory.consolidation.vision.*` model fields | `core.ai.modalities.image.*`, then `core.ai.*` (`description_prompt` → `image.prompt`) |
+| `memory_pipeline.embedding.extra_params` | `core.ai.extra_params` (see the warning under `memory_pipeline.embedding` below) |
+| `memory_pipeline.memory.retrieval.max_mentioned_memories`, `max_channel_memories` | `memory_pipeline.memory.retrieval.top_k` |
+| plugin tool `timeout_ms` (JSON-RPC `list_tools` / `plugin.json`) | `operations.plugins.default_tool_timeout_ms` (JSON-RPC) / `operations.plugins.command_timeout_sec` (command) |
+
+The distinction survives hot reload and the dashboard's Save: an absent key stays absent in the written file, an explicit `0` or `{}` is written back as `0` or `{}`.
+
+An explicit `temperature: 0` on a modality, sticker, `consolidation.vision` or `consolidation` is sent to the API as `"temperature": 0` (the OpenAI client library would otherwise drop a zero temperature and let the provider use its own). `core.ai.temperature` and `core.decision.temperature` have no inheritance; a `0` there is left out of the request as before.
 
 > [!TIP]
 > **Hot reload.** With `operations.runtime.hot_reload.enabled: true` the bot watches its config file and applies every change on save, without a restart: the Discord token, models, prompts, the decision provider, Qdrant, MCP servers and the dashboard port included. A file that does not validate, or a change that cannot be applied (bad token, unreachable server, port in use), is rejected as a whole and the bot keeps running on the previous config. See [Hot reload](#hot-reload).
@@ -116,7 +140,7 @@ The main chat model. All sub-fields here are required.
 | `temperature` | float (0.0–2.0) | Higher = more creative. |
 | `retry_count` | int (>0) | Retries for transient API errors. |
 | `timeout` | int (>0, seconds) | Per-request timeout. Required. It is also the timeout of a modality that sets none (an ASR endpoint included). The per-message processing deadline is derived from it: `(timeout + max plugin timeout) × max_tool_iterations + 10 s`. |
-| `extra_params` | map | Optional. Forwarded to the API via reflection. Unknown keys log a warning at runtime. Nested keys keep their case. Also used for embedding requests when `memory_pipeline.embedding.extra_params` is empty. |
+| `extra_params` | map | Optional. Forwarded to the API via reflection. Unknown keys log a warning at runtime. Nested keys keep their case. Also sent with embedding requests when `memory_pipeline.embedding.extra_params` is absent, and with modality requests whose own `extra_params` is absent. |
 | `system_prompt` | string | The static system prompt. Sent unchanged on every request (no placeholders); see [System prompt](#system-prompt). |
 | `max_tool_iterations` | int (>0) | Cap on tool-calling loops per turn. Prevents infinite tool-call cycles. |
 | `max_image_bytes` | int (>0) | Maximum bytes for an image fetched from Discord CDN. |
@@ -131,17 +155,17 @@ Text is always on: `core.ai` is the base model that reasons, runs tools and writ
 
 There are no built-in defaults here either: when a modality is enabled, every key marked "required when enabled" below must be set. The "Suggested (example)" column shows the value `examples/config.yaml.example` uses.
 
-Every modality accepts these endpoint fields. Left empty (or 0) they inherit the matching `core.ai` value (documented inheritance between keys, not a built-in value), so a modality on the same gateway does not repeat the endpoint.
+Every modality accepts these endpoint fields. A key that is absent inherits the matching `core.ai` value (documented inheritance between keys, not a built-in value), so a modality on the same gateway does not repeat the endpoint; an explicit value, including `0` or `{}`, is used as is (see [Inheritance between keys](#inheritance-between-keys)). Empty strings inherit too.
 
 | Field | Type | Notes |
 |-------|------|-------|
 | `model` | string | The modality's model. Required when the modality is enabled (an enabled sticker modality may fall back to `modalities.image.model`). |
 | `api_base_url`, `api_key` | string | Fall back to `core.ai`. |
-| `timeout` | int (≥0, s) | Per-request timeout. Falls back to `core.ai.timeout` (ASR endpoints included). |
-| `max_tokens` | int (>0) | Falls back to `core.ai.max_tokens`. Reasoning models describing video need a lot (≈12000) or they return no content. |
-| `temperature` | float (0–2) | Falls back to `core.ai.temperature`. |
-| `retry_count` | int (≥0) | Falls back to `core.ai.retry_count`. |
-| `extra_params` | map | Replaces `core.ai.extra_params` for this modality. |
+| `timeout` | int (>0, s) | Per-request timeout (ASR endpoints included). Absent → inherits `core.ai.timeout`; an explicit value is used as is; an explicit `0` is rejected. |
+| `max_tokens` | int (>0) | Absent → inherits `core.ai.max_tokens`; an explicit `0` is rejected. Reasoning models describing video need a lot (≈12000) or they return no content. |
+| `temperature` | float (0–2) | Absent → inherits `core.ai.temperature`; an explicit value, including `0`, is used as is. |
+| `retry_count` | int (≥0) | Absent → inherits `core.ai.retry_count`; an explicit value, including `0` (no retries), is used as is. |
+| `extra_params` | map | Absent → inherits `core.ai.extra_params`; an explicit map replaces it, and `{}` sends none. |
 
 Media reaches the base model only as text:
 
@@ -199,7 +223,7 @@ ffmpeg is an optional dependency. It is only needed by `audio.transcode` and `vi
 | Field | Type | Suggested (example) | Notes |
 |-------|------|---------------------|-------|
 | `enabled` | bool | `false` | The only sticker switch; it decides whether the image is read. Stickers are always added to the message. `false`: `[Sticker: name — description (tags: ...)]` from Discord (one `GET /stickers/{id}` per sticker, cached; no model call). `true`: a vision model describes the sticker image (`media.discordapp.net/stickers/{id}.png`/`.gif`) once per sticker ID; custom guild stickers included. Lottie stickers cannot be rendered and always use the text. In history, a sticker without a cached description falls back to the text (no model call). |
-| model fields | | | When enabled, empty fields inherit `modalities.image`, then `core.ai`. `enabled: true` needs a model from `sticker.model` or `image.model`. |
+| model fields | | | When enabled, absent keys (and empty strings) inherit `modalities.image`, then `core.ai`; an explicit value, including `0` or `{}`, is used as is (`timeout: 0` / `max_tokens: 0` are rejected). `enabled: true` needs a model from `sticker.model` or `image.model`. |
 | `prompt` | string | "Describe this Discord sticker in one short sentence: what it shows and the emotion or reaction it conveys. Include any visible text." | Required when enabled. Vision prompt. |
 | `max_items` | int (>0) | `3` | **Always required.** Stickers annotated per message. |
 | `cache_ttl_min` | int (>0) | `1440` | **Always required.** Sticker details and descriptions are cached by sticker ID (not by URL). Stickers in a channel's prompt window are pinned; others expire after this long unused. |
@@ -319,7 +343,10 @@ The whole memory subsystem can be turned **off** by setting `memory.retrieval.to
 
 ### `memory_pipeline.embedding`
 
-Empty `api_base_url`, `api_key` and `extra_params` are taken from `core.ai`. `retry_count` and `timeout` are not inherited.
+Empty `api_base_url` and `api_key` are taken from `core.ai`. `extra_params` is taken from `core.ai` only when the key is absent. `retry_count` and `timeout` are not inherited.
+
+> [!WARNING]
+> **`embedding.extra_params` absent → inherits `core.ai.extra_params`.** Some embedding APIs need the same extra parameters as the chat endpoint, so this is kept. But it means chat-only parameters you put in `core.ai.extra_params` (for example `chat_template_kwargs`, `top_p`, reasoning or thinking flags) are **sent to the embedding endpoint** too, unless you override them. Set `embedding.extra_params` to the parameters the embedding endpoint should get, or to `{}` to send none.
 
 | Field | Type | Required when | Notes |
 |-------|------|---------------|-------|
@@ -328,7 +355,7 @@ Empty `api_base_url`, `api_key` and `extra_params` are taken from `core.ai`. `re
 | `model` | string | memory enabled | Embedding model. **The vector size of this model must match `qdrant.vector_size`.** |
 | `retry_count` | int (≥0) | memory enabled | |
 | `timeout` | int (>0) | memory enabled | |
-| `extra_params` | map | optional | Falls back to `core.ai.extra_params` when empty (under review: chat-only parameters may not suit embedding requests). |
+| `extra_params` | map | optional | Absent → inherits `core.ai.extra_params`; an explicit map is used as is; `{}` sends none. |
 
 ### `memory_pipeline.memory`
 
@@ -358,10 +385,10 @@ The biggest subsection. Skim it in two passes — first the basics, then the mai
 | `retrieval.top_k` | int (≥0) | Memories returned per query. **`0` disables retrieval.** |
 | `retrieval.min_score` | float (0.0–1.0) | Minimum similarity threshold. |
 | `retrieval.include_channel_memories` | bool | Whether to include channel-scoped memories alongside user memories. |
-| `retrieval.max_mentioned_memories` | int (≥0) | Memories that mention the sender (0 = use top_k). |
-| `retrieval.max_channel_memories` | int (≥0) | Memories scoped to current channel (0 = use top_k). |
+| `retrieval.max_mentioned_memories` | int (≥0) | Memories that mention the sender. Absent → inherits `retrieval.top_k`; an explicit value is used as is, `0` = none (no search). |
+| `retrieval.max_channel_memories` | int (≥0) | Memories scoped to current channel. Absent → inherits `retrieval.top_k`; an explicit value is used as is, `0` = none (no search). |
 
-**`consolidation`** — empty `model`, `api_base_url` and `api_key` are taken from `core.ai`. `max_tokens`, `retry_count` and `timeout` must be set when consolidation is enabled. `extra_params` is **not** inherited: only the consolidation block's own `extra_params` is sent.
+**`consolidation`** — empty `model`, `api_base_url` and `api_key` are taken from `core.ai`; an absent `temperature` is taken from `core.ai.temperature`. `max_tokens`, `retry_count` and `timeout` must be set when consolidation is enabled. `extra_params` is **not** inherited: only the consolidation block's own `extra_params` is sent.
 
 | Field | Type | Required when | Notes |
 |-------|------|---------------|-------|
@@ -370,13 +397,13 @@ The biggest subsection. Skim it in two passes — first the basics, then the mai
 | `consolidation.api_base_url` | string | enabled | Inherits from `core.ai`. |
 | `consolidation.api_key` | string | enabled | Inherits from `core.ai`. |
 | `consolidation.max_tokens` | int (>0) | enabled | |
-| `consolidation.temperature` | float (0.0–2.0) | enabled | |
+| `consolidation.temperature` | float (0.0–2.0) | optional | Absent → inherits `core.ai.temperature`; an explicit value, including `0`, is used as is. |
 | `consolidation.retry_count` | int (>0) | enabled | |
 | `consolidation.timeout` | int (>0) | enabled | |
 | `consolidation.extra_params` | map | optional | Not inherited from `core.ai.extra_params`. |
 | `consolidation.system_prompt` | string | enabled | The extraction prompt. Templates for each `other_bot_policy` value live in `examples/config.yaml.example` — start from one of those. |
 | `consolidation.memory_search_limit` | int (>0) | always | How many existing memories to load for dedup during consolidation. Validated even when consolidation is disabled. |
-| `consolidation.vision.*` | submap | optional | Overrides for describing images during consolidation. Only these keys are read: `model`, `api_base_url`, `api_key`, `max_tokens`, `temperature`, `retry_count`, `timeout`, `description_prompt`. Other keys (`extra_params`, `base64`, `max_images`, `mode`) are ignored; extra params, transport and the item limit come from `core.ai.modalities.image`. Anything left empty inherits from `core.ai.modalities.image` (then `core.ai`). Only used when the image modality is enabled. |
+| `consolidation.vision.*` | submap | optional | Overrides for describing images during consolidation. Only these keys are read: `model`, `api_base_url`, `api_key`, `max_tokens`, `temperature`, `retry_count`, `timeout`, `extra_params`, `description_prompt`. Other keys (`base64`, `max_images`, `mode`) are ignored; transport and the item limit come from `core.ai.modalities.image`. Absent keys (and empty strings) inherit from `core.ai.modalities.image` (then `core.ai`); an explicit value, including `0` or `{}`, is used as is; an explicit `timeout: 0` / `max_tokens: 0` is rejected. Only used when the image modality is enabled. |
 
 **Maintenance**
 
@@ -538,11 +565,11 @@ See [PLUGINS.md](PLUGINS.md) for what each timeout actually does.
 |-------|------|---------------|-------|
 | `enabled` | bool | always | If false, plugin-specific fields are skipped, but `default_tool_timeout_ms` is still validated. |
 | `plugins_dir` | string | enabled | Directory scanned at startup. |
-| `default_tool_timeout_ms` | int (≥0) | always | Timeout of a JSON-RPC tool whose plugin sets none. `0` means no fallback: such a tool call fails (a warning is logged). |
+| `default_tool_timeout_ms` | int (≥0) | always | Timeout of a JSON-RPC tool whose tool spec has no `timeout_ms` key. `0` means no fallback: such a tool call fails (a warning is logged). A tool spec with an explicit `timeout_ms: 0` is rejected. |
 | `startup_timeout_sec` | int (>0) | enabled | `info` probe timeout. |
 | `rpc_timeout_sec` | int (>0) | enabled | Timeout of the JSON-RPC lifecycle and hook calls (`info`, `on_message`, `after_*`, shutdown). |
 | `before_send_timeout_sec` | int (>0) | enabled | `before_send` hook timeout. |
-| `command_timeout_sec` | int (>0) | enabled | Timeout of a command-runtime tool whose plugin.json sets no `timeout_ms`. |
+| `command_timeout_sec` | int (>0) | enabled | Timeout of a command-runtime tool whose plugin.json has no `timeout_ms` key (an explicit `timeout_ms: 0` is rejected). |
 | `shutdown_timeout_sec` | int (>0) | enabled | Graceful shutdown grace period. |
 | `disable_timeout_sec` | int (>0) | enabled | Grace period for runtime disable via WebUI. |
 | `max_restarts` | int (>0) | enabled | Max auto-restart attempts before cooldown. Warns if >10. |

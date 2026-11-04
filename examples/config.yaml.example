@@ -115,10 +115,14 @@ core:
     # and model, which turns the media into text lines on the message in the
     # user prompt ("[Image 1: ...]", "[Audio 1 transcript (...): ...]",
     # "[Video 1 (...): ...]"), cached by attachment ID.
-    # Endpoint fields left empty or 0 (api_base_url, api_key, timeout,
-    # max_tokens, temperature, retry_count, extra_params) fall back to the
-    # core.ai values. Every other key of an enabled modality is required:
-    # the values shown are suggestions, not defaults.
+    # Model fields (api_base_url, api_key, timeout, max_tokens, temperature,
+    # retry_count, extra_params) inherit by presence: a key that is ABSENT
+    # (commented out, as below) inherits the core.ai value; a key that is
+    # set is used as is, 0 included (temperature: 0 sends 0, retry_count: 0
+    # means no retries, extra_params: {} sends none). An explicit timeout: 0
+    # or max_tokens: 0 is rejected: remove the key to inherit.
+    # Every other key of an enabled modality is required: the values shown
+    # are suggestions, not defaults.
     # The old core.ai.vision block still loads (text_only=off, hybrid and
     # multimodal=image on) but is deprecated; it is ignored when this block
     # is present.
@@ -207,7 +211,8 @@ core:
         #          ID (custom guild stickers included). Lottie stickers cannot
         #          be rendered and fall back to the text.
         enabled: false
-        # Vision model fields fall back to modalities.image, then core.ai;
+        # Absent vision model fields inherit modalities.image, then core.ai
+        # (an explicit value, 0 included, is used as is);
         # enabled: true needs a model from sticker.model or image.model.
         ## model: "gpt-4o"
         ## api_base_url: ""
@@ -266,7 +271,9 @@ core:
       - You have access to Discord tools. Use them when appropriate.
 
     # ── Optional: extra parameters forwarded to the API ──
-    # Nested keys keep the case you write.
+    # Nested keys keep the case you write. Also sent with modality requests
+    # whose extra_params is absent, and with embedding requests when
+    # memory_pipeline.embedding.extra_params is absent.
     ## extra_params: {}
 
     # ── Deprecated ──
@@ -339,6 +346,10 @@ memory_pipeline:
     timeout: 10
 
     # ── Optional: extra parameters ──
+    # ABSENT (commented out) -> inherits core.ai.extra_params: chat-only
+    # parameters there (chat_template_kwargs, top_p, reasoning flags, ...)
+    # are then sent to the embedding endpoint too. Set the parameters the
+    # embedding endpoint should get, or {} to send none.
     ## extra_params: {}
 
   # ── Memory Settings ───────────────────────────────────
@@ -388,11 +399,11 @@ memory_pipeline:
       include_channel_memories: true
 
       # Max memories to retrieve that mention the sender.
-      # 0 = disabled, uses top_k instead.
+      # Absent -> uses top_k; an explicit value is used as is (0 = none).
       max_mentioned_memories: 3
 
       # Max memories to retrieve that are scoped to the current channel.
-      # 0 = disabled, uses top_k instead.
+      # Absent -> uses top_k; an explicit value is used as is (0 = none).
       max_channel_memories: 5
 
     # ── Memory Consolidation ──
@@ -406,14 +417,15 @@ memory_pipeline:
       ## api_base_url: "https://api.openai.com/v1"    # optional, inherits from core.ai if empty
       ## api_key: "YOUR_API_KEY"                      # optional, inherits from core.ai if empty
       ## max_tokens: 4096
-      ## temperature: 0.8                             # 0 = use core.ai.temperature
+      ## temperature: 0.8                             # absent -> core.ai.temperature; 0 is used as 0
       ## retry_count: 5
       ## timeout: 30
 
       # ── Optional: separate image-description model for consolidation ──
-      # Used only when core.ai.modalities.image is enabled; fields left
-      # empty inherit from core.ai.modalities.image (then core.ai). Only the
-      # keys below are read.
+      # Used only when core.ai.modalities.image is enabled. Absent keys
+      # inherit from core.ai.modalities.image (then core.ai); an explicit
+      # value, 0 or {} included, is used as is (timeout: 0 / max_tokens: 0
+      # are rejected). Only the keys below are read.
       ## vision:
       ##   model: "gpt-4o"
       ##   description_prompt: ""
@@ -423,6 +435,7 @@ memory_pipeline:
       ##   temperature: 0.8
       ##   retry_count: 5
       ##   timeout: 30
+      ##   extra_params: {}
 
       # How many existing memories to search for deduplication/similarity.
       # Validated (> 0) even when consolidation is disabled.
@@ -627,6 +640,8 @@ operations:
     # All fields below are required ONLY when enabled: true, except
     # default_tool_timeout_ms (optional, >= 0, validated even when disabled;
     # 0 logs a warning because JSON-RPC tools without their own timeout fail).
+    # A tool's own timeout_ms (list_tools / plugin.json) wins when the key is
+    # present; an explicit timeout_ms: 0 is rejected.
     ## plugins_dir: "plugins"
     ## default_tool_timeout_ms: 30000
     ## startup_timeout_sec: 90

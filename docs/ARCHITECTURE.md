@@ -78,7 +78,7 @@ Viper-backed YAML loader with env overrides. The runtime `Config` struct has 13 
 
 Key invariants:
 
-- No field has an in-code default. Every required key must be set in the file, and a key required by a feature must be set when that feature is enabled; the values in `examples/config.yaml.example` are suggestions. An absent optional section is off, a few zero values have a documented meaning, and some keys explicitly inherit another key when empty. See [CONFIGURATION.md](CONFIGURATION.md).
+- No field has an in-code default. Every required key must be set in the file, and a key required by a feature must be set when that feature is enabled; the values in `examples/config.yaml.example` are suggestions. An absent optional section is off, a few zero values have a documented meaning, and some keys explicitly inherit another key when the key is absent (an explicit value, `0` included, is used as is). See [CONFIGURATION.md](CONFIGURATION.md#inheritance-between-keys).
 - Environment overrides (`EZYAPPER_...`) apply only to keys present in the file.
 - The validators run in sequence; errors are collected via `errors.Join` and reported all at once.
 - Updates persisted via `Save()` go through the same validation path before being written.

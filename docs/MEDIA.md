@@ -2,6 +2,8 @@
 
 Text is always handled by the base model (`core.ai`), which is treated as text-only: the reply request never carries media. Images, audio, video and stickers are the four modalities configured under `core.ai.modalities`, each with its own on/off switch and its own model (for stickers the switch only decides whether the image is read; they are always shown as text otherwise, so the sticker item cap and cache keys are always required). There are no built-in defaults: an enabled modality must set its prompt, limits and transport; `examples/config.yaml.example` carries suggested values. Field reference: [CONFIGURATION.md](CONFIGURATION.md#coreaimodalities).
 
+**Model settings inherit by presence.** Each modality's model fields (`timeout`, `max_tokens`, `temperature`, `retry_count`, `extra_params`, and the endpoint strings) follow one rule: **absent → inherits `core.ai` (stickers: `modalities.image`, then `core.ai`; consolidation image descriptions: `consolidation.vision`, then `modalities.image`, then `core.ai`); an explicit value, including `0`, is used as is.** So `image.temperature: 0` sends temperature 0 even when `core.ai.temperature` is 0.8, `retry_count: 0` means no retries, and `extra_params: {}` sends no extra parameters. An explicit `timeout: 0` or `max_tokens: 0` is rejected at startup (remove the key to inherit). See [Inheritance between keys](CONFIGURATION.md#inheritance-between-keys).
+
 ## Pipeline ("fake multimodal")
 
 The bot is multimodal from the user's point of view, but no model ever gets media and text together in the reply request:
@@ -77,4 +79,4 @@ The old block still loads, with a warning, and is mapped onto `core.ai.modalitie
 | `hybrid` | `image.enabled: true` (`vision.model` describes images) |
 | `multimodal` | `image.enabled: true`, same as `hybrid`: images are described, never sent to the reply model |
 
-`description_prompt` → `prompt`, `max_images` → `max_items`, `base64` → `transport` (`base64`/`url`); endpoint fields carry over. With no built-in defaults, an enabled legacy block must set `description_prompt` and `max_images`. If `core.ai.modalities.image` is present, `core.ai.vision` is ignored.
+`description_prompt` → `prompt`, `max_images` → `max_items`, `base64` → `transport` (`base64`/`url`); endpoint fields carry over with the same presence rule (an absent key inherits `core.ai`, an explicit `0` is kept). With no built-in defaults, an enabled legacy block must set `description_prompt` and `max_images`. If `core.ai.modalities.image` is present, `core.ai.vision` is ignored.
