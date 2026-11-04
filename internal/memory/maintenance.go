@@ -64,10 +64,8 @@ func StartMaintenanceWorker(parentCtx context.Context, store maintenanceStore, c
 func (w *MaintenanceWorker) run(ctx context.Context) {
 	defer w.wg.Done()
 
+	// maintenance_interval_sec is required > 0 (validated at load).
 	d := time.Duration(w.config.MaintenanceIntervalSec) * time.Second
-	if d <= 0 {
-		d = 60 * time.Second
-	}
 	ticker := time.NewTicker(d)
 	defer ticker.Stop()
 
