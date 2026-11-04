@@ -10,7 +10,6 @@ import (
 	"math/big"
 	"slices"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -158,10 +157,9 @@ type Bot struct {
 	channelConsolidating    map[string]bool
 	channelConsolidationMu  sync.Mutex
 
-	// historicalImageDescCache stores image descriptions for historical messages
-	// fetched from Discord API to avoid repeated vision calls on the same messages.
-	historicalImageDescCache   map[string]historicalImageDescCacheEntry
-	historicalImageDescCacheMu sync.RWMutex
+	// mediaFingerprints are the media settings (media.Fingerprints) the
+	// cached media text was produced with. Guarded by mu.
+	mediaFingerprints map[string]string
 
 	// processingMessages tracks messages currently being processed
 	processingMessages map[string]*ProcessingMessage
@@ -175,12 +173,6 @@ func (b *Bot) cfg() *config.Config {
 		panic("configStore contains non-*config.Config value")
 	}
 	return c
-}
-
-type historicalImageDescCacheEntry struct {
-	imageURLsKey string
-	descriptions []string
-	cachedAt     time.Time
 }
 
 // Option configures New.
@@ -231,26 +223,25 @@ func New(cfgStore *atomic.Value, memoryStore memory.MemoryStore, profileStore me
 
 	rootCtx, rootCancel := context.WithCancel(context.Background())
 	bot := &Bot{
-		contextWindow:            newContextWindow(),
-		ctx:                      rootCtx,
-		cancel:                   rootCancel,
-		configStore:              cfgStore,
-		memoryStore:              memoryStore,
-		profileStore:             profileStore,
-		consolidation:            conMgr,
-		toolRegistry:             toolRegistry,
-		pluginManager:            pluginManager,
-		mcpManager:               mcpManager,
-		mcpToolNames:             make(map[string]struct{}),
-		decider:                  decider,
-		rateLimiter:              limiter,
-		mediaCache:               media.NewCache(time.Duration(cfg.Discord.ImageCacheTTLMin)*time.Minute, cfg.Discord.ImageCacheMaxEntries),
-		stickerCache:             media.NewCache(time.Duration(cfg.AI.Modalities.Sticker.CacheTTLMin)*time.Minute, cfg.AI.Modalities.Sticker.CacheMaxEntries),
-		pluginToolNames:          make(map[string]struct{}),
-		channelMessageBuffer:     make(map[string][]*types.DiscordMessage),
-		channelConsolidating:     make(map[string]bool),
-		historicalImageDescCache: make(map[string]historicalImageDescCacheEntry),
-		processingMessages:       make(map[string]*ProcessingMessage),
+		contextWindow:        newContextWindow(),
+		ctx:                  rootCtx,
+		cancel:               rootCancel,
+		configStore:          cfgStore,
+		memoryStore:          memoryStore,
+		profileStore:         profileStore,
+		consolidation:        conMgr,
+		toolRegistry:         toolRegistry,
+		pluginManager:        pluginManager,
+		mcpManager:           mcpManager,
+		mcpToolNames:         make(map[string]struct{}),
+		decider:              decider,
+		rateLimiter:          limiter,
+		mediaCache:           media.NewCache(time.Duration(cfg.Discord.ImageCacheTTLMin)*time.Minute, cfg.Discord.ImageCacheMaxEntries),
+		stickerCache:         media.NewCache(time.Duration(cfg.AI.Modalities.Sticker.CacheTTLMin)*time.Minute, cfg.AI.Modalities.Sticker.CacheMaxEntries),
+		pluginToolNames:      make(map[string]struct{}),
+		channelMessageBuffer: make(map[string][]*types.DiscordMessage),
+		channelConsolidating: make(map[string]bool),
+		processingMessages:   make(map[string]*ProcessingMessage),
 	}
 	for _, opt := range opts {
 		opt(bot)
@@ -642,6 +633,7 @@ func (b *Bot) ApplyRuntimeConfig() error {
 	b.mediaCache.SetLimits(time.Duration(cfg.Discord.ImageCacheTTLMin)*time.Minute, cfg.Discord.ImageCacheMaxEntries)
 	st := cfg.AI.Modalities.Sticker
 	b.stickerCache.SetLimits(time.Duration(st.CacheTTLMin)*time.Minute, st.CacheMaxEntries)
+	b.invalidateChangedMediaLocked(cfg)
 	// The processor is always built: stickers are annotated with their
 	// Discord text even when no modality is enabled. It calls no model
 	// for a modality that is off.
@@ -651,6 +643,35 @@ func (b *Bot) ApplyRuntimeConfig() error {
 	b.media = media.New(cfg, b.mediaCache)
 	b.media.SetStickers(b.lookupSticker, b.stickerCache)
 	return nil
+}
+
+// invalidateChangedMediaLocked drops the cached text of each media kind
+// whose model, endpoint, prompt or transcode settings changed since the
+// last apply; other kinds keep theirs. Called with b.mu held.
+func (b *Bot) invalidateChangedMediaLocked(cfg *config.Config) {
+	cur := media.Fingerprints(cfg)
+	for _, kind := range media.ChangedKinds(b.mediaFingerprints, cur) {
+		cache := b.mediaCache
+		if kind == media.KindSticker {
+			cache = b.stickerCache
+		}
+		n := cache.DeletePrefix(media.KindPrefixes(kind)...)
+		logger.Infof("[media] %s settings changed, dropped %d cached results", kind, n)
+	}
+	b.mediaFingerprints = cur
+}
+
+// pinMediaWindow pins the cache entries of the media the prompt window of
+// channelID shows (history plus the current message), replacing the
+// channel's previous pins: they stay cached for as long as they are in
+// context, and drop back to the idle TTL once they scroll out.
+func (b *Bot) pinMediaWindow(channelID string, msgs ...*types.DiscordMessage) {
+	if channelID == "" {
+		return
+	}
+	keys := media.WindowKeys(msgs...)
+	b.mediaCache.Pin(channelID, keys)
+	b.stickerCache.Pin(channelID, keys)
 }
 
 // lookupSticker returns a sticker's details: from the guild sticker list in
@@ -931,9 +952,6 @@ func (b *Bot) ShouldRandomReply() bool {
 
 func (b *Bot) CleanupCache() {
 	b.rateLimiter.Cleanup()
-	b.historicalImageDescCacheMu.Lock()
-	b.pruneHistoricalImageDescCacheLocked()
-	b.historicalImageDescCacheMu.Unlock()
 	b.mediaCache.Prune()
 	b.stickerCache.Prune()
 }
@@ -1178,101 +1196,6 @@ func (b *Bot) finishChannelConsolidation(channelID string) {
 	b.channelConsolidationMu.Lock()
 	defer b.channelConsolidationMu.Unlock()
 	delete(b.channelConsolidating, channelID)
-}
-
-func (b *Bot) getHistoricalImageDescriptions(messageID string, imageURLs []string) ([]string, bool) {
-	if messageID == "" || len(imageURLs) == 0 {
-		return nil, false
-	}
-
-	key := imageURLsCacheKey(imageURLs)
-
-	b.historicalImageDescCacheMu.RLock()
-	entry, ok := b.historicalImageDescCache[messageID]
-	b.historicalImageDescCacheMu.RUnlock()
-	if !ok {
-		return nil, false
-	}
-
-	cacheTTL := time.Duration(b.cfg().Discord.ImageCacheTTLMin) * time.Minute
-	if entry.imageURLsKey != key || time.Since(entry.cachedAt) > cacheTTL || len(entry.descriptions) == 0 {
-		b.historicalImageDescCacheMu.Lock()
-		if latest, exists := b.historicalImageDescCache[messageID]; exists {
-			if latest.imageURLsKey != key || time.Since(latest.cachedAt) > cacheTTL || len(latest.descriptions) == 0 {
-				delete(b.historicalImageDescCache, messageID)
-			}
-		}
-		b.historicalImageDescCacheMu.Unlock()
-		return nil, false
-	}
-
-	descriptions := make([]string, len(entry.descriptions))
-	copy(descriptions, entry.descriptions)
-	return descriptions, true
-}
-
-func (b *Bot) setHistoricalImageDescriptions(messageID string, imageURLs, descriptions []string) {
-	if messageID == "" || len(imageURLs) == 0 || len(descriptions) == 0 {
-		return
-	}
-
-	key := imageURLsCacheKey(imageURLs)
-	copied := make([]string, len(descriptions))
-	copy(copied, descriptions)
-
-	b.historicalImageDescCacheMu.Lock()
-	b.historicalImageDescCache[messageID] = historicalImageDescCacheEntry{
-		imageURLsKey: key,
-		descriptions: copied,
-		cachedAt:     time.Now(),
-	}
-	b.pruneHistoricalImageDescCacheLocked()
-	b.historicalImageDescCacheMu.Unlock()
-}
-
-func (b *Bot) pruneHistoricalImageDescCacheLocked() {
-	now := time.Now()
-	cacheTTL := time.Duration(b.cfg().Discord.ImageCacheTTLMin) * time.Minute
-	maxEntries := b.cfg().Discord.ImageCacheMaxEntries
-
-	for messageID, entry := range b.historicalImageDescCache {
-		if now.Sub(entry.cachedAt) > cacheTTL {
-			delete(b.historicalImageDescCache, messageID)
-		}
-	}
-
-	if len(b.historicalImageDescCache) <= maxEntries {
-		return
-	}
-
-	if len(b.historicalImageDescCache) > maxEntries {
-		type entry struct {
-			id  string
-			age time.Time
-		}
-		entries := make([]entry, 0, len(b.historicalImageDescCache))
-		for id, e := range b.historicalImageDescCache {
-			entries = append(entries, entry{id, e.cachedAt})
-		}
-		slices.SortFunc(entries, func(a, b entry) int {
-			return a.age.Compare(b.age)
-		})
-		excess := len(entries) - maxEntries
-		for i := 0; i < excess; i++ {
-			logger.Warnf("[bot] evicting image description cache entry for message %s", entries[i].id)
-			delete(b.historicalImageDescCache, entries[i].id)
-		}
-	}
-}
-
-// imageURLsCacheKey joins stable per-image keys so a cached description still
-// matches after Discord re-signs the CDN URLs on a later fetch.
-func imageURLsCacheKey(imageURLs []string) string {
-	keys := make([]string, len(imageURLs))
-	for i, u := range imageURLs {
-		keys[i] = types.StableImageKey(u)
-	}
-	return strings.Join(keys, "\n")
 }
 
 // isFilteredOut reports whether the message filters ignore msg. The bot's own

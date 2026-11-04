@@ -74,10 +74,14 @@ core:
     # 2000-character limit (milliseconds).
     long_response_delay_ms: 500
 
-    # Media cache: image descriptions, audio transcripts and video
-    # descriptions, keyed by attachment, shared by replies and memory
-    # consolidation. TTL in minutes and max entries.
+    # Media text cache (image descriptions, audio transcripts, video
+    # descriptions). Media still in the prompt window is kept regardless of
+    # these two; other entries expire after this many minutes without being
+    # used (each use refreshes them).
     image_cache_ttl_min: 60
+
+    # Max entries; over it the least recently used entries outside the
+    # prompt window are dropped first.
     image_cache_max_entries: 100
 
     # Optional /clear-context slash command: makes the bot forget the

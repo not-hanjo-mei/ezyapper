@@ -25,8 +25,11 @@ func stickerProcessor(t *testing.T, enabled bool, chatURL string) (*Processor, *
 	var lookups int32
 	p.SetStickers(func(ctx context.Context, id string) (StickerInfo, error) {
 		atomic.AddInt32(&lookups, 1)
-		if id == "gone" {
-			return StickerInfo{}, errors.New("404 Unknown Sticker")
+		switch id {
+		case "gone": // discordgo's RESTError text
+			return StickerInfo{}, errors.New(`HTTP 404 Not Found, {"message": "Unknown Sticker", "code": 10060}`)
+		case "flaky":
+			return StickerInfo{}, errors.New("HTTP 503 Service Unavailable, ")
 		}
 		return StickerInfo{Name: "Amika Thumbs Up", Description: "Amika gives a thumbs up", Tags: "👍"}, nil
 	}, NewCache(24*time.Hour, 100))
@@ -62,6 +65,16 @@ func TestStickerDisabledUsesText(t *testing.T) {
 	}
 	if *lookups != 2 {
 		t.Fatalf("failed lookup must be cached, lookups=%d", *lookups)
+	}
+	// A transient failure (5xx) is not cached: the next turn looks it up again.
+	flaky := stickerMsg(types.StickerRef{ID: "flaky", Name: "flaky one"})
+	for i := 0; i < 2; i++ {
+		if got := p.AnnotateStickers(context.Background(), flaky, true); got != "\n[Sticker: flaky one]" {
+			t.Fatalf("fallback got %q", got)
+		}
+	}
+	if *lookups != 4 {
+		t.Fatalf("a transient failure must not be cached, lookups=%d", *lookups)
 	}
 }
 

@@ -186,6 +186,11 @@ type DiscordConfig struct {
 	TypingIndicatorIntervalSec int             `mapstructure:"typing_indicator_interval_sec" yaml:"typing_indicator_interval_sec"`
 	LongResponseDelayMs        int             `mapstructure:"long_response_delay_ms" yaml:"long_response_delay_ms"`
 
+	// ImageCacheTTLMin / ImageCacheMaxEntries bound the media text cache
+	// (image, audio and video results). Media the prompt window still shows
+	// is pinned and never expires or is evicted; other entries expire after
+	// ImageCacheTTLMin minutes without a read and, over ImageCacheMaxEntries,
+	// the least recently used go first.
 	ImageCacheTTLMin     int `mapstructure:"image_cache_ttl_min" yaml:"image_cache_ttl_min"`
 	ImageCacheMaxEntries int `mapstructure:"image_cache_max_entries" yaml:"image_cache_max_entries"`
 

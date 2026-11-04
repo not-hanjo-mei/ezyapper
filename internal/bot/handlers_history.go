@@ -4,6 +4,7 @@ package bot
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"ezyapper/internal/logger"
@@ -144,24 +145,29 @@ func (b *Bot) enrichHistory(ctx context.Context, messages []*types.DiscordMessag
 
 		if mods.Image.Enabled && len(msg.ImageURLs) > 0 {
 			descriptions := msg.ImageDescriptions
-			if len(descriptions) == 0 {
-				if cached, ok := b.getHistoricalImageDescriptions(msg.ID, msg.ImageURLs); ok {
+			complete := len(descriptions) > 0
+			if !complete {
+				// The shared media cache, keyed by image (the same keys the
+				// reply prompt and consolidation use); never a model call.
+				if cached, ok := proc.CachedImageDescriptions(msg.ImageURLs); ok {
 					descriptions = cached
-					logger.Debugf("[history] using bot-cache descriptions for message %s", msg.ID)
+					complete = !slices.Contains(cached, "")
+					logger.Debugf("[history] using cached descriptions for message %s", msg.ID)
 				}
 			}
-			if len(descriptions) == 0 && i == mostRecentImageIndex && enrichment.allows(msg.ID) && describer != nil {
+			if !complete && i == mostRecentImageIndex && enrichment.allows(msg.ID) && describer != nil {
 				logger.Debugf("[history] performing on-demand enrichment for image message %s", msg.ID)
 				fresh, err := describer.DescribeImages(ctx, msg.ImageURLs)
 				if err != nil {
 					logger.Warnf("[history] on-demand enrichment failed for message %s: %v", msg.ID, err)
 				} else {
 					descriptions = fresh
-					b.setHistoricalImageDescriptions(msg.ID, msg.ImageURLs, descriptions)
 				}
 			}
 			for idx, desc := range descriptions {
-				fmt.Fprintf(&extra, "\n[Image %d: %s]", idx+1, desc)
+				if desc != "" {
+					fmt.Fprintf(&extra, "\n[Image %d: %s]", idx+1, desc)
+				}
 			}
 		}
 
