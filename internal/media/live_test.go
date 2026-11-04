@@ -73,7 +73,7 @@ func TestLiveASR(t *testing.T) {
 		Model:      liveEnv(t, "EZYAPPER_LIVE_ASR_MODEL", "IFM/Jais-ASR"),
 		APIBaseURL: liveEnv(t, "EZYAPPER_LIVE_ASR_URL", "https://api.ifm.ai/v1"),
 		APIKey:     os.Getenv("EZYAPPER_LIVE_ASR_KEY"),
-		Timeout:    120,
+		Timeout:    new(120),
 	}}
 	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, NewCache(time.Hour, 10))
@@ -109,7 +109,7 @@ func TestLiveDescribeAudio(t *testing.T) {
 func TestLiveVideoDescribe(t *testing.T) {
 	cfg, base := liveSetup(t)
 	dir := os.Getenv("EZYAPPER_LIVE_MEDIA_DIR")
-	cfg.AI.Modalities.Video = config.VideoModalityConfig{Enabled: true, ModalityModel: config.ModalityModel{Model: cfg.AI.Model, MaxTokens: 12000}}
+	cfg.AI.Modalities.Video = config.VideoModalityConfig{Enabled: true, ModalityModel: config.ModalityModel{Model: cfg.AI.Model, MaxTokens: new(12000)}}
 	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, NewCache(time.Hour, 10))
 	start := time.Now()

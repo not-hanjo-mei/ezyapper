@@ -264,9 +264,9 @@ func (b *Bot) searchMemories(ctx context.Context, m *discordgo.MessageCreate, re
 		// 2. Mentioned memories (if mentions exist)
 		if len(m.Mentions) > 0 {
 			wg.Go(func() {
-				maxMentioned := b.cfg().Memory.Retrieval.MaxMentionedMemories
+				maxMentioned := b.cfg().Memory.Retrieval.MentionedLimit()
 				if maxMentioned <= 0 {
-					maxMentioned = b.cfg().Memory.Retrieval.TopK
+					return // max_mentioned_memories: 0 = none
 				}
 				opts := &memory.SearchOptions{TopK: maxMentioned}
 				for _, mention := range m.Mentions {
@@ -286,9 +286,9 @@ func (b *Bot) searchMemories(ctx context.Context, m *discordgo.MessageCreate, re
 		// 3. Channel memories (if enabled in config)
 		if b.cfg().Memory.Retrieval.IncludeChannelMemories {
 			wg.Go(func() {
-				maxChannel := b.cfg().Memory.Retrieval.MaxChannelMemories
+				maxChannel := b.cfg().Memory.Retrieval.ChannelLimit()
 				if maxChannel <= 0 {
-					maxChannel = b.cfg().Memory.Retrieval.TopK
+					return // max_channel_memories: 0 = none
 				}
 				opts := &memory.SearchOptions{TopK: maxChannel}
 				mems, searchErr := b.memoryStore.SearchByChannel(ctx, m.ChannelID, opts)

@@ -75,14 +75,23 @@ const (
 
 // LLMConfig is the shared LLM client configuration embedded by all LLM-using configs.
 type LLMConfig struct {
-	APIBaseURL  string         `mapstructure:"api_base_url" yaml:"api_base_url"`
-	APIKey      string         `mapstructure:"api_key" yaml:"api_key"`
-	Model       string         `mapstructure:"model" yaml:"model"`
-	MaxTokens   int            `mapstructure:"max_tokens" yaml:"max_tokens"`
-	Temperature float32        `mapstructure:"temperature" yaml:"temperature"`
-	RetryCount  int            `mapstructure:"retry_count" yaml:"retry_count"`
-	Timeout     int            `mapstructure:"timeout" yaml:"timeout"`
-	ExtraParams map[string]any `mapstructure:"extra_params" yaml:"extra_params"`
+	APIBaseURL  string  `mapstructure:"api_base_url" yaml:"api_base_url"`
+	APIKey      string  `mapstructure:"api_key" yaml:"api_key"`
+	Model       string  `mapstructure:"model" yaml:"model"`
+	MaxTokens   int     `mapstructure:"max_tokens" yaml:"max_tokens"`
+	Temperature float32 `mapstructure:"temperature" yaml:"temperature"`
+	RetryCount  int     `mapstructure:"retry_count" yaml:"retry_count"`
+	Timeout     int     `mapstructure:"timeout" yaml:"timeout"`
+	// ExtraParams are extra request fields. An explicit empty map ({}) is
+	// kept non-nil (see restoreKeyCase), so it is distinct from an absent
+	// key wherever another key inherits from this one.
+	ExtraParams map[string]any `mapstructure:"extra_params" yaml:"extra_params,omitempty"`
+	// ExplicitZeroTemperature is not a config key. The inheritance helpers
+	// (ModalityModel.Resolve, the consolidation client builder) set it when
+	// a temperature key that is present in the file resolves to 0, so the
+	// AI client sends "temperature": 0 instead of leaving it out (go-openai
+	// omits a zero temperature, which lets the provider apply its own).
+	ExplicitZeroTemperature bool `mapstructure:"-" yaml:"-"`
 }
 
 // DecisionProvider selects the backend that decides whether to reply.
@@ -220,12 +229,14 @@ type AIConfig struct {
 // Only fields the embedding API actually accepts — max_tokens and temperature
 // are not part of the OpenAI embedding protocol, so they are intentionally absent.
 type EmbeddingConfig struct {
-	APIBaseURL  string         `mapstructure:"api_base_url" yaml:"api_base_url"`
-	APIKey      string         `mapstructure:"api_key" yaml:"api_key"`
-	Model       string         `mapstructure:"model" yaml:"model"`
-	RetryCount  int            `mapstructure:"retry_count" yaml:"retry_count"`
-	Timeout     int            `mapstructure:"timeout" yaml:"timeout"`
-	ExtraParams map[string]any `mapstructure:"extra_params" yaml:"extra_params"`
+	APIBaseURL string `mapstructure:"api_base_url" yaml:"api_base_url"`
+	APIKey     string `mapstructure:"api_key" yaml:"api_key"`
+	Model      string `mapstructure:"model" yaml:"model"`
+	RetryCount int    `mapstructure:"retry_count" yaml:"retry_count"`
+	Timeout    int    `mapstructure:"timeout" yaml:"timeout"`
+	// ExtraParams absent (nil) inherits core.ai.extra_params; an explicit
+	// value, including {} (send none), is used as is.
+	ExtraParams map[string]any `mapstructure:"extra_params" yaml:"extra_params,omitempty"`
 }
 
 // LongTermMemoryConfig controls long-term memory features.
@@ -271,20 +282,64 @@ type MemoryConfig struct {
 	ContextMaxMemories int `mapstructure:"context_max_memories" yaml:"context_max_memories"`
 }
 
+// ConsolidationConfig is memory_pipeline.memory.consolidation. Model,
+// APIBaseURL and APIKey left empty use core.ai's (inheritance between config
+// keys). Temperature is a pointer so an absent key (nil, inherits
+// core.ai.temperature) is distinct from an explicit 0, which is used as is.
+// MaxTokens, RetryCount and Timeout are required when Enabled and are not
+// inherited; ExtraParams is not inherited either.
 type ConsolidationConfig struct {
-	LLMConfig         `mapstructure:",squash" yaml:",inline"`
-	Enabled           bool         `mapstructure:"enabled" yaml:"enabled"`
-	Vision            VisionConfig `mapstructure:"vision" yaml:"vision"`
-	SystemPrompt      string       `mapstructure:"system_prompt" yaml:"system_prompt"`
-	MemorySearchLimit int          `mapstructure:"memory_search_limit" yaml:"memory_search_limit"`
+	APIBaseURL        string                    `mapstructure:"api_base_url" yaml:"api_base_url"`
+	APIKey            string                    `mapstructure:"api_key" yaml:"api_key"`
+	Model             string                    `mapstructure:"model" yaml:"model"`
+	MaxTokens         int                       `mapstructure:"max_tokens" yaml:"max_tokens"`
+	Temperature       *float32                  `mapstructure:"temperature" yaml:"temperature,omitempty"`
+	RetryCount        int                       `mapstructure:"retry_count" yaml:"retry_count"`
+	Timeout           int                       `mapstructure:"timeout" yaml:"timeout"`
+	ExtraParams       map[string]any            `mapstructure:"extra_params" yaml:"extra_params,omitempty"`
+	Enabled           bool                      `mapstructure:"enabled" yaml:"enabled"`
+	Vision            ConsolidationVisionConfig `mapstructure:"vision" yaml:"vision,omitempty"`
+	SystemPrompt      string                    `mapstructure:"system_prompt" yaml:"system_prompt"`
+	MemorySearchLimit int                       `mapstructure:"memory_search_limit" yaml:"memory_search_limit"`
+}
+
+// ConsolidationVisionConfig is memory_pipeline.memory.consolidation.vision:
+// optional overrides for the model that describes images during
+// consolidation. Every field left absent uses core.ai.modalities.image's
+// (and through it core.ai's, see ModalityModel.Resolve);
+// description_prompt absent uses image.prompt.
+type ConsolidationVisionConfig struct {
+	ModalityModel     `mapstructure:",squash" yaml:",inline"`
+	DescriptionPrompt string `mapstructure:"description_prompt" yaml:"description_prompt,omitempty"`
 }
 
 type RetrievalConfig struct {
 	TopK                   int     `mapstructure:"top_k" yaml:"top_k"`
 	MinScore               float64 `mapstructure:"min_score" yaml:"min_score"`
 	IncludeChannelMemories bool    `mapstructure:"include_channel_memories" yaml:"include_channel_memories"`
-	MaxMentionedMemories   int     `mapstructure:"max_mentioned_memories" yaml:"max_mentioned_memories"`
-	MaxChannelMemories     int     `mapstructure:"max_channel_memories" yaml:"max_channel_memories"`
+	// MaxMentionedMemories / MaxChannelMemories absent (nil) use TopK; an
+	// explicit value, including 0 (none), is used as is. See the *Limit
+	// methods.
+	MaxMentionedMemories *int `mapstructure:"max_mentioned_memories" yaml:"max_mentioned_memories,omitempty"`
+	MaxChannelMemories   *int `mapstructure:"max_channel_memories" yaml:"max_channel_memories,omitempty"`
+}
+
+// MentionedLimit is how many memories about mentioned users are searched and
+// shown: max_mentioned_memories when the key is set (0 = none), else top_k.
+func (r RetrievalConfig) MentionedLimit() int {
+	if r.MaxMentionedMemories != nil {
+		return *r.MaxMentionedMemories
+	}
+	return r.TopK
+}
+
+// ChannelLimit is how many channel memories are searched and shown:
+// max_channel_memories when the key is set (0 = none), else top_k.
+func (r RetrievalConfig) ChannelLimit() int {
+	if r.MaxChannelMemories != nil {
+		return *r.MaxChannelMemories
+	}
+	return r.TopK
 }
 
 type DecayRatesConfig struct {
@@ -375,17 +430,14 @@ type MCPServer struct {
 	Headers map[string]string `mapstructure:"headers" yaml:"headers"`
 }
 
-// VisionConfig is the shape of the deprecated core.ai.vision block (mapped
-// onto core.ai.modalities.image at load) and of the optional
-// memory_pipeline.memory.consolidation.vision override, which routes image
-// descriptions made during consolidation to another model or endpoint.
+// VisionConfig is the shape of the deprecated core.ai.vision block, mapped
+// onto core.ai.modalities.image at load (see mapLegacyVision).
+// Its model fields have the same presence rules as a modality's.
 type VisionConfig struct {
-	LLMConfig `mapstructure:",squash"`
-	// Mode is only read from the deprecated core.ai.vision block
-	// (text_only | hybrid | multimodal).
+	ModalityModel `mapstructure:",squash" yaml:",inline"`
+	// Mode is text_only | hybrid | multimodal.
 	Mode              string `mapstructure:"mode" yaml:"mode,omitempty"`
 	DescriptionPrompt string `mapstructure:"description_prompt" yaml:"description_prompt,omitempty"`
-	Model             string `mapstructure:"model" yaml:"model,omitempty"`
 	Base64            bool   `mapstructure:"base64" yaml:"base64,omitempty"`
 	MaxImages         int    `mapstructure:"max_images" yaml:"max_images,omitempty"`
 }
@@ -692,10 +744,10 @@ func validateMemory(cfg *Config, errs *[]string) {
 	}
 	requirePositive(cfg.Memory.RRFK, "memory_pipeline.memory.rrf_k", errs)
 	requirePositive(cfg.Memory.ContextMaxMemories, "memory_pipeline.memory.context_max_memories", errs)
-	if cfg.Memory.Retrieval.MaxMentionedMemories < 0 {
+	if v := cfg.Memory.Retrieval.MaxMentionedMemories; v != nil && *v < 0 {
 		*errs = append(*errs, "memory_pipeline.memory.retrieval.max_mentioned_memories must be >= 0")
 	}
-	if cfg.Memory.Retrieval.MaxChannelMemories < 0 {
+	if v := cfg.Memory.Retrieval.MaxChannelMemories; v != nil && *v < 0 {
 		*errs = append(*errs, "memory_pipeline.memory.retrieval.max_channel_memories must be >= 0")
 	}
 	if cfg.Memory.MemoryStrengthMultiplier <= 0 || cfg.Memory.MemoryStrengthMultiplier > 100 {
@@ -823,14 +875,15 @@ func validateConsolidation(cfg *Config, errs *[]string) {
 		*errs = append(*errs, "memory_pipeline.memory.consolidation.api_key is required when consolidation is enabled (or set core.ai.api_key)")
 	}
 	requirePositive(cfg.Memory.Consolidation.MaxTokens, "memory_pipeline.memory.consolidation.max_tokens", errs)
-	if cfg.Memory.Consolidation.Temperature < 0 || cfg.Memory.Consolidation.Temperature > 2 {
-		*errs = append(*errs, "memory_pipeline.memory.consolidation.temperature must be between 0 and 2")
+	if t := cfg.Memory.Consolidation.Temperature; t != nil && (*t < 0 || *t > 2) {
+		*errs = append(*errs, "memory_pipeline.memory.consolidation.temperature must be between 0 and 2 (omit the key to use core.ai.temperature)")
 	}
 	requirePositive(cfg.Memory.Consolidation.RetryCount, "memory_pipeline.memory.consolidation.retry_count", errs)
 	requirePositive(cfg.Memory.Consolidation.Timeout, "memory_pipeline.memory.consolidation.timeout", errs)
 	if cfg.Memory.Consolidation.SystemPrompt == "" {
 		*errs = append(*errs, "memory_pipeline.memory.consolidation.system_prompt is required when consolidation is enabled")
 	}
+	checkModalityModel("memory_pipeline.memory.consolidation.vision.", cfg.Memory.Consolidation.Vision.ModalityModel, "core.ai.modalities.image", errs)
 }
 
 func validateDecision(cfg *Config, errs *[]string) {

@@ -236,7 +236,7 @@ func TestDescribeVideoTransportAndCache(t *testing.T) {
 	for _, transport := range []config.MediaTransport{config.TransportBase64, config.TransportURL} {
 		calls, bodies = 0, nil
 		cfg := baseConfig(chat.URL)
-		cfg.AI.Modalities.Video = config.VideoModalityConfig{Enabled: true, Transport: transport, ModalityModel: config.ModalityModel{Model: "omni", MaxTokens: 12000}}
+		cfg.AI.Modalities.Video = config.VideoModalityConfig{Enabled: true, Transport: transport, ModalityModel: config.ModalityModel{Model: "omni", MaxTokens: new(12000)}}
 		configtest.FillSuggested(t, &cfg.AI.Modalities)
 		p := New(cfg, NewCache(time.Hour, 10))
 		msg := &types.DiscordMessage{ID: "m1", Media: []types.MediaAttachment{{ID: "vid1", Kind: types.MediaVideo, URL: files.URL + "/v.mp4", Filename: "v.mp4", ContentType: "video/mp4", Size: 9}}}

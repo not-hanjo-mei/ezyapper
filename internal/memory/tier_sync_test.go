@@ -409,7 +409,7 @@ func TestNewService_MigratesThenSyncsInBackground(t *testing.T) {
 		ShortTermLimit:        50,
 		TopK:                  5,
 		MinScore:              0.5,
-		Consolidation:         &config.ConsolidationConfig{LLMConfig: config.LLMConfig{Model: "gpt-4"}, SystemPrompt: "test"},
+		Consolidation:         &config.ConsolidationConfig{Model: "gpt-4", SystemPrompt: "test"},
 	}
 	svc, err := NewService(cfg, testQdrantCfgDim(testDim), qc, emb, nil, nil)
 	if err != nil {

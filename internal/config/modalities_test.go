@@ -239,8 +239,8 @@ func TestLoad_LegacyHybridMapsToImageDescribe(t *testing.T) {
 	if !img.Enabled {
 		t.Fatalf("hybrid must map to an enabled image modality, got %+v", img)
 	}
-	if img.Model != "gpt-4-vision" || img.Prompt != "describe it" || img.MaxItems != 3 || img.MaxTokens != 512 ||
-		img.RetryCount != 1 || img.Timeout != 30 || img.Transport != TransportURL ||
+	if img.Model != "gpt-4-vision" || img.Prompt != "describe it" || img.MaxItems != 3 || *img.MaxTokens != 512 ||
+		*img.RetryCount != 1 || *img.Timeout != 30 || img.Transport != TransportURL ||
 		img.APIBaseURL != "https://vision.example/v1" || img.APIKey != "vk" {
 		t.Fatalf("legacy fields not carried over: %+v", img)
 	}
@@ -286,7 +286,7 @@ func TestLoad_ModalitiesBlock(t *testing.T) {
 	if m.Audio.Model != "IFM/Jais-ASR" || m.Audio.APIBaseURL != "https://api.ifm.ai/v1" || m.Audio.MaxDurationSec != 60 || m.Audio.MaxBytes != 1000 {
 		t.Fatalf("audio: %+v", m.Audio)
 	}
-	if m.Video.MaxTokens != 12000 || m.Video.Transport != TransportURL || m.Video.Prompt != "describe the video" {
+	if *m.Video.MaxTokens != 12000 || m.Video.Transport != TransportURL || m.Video.Prompt != "describe the video" {
 		t.Fatalf("video: %+v", m.Video)
 	}
 	// Endpoint fields left empty fall back to core.ai.
@@ -361,8 +361,8 @@ func TestMapLegacyVision(t *testing.T) {
 	if len(errs) != 1 || !strings.Contains(errs[0], "core.ai.vision.mode") {
 		t.Fatalf("invalid legacy mode must be reported, got %v", errs)
 	}
-	// Legacy model given through the embedded LLM block is honored too.
-	ai = AIConfig{Vision: VisionConfig{Mode: "hybrid", LLMConfig: LLMConfig{Model: "inner"}}}
+	// The legacy model key is mapped.
+	ai = AIConfig{Vision: VisionConfig{Mode: "hybrid", ModalityModel: ModalityModel{Model: "inner"}}}
 	mapLegacyVision(&ai, &errs)
 	if ai.Modalities.Image.Model != "inner" {
 		t.Fatalf("model from embedded block not mapped: %q", ai.Modalities.Image.Model)
@@ -511,7 +511,7 @@ func TestValidateStickerModality(t *testing.T) {
 	if mm := withImage.StickerVisionModel(); mm.Model != "vm" || mm.APIKey != "ik" {
 		t.Fatalf("fallback: %+v", mm)
 	}
-	if e := modalityErrors(ModalitiesConfig{Sticker: StickerModalityConfig{Enabled: true, ModalityModel: ModalityModel{Model: "sm", Temperature: 3}}}); !strings.Contains(e, "sticker.temperature") {
+	if e := modalityErrors(ModalitiesConfig{Sticker: StickerModalityConfig{Enabled: true, ModalityModel: ModalityModel{Model: "sm", Temperature: new(float32(3))}}}); !strings.Contains(e, "sticker.temperature") {
 		t.Fatalf("endpoint fields are still checked when enabled: %s", e)
 	}
 }

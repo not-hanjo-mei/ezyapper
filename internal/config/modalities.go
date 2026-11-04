@@ -15,9 +15,11 @@ import (
 // description or a transcript) that is added to the message in the user
 // prompt ("[Image N: ...]", "[Audio N ...]", "[Video N ...]"). Results are
 // cached by attachment ID, so the same media is not processed again on later
-// turns. Endpoint fields left empty (or 0) fall back to the matching core.ai
-// value (documented inheritance between config keys), so a modality served
-// by the same gateway does not repeat the endpoint.
+// turns. Endpoint fields whose key is absent fall back to the matching
+// core.ai value (documented inheritance between config keys), so a modality
+// served by the same gateway does not repeat the endpoint. Presence, not
+// the value, decides: an explicit 0 (temperature: 0, retry_count: 0) is
+// used as is, and an explicit timeout: 0 or max_tokens: 0 is rejected.
 //
 // There are no built-in defaults: every other field an enabled modality
 // uses (prompt, item and size limits, transport, ...) must be set in the
@@ -67,21 +69,29 @@ const (
 	removedModeNotice         = "was removed: %s are always described into text by the %s model (the reply model core.ai.model is text-only and never receives media; direct mode no longer exists) - remove the mode field"
 )
 
-// ModalityModel is the model endpoint a modality calls. Empty fields fall
-// back to core.ai (see Resolve).
+// ModalityModel is the model endpoint a modality calls (also the shape of
+// the sticker and consolidation.vision overrides). Empty strings and absent
+// keys fall back to the next model in the chain (see Resolve and
+// StickerVisionModel). The numeric fields are pointers and ExtraParams is
+// nil when its key is absent, so an absent key is distinct from an
+// explicit 0 or {}: Load leaves an absent key nil, an explicit value
+// (including 0 and {}) is kept, and Save writes back only what is set, so
+// hot reload and the dashboard's Save keep the distinction.
 type ModalityModel struct {
 	Model       string         `mapstructure:"model" yaml:"model,omitempty"`
 	APIBaseURL  string         `mapstructure:"api_base_url" yaml:"api_base_url,omitempty"`
 	APIKey      string         `mapstructure:"api_key" yaml:"api_key,omitempty"`
-	Timeout     int            `mapstructure:"timeout" yaml:"timeout,omitempty"`
-	MaxTokens   int            `mapstructure:"max_tokens" yaml:"max_tokens,omitempty"`
-	Temperature float32        `mapstructure:"temperature" yaml:"temperature,omitempty"`
-	RetryCount  int            `mapstructure:"retry_count" yaml:"retry_count,omitempty"`
+	Timeout     *int           `mapstructure:"timeout" yaml:"timeout,omitempty"`
+	MaxTokens   *int           `mapstructure:"max_tokens" yaml:"max_tokens,omitempty"`
+	Temperature *float32       `mapstructure:"temperature" yaml:"temperature,omitempty"`
+	RetryCount  *int           `mapstructure:"retry_count" yaml:"retry_count,omitempty"`
 	ExtraParams map[string]any `mapstructure:"extra_params" yaml:"extra_params,omitempty"`
 }
 
-// Resolve returns a copy of base with this modality's non-empty fields
-// applied. The result is a complete AIConfig an ai.Client can be built from.
+// Resolve returns a copy of base with this modality's set fields applied:
+// non-empty strings and every key present in the config, whatever its
+// value (temperature 0 is sent as 0, extra_params {} sends none). The
+// result is a complete AIConfig an ai.Client can be built from.
 func (m ModalityModel) Resolve(base AIConfig) AIConfig {
 	out := base
 	if m.Model != "" {
@@ -93,22 +103,73 @@ func (m ModalityModel) Resolve(base AIConfig) AIConfig {
 	if m.APIKey != "" {
 		out.APIKey = m.APIKey
 	}
-	if m.Timeout > 0 {
-		out.Timeout = m.Timeout
+	if m.Timeout != nil {
+		out.Timeout = *m.Timeout
 	}
-	if m.MaxTokens > 0 {
-		out.MaxTokens = m.MaxTokens
+	if m.MaxTokens != nil {
+		out.MaxTokens = *m.MaxTokens
 	}
-	if m.Temperature > 0 {
-		out.Temperature = m.Temperature
+	if m.Temperature != nil {
+		out.Temperature = *m.Temperature
+		out.ExplicitZeroTemperature = *m.Temperature == 0
 	}
-	if m.RetryCount > 0 {
-		out.RetryCount = m.RetryCount
+	if m.RetryCount != nil {
+		out.RetryCount = *m.RetryCount
 	}
 	if m.ExtraParams != nil {
 		out.ExtraParams = m.ExtraParams
 	}
 	return out
+}
+
+// Over returns m with every field it leaves unset (empty string, absent
+// key) taken from parent: the sticker -> image and consolidation.vision ->
+// image steps of the inheritance chain.
+func (m ModalityModel) Over(parent ModalityModel) ModalityModel {
+	if m.Model == "" {
+		m.Model = parent.Model
+	}
+	if m.APIBaseURL == "" {
+		m.APIBaseURL = parent.APIBaseURL
+	}
+	if m.APIKey == "" {
+		m.APIKey = parent.APIKey
+	}
+	if m.Timeout == nil {
+		m.Timeout = parent.Timeout
+	}
+	if m.MaxTokens == nil {
+		m.MaxTokens = parent.MaxTokens
+	}
+	if m.Temperature == nil {
+		m.Temperature = parent.Temperature
+	}
+	if m.RetryCount == nil {
+		m.RetryCount = parent.RetryCount
+	}
+	if m.ExtraParams == nil {
+		m.ExtraParams = parent.ExtraParams
+	}
+	return m
+}
+
+// checkModalityModel validates the keys of a model override that are set.
+// Absent keys inherit (parent names what they inherit from); an explicit
+// timeout or max_tokens of 0 is rejected instead of inherited, because 0
+// would time out at once or allow no output.
+func checkModalityModel(prefix string, mm ModalityModel, parent string, errs *[]string) {
+	if mm.Timeout != nil && *mm.Timeout <= 0 {
+		*errs = append(*errs, fmt.Sprintf("%stimeout must be greater than 0 (omit the key to use %s.timeout)", prefix, parent))
+	}
+	if mm.MaxTokens != nil && *mm.MaxTokens <= 0 {
+		*errs = append(*errs, fmt.Sprintf("%smax_tokens must be greater than 0 (omit the key to use %s.max_tokens)", prefix, parent))
+	}
+	if mm.RetryCount != nil && *mm.RetryCount < 0 {
+		*errs = append(*errs, fmt.Sprintf("%sretry_count must be greater than or equal to 0 (omit the key to use %s.retry_count)", prefix, parent))
+	}
+	if mm.Temperature != nil && (*mm.Temperature < 0 || *mm.Temperature > 2) {
+		*errs = append(*errs, fmt.Sprintf("%stemperature must be between 0 and 2 (omit the key to use %s.temperature)", prefix, parent))
+	}
 }
 
 // ImageModalityConfig configures images (attachments and image embeds).
@@ -192,35 +253,11 @@ type StickerModalityConfig struct {
 	CacheMaxEntries int `mapstructure:"cache_max_entries" yaml:"cache_max_entries,omitempty"`
 }
 
-// StickerVisionModel returns the model settings sticker vision uses: the sticker's
-// own fields, then modalities.image's.
+// StickerVisionModel returns the model settings sticker vision uses: the
+// sticker's own set fields, then modalities.image's (then core.ai's, when
+// the result is resolved).
 func (m ModalitiesConfig) StickerVisionModel() ModalityModel {
-	s, img := m.Sticker.ModalityModel, m.Image.ModalityModel
-	if s.Model == "" {
-		s.Model = img.Model
-	}
-	if s.APIBaseURL == "" {
-		s.APIBaseURL = img.APIBaseURL
-	}
-	if s.APIKey == "" {
-		s.APIKey = img.APIKey
-	}
-	if s.Timeout == 0 {
-		s.Timeout = img.Timeout
-	}
-	if s.MaxTokens == 0 {
-		s.MaxTokens = img.MaxTokens
-	}
-	if s.Temperature == 0 {
-		s.Temperature = img.Temperature
-	}
-	if s.RetryCount == 0 {
-		s.RetryCount = img.RetryCount
-	}
-	if s.ExtraParams == nil {
-		s.ExtraParams = img.ExtraParams
-	}
-	return s
+	return m.Sticker.ModalityModel.Over(m.Image.ModalityModel)
 }
 
 // ModalitiesConfig is core.ai.modalities. Every section is optional.
@@ -272,23 +309,10 @@ func mapLegacyVision(ai *AIConfig, errs *[]string) string {
 		ai.Vision = VisionConfig{}
 		return legacyVisionIgnoredNotice
 	}
-	model := legacy.Model
-	if model == "" {
-		model = legacy.LLMConfig.Model
-	}
 	img := ImageModalityConfig{
-		ModalityModel: ModalityModel{
-			Model:       model,
-			APIBaseURL:  legacy.APIBaseURL,
-			APIKey:      legacy.APIKey,
-			Timeout:     legacy.Timeout,
-			MaxTokens:   legacy.MaxTokens,
-			Temperature: legacy.Temperature,
-			RetryCount:  legacy.RetryCount,
-			ExtraParams: legacy.ExtraParams,
-		},
-		Prompt:   legacy.DescriptionPrompt,
-		MaxItems: legacy.MaxImages,
+		ModalityModel: legacy.ModalityModel,
+		Prompt:        legacy.DescriptionPrompt,
+		MaxItems:      legacy.MaxImages,
 	}
 	if legacy.Base64 {
 		img.Transport = TransportBase64
@@ -316,18 +340,7 @@ func validateModalities(cfg *Config, errs *[]string) {
 		if needsModel && mm.Model == "" {
 			*errs = append(*errs, prefix+"model is required when the modality is enabled in this mode")
 		}
-		if mm.Timeout < 0 {
-			*errs = append(*errs, prefix+"timeout must be greater than or equal to 0")
-		}
-		if mm.MaxTokens < 0 {
-			*errs = append(*errs, prefix+"max_tokens must be greater than 0 (or omitted to use core.ai.max_tokens)")
-		}
-		if mm.RetryCount < 0 {
-			*errs = append(*errs, prefix+"retry_count must be greater than or equal to 0")
-		}
-		if mm.Temperature < 0 || mm.Temperature > 2 {
-			*errs = append(*errs, prefix+"temperature must be between 0 and 2")
-		}
+		checkModalityModel(prefix, mm, "core.ai", errs)
 	}
 	nonNegative := func(path string, v int) {
 		if v < 0 {
@@ -444,7 +457,7 @@ func validateModalities(cfg *Config, errs *[]string) {
 	requirePositiveWhen(st.CacheTTLMin, p+"sticker.cache_ttl_min", stAlways, errs)
 	requirePositiveWhen(st.CacheMaxEntries, p+"sticker.cache_max_entries", stAlways, errs)
 	if st.Enabled {
-		checkModel(p+"sticker.", st.ModalityModel, false)
+		checkModalityModel(p+"sticker.", st.ModalityModel, p+"image", errs)
 		if m.StickerVisionModel().Model == "" {
 			*errs = append(*errs, p+"sticker.model is required when sticker.enabled is true (or set "+p+"image.model); set sticker.enabled to false to use only the sticker's name, description and tags")
 		}
