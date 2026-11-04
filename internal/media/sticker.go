@@ -47,60 +47,65 @@ func (p *Processor) SetStickers(lookup StickerLookup, cache *Cache) {
 }
 
 // stickerInfo returns cached details, looking them up once per sticker ID.
-// A failed lookup is cached as the name alone so a deleted or foreign
-// sticker is not looked up on every turn.
+// A permanent lookup failure (a deleted or foreign sticker: Discord answers
+// 4xx) is cached for FailureTTL so it is not looked up on every turn; a
+// transient one is not cached. Either way the sticker's name is used.
 func (p *Processor) stickerInfo(ctx context.Context, s types.StickerRef) StickerInfo {
-	key := "sticker:info:" + s.ID
-	if raw, ok := p.stickerCache.Get(key); ok {
-		var info StickerInfo
-		if json.Unmarshal([]byte(raw), &info) == nil {
-			return info
-		}
+	fallback := StickerInfo{Name: s.Name}
+	if p.stickerLookup == nil {
+		return fallback
 	}
-	info := StickerInfo{Name: s.Name}
-	if p.stickerLookup != nil {
+	raw, err := p.stickerCache.Do(keyStickerInfo+s.ID, func() (string, error) {
 		got, err := p.stickerLookup(ctx, s.ID)
 		if err != nil {
-			logger.Debugf("[media] sticker %s lookup failed: %v", s.ID, err)
-		} else {
-			info = got
-			if info.Name == "" {
-				info.Name = s.Name
-			}
+			return "", err
 		}
+		if got.Name == "" {
+			got.Name = s.Name
+		}
+		b, err := json.Marshal(got)
+		if err != nil {
+			return "", err
+		}
+		return string(b), nil
+	})
+	if err != nil {
+		logger.Debugf("[media] sticker %s lookup failed: %v", s.ID, err)
+		return fallback
 	}
-	if raw, err := json.Marshal(info); err == nil {
-		p.stickerCache.Set(key, string(raw))
+	var info StickerInfo
+	if json.Unmarshal([]byte(raw), &info) != nil {
+		return fallback
 	}
 	return info
 }
 
-// describeSticker runs vision on the sticker image, cached by sticker ID.
+// describeSticker runs vision on the sticker image, cached by sticker ID
+// (permanent failures for FailureTTL, see Cache.Do).
 func (p *Processor) describeSticker(ctx context.Context, s types.StickerRef) (string, error) {
-	key := "sticker:vision:" + s.ID
-	if v, ok := p.stickerCache.Get(key); ok {
-		return v, nil
-	}
 	if p.stickerClient == nil {
+		if v, ok := p.stickerCache.Get(keyStickerVision + s.ID); ok {
+			return v, nil
+		}
 		return "", fmt.Errorf("sticker vision is disabled")
 	}
-	data, ct, err := p.base.FetchMedia(ctx, StickerImageURL(s), p.maxImageBytes, "image/")
-	if err != nil {
-		return "", err
-	}
-	if baseContentType(ct) == "" || baseContentType(ct) == "application/octet-stream" {
-		ct = "image/png"
-		if s.FormatType == types.StickerGIF {
-			ct = "image/gif"
+	return p.stickerCache.Do(keyStickerVision+s.ID, func() (string, error) {
+		data, ct, err := p.base.FetchMedia(ctx, StickerImageURL(s), p.maxImageBytes, "image/")
+		if err != nil {
+			return "", err
 		}
-	}
-	d, err := p.stickerClient.DescribeMedia(ctx, p.mods.Sticker.Prompt, ai.MediaPart{Kind: ai.PartImageURL, URL: ai.DataURI(ct, data)})
-	if err != nil {
-		return "", err
-	}
-	d = oneLine(d)
-	p.stickerCache.Set(key, d)
-	return d, nil
+		if baseContentType(ct) == "" || baseContentType(ct) == "application/octet-stream" {
+			ct = "image/png"
+			if s.FormatType == types.StickerGIF {
+				ct = "image/gif"
+			}
+		}
+		d, err := p.stickerClient.DescribeMedia(ctx, p.mods.Sticker.Prompt, ai.MediaPart{Kind: ai.PartImageURL, URL: ai.DataURI(ct, data)})
+		if err != nil {
+			return "", err
+		}
+		return oneLine(d), nil
+	})
 }
 
 // AnnotateStickers returns "[Sticker: ...]" lines for msg's stickers.
@@ -122,7 +127,7 @@ func (p *Processor) AnnotateStickers(ctx context.Context, msg *types.DiscordMess
 		}
 		info := p.stickerInfo(ctx, s)
 		if st.Mode == config.StickerModeVision && s.FormatType != types.StickerLottie {
-			desc, ok := p.stickerCache.Get("sticker:vision:" + s.ID)
+			desc, ok := p.stickerCache.Get(keyStickerVision + s.ID)
 			if !ok && current {
 				var err error
 				desc, err = p.describeSticker(ctx, s)

@@ -115,7 +115,7 @@ func (p *Processor) ImagePart(ctx context.Context, url string) (ai.MediaPart, er
 // ImageCacheKey is the cache key of an image description: the image's stable
 // key (for Discord CDN URLs the attachment path with its attachment ID, so a
 // re-signed URL still hits).
-func ImageCacheKey(url string) string { return "image:" + types.StableImageKey(url) }
+func ImageCacheKey(url string) string { return keyImage + types.StableImageKey(url) }
 
 // DescribeImages describes each image with the image model. Descriptions are
 // cached by attachment (ImageCacheKey); the model is only called on a cache
@@ -150,6 +150,24 @@ func (p *Processor) DescribeImages(ctx context.Context, urls []string) ([]string
 	return out, nil
 }
 
+// CachedImageDescriptions returns the cached description of each image
+// (empty where there is none) without calling the model, and whether any
+// was found. History uses it so a plain-text turn never re-describes an
+// image.
+func (p *Processor) CachedImageDescriptions(urls []string) ([]string, bool) {
+	if p == nil || len(urls) == 0 {
+		return nil, false
+	}
+	out := make([]string, len(urls))
+	found := false
+	for i, u := range urls {
+		if d, ok := p.cache.Get(ImageCacheKey(u)); ok {
+			out[i], found = d, true
+		}
+	}
+	return out, found
+}
+
 // ImageDescriber returns p as an image describer, or nil when images are not
 // enabled (so callers can keep a nil check).
 func (p *Processor) ImageDescriber() *Processor {
@@ -163,10 +181,10 @@ func (p *Processor) ImageDescriber() *Processor {
 // duration is only known for voice messages (Discord sends duration_secs).
 func checkLimits(a types.MediaAttachment, maxBytes, maxDurationSec int) error {
 	if maxBytes > 0 && a.Size > maxBytes {
-		return fmt.Errorf("over the size limit (%d > %d bytes)", a.Size, maxBytes)
+		return &permanentError{err: fmt.Errorf("over the size limit (%d > %d bytes)", a.Size, maxBytes)}
 	}
 	if maxDurationSec > 0 && a.DurationSec > float64(maxDurationSec) {
-		return fmt.Errorf("over the duration limit (%.0fs > %ds)", a.DurationSec, maxDurationSec)
+		return &permanentError{err: fmt.Errorf("over the duration limit (%.0fs > %ds)", a.DurationSec, maxDurationSec)}
 	}
 	return nil
 }
@@ -209,7 +227,7 @@ func (p *Processor) Transcribe(ctx context.Context, a types.MediaAttachment) (st
 	if p.asr == nil {
 		return "", fmt.Errorf("audio asr is disabled")
 	}
-	return p.cache.Do("audio:"+a.ID, func() (string, error) {
+	return p.cache.Do(keyAudio+a.ID, func() (string, error) {
 		au := p.mods.Audio
 		if err := checkLimits(a, au.MaxBytes, au.MaxDurationSec); err != nil {
 			return "", err
@@ -221,7 +239,7 @@ func (p *Processor) Transcribe(ctx context.Context, a types.MediaAttachment) (st
 		filename := a.Filename
 		if au.Transcode != "" {
 			if data, ct, err = transcodeAudio(ctx, p.ffmpeg, data, audioFilename(a.Filename, a.ContentType), au.Transcode); err != nil {
-				return "", err
+				return "", permanent(ctx, err)
 			}
 			filename = strings.TrimSuffix(filename, path.Ext(filename)) + "." + au.Transcode
 		}
@@ -244,7 +262,7 @@ func (p *Processor) AudioPart(ctx context.Context, a types.MediaAttachment) (ai.
 	}
 	if au.Transcode != "" {
 		if data, ct, err = transcodeAudio(ctx, p.ffmpeg, data, audioFilename(a.Filename, a.ContentType), au.Transcode); err != nil {
-			return ai.MediaPart{}, err
+			return ai.MediaPart{}, permanent(ctx, err)
 		}
 	}
 	if au.PartType == config.AudioPartInput {
@@ -260,7 +278,7 @@ func (p *Processor) DescribeAudio(ctx context.Context, a types.MediaAttachment) 
 	if p.audioClient == nil {
 		return "", fmt.Errorf("audio describe is disabled")
 	}
-	return p.cache.Do("audio-describe:"+a.ID, func() (string, error) {
+	return p.cache.Do(keyAudioDescribe+a.ID, func() (string, error) {
 		part, err := p.AudioPart(ctx, a)
 		if err != nil {
 			return "", err
@@ -297,7 +315,7 @@ func (p *Processor) VideoPart(ctx context.Context, a types.MediaAttachment) (ai.
 			name = "video.mp4"
 		}
 		if data, err = transcodeVideo(ctx, p.ffmpeg, data, name, v.MaxDurationSec, v.MaxHeight); err != nil {
-			return ai.MediaPart{}, err
+			return ai.MediaPart{}, permanent(ctx, err)
 		}
 		ct = "video/mp4"
 	}
@@ -310,7 +328,7 @@ func (p *Processor) DescribeVideo(ctx context.Context, a types.MediaAttachment) 
 	if p.videoClient == nil {
 		return "", fmt.Errorf("video modality is disabled")
 	}
-	return p.cache.Do("video:"+a.ID, func() (string, error) {
+	return p.cache.Do(keyVideo+a.ID, func() (string, error) {
 		part, err := p.VideoPart(ctx, a)
 		if err != nil {
 			return "", err
@@ -347,9 +365,9 @@ func (p *Processor) AVText(ctx context.Context, a types.MediaAttachment, compute
 	switch {
 	case a.IsAudio() && p.mods.Audio.Enabled:
 		describe := p.mods.Audio.Mode == config.AudioModeDescribe
-		key, run := "audio:"+a.ID, p.Transcribe
+		key, run := keyAudio+a.ID, p.Transcribe
 		if describe {
-			key, run = "audio-describe:"+a.ID, p.DescribeAudio
+			key, run = keyAudioDescribe+a.ID, p.DescribeAudio
 		}
 		if v, hit := p.cache.Get(key); hit {
 			return v, !describe, true
@@ -364,7 +382,7 @@ func (p *Processor) AVText(ctx context.Context, a types.MediaAttachment, compute
 		}
 		return v, !describe, true
 	case a.Kind == types.MediaVideo && p.mods.Video.Enabled:
-		if v, hit := p.cache.Get("video:" + a.ID); hit {
+		if v, hit := p.cache.Get(keyVideo + a.ID); hit {
 			return v, false, true
 		}
 		if !compute {

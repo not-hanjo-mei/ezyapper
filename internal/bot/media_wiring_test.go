@@ -32,7 +32,7 @@ func mediaTestBot(t *testing.T, mods config.ModalitiesConfig) (*Bot, *httptest.S
 	cfg.AI.Modalities = mods
 	store := &atomic.Value{}
 	store.Store(cfg)
-	b := &Bot{configStore: store, historicalImageDescCache: map[string]historicalImageDescCacheEntry{}, mediaCache: media.NewCache(time.Hour, 10)}
+	b := &Bot{configStore: store, mediaCache: media.NewCache(time.Hour, 10), stickerCache: media.NewCache(time.Hour, 10)}
 	b.media = media.New(cfg, b.mediaCache)
 	return b, files
 }

@@ -4,6 +4,7 @@ package bot
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -71,6 +72,9 @@ func (b *Bot) generateResponse(ctx context.Context, mc ModeContext, gc GenerateC
 	if b.sess() != nil && b.sess().State != nil && b.sess().State.User != nil {
 		botID = b.sess().State.User.ID
 	}
+
+	// Keep the media this prompt shows cached while it stays in context.
+	b.pinMediaWindow(mc.ChannelID, append(slices.Clone(recentMessages), &mc.Current, &types.DiscordMessage{ImageURLs: gc.ImageURLs})...)
 
 	// Historical media: cached descriptions/transcripts, plus bounded
 	// on-demand enrichment of the media message the user replied to.

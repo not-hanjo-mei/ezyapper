@@ -161,9 +161,8 @@ func (b *Bot) extractMessageImages(ctx context.Context, m *discordgo.MessageCrea
 			if err != nil {
 				logger.Warnf("[process] failed to describe images for message %s: %v", m.ID, err)
 			} else {
+				// DescribeImages cached them by image key.
 				imageDescriptions = descriptions
-				b.setHistoricalImageDescriptions(m.ID, imageURLs, descriptions)
-				logger.Debugf("[process] cached image descriptions for message %s count=%d", m.ID, len(descriptions))
 			}
 		}
 
