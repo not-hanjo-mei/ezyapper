@@ -90,8 +90,7 @@ type DecisionProvider string
 
 const (
 	// DecisionProviderLLM asks an OpenAI-compatible chat model for a JSON
-	// verdict. It is the default when core.decision.provider is absent so
-	// configs written before the provider field existed keep working.
+	// verdict.
 	DecisionProviderLLM DecisionProvider = "llm"
 	// DecisionProviderSystemOne asks a System One decision model (TypeSafe
 	// Jev) a yes/no "noul" question and thresholds the returned P(yes).
@@ -100,8 +99,9 @@ const (
 
 // DecisionConfig holds reply decision settings. The embedded LLMConfig and
 // SystemPrompt belong to the "llm" provider; SystemOne holds the settings of
-// the "system_one" provider. Only the selected provider's fields are
-// validated, so both blocks can stay in the file while switching providers.
+// the "system_one" provider. Provider is required when Enabled (there is no
+// built-in default). Only the selected provider's fields are validated, so
+// both blocks can stay in the file while switching providers.
 type DecisionConfig struct {
 	LLMConfig    `mapstructure:",squash" yaml:",inline"`
 	Enabled      bool             `mapstructure:"enabled" yaml:"enabled"`
@@ -110,20 +110,11 @@ type DecisionConfig struct {
 	SystemOne    SystemOneConfig  `mapstructure:"system_one" yaml:"system_one,omitempty"`
 }
 
-// EffectiveProvider returns the configured provider, treating an absent
-// value as DecisionProviderLLM.
-func (d DecisionConfig) EffectiveProvider() DecisionProvider {
-	if d.Provider == "" {
-		return DecisionProviderLLM
-	}
-	return d.Provider
-}
-
 // RequestBudget returns the per-attempt timeout (seconds) and retry count of
 // the selected provider, so callers can size the overall decision deadline
 // without knowing which provider is active.
 func (d DecisionConfig) RequestBudget() (timeoutSec, retryCount int) {
-	if d.EffectiveProvider() == DecisionProviderSystemOne {
+	if d.Provider == DecisionProviderSystemOne {
 		return d.SystemOne.Timeout, d.SystemOne.RetryCount
 	}
 	return d.Timeout, d.RetryCount
@@ -536,6 +527,30 @@ func requirePositive(val int, path string, errs *[]string) {
 	}
 }
 
+// exampleHint points a missing-key error at the example config. The bot has
+// no built-in defaults: the example's values are suggestions to copy.
+const exampleHint = "no built-in default; see examples/config.yaml.example for a suggested value"
+
+// requiredWhen is the error for a key that must be set because cond holds.
+func requiredWhen(path, cond string) string {
+	return fmt.Sprintf("%s is required when %s (%s)", path, cond, exampleHint)
+}
+
+// requireTextWhen reports a blank string key that cond makes required.
+func requireTextWhen(val, path, cond string, errs *[]string) {
+	if strings.TrimSpace(val) == "" {
+		*errs = append(*errs, requiredWhen(path, cond))
+	}
+}
+
+// requirePositiveWhen reports an unset (or non-positive) int key that cond
+// makes required.
+func requirePositiveWhen(val int, path, cond string, errs *[]string) {
+	if val <= 0 {
+		*errs = append(*errs, fmt.Sprintf("%s is required and must be greater than 0 when %s (%s)", path, cond, exampleHint))
+	}
+}
+
 func validateCore(cfg *Config, errs *[]string) {
 	// Core validation is handled by individual validators (discord, ai, decision)
 }
@@ -828,7 +843,11 @@ func validateDecision(cfg *Config, errs *[]string) {
 	if !d.Enabled {
 		return
 	}
-	if d.EffectiveProvider() == DecisionProviderSystemOne {
+	if d.Provider == "" {
+		*errs = append(*errs, requiredWhen("core.decision.provider", "core.decision.enabled is true")+" (one of: llm, system_one)")
+		return
+	}
+	if d.Provider == DecisionProviderSystemOne {
 		validateSystemOneDecision(&d.SystemOne, errs)
 		return
 	}

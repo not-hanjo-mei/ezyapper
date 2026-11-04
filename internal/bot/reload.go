@@ -110,7 +110,7 @@ func (r *botReload) Commit() {
 		b.decider = r.decider
 		b.mu.Unlock()
 		if r.decider != nil {
-			logger.Infof("[bot] decision provider %q reloaded", r.next.Decision.EffectiveProvider())
+			logger.Infof("[bot] decision provider %q reloaded", r.next.Decision.Provider)
 		} else {
 			logger.Info("[bot] decision provider disabled")
 		}

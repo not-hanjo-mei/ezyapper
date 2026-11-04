@@ -102,7 +102,7 @@ func TestShouldRespond_DeciderErrorFallsBackToRandom(t *testing.T) {
 		fd := &fakeDecider{err: errors.New("boom")}
 		b := newDecisionTestBot(t, tc.provider, tc.pct, fd)
 		ok, reason := b.ShouldRespond(context.Background(), plainMessage(), nil)
-		wantProvider := string(b.cfg().Decision.EffectiveProvider())
+		wantProvider := string(b.cfg().Decision.Provider)
 		if ok != tc.want || reason != wantProvider+" decision failed, fallback" {
 			t.Fatalf("provider=%q pct=%v: ok=%v reason=%q", tc.provider, tc.pct, ok, reason)
 		}

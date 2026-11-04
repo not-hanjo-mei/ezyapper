@@ -864,6 +864,7 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 		Decision: DecisionConfig{
+			Provider: DecisionProviderLLM,
 			LLMConfig: LLMConfig{
 				Model:       "gpt-4o-mini",
 				MaxTokens:   64,
@@ -1083,6 +1084,7 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 		Plugins:    PluginsConfig{Enabled: false},
 		Operations: OperationsConfig{ShutdownTimeoutSec: 300, CleanupIntervalMin: 5},
 		Decision: DecisionConfig{
+			Provider: DecisionProviderLLM,
 			LLMConfig: LLMConfig{
 				Model:       "gpt-4o-mini",
 				APIBaseURL:  "https://decision.example.com/v1",

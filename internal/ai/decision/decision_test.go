@@ -137,8 +137,9 @@ func TestBuildPromptsWithInfo(t *testing.T) {
 	}
 }
 
-func TestNewSelectsLLMProviderByDefault(t *testing.T) {
+func TestNewSelectsLLMProvider(t *testing.T) {
 	cfg := &config.DecisionConfig{
+		Provider:  config.DecisionProviderLLM,
 		LLMConfig: config.LLMConfig{APIKey: "k", APIBaseURL: "https://example.com/v1", Timeout: 5},
 	}
 	d, err := New(cfg)
@@ -146,7 +147,14 @@ func TestNewSelectsLLMProviderByDefault(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	if _, ok := d.(*DecisionService); !ok {
-		t.Fatalf("absent provider must build the llm DecisionService, got %T", d)
+		t.Fatalf("provider llm must build the llm DecisionService, got %T", d)
+	}
+}
+
+// There is no default provider: an empty one is rejected.
+func TestNewRejectsEmptyProvider(t *testing.T) {
+	if _, err := New(&config.DecisionConfig{LLMConfig: config.LLMConfig{APIKey: "k", APIBaseURL: "https://example.com/v1", Timeout: 5}}); err == nil {
+		t.Fatal("expected error for an empty provider")
 	}
 }
 
