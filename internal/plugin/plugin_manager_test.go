@@ -394,35 +394,44 @@ func TestLoadPluginsFromDirCommandRuntimeWithoutLocalExecutable(t *testing.T) {
 }
 
 func TestValidateToolSpec_Negative(t *testing.T) {
-	err := validateToolSpec(&ToolSpec{Name: "test", TimeoutMs: -1})
+	err := validateToolSpec(&ToolSpec{Name: "test", TimeoutMs: new(-1)})
 	if err == nil {
 		t.Fatal("expected error for negative timeout_ms")
 	}
-	if !strings.Contains(err.Error(), "test") || !strings.Contains(err.Error(), "cannot be negative") {
+	if !strings.Contains(err.Error(), "test") || !strings.Contains(err.Error(), "must be greater than 0") {
 		t.Fatalf("unexpected error message: %v", err)
 	}
 }
 
 func TestValidateToolSpec_MaxCap(t *testing.T) {
-	ts := &ToolSpec{Name: "test", TimeoutMs: 500000}
+	ts := &ToolSpec{Name: "test", TimeoutMs: new(500000)}
 	err := validateToolSpec(ts)
 	if err != nil {
 		t.Fatalf("expected no error for clamped timeout_ms, got %v", err)
 	}
-	if ts.TimeoutMs != 500000 {
-		t.Fatalf("expected timeout_ms honored as-is (warn, don't clamp), got %d", ts.TimeoutMs)
+	if *ts.TimeoutMs != 500000 {
+		t.Fatalf("expected timeout_ms honored as-is (warn, don't clamp), got %d", *ts.TimeoutMs)
 	}
 }
 
-func TestValidateToolSpec_Zero(t *testing.T) {
-	err := validateToolSpec(&ToolSpec{Name: "test", TimeoutMs: 0})
-	if err != nil {
-		t.Fatalf("expected no error for zero timeout_ms (use default), got %v", err)
+// An explicit timeout_ms of 0 would time out at once: it is rejected, not
+// treated as absent.
+func TestValidateToolSpec_ExplicitZeroRejected(t *testing.T) {
+	err := validateToolSpec(&ToolSpec{Name: "test", TimeoutMs: new(0)})
+	if err == nil || !strings.Contains(err.Error(), "timeout_ms must be greater than 0") {
+		t.Fatalf("expected explicit timeout_ms 0 to be rejected, got %v", err)
+	}
+}
+
+// An absent timeout_ms is valid: the host fallback applies.
+func TestValidateToolSpec_Absent(t *testing.T) {
+	if err := validateToolSpec(&ToolSpec{Name: "test"}); err != nil {
+		t.Fatalf("expected no error for absent timeout_ms, got %v", err)
 	}
 }
 
 func TestValidateToolSpec_OK(t *testing.T) {
-	err := validateToolSpec(&ToolSpec{Name: "test", TimeoutMs: 15000})
+	err := validateToolSpec(&ToolSpec{Name: "test", TimeoutMs: new(15000)})
 	if err != nil {
 		t.Fatalf("expected no error for valid timeout_ms, got %v", err)
 	}
@@ -434,7 +443,7 @@ func TestToolSpecTimeoutMsPropagation(t *testing.T) {
 		Name:    "test-plugin",
 		runtime: pluginRuntimeJSONRPC,
 		tools: []ToolSpec{
-			{Name: "test-tool", Description: "test", TimeoutMs: 15000},
+			{Name: "test-tool", Description: "test", TimeoutMs: new(15000)},
 		},
 	}
 
@@ -442,8 +451,8 @@ func TestToolSpecTimeoutMsPropagation(t *testing.T) {
 	if len(tools) != 1 {
 		t.Fatalf("expected 1 tool, got %d", len(tools))
 	}
-	if tools[0].Spec.TimeoutMs != 15000 {
-		t.Fatalf("expected TimeoutMs=15000, got %d", tools[0].Spec.TimeoutMs)
+	if tools[0].Spec.TimeoutMs == nil || *tools[0].Spec.TimeoutMs != 15000 {
+		t.Fatalf("expected TimeoutMs=15000, got %v", tools[0].Spec.TimeoutMs)
 	}
 }
 
@@ -453,19 +462,34 @@ func TestToolSpecTimeoutMsJSONDeserialization(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &spec); err != nil {
 		t.Fatalf("failed to unmarshal ToolSpec: %v", err)
 	}
-	if spec.TimeoutMs != 15000 {
-		t.Fatalf("expected TimeoutMs=15000, got %d", spec.TimeoutMs)
+	if spec.TimeoutMs == nil || *spec.TimeoutMs != 15000 {
+		t.Fatalf("expected TimeoutMs=15000, got %v", spec.TimeoutMs)
 	}
 }
 
-func TestToolSpecTimeoutMsJSONOmittedDefaultsToZero(t *testing.T) {
-	raw := `{"name":"test","description":"test tool","parameters":{"type":"object"}}`
-	var spec ToolSpec
-	if err := json.Unmarshal([]byte(raw), &spec); err != nil {
+func TestToolSpecTimeoutMsJSONAbsentVsZero(t *testing.T) {
+	var absent, zero ToolSpec
+	if err := json.Unmarshal([]byte(`{"name":"test","parameters":{"type":"object"}}`), &absent); err != nil {
 		t.Fatalf("failed to unmarshal ToolSpec: %v", err)
 	}
-	if spec.TimeoutMs != 0 {
-		t.Fatalf("expected TimeoutMs=0 when omitted, got %d", spec.TimeoutMs)
+	if absent.TimeoutMs != nil {
+		t.Fatalf("expected TimeoutMs nil when the key is absent, got %d", *absent.TimeoutMs)
+	}
+	if err := json.Unmarshal([]byte(`{"name":"test","parameters":{"type":"object"},"timeout_ms":0}`), &zero); err != nil {
+		t.Fatalf("failed to unmarshal ToolSpec: %v", err)
+	}
+	if zero.TimeoutMs == nil || *zero.TimeoutMs != 0 {
+		t.Fatalf("expected an explicit timeout_ms 0 to be kept (and then rejected), got %v", zero.TimeoutMs)
+	}
+	if err := validateToolSpec(&zero); err == nil {
+		t.Fatal("expected explicit timeout_ms 0 to fail validation")
+	}
+	out, err := json.Marshal(absent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), "timeout_ms") {
+		t.Fatalf("absent timeout_ms must stay absent on the wire, got %s", out)
 	}
 }
 
@@ -524,7 +548,7 @@ func newMockJSONRPCClient(responseDelay time.Duration) (*stdioJSONRPCClient, fun
 	return client, cleanup
 }
 
-func newTimeoutTestManager(t *testing.T, toolTimeoutMs int, toolDelay time.Duration, defaultToolTimeoutMs int) *Manager {
+func newTimeoutTestManager(t *testing.T, toolTimeoutMs *int, toolDelay time.Duration, defaultToolTimeoutMs int) *Manager {
 	t.Helper()
 
 	jsonClient, cleanup := newMockJSONRPCClient(toolDelay)
@@ -544,7 +568,7 @@ func newTimeoutTestManager(t *testing.T, toolTimeoutMs int, toolDelay time.Durat
 }
 
 func TestExecuteToolTimeout_ToolSpecWins(t *testing.T) {
-	pm := newTimeoutTestManager(t, 200, 1*time.Second, 0)
+	pm := newTimeoutTestManager(t, new(200), 1*time.Second, 0)
 
 	_, err := pm.ExecuteTool(context.Background(), "mock-plugin", "mock-tool", map[string]any{})
 	if err == nil {
@@ -559,7 +583,7 @@ func TestExecuteToolTimeout_ToolSpecWins(t *testing.T) {
 }
 
 func TestExecuteToolTimeout_ConfigWins(t *testing.T) {
-	pm := newTimeoutTestManager(t, 0, 2*time.Second, 500)
+	pm := newTimeoutTestManager(t, nil, 2*time.Second, 500)
 
 	_, err := pm.ExecuteTool(context.Background(), "mock-plugin", "mock-tool", map[string]any{})
 	if err == nil {
@@ -571,7 +595,7 @@ func TestExecuteToolTimeout_ConfigWins(t *testing.T) {
 }
 
 func TestExecuteToolTimeout_NoFallbackError(t *testing.T) {
-	pm := newTimeoutTestManager(t, 0, 100*time.Millisecond, 0)
+	pm := newTimeoutTestManager(t, nil, 100*time.Millisecond, 0)
 
 	_, err := pm.ExecuteTool(context.Background(), "mock-plugin", "mock-tool", map[string]any{})
 	if err == nil {
@@ -583,7 +607,7 @@ func TestExecuteToolTimeout_NoFallbackError(t *testing.T) {
 }
 
 func TestExecuteToolTimeout_SuccessWithToolTimeout(t *testing.T) {
-	pm := newTimeoutTestManager(t, 15000, 100*time.Millisecond, 0)
+	pm := newTimeoutTestManager(t, new(15000), 100*time.Millisecond, 0)
 
 	result, err := pm.ExecuteTool(context.Background(), "mock-plugin", "mock-tool", map[string]any{})
 	if err != nil {
@@ -595,7 +619,7 @@ func TestExecuteToolTimeout_SuccessWithToolTimeout(t *testing.T) {
 }
 
 func TestExecuteToolTimeout_SuccessWithConfigTimeout(t *testing.T) {
-	pm := newTimeoutTestManager(t, 0, 100*time.Millisecond, 10000)
+	pm := newTimeoutTestManager(t, nil, 100*time.Millisecond, 10000)
 
 	result, err := pm.ExecuteTool(context.Background(), "mock-plugin", "mock-tool", map[string]any{})
 	if err != nil {
@@ -614,7 +638,7 @@ func TestManagerDefaultToolTimeoutMsZero(t *testing.T) {
 }
 
 func TestToolSpecTimeoutMsZeroRequiresConfig(t *testing.T) {
-	pm := newTimeoutTestManager(t, 0, 50*time.Millisecond, 0)
+	pm := newTimeoutTestManager(t, nil, 50*time.Millisecond, 0)
 
 	_, err := pm.ExecuteTool(context.Background(), "mock-plugin", "mock-tool", map[string]any{})
 	if err == nil {
@@ -650,7 +674,7 @@ func TestLoadCommandPlugin_UsesPerToolTimeout(t *testing.T) {
 				Description: "test",
 				Command:     "echo",
 				Args:        []string{"hello"},
-				TimeoutMs:   5000,
+				TimeoutMs:   new(5000),
 			},
 		},
 	}
@@ -675,8 +699,8 @@ func TestLoadCommandPlugin_UsesPerToolTimeout(t *testing.T) {
 	if len(loaded.Tools) != 1 {
 		t.Fatalf("expected 1 tool, got %d", len(loaded.Tools))
 	}
-	if loaded.Tools[0].TimeoutMs != 5000 {
-		t.Fatalf("expected TimeoutMs=5000, got %d", loaded.Tools[0].TimeoutMs)
+	if loaded.Tools[0].TimeoutMs == nil || *loaded.Tools[0].TimeoutMs != 5000 {
+		t.Fatalf("expected TimeoutMs=5000, got %v", loaded.Tools[0].TimeoutMs)
 	}
 }
 
@@ -700,7 +724,7 @@ func TestExecuteCommandTool_PerToolTimeout(t *testing.T) {
 				Description: "a slow tool that exceeds per-tool timeout",
 				Command:     os.Args[0],
 				Args:        []string{"-test.run=TestManagerHelperProcess", "--", "sleep"},
-				TimeoutMs:   2000,
+				TimeoutMs:   new(2000),
 			},
 		},
 	}
@@ -745,7 +769,7 @@ func TestConcurrentExecuteToolAndDisablePluginNoPanic(t *testing.T) {
 		jsonrpc: jsonClient,
 		runtime: pluginRuntimeJSONRPC,
 		tools: []ToolSpec{
-			{Name: "tool", Description: "test tool", TimeoutMs: 5000},
+			{Name: "tool", Description: "test tool", TimeoutMs: new(5000)},
 		},
 		priority: 10,
 	}
@@ -790,7 +814,7 @@ func TestConcurrentOnMessageAndDisablePluginNoPanic(t *testing.T) {
 		jsonrpc: jsonClient,
 		runtime: pluginRuntimeJSONRPC,
 		tools: []ToolSpec{
-			{Name: "tool", Description: "test tool", TimeoutMs: 5000},
+			{Name: "tool", Description: "test tool", TimeoutMs: new(5000)},
 		},
 		priority: 10,
 	}
@@ -886,7 +910,7 @@ func TestConcurrentBeforeSendAndDisablePluginNoPanic(t *testing.T) {
 		jsonrpc: jsonClient,
 		runtime: pluginRuntimeJSONRPC,
 		tools: []ToolSpec{
-			{Name: "tool", Description: "test tool", TimeoutMs: 5000},
+			{Name: "tool", Description: "test tool", TimeoutMs: new(5000)},
 		},
 		priority: 10,
 	}

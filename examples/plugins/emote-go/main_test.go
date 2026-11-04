@@ -236,8 +236,8 @@ func TestListTools(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected tool %q in ListTools output", e.name)
 		}
-		if ts.TimeoutMs != e.expectedTimeoutMs {
-			t.Fatalf("tool %q: expected TimeoutMs=%d, got %d", e.name, e.expectedTimeoutMs, ts.TimeoutMs)
+		if ts.TimeoutMs == nil || *ts.TimeoutMs != e.expectedTimeoutMs {
+			t.Fatalf("tool %q: expected TimeoutMs=%d, got %v", e.name, e.expectedTimeoutMs, ts.TimeoutMs)
 		}
 	}
 }

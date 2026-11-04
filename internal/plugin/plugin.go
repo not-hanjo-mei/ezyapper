@@ -100,18 +100,27 @@ type ToolSpec struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
 	Parameters  map[string]any `json:"parameters"`
-	TimeoutMs   int            `json:"timeout_ms,omitempty"`
+	// TimeoutMs is the tool's execution timeout in milliseconds. nil (the
+	// key absent from the tool spec) uses the host's fallback:
+	// operations.plugins.default_tool_timeout_ms for JSON-RPC tools,
+	// operations.plugins.command_timeout_sec for command tools. A set value
+	// must be greater than 0: an explicit 0 is rejected, not treated as
+	// absent. Set it with new(ms).
+	TimeoutMs *int `json:"timeout_ms,omitempty"`
 }
 
-// validateToolSpec validates and normalizes a ToolSpec's TimeoutMs field.
-// Returns an error if TimeoutMs is negative. Clamps values > 300000 to 300000 with a warning.
-// A value of 0 means "use global default" and is accepted.
+// validateToolSpec validates a ToolSpec's TimeoutMs field: an absent value
+// is accepted (the host fallback applies), a set value must be greater than
+// 0. Values over 300000 are honored with a warning.
 func validateToolSpec(ts *ToolSpec) error {
-	if ts.TimeoutMs < 0 {
-		return fmt.Errorf("tool %q: timeout_ms cannot be negative", ts.Name)
+	if ts.TimeoutMs == nil {
+		return nil
 	}
-	if ts.TimeoutMs > 300000 {
-		logger.Warnf("[plugin] tool %q: timeout_ms %d exceeds recommended maximum 300000, honoring user value", ts.Name, ts.TimeoutMs)
+	if *ts.TimeoutMs <= 0 {
+		return fmt.Errorf("tool %q: timeout_ms must be greater than 0 (omit the key to use the host's operations.plugins timeout)", ts.Name)
+	}
+	if *ts.TimeoutMs > 300000 {
+		logger.Warnf("[plugin] tool %q: timeout_ms %d exceeds recommended maximum 300000, honoring user value", ts.Name, *ts.TimeoutMs)
 	}
 	return nil
 }
@@ -133,7 +142,7 @@ type manifestToolSpec struct {
 	Command     string         `json:"command"`
 	Args        []string       `json:"args"`
 	ArgKeys     []string       `json:"arg_keys"`
-	TimeoutMs   int            `json:"timeout_ms,omitempty"`
+	TimeoutMs   *int           `json:"timeout_ms,omitempty"`
 }
 
 type commandTool struct {
@@ -368,12 +377,14 @@ func (pm *Manager) executeJSONRPCTool(plugin *Client, toolName string, args map[
 		return "", fmt.Errorf("jsonrpc plugin is not initialized")
 	}
 
-	// Resolve per-tool timeout: ToolSpec.TimeoutMs > defaultToolTimeoutMs; no fallback.
+	// Resolve the per-tool timeout: the tool spec's timeout_ms when the key
+	// is set (validated > 0), else operations.plugins.default_tool_timeout_ms
+	// when that is > 0 (0 there documents "no fallback").
 	var timeout time.Duration
 	var source string
 	for _, t := range plugin.tools {
-		if t.Name == toolName && t.TimeoutMs > 0 {
-			timeout = time.Duration(t.TimeoutMs) * time.Millisecond
+		if t.Name == toolName && t.TimeoutMs != nil {
+			timeout = time.Duration(*t.TimeoutMs) * time.Millisecond
 			source = "tool_spec"
 			break
 		}
@@ -432,15 +443,14 @@ func (pm *Manager) executeCommandTool(ctx context.Context, plugin *Client, toolN
 		commandArgs = append(commandArgs, argText)
 	}
 
-	var timeout time.Duration
+	// plugin.json timeout_ms when the key is set (validated > 0), else
+	// operations.plugins.command_timeout_sec.
+	timeout := time.Duration(pm.st().CommandTimeoutSec) * time.Second
 	for _, t := range plugin.tools {
-		if t.Name == toolName && t.TimeoutMs > 0 {
-			timeout = time.Duration(t.TimeoutMs) * time.Millisecond
+		if t.Name == toolName && t.TimeoutMs != nil {
+			timeout = time.Duration(*t.TimeoutMs) * time.Millisecond
 			break
 		}
-	}
-	if timeout == 0 {
-		timeout = time.Duration(pm.st().CommandTimeoutSec) * time.Second
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)

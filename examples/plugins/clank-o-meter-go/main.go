@@ -115,7 +115,7 @@ func (p *ClankOMeterPlugin) ListTools() ([]plugin.ToolSpec, error) {
 		{
 			Name:        "get_clank_o_meter",
 			Description: "Return deterministic score (0-100) for a Discord user ID",
-			TimeoutMs:   p.config.Load().GetClankOMeterMs,
+			TimeoutMs:   new(p.config.Load().GetClankOMeterMs),
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

@@ -53,7 +53,7 @@ func TestExecuteCommandTool_ConfigEditAppliesOnNextCall(t *testing.T) {
 			Description: "prints the configured value",
 			Command:     os.Args[0],
 			Args:        []string{"-test.run=TestManagerHelperProcess", "--", "read-config"},
-			TimeoutMs:   10000,
+			TimeoutMs:   new(10000),
 		}},
 	}
 	manifestBytes, err := json.Marshal(manifest)
