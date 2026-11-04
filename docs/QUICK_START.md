@@ -101,7 +101,7 @@ If validation fails, the log will list every missing/invalid field. Fix them, re
 
 - [Configuration](CONFIGURATION.md) — every field, with defaults policy and tuning notes
 - [Architecture](ARCHITECTURE.md) — how the pieces fit together
-- [Media Modalities](VISION.md) — image, audio and video handling
+- [Media Modalities](MEDIA.md) — image, audio and video handling
 - [Plugins](PLUGINS.md) — write or install extensions
 - [WebUI Reference](API.md) — what the dashboard exposes
 - [Deployment](DEPLOYMENT.md) — Docker, systemd, Kubernetes, reverse proxy

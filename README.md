@@ -39,7 +39,7 @@ go build -o ezyapper ./cmd/bot
 - [Configuration](docs/CONFIGURATION.md) — Tweak your bot's personality and behavior
 - [Deployment](docs/DEPLOYMENT.md) — Get it running on a server
 - [Architecture](docs/ARCHITECTURE.md) — How the code is organized
-- [Media Modalities](docs/VISION.md) — Image, audio, video and sticker handling (describe / ASR)
+- [Media Modalities](docs/MEDIA.md) — Image, audio, video and sticker handling (describe / ASR)
 - [Plugins](docs/PLUGINS.md) — Build your own extensions
 - [Prompt Optimization](docs/PROMPT_OPTIMIZATION.md) — Make responses faster and cheaper
 - [WebUI Reference](docs/API.md) — The optional admin dashboard
