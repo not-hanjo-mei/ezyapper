@@ -55,4 +55,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 # Set entrypoint
 ENTRYPOINT ["/app/ezyapper"]
-CMD ["-config", "/app/config.yaml"]
+CMD ["--config", "/app/config.yaml"]
