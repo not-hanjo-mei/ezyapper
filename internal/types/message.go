@@ -29,6 +29,10 @@ type DiscordMessage struct {
 	// link previews). Content stays the raw message text; use FullText for
 	// content plus embeds.
 	Embeds []EmbedSummary `json:"embeds,omitempty"`
+	// ResolvedMedia is the message's media as text, in the order images,
+	// stickers, audio/voice/video. Only media.Processor.Resolve sets it, on
+	// the copies it returns; see RenderAttachments.
+	ResolvedMedia []ResolvedMedia `json:"-"`
 	// Kinds lists what the message carries (text, embed, image, sticker,
 	// voice, ...); see MessageKinds. Used by message filters.
 	Kinds     []string  `json:"kinds,omitempty"`
