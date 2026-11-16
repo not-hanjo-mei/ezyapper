@@ -139,7 +139,7 @@ The main chat model. All sub-fields here are required.
 | `max_tokens` | int (>0) | Max tokens in completion. |
 | `temperature` | float (0.0–2.0) | Higher = more creative. |
 | `retry_count` | int (>0) | Retries for transient API errors. |
-| `timeout` | int (>0, seconds) | Per-request timeout. Required. It is also the timeout of a modality that sets none (an ASR endpoint included). The per-message processing deadline is derived from it: `(timeout + max plugin timeout) × max_tool_iterations + 10 s`. |
+| `timeout` | int (>0, seconds) | Per-request timeout. Required. It is also the timeout of a modality that sets none (an ASR endpoint included). The per-message processing deadline is derived from it: `(timeout + max plugin timeout) × max_tool_iterations + timeout × 2 + 10 s` (the `× 2` covers the [closing requests](#tool-budget)). |
 | `extra_params` | map | Optional. Forwarded to the API via reflection. Unknown keys log a warning at runtime. Nested keys keep their case. Also sent with embedding requests when `memory_pipeline.embedding.extra_params` is absent, and with modality requests whose own `extra_params` is absent. |
 | `system_prompt` | string | The static system prompt. Sent unchanged on every request (no placeholders); see [System prompt](#system-prompt). |
 | `max_tool_iterations` | int (>0) | Cap on tool-calling rounds per turn. Prevents infinite tool-call cycles. When the model still calls tools after the last round, the turn enters the closing phase: see [Tool budget](#tool-budget). |

@@ -425,11 +425,11 @@ type toolLoopRequester func(ctx context.Context, messages []openai.ChatCompletio
 // result every call gets come from core.ai.tool_budget.
 const ToolBudgetToolName = "tool_budget_exhausted"
 
-// maxClosingRequests caps the closing requests sent after the last tool
+// MaxClosingRequests caps the closing requests sent after the last tool
 // round: the first one answers the leftover calls with the fixed result, a
 // second one follows only if the model still calls a tool. This is an
 // internal protocol limit, not a tuning knob, so it is not a config key.
-const maxClosingRequests = 2
+const MaxClosingRequests = 2
 
 // toolBudgetTool is the only tool a closing request offers. It takes no
 // arguments.
@@ -568,10 +568,10 @@ func (c *Client) runToolLoop(ctx context.Context, initialMessages []openai.ChatC
 	// tools. Dropping the calls would leave whatever text came with them,
 	// often none, so the calls are answered with the fixed result (not
 	// executed) and the model is asked again with only the fixed tool
-	// offered, at most maxClosingRequests times.
+	// offered, at most MaxClosingRequests times.
 	logger.Infof("[ai] %s rounds used up (%d) with %d pending tool calls (%s); entering closing phase: only %s offered, at most %d requests",
-		warnLabel, maxIterations, len(resp.toolCalls), strings.Join(toolCallNames(resp.toolCalls), ", "), ToolBudgetToolName, maxClosingRequests)
-	for k := 1; k <= maxClosingRequests && len(resp.toolCalls) > 0; k++ {
+		warnLabel, maxIterations, len(resp.toolCalls), strings.Join(toolCallNames(resp.toolCalls), ", "), ToolBudgetToolName, MaxClosingRequests)
+	for k := 1; k <= MaxClosingRequests && len(resp.toolCalls) > 0; k++ {
 		messages = append(messages, openai.ChatCompletionMessage{
 			Role:             openai.ChatMessageRoleAssistant,
 			Content:          resp.content,
@@ -586,7 +586,7 @@ func (c *Client) runToolLoop(ctx context.Context, initialMessages []openai.ChatC
 				ToolCallID: toolCall.ID,
 			})
 		}
-		logger.Debugf("[ai] closing request %d/%d", k, maxClosingRequests)
+		logger.Debugf("[ai] closing request %d/%d", k, MaxClosingRequests)
 		resp, err = c.requestCompletionSlot(ctx, messages, request, true)
 		if err != nil {
 			return nil, err
@@ -595,7 +595,7 @@ func (c *Client) runToolLoop(ctx context.Context, initialMessages []openai.ChatC
 
 	if len(resp.toolCalls) > 0 {
 		logger.Warnf("[ai] %s closing phase hit its cap of %d requests with %d tool calls still pending (%s); dropped them, using the %d chars of text already present",
-			warnLabel, maxClosingRequests, len(resp.toolCalls), strings.Join(toolCallNames(resp.toolCalls), ", "), len(resp.content))
+			warnLabel, MaxClosingRequests, len(resp.toolCalls), strings.Join(toolCallNames(resp.toolCalls), ", "), len(resp.content))
 		resp.toolCalls = nil
 	}
 
