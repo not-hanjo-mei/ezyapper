@@ -249,8 +249,15 @@ A typical user message in a non-blacklisted, non-rate-limited channel:
       g. generateResponse → modalities: each modality's model turns media
            into text (descriptions, transcripts; cached by attachment ID),
            added to the messages → text-only base model + tools
-      h. executeToolLoop runs tool calls (Discord + plugin + MCP) until no more
-         calls or MaxToolIterations hit
+      h. executeToolLoop runs tool calls (Discord + plugin + MCP):
+           request (full tools) → calls? execute, append results → repeat,
+           at most max_tool_iterations rounds; no calls → reply text
+         closing phase, only if calls are still pending after the last round:
+           pending calls NOT executed, each gets core.ai.tool_budget.result
+           → closing request with tools = [tool_budget_exhausted] only
+           → any call (fixed or real tool) again gets the fixed result,
+             one more closing request; cap 2 closing requests, then leftover
+             calls are dropped (warning) and the text present is used
 11. Phase: Sending. BeforeSend plugin hooks may rewrite the response, attach files, or cancel sending
 12. sendResponse:
       - splits into chunks at ~1900 chars

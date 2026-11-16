@@ -248,6 +248,18 @@ core:
     # Guards against infinite tool-call loops.
     max_tool_iterations: 5
 
+    # Closing phase after the last tool round. When the model still calls
+    # tools after max_tool_iterations rounds, those calls are not executed:
+    # each gets `result` as its tool result, and up to 2 closing requests
+    # follow that offer only the fixed tool `tool_budget_exhausted` (with
+    # `description` as its description), so the model writes its reply with
+    # what it already has. Any tool call in a closing request is not executed
+    # either and gets `result` too. Both keys are required (tools are always
+    # offered); the wording below is a suggestion and can match the persona.
+    tool_budget:
+      description: "No tool calls remain for this turn: the tool budget is used up. Do not call any tool, including this one. Write your final reply to the user now with the information you already have; if something could not be done, say so briefly."
+      result: "Not executed: the tool budget for this turn is used up and no tool calls remain. Do not call any more tools. Reply to the user now with what you already have."
+
     # Max bytes for an image fetched from Discord CDN.
     max_image_bytes: 10485760
 

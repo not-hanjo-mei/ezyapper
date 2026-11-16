@@ -28,7 +28,8 @@ func TestCalculateSessionTimeout(t *testing.T) {
 					DefaultToolTimeoutMs: 0,
 				},
 			},
-			want: 385 * time.Second,
+			// (30 + 45) * 5 + 30 * 2 + 10 = 445s
+			want: 445 * time.Second,
 		},
 		{
 			name: "plugins disabled",
@@ -43,10 +44,11 @@ func TestCalculateSessionTimeout(t *testing.T) {
 					Enabled: false,
 				},
 			},
-			want: 160 * time.Second,
+			// 30 * 5 + 30 * 2 + 10 = 220s
+			want: 220 * time.Second,
 		},
 		{
-			name: "zero iterations returns buffer only",
+			name: "zero iterations: closing requests and buffer only",
 			cfg: &config.Config{
 				AI: config.AIConfig{
 					LLMConfig: config.LLMConfig{
@@ -58,7 +60,7 @@ func TestCalculateSessionTimeout(t *testing.T) {
 					Enabled: false,
 				},
 			},
-			want: 10 * time.Second,
+			want: 70 * time.Second,
 		},
 		{
 			name: "DefaultToolTimeoutMs dominates over CommandTimeoutSec",
@@ -75,8 +77,8 @@ func TestCalculateSessionTimeout(t *testing.T) {
 					DefaultToolTimeoutMs: 60000,
 				},
 			},
-			// (30 + 60) * 5 + 10 = 460s
-			want: 460 * time.Second,
+			// (30 + 60) * 5 + 30 * 2 + 10 = 520s
+			want: 520 * time.Second,
 		},
 	}
 

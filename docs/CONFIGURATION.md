@@ -139,11 +139,24 @@ The main chat model. All sub-fields here are required.
 | `max_tokens` | int (>0) | Max tokens in completion. |
 | `temperature` | float (0.0–2.0) | Higher = more creative. |
 | `retry_count` | int (>0) | Retries for transient API errors. |
-| `timeout` | int (>0, seconds) | Per-request timeout. Required. It is also the timeout of a modality that sets none (an ASR endpoint included). The per-message processing deadline is derived from it: `(timeout + max plugin timeout) × max_tool_iterations + 10 s`. |
+| `timeout` | int (>0, seconds) | Per-request timeout. Required. It is also the timeout of a modality that sets none (an ASR endpoint included). The per-message processing deadline is derived from it: `(timeout + max plugin timeout) × max_tool_iterations + timeout × 2 + 10 s` (the `× 2` covers the [closing requests](#tool-budget)). |
 | `extra_params` | map | Optional. Forwarded to the API via reflection. Unknown keys log a warning at runtime. Nested keys keep their case. Also sent with embedding requests when `memory_pipeline.embedding.extra_params` is absent, and with modality requests whose own `extra_params` is absent. |
 | `system_prompt` | string | The static system prompt. Sent unchanged on every request (no placeholders); see [System prompt](#system-prompt). |
-| `max_tool_iterations` | int (>0) | Cap on tool-calling loops per turn. Prevents infinite tool-call cycles. |
+| `max_tool_iterations` | int (>0) | Cap on tool-calling rounds per turn. Prevents infinite tool-call cycles. When the model still calls tools after the last round, the turn enters the closing phase: see [Tool budget](#tool-budget). |
+| `tool_budget.description` | string | Required (tools are always offered, since `max_tool_iterations` > 0). Description of the fixed tool `tool_budget_exhausted`, the only tool the closing requests offer. Tell the model that no tool calls remain and it must reply now. |
+| `tool_budget.result` | string | Required, as above. Tool result given to every tool call that is not executed in the closing phase: the calls left over after the last round, and any call (the fixed tool or a real one) in a closing request. |
 | `max_image_bytes` | int (>0) | Maximum bytes for an image fetched from Discord CDN. |
+
+#### Tool budget
+
+Rounds 1 to `max_tool_iterations` offer the full tool list and execute every call. If the model's response after the last round still has tool calls, the turn does not end with that (often empty) text. Instead:
+
+1. The leftover calls are not executed; each gets `core.ai.tool_budget.result` as its tool result.
+2. A closing request follows with `tools` replaced by a single fixed tool, `tool_budget_exhausted`, whose description is `core.ai.tool_budget.description`. The history keeps its tool messages, so the request shape stays valid on gateways that reject tool messages without `tools`.
+3. If the model calls any tool in a closing request (the fixed tool, or a real tool name it was not offered), nothing is executed: each call gets `core.ai.tool_budget.result` and one more closing request follows.
+4. At most 2 closing requests are sent (an internal limit, not a key). If the second one still has tool calls, they are dropped, the text the response already has is used, and a warning is logged.
+
+The bot logs one line when it enters the closing phase. There is no per-round cap on how many tool calls one response may contain. Both `tool_budget` keys are new: a config written before them fails validation until they are added (see `examples/config.yaml.example` for suggested text). Like the rest of `core.ai`, they take effect on hot reload for the next message.
 
 `core.ai.require_image_content_type` was removed: image downloads already reject responses whose `Content-Type` is not an image type. A config that still sets it loads and logs a deprecation warning.
 
