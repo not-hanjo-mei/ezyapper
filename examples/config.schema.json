@@ -71,7 +71,7 @@
         },
         "ai": {
           "type": "object",
-          "required": ["api_base_url", "api_key", "model", "max_tokens", "retry_count", "timeout", "system_prompt", "max_tool_iterations", "max_image_bytes", "modalities"],
+          "required": ["api_base_url", "api_key", "model", "max_tokens", "retry_count", "timeout", "system_prompt", "max_tool_iterations", "tool_budget", "max_image_bytes", "modalities"],
           "additionalProperties": false,
           "properties": {
             "api_base_url":   { "type": "string", "minLength": 1 },
@@ -82,6 +82,16 @@
             "retry_count":    { "type": "integer", "minimum": 1 },
             "timeout":        { "type": "integer", "minimum": 1, "description": "Per-request timeout (s); also used by a modality that sets none." },
             "max_tool_iterations":        { "type": "integer", "minimum": 1 },
+            "tool_budget": {
+              "type": "object",
+              "description": "Text of the fixed tool tool_budget_exhausted, the only tool offered by the (at most 2) closing requests sent when the model still calls tools after max_tool_iterations rounds. No built-in text: both keys are required.",
+              "required": ["description", "result"],
+              "additionalProperties": false,
+              "properties": {
+                "description": { "type": "string", "minLength": 1, "pattern": "\\S", "description": "Tool description: no tool calls remain, reply now." },
+                "result":      { "type": "string", "minLength": 1, "pattern": "\\S", "description": "Tool result for every call not executed in the closing phase." }
+              }
+            },
             "max_image_bytes":            { "type": "integer", "minimum": 1 },
             "require_image_content_type": { "type": "boolean", "deprecated": true, "description": "Removed and ignored (a config that sets it logs a deprecation warning)." },
             "system_prompt":  { "type": "string", "minLength": 1, "not": { "pattern": "\\{(BotName|AuthorName|ServerName|GuildID|ChannelID)\\}" }, "description": "Sent unchanged; the removed {BotName}-style placeholders fail validation." },

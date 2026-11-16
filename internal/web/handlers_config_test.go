@@ -51,6 +51,7 @@ const testConfigYAML = `core:
     retry_count: 3
     timeout: 30
     max_tool_iterations: 10
+    tool_budget: {description: "d", result: "r"}
     max_image_bytes: 5242880
     system_prompt: "test"
     modalities:

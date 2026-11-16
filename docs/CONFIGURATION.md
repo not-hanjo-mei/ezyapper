@@ -142,7 +142,9 @@ The main chat model. All sub-fields here are required.
 | `timeout` | int (>0, seconds) | Per-request timeout. Required. It is also the timeout of a modality that sets none (an ASR endpoint included). The per-message processing deadline is derived from it: `(timeout + max plugin timeout) × max_tool_iterations + 10 s`. |
 | `extra_params` | map | Optional. Forwarded to the API via reflection. Unknown keys log a warning at runtime. Nested keys keep their case. Also sent with embedding requests when `memory_pipeline.embedding.extra_params` is absent, and with modality requests whose own `extra_params` is absent. |
 | `system_prompt` | string | The static system prompt. Sent unchanged on every request (no placeholders); see [System prompt](#system-prompt). |
-| `max_tool_iterations` | int (>0) | Cap on tool-calling loops per turn. Prevents infinite tool-call cycles. |
+| `max_tool_iterations` | int (>0) | Cap on tool-calling rounds per turn. Prevents infinite tool-call cycles. When the model still calls tools after the last round, the turn enters the closing phase: see [Tool budget](#tool-budget). |
+| `tool_budget.description` | string | Required (tools are always offered, since `max_tool_iterations` > 0). Description of the fixed tool `tool_budget_exhausted`, the only tool the closing requests offer. Tell the model that no tool calls remain and it must reply now. |
+| `tool_budget.result` | string | Required, as above. Tool result given to every tool call that is not executed in the closing phase: the calls left over after the last round, and any call (the fixed tool or a real one) in a closing request. |
 | `max_image_bytes` | int (>0) | Maximum bytes for an image fetched from Discord CDN. |
 
 `core.ai.require_image_content_type` was removed: image downloads already reject responses whose `Content-Type` is not an image type. A config that still sets it loads and logs a deprecation warning.

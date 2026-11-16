@@ -170,6 +170,7 @@ discord:
 		system_prompt: "test"
 		http_timeout_sec: 30
 		max_tool_iterations: 5
+		tool_budget: {description: "d", result: "r"}
 		max_image_bytes: 10485760
 memory_pipeline:
 	embedding:
@@ -271,6 +272,7 @@ discord:
 		system_prompt: "test"
 		http_timeout_sec: 30
 		max_tool_iterations: 5
+		tool_budget: {description: "d", result: "r"}
 		max_image_bytes: 10485760
 memory_pipeline:
 	embedding:
@@ -367,7 +369,7 @@ func TestValidate_InvalidReplyPercentage(t *testing.T) {
 			},
 			Vision:            VisionConfig{Model: "gpt-4o"},
 			SystemPrompt:      "test",
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{
 			Model: "text-embedding-3-small",
@@ -462,7 +464,7 @@ func TestValidate_InvalidTemperature(t *testing.T) {
 			},
 			Vision:            VisionConfig{Model: "gpt-4o"},
 			SystemPrompt:      "test",
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{
 			Model: "text-embedding-3-small",
@@ -563,7 +565,7 @@ func TestValidate_InvalidRetrievalTopK(t *testing.T) {
 				Model: "gpt-4o",
 				Mode:  "text_only",
 			},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 0, Timeout: 30},
 		Memory: MemoryConfig{
@@ -672,7 +674,7 @@ func TestValidate_WebDisabled_DoesNotRequireWebCredentials(t *testing.T) {
 			},
 			SystemPrompt:      "sp",
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
@@ -735,7 +737,7 @@ func TestValidate_MemoryRetrievalEnabled_RequiresEmbeddingAndQdrant(t *testing.T
 			},
 			SystemPrompt:      "sp",
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -801,7 +803,7 @@ func TestValidate_EmbeddingVectorSizeRelationCheck(t *testing.T) {
 			},
 			SystemPrompt:      "sp",
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
@@ -844,7 +846,7 @@ func TestValidate_DecisionEnabledRequiresExplicitCredentials(t *testing.T) {
 			},
 			SystemPrompt:      "sp",
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -917,6 +919,7 @@ func TestPluginsConfig_DefaultToolTimeoutMs_ParsesCorrectly(t *testing.T) {
     system_prompt: "test"
     http_timeout_sec: 30
     max_tool_iterations: 5
+    tool_budget: {description: "d", result: "r"}
     max_image_bytes: 10485760
     vision:
       model: "gpt-4o"
@@ -1041,7 +1044,7 @@ func TestValidate_DecisionEnabledWithExplicitCredentials(t *testing.T) {
 			},
 			SystemPrompt:      "sp",
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1118,7 +1121,7 @@ func TestValidate_ConsolidationEnabled_RequiresOwnBotID(t *testing.T) {
 			},
 			SystemPrompt:      "sp",
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
 		Memory: MemoryConfig{
@@ -1162,7 +1165,7 @@ func TestValidate_ConsolidationDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 			},
 			SystemPrompt:      "sp",
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1225,7 +1228,7 @@ func TestValidate_TopKEnabled_RequiresOwnBotID(t *testing.T) {
 			},
 			SystemPrompt:      "sp",
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
@@ -1268,7 +1271,7 @@ func TestValidate_MemoryDisabled_DoesNotRequireOwnBotID(t *testing.T) {
 			},
 			SystemPrompt:      "sp",
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1332,6 +1335,7 @@ func TestValidate_ConsolidationEnabled_WithCoreAIFallback(t *testing.T) {
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5,
 			MaxImageBytes:     10485760,
+			ToolBudget:        testToolBudget,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
 		Memory: MemoryConfig{
@@ -1400,6 +1404,7 @@ func TestValidate_ConsolidationEnabled_BothEmpty(t *testing.T) {
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
 			MaxToolIterations: 5,
 			MaxImageBytes:     10485760,
+			ToolBudget:        testToolBudget,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
 		Memory: MemoryConfig{
@@ -1475,7 +1480,7 @@ func TestValidateAI_MissingTimeoutRequired(t *testing.T) {
 			},
 			SystemPrompt:      "sp",
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1588,7 +1593,7 @@ func TestValidate_VisionMaxTokensNegative(t *testing.T) {
 				Mode:              "hybrid",
 				DescriptionPrompt: "desc",
 			},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 1},
 		Memory: MemoryConfig{
@@ -1634,7 +1639,7 @@ func TestValidate_EmbeddingTimeoutZero(t *testing.T) {
 			},
 			SystemPrompt:      "sp",
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{Model: "text-embedding-3-small", RetryCount: 1, Timeout: 0},
 		Memory: MemoryConfig{
@@ -1678,7 +1683,7 @@ func TestValidate_OtherBotPolicy_Missing(t *testing.T) {
 			},
 			SystemPrompt:      "sp",
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1718,7 +1723,7 @@ func TestValidate_OtherBotPolicy_Invalid(t *testing.T) {
 			},
 			SystemPrompt:      "sp",
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1758,7 +1763,7 @@ func TestValidate_MCP_HTTP_RequiresURL(t *testing.T) {
 			},
 			SystemPrompt:      "sp",
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -1799,7 +1804,7 @@ func TestValidate_MCP_InvalidType(t *testing.T) {
 			},
 			SystemPrompt:      "sp",
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{},
 		Memory: MemoryConfig{
@@ -2071,7 +2076,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsNegative(t *testing.T) {
 			},
 			SystemPrompt:      "sp",
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{
@@ -2123,7 +2128,7 @@ func TestValidate_PluginsDefaultToolTimeoutMsPositive_NoError(t *testing.T) {
 			},
 			SystemPrompt:      "sp",
 			Vision:            VisionConfig{Model: "vm", Mode: "text_only"},
-			MaxToolIterations: 5, MaxImageBytes: 10485760,
+			MaxToolIterations: 5, MaxImageBytes: 10485760, ToolBudget: testToolBudget,
 		},
 		Embedding: EmbeddingConfig{Model: "em", RetryCount: 0, Timeout: 1},
 		Memory: MemoryConfig{

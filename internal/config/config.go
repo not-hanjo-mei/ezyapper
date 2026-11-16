@@ -217,12 +217,27 @@ type AIConfig struct {
 	SystemPrompt      string       `mapstructure:"system_prompt" yaml:"system_prompt"`
 	MaxToolIterations int          `mapstructure:"max_tool_iterations" yaml:"max_tool_iterations"`
 	MaxImageBytes     int          `mapstructure:"max_image_bytes" yaml:"max_image_bytes"`
+	// ToolBudget is the text of the fixed tool offered once the
+	// max_tool_iterations rounds are used up (see ToolBudgetConfig).
+	ToolBudget ToolBudgetConfig `mapstructure:"tool_budget" yaml:"tool_budget"`
 
 	// imageSet records that core.ai.modalities.image was present in the
 	// file (even with only zero values), so the legacy vision block, which
 	// maps onto it, is ignored. Other modality sections (the sticker keys
 	// are always required) do not shadow the legacy block.
 	imageSet bool
+}
+
+// ToolBudgetConfig is core.ai.tool_budget: the text of the fixed tool
+// tool_budget_exhausted. When the chat model still calls tools after
+// core.ai.max_tool_iterations rounds, the closing requests offer only this
+// tool. Description is its tool description; Result is the tool result
+// returned for every call that is not executed in the closing phase. Both
+// are required because tools are always offered (max_tool_iterations > 0);
+// there is no built-in text.
+type ToolBudgetConfig struct {
+	Description string `mapstructure:"description" yaml:"description"`
+	Result      string `mapstructure:"result" yaml:"result"`
 }
 
 // EmbeddingConfig holds settings for embedding generation.
@@ -638,6 +653,13 @@ func validateAI(cfg *Config, errs *[]string) {
 	requirePositive(cfg.AI.Timeout, "core.ai.timeout", errs)
 	requirePositive(cfg.AI.MaxToolIterations, "core.ai.max_tool_iterations", errs)
 	requirePositive(cfg.AI.MaxImageBytes, "core.ai.max_image_bytes", errs)
+	// Tools are offered whenever max_tool_iterations > 0 (always, once the
+	// key is valid), so the closing-phase text is required with it.
+	if cfg.AI.MaxToolIterations > 0 {
+		const cond = "core.ai.max_tool_iterations > 0 (the closing request after the last tool round offers only the tool_budget_exhausted tool)"
+		requireTextWhen(cfg.AI.ToolBudget.Description, "core.ai.tool_budget.description", cond, errs)
+		requireTextWhen(cfg.AI.ToolBudget.Result, "core.ai.tool_budget.result", cond, errs)
+	}
 }
 
 func validateDiscord(cfg *Config, errs *[]string) {
