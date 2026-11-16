@@ -14,8 +14,7 @@
     "timeout_seconds",
     "output_dir",
     "max_text_chars",
-    "rewriter",
-    "tool_timeouts"
+    "rewriter"
   ],
   "additionalProperties": false,
   "anyOf": [
@@ -85,12 +84,12 @@
     },
     "output_dir": {
       "type": "string",
-      "description": "Output directory for generated audio files (relative to plugin dir or absolute)"
+      "description": "Directory for audio files too large to return in memory (relative to plugin dir or absolute)"
     },
     "max_text_chars": {
       "type": "integer",
       "minimum": 1,
-      "description": "Maximum accepted text length for one tool call"
+      "description": "Maximum accepted reply length to synthesize"
     },
     "upload_memory_threshold": {
       "type": "string",
@@ -151,18 +150,6 @@
         "prompt": {
           "type": "string",
           "description": "Rewrite system prompt template (required when enabled=true)"
-        }
-      }
-    },
-    "tool_timeouts": {
-      "type": "object",
-      "required": ["generate_tts_audio_ms"],
-      "additionalProperties": false,
-      "properties": {
-        "generate_tts_audio_ms": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "Tool execution timeout in milliseconds for generate_tts_audio"
         }
       }
     }

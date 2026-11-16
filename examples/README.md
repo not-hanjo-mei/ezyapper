@@ -46,7 +46,7 @@ Available plugin examples:
 - `plugins/antispam-go/`: message rate limiting with plugin config
 - `plugins/clank-o-meter-go/`: deterministic score tool provider example
 - `plugins/datetime-go/`: simple datetime tool provider example
-- `plugins/openai-tts-go/`: OpenAI-compatible text-to-speech tool plugin
+- `plugins/openai-tts-go/`: OpenAI-compatible text-to-speech plugin that voices every reply (`before_send`, no AI tools)
 - `plugins/datetime-zig/`: lightweight Zig command plugin for datetime tool
 - `plugins/datetime-java/`: lightweight Java command plugin for datetime tool
 - `plugins/clank-o-meter-zig/`: lightweight Zig command plugin for deterministic score tool

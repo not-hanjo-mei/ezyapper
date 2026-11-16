@@ -1,11 +1,8 @@
 # OpenAI-Compatible TTS Plugin
 
-Provides one AI tool via the plugin system:
-- `generate_tts_audio`
+Voices every bot reply. The plugin implements `before_send`: for each non-empty reply it calls an OpenAI-compatible `/audio/speech` endpoint and returns the audio, which the host uploads together with the text.
 
-This plugin calls an OpenAI-compatible `/audio/speech` endpoint, saves the returned audio to disk, and returns file metadata.
-
-The plugin implements `before_send` and always requests TTS generation for every non-empty bot reply, so audio is uploaded together with the text response.
+It exposes no AI tools, so the chat model never sees a TTS tool. (An earlier `generate_tts_audio` tool only saved a file locally; the host never uploaded it, so the model believed it had sent audio that nobody received.)
 
 ## Build
 
@@ -59,7 +56,7 @@ Supported keys:
 - `format` (string, required): default output format (`mp3`, `opus`, `aac`, `flac`, `wav`, `pcm`)
 - `speed` (number, required): default speed in range (0, 4]
 - `timeout_seconds` (integer, required): request timeout in seconds
-- `output_dir` (string, required): output directory, relative to plugin directory or absolute path
+- `output_dir` (string, required): directory for audio larger than `upload_memory_threshold` (written, uploaded, then deleted), relative to plugin directory or absolute path
 - `max_text_chars` (integer, required): maximum input text length
 - `upload_memory_threshold` (string, required): before_send upload threshold with unit (`B`, `KB`, `MB`, `GB`), for example `512KB` or `1MB`
 - `rewriter.enabled` (bool, required): must be explicitly `true` or `false`
@@ -118,32 +115,3 @@ Rewriter message flow:
 - bot reply + instructions are sent as JSON payload in the `user` message
 - plugin extracts JSON string from `assistant` content and parses it strictly
 - TTS request includes `instructions` only when rewriter output contains `instructions` key
-
-## Tool Parameters
-
-- `text` (required): input text
-- `voice` (optional): override config voice
-- `model` (optional): override config model
-- `format` (optional): override config format
-- `speed` (optional): override config speed
-- `instructions` (optional): speaking style instructions
-- `file_name` (optional): output file base name
-- `overwrite` (optional): overwrite existing file if same name exists
-
-## Tool Output
-
-Returns JSON string with fields such as:
-
-- `status`
-- `file_path`
-- `relative_path`
-- `bytes`
-- `content_type`
-- `model`
-- `voice`
-- `format`
-- `speed`
-- `text_chars`
-- `endpoint`
-
-Note: this tool generates a local audio file. It does not automatically upload audio to Discord.

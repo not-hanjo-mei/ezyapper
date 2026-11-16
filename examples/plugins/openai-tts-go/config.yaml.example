@@ -20,11 +20,12 @@ speed: 1.0 # (0, 4]
 # Required: HTTP timeout in seconds.
 timeout_seconds: 60
 
-# Required: output directory for generated audio files.
+# Required: directory for audio files larger than upload_memory_threshold
+# (written there, uploaded, then deleted).
 # Relative paths are resolved from the plugin directory.
 output_dir: "generated"
 
-# Required: maximum accepted text length for one tool call.
+# Required: maximum reply length (characters) to synthesize.
 max_text_chars: 4000
 
 # Required: before_send upload threshold.
@@ -53,10 +54,6 @@ rewriter:
     If instructions are needed, use: {"input":"...","instructions":"..."}
     # If the target TTS model does not support instructions, use: {"input":"..."}
     Do not output markdown or extra text.
-
-# Tool-level timeouts in milliseconds.
-tool_timeouts:
-  generate_tts_audio_ms: 60000
 
 # Optional extra headers (must not override Authorization).
 # headers:

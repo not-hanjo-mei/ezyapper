@@ -31,12 +31,6 @@ func (r *reloadingPlugin) BeforeSend(args plugin.BeforeSendArgs) (plugin.BeforeS
 
 func (r *reloadingPlugin) Shutdown() error { return r.cur.Load().Shutdown() }
 
-func (r *reloadingPlugin) ListTools() ([]plugin.ToolSpec, error) { return r.cur.Load().ListTools() }
-
-func (r *reloadingPlugin) ExecuteTool(name string, args map[string]interface{}) (string, error) {
-	return r.cur.Load().ExecuteTool(name, args)
-}
-
 func (r *reloadingPlugin) reload() error {
 	cfg, err := loadConfig()
 	if err != nil {
