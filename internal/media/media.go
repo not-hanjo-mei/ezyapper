@@ -24,6 +24,11 @@ type Processor struct {
 	base *ai.Client
 	// imageClient describes images (image enabled).
 	imageClient *ai.Client
+	// memoryImageClient and memoryImagePrompt describe images for memory
+	// consolidation (the image modality with consolidation.vision
+	// overrides).
+	memoryImageClient *ai.Client
+	memoryImagePrompt string
 	// videoClient describes videos.
 	videoClient *ai.Client
 	// asr transcribes audio (audio mode asr).
@@ -42,6 +47,9 @@ type Processor struct {
 
 	maxImageBytes int64
 	cache         *Cache
+
+	// selfID returns the bot's own user ID (see SetSelf).
+	selfID func() string
 }
 
 // New builds a Processor from cfg. Every model it calls only turns media
@@ -60,6 +68,10 @@ func New(cfg *config.Config, cache *Cache) *Processor {
 	if mods.Image.Enabled {
 		ic := mods.Image.Resolve(cfg.AI)
 		p.imageClient = ai.NewClient(&ic, tools.NewToolRegistry())
+		mi := cfg.ConsolidationImage()
+		mc := mi.Resolve(cfg.AI)
+		p.memoryImageClient = ai.NewClient(&mc, tools.NewToolRegistry())
+		p.memoryImagePrompt = mi.Prompt
 	}
 	if mods.Video.Enabled {
 		vc := mods.Video.Resolve(cfg.AI)
