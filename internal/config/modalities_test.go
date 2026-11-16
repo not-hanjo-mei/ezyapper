@@ -615,3 +615,28 @@ func TestLoad_RemovedRequireImageContentTypeWarns(t *testing.T) {
 		t.Fatalf("no warning expected without the key, got %q", buf.String())
 	}
 }
+
+// consolidation.vision keys override image's when present (explicit 0 and
+// {} included) and leave image's (then core.ai's) when absent.
+func TestConsolidationImage_Presence(t *testing.T) {
+	cfg := &Config{AI: AIConfig{LLMConfig: LLMConfig{Temperature: 0.8, RetryCount: 3, Timeout: 60, ExtraParams: map[string]any{"a": 1}}}}
+	cfg.AI.Modalities.Image = ImageModalityConfig{Enabled: true, Prompt: "p", ModalityModel: ModalityModel{Model: "vl", Temperature: new(float32(0.5))}}
+
+	img := cfg.ConsolidationImage()
+	resolved := img.Resolve(cfg.AI)
+	if resolved.Temperature != 0.5 || resolved.RetryCount != 3 || resolved.ExtraParams["a"] != 1 || img.Prompt != "p" {
+		t.Fatalf("absent vision keys must keep image's then core.ai's, got %+v prompt=%q", resolved.LLMConfig, img.Prompt)
+	}
+
+	cfg.Memory.Consolidation.Vision = ConsolidationVisionConfig{DescriptionPrompt: "q", ModalityModel: ModalityModel{
+		Temperature: new(float32(0)), RetryCount: new(0), ExtraParams: map[string]any{},
+	}}
+	img = cfg.ConsolidationImage()
+	resolved = img.Resolve(cfg.AI)
+	if resolved.Temperature != 0 || resolved.RetryCount != 0 || len(resolved.ExtraParams) != 0 || resolved.Model != "vl" || img.Prompt != "q" {
+		t.Fatalf("explicit 0 / {} vision keys must be used as is, got %+v prompt=%q", resolved.LLMConfig, img.Prompt)
+	}
+	if cfg.AI.Modalities.Image.Prompt != "p" {
+		t.Fatal("ConsolidationImage must not modify the config")
+	}
+}

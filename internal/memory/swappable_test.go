@@ -53,7 +53,7 @@ func TestMemoryService_SwapEmbedderReachesConsolidator(t *testing.T) {
 	svc, err := NewService(&ServiceConfig{
 		ConsolidationInterval: 1, ShortTermLimit: 1,
 		Consolidation: &config.ConsolidationConfig{Model: "m", SystemPrompt: "p"},
-	}, testQdrantCfg, &QdrantClient{}, a, nil, nil)
+	}, testQdrantCfg, &QdrantClient{}, a, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

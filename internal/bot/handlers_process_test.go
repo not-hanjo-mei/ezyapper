@@ -65,7 +65,7 @@ func TestProcessMessageCore_CancelledContext(t *testing.T) {
 	b.processingMessages["msg-1"] = pm
 
 	assertNoPanic(t, func() {
-		b.processMessageCore(ctx, nil, m, pm, false, nil)
+		b.processMessageCore(ctx, nil, m, pm, nil)
 	})
 
 	b.processingMu.RLock()
@@ -93,7 +93,7 @@ func TestProcessMessageCore_CancelledAfterPhaseSet(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	assertNoPanic(t, func() {
-		b.processMessageCore(ctx, nil, m, pm, false, nil)
+		b.processMessageCore(ctx, nil, m, pm, nil)
 	})
 
 	b.processingMu.RLock()
@@ -116,7 +116,7 @@ func TestProcessMessageCore_NilPM(t *testing.T) {
 	m := newTestMessage("msg-3", "chan-1", "guild-1", "user-3", "carol", "hi")
 
 	assertNoPanic(t, func() {
-		b.processMessageCore(ctx, nil, m, nil, false, nil)
+		b.processMessageCore(ctx, nil, m, nil, nil)
 	})
 }
 
@@ -140,7 +140,7 @@ func TestProcessMessageCore_GuildLookupError(t *testing.T) {
 	b.processingMessages["msg-4"] = pm
 
 	assertNoPanic(t, func() {
-		b.processMessageCore(ctx, s, m, pm, false, nil)
+		b.processMessageCore(ctx, s, m, pm, nil)
 	})
 
 	b.processingMu.RLock()
@@ -151,51 +151,8 @@ func TestProcessMessageCore_GuildLookupError(t *testing.T) {
 	}
 }
 
-// TestProcessMessageCore_WithImagesFlag verifies both withImages=false and
-// withImages=true reach the shared core function and handle early exit identically.
-func TestProcessMessageCore_WithImagesFlag(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	b := &Bot{
-		ctx:                ctx,
-		processingMessages: map[string]*ProcessingMessage{},
-	}
-
-	m1 := newTestMessage("msg-5", "chan-1", "guild-1", "user-5", "eve", "hello world")
-	pm1 := &ProcessingMessage{MessageID: "msg-5"}
-	b.processingMessages["msg-5"] = pm1
-
-	assertNoPanic(t, func() {
-		b.processMessageCore(ctx, nil, m1, pm1, false, nil)
-	})
-
-	b.processingMu.RLock()
-	_, exists1 := b.processingMessages["msg-5"]
-	b.processingMu.RUnlock()
-	if exists1 {
-		t.Error("expected message cleared with withImages=false")
-	}
-
-	m2 := newTestMessage("msg-6", "chan-1", "guild-1", "user-6", "frank", "look at this image")
-	pm2 := &ProcessingMessage{MessageID: "msg-6"}
-	b.processingMessages["msg-6"] = pm2
-
-	assertNoPanic(t, func() {
-		b.processMessageCore(ctx, nil, m2, pm2, true, nil)
-	})
-
-	b.processingMu.RLock()
-	_, exists2 := b.processingMessages["msg-6"]
-	b.processingMu.RUnlock()
-	if exists2 {
-		t.Error("expected message cleared with withImages=true")
-	}
-}
-
-// TestProcessMessageCore_DisplayNameAlwaysSet verifies both wrappers delegate to
-// the shared core, where profile.DisplayName is set unconditionally (behavior
-// change: previously processMessageWithoutImages skipped this assignment).
+// TestProcessMessageCore_DisplayNameAlwaysSet verifies processMessage
+// delegates to the core, where profile.DisplayName is set unconditionally.
 func TestProcessMessageCore_DisplayNameAlwaysSet(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -211,7 +168,7 @@ func TestProcessMessageCore_DisplayNameAlwaysSet(t *testing.T) {
 
 	b.wg.Add(1)
 	assertNoPanic(t, func() {
-		b.processMessageWithoutImages(ctx, nil, m, pm, nil)
+		b.processMessage(ctx, nil, m, pm, nil)
 	})
 
 	m2 := newTestMessage("msg-7b", "chan-1", "guild-1", "user-7b", "grace", "structural test 2")
@@ -222,33 +179,6 @@ func TestProcessMessageCore_DisplayNameAlwaysSet(t *testing.T) {
 	assertNoPanic(t, func() {
 		b.processMessage(ctx, nil, m2, pm2, nil)
 	})
-}
-
-// TestProcessMessageWithoutImages_DelegatesToCore verifies that
-// processMessageWithoutImages is a thin wrapper around processMessageCore.
-func TestProcessMessageWithoutImages_DelegatesToCore(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	b := &Bot{
-		ctx:                ctx,
-		processingMessages: map[string]*ProcessingMessage{},
-	}
-	m := newTestMessage("msg-8", "chan-1", "guild-1", "user-8", "heidi", "wrapper test")
-	pm := &ProcessingMessage{MessageID: "msg-8"}
-	b.processingMessages["msg-8"] = pm
-
-	b.wg.Add(1)
-	assertNoPanic(t, func() {
-		b.processMessageWithoutImages(ctx, nil, m, pm, nil)
-	})
-
-	b.processingMu.RLock()
-	_, exists := b.processingMessages["msg-8"]
-	b.processingMu.RUnlock()
-	if exists {
-		t.Error("expected wrapper to clear processing message")
-	}
 }
 
 // TestProcessMessage_DelegatesToCore verifies that
@@ -275,43 +205,5 @@ func TestProcessMessage_DelegatesToCore(t *testing.T) {
 	b.processingMu.RUnlock()
 	if exists {
 		t.Error("expected wrapper to clear processing message")
-	}
-}
-
-// TestProcessMessageCore_BothPathsConverge verifies both public functions
-// call the same internal core and behave identically on early exit.
-func TestProcessMessageCore_BothPathsConverge(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	b := &Bot{
-		ctx:                ctx,
-		processingMessages: map[string]*ProcessingMessage{},
-	}
-
-	m1 := newTestMessage("msg-10", "chan-1", "guild-1", "user-10a", "julia", "converge")
-	pm1 := &ProcessingMessage{MessageID: "msg-10"}
-	b.processingMessages["msg-10"] = pm1
-
-	b.wg.Add(1)
-	b.processMessageWithoutImages(ctx, nil, m1, pm1, nil)
-
-	b.processingMu.RLock()
-	_, exists1 := b.processingMessages["msg-10"]
-	b.processingMu.RUnlock()
-
-	m2 := newTestMessage("msg-11", "chan-1", "guild-1", "user-10b", "julia", "converge 2")
-	pm2 := &ProcessingMessage{MessageID: "msg-11"}
-	b.processingMessages["msg-11"] = pm2
-
-	b.wg.Add(1)
-	b.processMessage(ctx, nil, m2, pm2, nil)
-
-	b.processingMu.RLock()
-	_, exists2 := b.processingMessages["msg-11"]
-	b.processingMu.RUnlock()
-
-	if exists1 || exists2 {
-		t.Errorf("expected both messages cleared: exists1=%v exists2=%v", exists1, exists2)
 	}
 }

@@ -411,7 +411,7 @@ func TestNewService_MigratesThenSyncsInBackground(t *testing.T) {
 		MinScore:              0.5,
 		Consolidation:         &config.ConsolidationConfig{Model: "gpt-4", SystemPrompt: "test"},
 	}
-	svc, err := NewService(cfg, testQdrantCfgDim(testDim), qc, emb, nil, nil)
+	svc, err := NewService(cfg, testQdrantCfgDim(testDim), qc, emb, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

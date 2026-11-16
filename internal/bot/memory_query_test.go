@@ -5,13 +5,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 
 	"ezyapper/internal/config"
 	"ezyapper/internal/memory"
+	"ezyapper/internal/types"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -55,16 +55,16 @@ func TestSearchMemories_VoiceMessageUsesTranscript(t *testing.T) {
 	b.memoryStore = store
 
 	m := voiceCreate(files.URL)
-	b.searchMemories(context.Background(), m, nil, b.currentMediaText(context.Background(), m, nil))
+	current := b.resolveCurrent(context.Background(), m)
+	b.searchMemories(context.Background(), m, nil, types.RenderAttachments(current, types.StyleQuery))
 
-	if len(store.queries) != 1 || !strings.Contains(store.queries[0], "my cat is called Mochi") {
+	if len(store.queries) != 1 || store.queries[0] != "my cat is called Mochi" {
 		t.Fatalf("search queries = %q, want the transcript", store.queries)
 	}
-	// The reply prompt reuses the cached transcript.
-	cur := *voiceMsg("x", files.URL)
-	cur.Media[0].ID = "att-voice"
-	if got := b.annotateCurrent(context.Background(), cur, GenerateContext{}); !strings.Contains(got, "Mochi") || asrCalls != 1 {
-		t.Fatalf("annotateCurrent=%q asrCalls=%d, want the cached transcript and one ASR call", got, asrCalls)
+	// The reply prompt uses the same resolved message: no second ASR call.
+	mc, gc := b.buildModeContexts(m, nil, "alice", "g", current)
+	if gc.Current != current || mc.MessageID != "m1" || asrCalls != 1 {
+		t.Fatalf("asrCalls=%d, want the current message resolved once", asrCalls)
 	}
 }
 
@@ -77,7 +77,7 @@ func TestSearchMemories_EmptyQuerySkipped(t *testing.T) {
 	b.memoryStore = store
 
 	m := voiceCreate(files.URL)
-	b.searchMemories(context.Background(), m, nil, b.currentMediaText(context.Background(), m, nil))
+	b.searchMemories(context.Background(), m, nil, types.RenderAttachments(b.resolveCurrent(context.Background(), m), types.StyleQuery))
 	if len(store.queries) != 0 {
 		t.Fatalf("search called with %q, want no search", store.queries)
 	}
@@ -87,10 +87,10 @@ func TestMemorySearchQuery(t *testing.T) {
 	if q := memorySearchQuery("", "", nil, "bot"); q != "" {
 		t.Fatalf("empty message: %q", q)
 	}
-	if q := memorySearchQuery("", "\n[Audio 1 transcript (voice message, 2s): hello]", nil, "bot"); q != "[Audio 1 transcript (voice message, 2s): hello]" {
+	if q := memorySearchQuery("", "hello", nil, "bot"); q != "hello" {
 		t.Fatalf("voice only: %q", q)
 	}
-	if q := memorySearchQuery("look", "\n[Image 1: a cat]", nil, "bot"); q != "look\n[Image 1: a cat]" {
+	if q := memorySearchQuery("look", "a cat", nil, "bot"); q != "look\na cat" {
 		t.Fatalf("text and image: %q", q)
 	}
 }

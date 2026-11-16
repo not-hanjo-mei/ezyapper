@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -43,7 +42,6 @@ type ttsConfig struct {
 	UploadMemoryThresholdBytes int
 	Rewriter                   ttsRewriterConfig
 	Headers                    map[string]string
-	GenerateTtsAudioMs         int
 }
 
 type ttsRewriterConfig struct {
@@ -72,9 +70,6 @@ type ttsConfigFile struct {
 	UploadMemoryThresholdBytes *int              `yaml:"upload_memory_threshold_bytes"`
 	Rewriter                   ttsRewriterFile   `yaml:"rewriter"`
 	Headers                    map[string]string `yaml:"headers"`
-	ToolTimeouts               *struct {
-		GenerateTtsAudioMs *int `yaml:"generate_tts_audio_ms"`
-	} `yaml:"tool_timeouts"`
 }
 
 type ttsRewriterFile struct {
@@ -132,7 +127,6 @@ type rewriteResult struct {
 type openAITTSPlugin struct {
 	cfg        ttsConfig
 	httpClient *http.Client
-	pluginRoot string
 	outputDir  string
 }
 
@@ -294,14 +288,6 @@ func loadConfig() (ttsConfig, error) {
 		errs = append(errs, "format must be one of: mp3, opus, aac, flac, wav, pcm")
 	}
 
-	if raw.ToolTimeouts != nil && raw.ToolTimeouts.GenerateTtsAudioMs != nil {
-		cfg.GenerateTtsAudioMs = *raw.ToolTimeouts.GenerateTtsAudioMs
-	}
-
-	if cfg.GenerateTtsAudioMs <= 0 {
-		errs = append(errs, "tool_timeouts.generate_tts_audio_ms is required and must be > 0")
-	}
-
 	for key := range cfg.Headers {
 		if strings.EqualFold(key, "Authorization") {
 			errs = append(errs, "headers must not override Authorization")
@@ -416,8 +402,7 @@ func newOpenAITTSPlugin(cfg ttsConfig) (*openAITTSPlugin, error) {
 		httpClient: &http.Client{
 			Timeout: time.Duration(cfg.TimeoutSeconds) * time.Second,
 		},
-		pluginRoot: pluginRoot,
-		outputDir:  outputDir,
+		outputDir: outputDir,
 	}, nil
 }
 
@@ -533,208 +518,6 @@ func (p *openAITTSPlugin) synthesizeForBeforeSend(
 		ContentType:       contentType,
 		DeleteAfterUpload: true,
 	}, nil
-}
-
-func (p *openAITTSPlugin) ListTools() ([]plugin.ToolSpec, error) {
-	return []plugin.ToolSpec{
-		{
-			Name:        "generate_tts_audio",
-			Description: "Generate speech audio from text using an OpenAI-compatible TTS endpoint and save it to a local file",
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"text": map[string]interface{}{
-						"type":        "string",
-						"description": "Input text to synthesize",
-					},
-					"voice": map[string]interface{}{
-						"type":        "string",
-						"description": "TTS voice. Optional, defaults to plugin config",
-					},
-					"model": map[string]interface{}{
-						"type":        "string",
-						"description": "TTS model. Optional, defaults to plugin config",
-					},
-					"format": map[string]interface{}{
-						"type":        "string",
-						"description": "Audio format: mp3, opus, aac, flac, wav, pcm",
-					},
-					"speed": map[string]interface{}{
-						"type":        "number",
-						"description": "Playback speed in range (0, 4]",
-					},
-					"instructions": map[string]interface{}{
-						"type":        "string",
-						"description": "Optional speaking style instructions",
-					},
-					"file_name": map[string]interface{}{
-						"type":        "string",
-						"description": "Optional output file base name (without extension)",
-					},
-					"overwrite": map[string]interface{}{
-						"type":        "boolean",
-						"description": "When true, overwrite existing file with same name",
-					},
-				},
-				"required": []string{"text"},
-			},
-			TimeoutMs: new(p.cfg.GenerateTtsAudioMs),
-		},
-	}, nil
-}
-
-func (p *openAITTSPlugin) ExecuteTool(name string, args map[string]interface{}) (string, error) {
-	if name != "generate_tts_audio" {
-		return "", fmt.Errorf("unknown tool: %s", name)
-	}
-
-	text, err := requiredStringArg(args, "text")
-	if err != nil {
-		return "", err
-	}
-
-	if textLen := len([]rune(text)); textLen > p.cfg.MaxTextChars {
-		return "", fmt.Errorf("text exceeds max_text_chars (%d > %d)", textLen, p.cfg.MaxTextChars)
-	}
-
-	voice := p.cfg.Voice
-	if value, ok, err := optionalStringArg(args, "voice"); err != nil {
-		return "", err
-	} else if ok {
-		voice = value
-	}
-
-	model := p.cfg.Model
-	if value, ok, err := optionalStringArg(args, "model"); err != nil {
-		return "", err
-	} else if ok {
-		model = value
-	}
-
-	format := p.cfg.Format
-	if value, ok, err := optionalStringArg(args, "format"); err != nil {
-		return "", err
-	} else if ok {
-		format = strings.ToLower(value)
-	}
-
-	if _, ok := supportedAudioFormats[format]; !ok {
-		return "", fmt.Errorf("unsupported format %q, expected one of: mp3, opus, aac, flac, wav, pcm", format)
-	}
-
-	speed := p.cfg.Speed
-	if value, ok, err := optionalFloatArg(args, "speed"); err != nil {
-		return "", err
-	} else if ok {
-		speed = value
-	}
-
-	if speed <= 0 || speed > 4 {
-		return "", fmt.Errorf("speed must be in range (0, 4]")
-	}
-
-	instructions := ""
-	if value, ok, err := optionalStringArg(args, "instructions"); err != nil {
-		return "", err
-	} else if ok {
-		instructions = value
-	}
-
-	fileName := ""
-	if value, ok, err := optionalStringArg(args, "file_name"); err != nil {
-		return "", err
-	} else if ok {
-		fileName = value
-	}
-
-	overwrite := false
-	if value, ok, err := optionalBoolArg(args, "overwrite"); err != nil {
-		return "", err
-	} else if ok {
-		overwrite = value
-	}
-
-	result, _, err := p.synthesizeAndSave(text, model, voice, format, speed, instructions, fileName, overwrite)
-	if err != nil {
-		return "", err
-	}
-
-	data, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal tool result: %w", err)
-	}
-	return string(data), nil
-}
-
-func (p *openAITTSPlugin) synthesizeAndSave(
-	text string,
-	model string,
-	voice string,
-	format string,
-	speed float64,
-	instructions string,
-	fileName string,
-	overwrite bool,
-) (map[string]interface{}, plugin.LocalFile, error) {
-	rewrittenText, rewrittenInstructions, rewritten, includeInstructions, err := p.maybeRewriteInputAndInstructions(context.Background(), text, instructions)
-	if err != nil {
-		return nil, plugin.LocalFile{}, err
-	}
-
-	if textLen := len([]rune(rewrittenText)); textLen > p.cfg.MaxTextChars {
-		return nil, plugin.LocalFile{}, fmt.Errorf("text exceeds max_text_chars (%d > %d)", textLen, p.cfg.MaxTextChars)
-	}
-
-	outPath, err := p.resolveOutputPath(fileName, format, overwrite)
-	if err != nil {
-		return nil, plugin.LocalFile{}, err
-	}
-
-	audioData, contentType, endpoint, err := p.requestSpeech(
-		context.Background(),
-		model,
-		voice,
-		format,
-		speed,
-		rewrittenText,
-		rewrittenInstructions,
-		includeInstructions,
-	)
-	if err != nil {
-		return nil, plugin.LocalFile{}, err
-	}
-
-	if err := os.WriteFile(outPath, audioData, 0o644); err != nil {
-		return nil, plugin.LocalFile{}, fmt.Errorf("failed to write audio file: %w", err)
-	}
-
-	relPath := filepath.ToSlash(outPath)
-	if rel, err := filepath.Rel(p.pluginRoot, outPath); err == nil {
-		relPath = filepath.ToSlash(rel)
-	}
-
-	result := map[string]interface{}{
-		"status":        "ok",
-		"file_path":     outPath,
-		"relative_path": relPath,
-		"bytes":         len(audioData),
-		"content_type":  contentType,
-		"model":         model,
-		"voice":         voice,
-		"format":        format,
-		"speed":         speed,
-		"text_chars":    len([]rune(rewrittenText)),
-		"rewritten":     rewritten,
-		"endpoint":      endpoint,
-	}
-
-	generatedFile := plugin.LocalFile{
-		Path:        outPath,
-		Name:        filepath.Base(outPath),
-		ContentType: contentType,
-	}
-
-	return result, generatedFile, nil
 }
 
 func (p *openAITTSPlugin) maybeRewriteInputAndInstructions(
@@ -979,34 +762,6 @@ func (p *openAITTSPlugin) requestSpeech(
 	return body, strings.TrimSpace(resp.Header.Get("Content-Type")), endpoint, nil
 }
 
-func (p *openAITTSPlugin) resolveOutputPath(fileName string, format string, overwrite bool) (string, error) {
-	baseName := sanitizeBaseName(fileName)
-	if baseName == "" {
-		baseName = "tts_" + time.Now().UTC().Format("20060102_150405")
-	}
-
-	ext := supportedAudioFormats[format]
-	candidate := filepath.Join(p.outputDir, baseName+"."+ext)
-
-	if overwrite {
-		return candidate, nil
-	}
-
-	if _, err := os.Stat(candidate); errors.Is(err, os.ErrNotExist) {
-		return candidate, nil
-	}
-
-	for i := 1; i <= 9999; i++ {
-		name := fmt.Sprintf("%s_%d.%s", baseName, i, ext)
-		path := filepath.Join(p.outputDir, name)
-		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-			return path, nil
-		}
-	}
-
-	return "", fmt.Errorf("failed to allocate output file name for %s", baseName)
-}
-
 func buildAudioFileName(fileName string, format string) string {
 	baseName := sanitizeBaseName(fileName)
 	if baseName == "" {
@@ -1044,103 +799,6 @@ func (p *openAITTSPlugin) writeTempUploadFile(fileName string, audioData []byte)
 	}
 
 	return tempFile.Name(), nil
-}
-
-func requiredStringArg(args map[string]interface{}, key string) (string, error) {
-	value, exists := args[key]
-	if !exists {
-		return "", fmt.Errorf("missing required argument: %s", key)
-	}
-
-	text, ok := value.(string)
-	if !ok {
-		return "", fmt.Errorf("argument %s must be a string", key)
-	}
-
-	trimmed := strings.TrimSpace(text)
-	if trimmed == "" {
-		return "", fmt.Errorf("argument %s cannot be empty", key)
-	}
-
-	return trimmed, nil
-}
-
-func optionalStringArg(args map[string]interface{}, key string) (string, bool, error) {
-	value, exists := args[key]
-	if !exists {
-		return "", false, nil
-	}
-
-	text, ok := value.(string)
-	if !ok {
-		return "", false, fmt.Errorf("argument %s must be a string", key)
-	}
-
-	trimmed := strings.TrimSpace(text)
-	if trimmed == "" {
-		return "", false, fmt.Errorf("argument %s cannot be empty when provided", key)
-	}
-
-	return trimmed, true, nil
-}
-
-func optionalFloatArg(args map[string]interface{}, key string) (float64, bool, error) {
-	value, exists := args[key]
-	if !exists {
-		return 0, false, nil
-	}
-
-	number, ok := anyToFloat(value)
-	if !ok {
-		return 0, false, fmt.Errorf("argument %s must be a number", key)
-	}
-
-	return number, true, nil
-}
-
-func optionalBoolArg(args map[string]interface{}, key string) (bool, bool, error) {
-	value, exists := args[key]
-	if !exists {
-		return false, false, nil
-	}
-
-	b, ok := value.(bool)
-	if !ok {
-		return false, false, fmt.Errorf("argument %s must be a boolean", key)
-	}
-
-	return b, true, nil
-}
-
-func anyToFloat(value interface{}) (float64, bool) {
-	switch n := value.(type) {
-	case float64:
-		return n, true
-	case float32:
-		return float64(n), true
-	case int:
-		return float64(n), true
-	case int8:
-		return float64(n), true
-	case int16:
-		return float64(n), true
-	case int32:
-		return float64(n), true
-	case int64:
-		return float64(n), true
-	case uint:
-		return float64(n), true
-	case uint8:
-		return float64(n), true
-	case uint16:
-		return float64(n), true
-	case uint32:
-		return float64(n), true
-	case uint64:
-		return float64(n), true
-	default:
-		return 0, false
-	}
 }
 
 func parseSizeToBytes(input string) (int, error) {

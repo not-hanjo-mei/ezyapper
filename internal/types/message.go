@@ -12,15 +12,14 @@ import (
 // DiscordMessage represents a simplified Discord message for short-term context
 // and plugin communication.
 type DiscordMessage struct {
-	ID                string   `json:"id"`
-	ChannelID         string   `json:"channel_id"`
-	GuildID           string   `json:"guild_id"`
-	AuthorID          string   `json:"author_id"`
-	Username          string   `json:"username"`
-	DisplayName       string   `json:"display_name"`
-	Content           string   `json:"content"`
-	ImageURLs         []string `json:"image_urls,omitempty"`
-	ImageDescriptions []string `json:"image_descriptions,omitempty"` // Cached image descriptions to avoid redundant API calls
+	ID          string   `json:"id"`
+	ChannelID   string   `json:"channel_id"`
+	GuildID     string   `json:"guild_id"`
+	AuthorID    string   `json:"author_id"`
+	Username    string   `json:"username"`
+	DisplayName string   `json:"display_name"`
+	Content     string   `json:"content"`
+	ImageURLs   []string `json:"image_urls,omitempty"`
 	// Media holds audio, voice and video attachments.
 	Media []MediaAttachment `json:"media,omitempty"`
 	// Stickers holds the stickers sent with the message.
@@ -29,6 +28,10 @@ type DiscordMessage struct {
 	// link previews). Content stays the raw message text; use FullText for
 	// content plus embeds.
 	Embeds []EmbedSummary `json:"embeds,omitempty"`
+	// ResolvedMedia is the message's media as text, in the order images,
+	// stickers, audio/voice/video. Only media.Processor.Resolve sets it, on
+	// the copies it returns; see RenderAttachments.
+	ResolvedMedia []ResolvedMedia `json:"-"`
 	// Kinds lists what the message carries (text, embed, image, sticker,
 	// voice, ...); see MessageKinds. Used by message filters.
 	Kinds     []string  `json:"kinds,omitempty"`

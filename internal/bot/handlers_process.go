@@ -2,7 +2,6 @@ package bot
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -16,19 +15,15 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func (b *Bot) processMessageWithoutImages(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, recentMessages []*types.DiscordMessage) {
-	defer b.wg.Done()
-	defer recoverHandler()
-	b.processMessageCore(ctx, s, m, pm, false, recentMessages)
-}
-
+// processMessage generates and sends the reply to m (run as a goroutine
+// counted in b.wg).
 func (b *Bot) processMessage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, recentMessages []*types.DiscordMessage) {
 	defer b.wg.Done()
 	defer recoverHandler()
-	b.processMessageCore(ctx, s, m, pm, true, recentMessages)
+	b.processMessageCore(ctx, s, m, pm, recentMessages)
 }
 
-func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, withImages bool, recentMessages []*types.DiscordMessage) {
+func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate, pm *ProcessingMessage, recentMessages []*types.DiscordMessage) {
 	if b.cancelledBefore(ctx, pm, m.ID, "starting") {
 		return
 	}
@@ -41,7 +36,9 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		pm.SetPhase(PhaseGenerating)
 	}
 
-	msg, imageURLs, imageDescriptions := b.extractMessageImages(ctx, m, withImages)
+	// The message being answered is resolved once (its media turned into
+	// text); the memory search and the reply prompt both use the result.
+	current := b.resolveCurrent(ctx, m)
 
 	if b.cancelledBefore(ctx, pm, m.ID, "guild lookup") {
 		return
@@ -61,20 +58,11 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 
 	recentMessages = b.fetchRecentMessagesIfEmpty(ctx, m.ChannelID, recentMessages)
 
-	if withImages {
-		for i, recentMsg := range recentMessages {
-			if recentMsg.ID == m.ID {
-				recentMessages[i] = msg
-				break
-			}
-		}
-	}
-
 	if b.cancelledBefore(ctx, pm, m.ID, "memory search") {
 		return
 	}
 
-	memories := b.searchMemories(ctx, m, recentMessages, b.currentMediaText(ctx, m, imageDescriptions))
+	memories := b.searchMemories(ctx, m, recentMessages, types.RenderAttachments(current, types.StyleQuery))
 
 	if b.cancelledBefore(ctx, pm, m.ID, "profile fetch") {
 		return
@@ -89,7 +77,7 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 	})
 	defer cancelTyping()
 
-	mc, gc := b.buildModeContexts(m, pm, displayName, guildName, imageURLs, imageDescriptions)
+	mc, gc := b.buildModeContexts(m, pm, displayName, guildName, current)
 
 	response, err := b.generateResponse(ctx, mc, gc, recentMessages, memories, profile)
 	if err != nil {
@@ -106,6 +94,18 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 	}
 
 	if response == "" {
+		b.clearProcessingMessage(pm, m.ID)
+		return
+	}
+
+	// The model sometimes copies the prompt's media annotation format or
+	// leaks tool-call markup as text; those lines are never sent.
+	response, removed := sanitizeReply(response)
+	if removed > 0 {
+		logger.Warnf("[processing] removed %d annotation/tool-markup line(s) from the reply to message %s", removed, m.ID)
+	}
+	if response == "" {
+		logger.Warnf("[processing] reply to message %s is empty after cleanup, not sending it", m.ID)
 		b.clearProcessingMessage(pm, m.ID)
 		return
 	}
@@ -147,55 +147,11 @@ func (b *Bot) cancelledBefore(ctx context.Context, pm *ProcessingMessage, msgID,
 	return false
 }
 
-func (b *Bot) extractMessageImages(ctx context.Context, m *discordgo.MessageCreate, withImages bool) (msg *types.DiscordMessage, imageURLs []string, imageDescriptions []string) {
-	imageURLs = make([]string, 0)
-	imageDescriptions = make([]string, 0)
-
-	if withImages {
-		img := b.cfg().AI.Modalities.Image
-		imageURLs = extractImageURLs(m.Message, img.MaxItems)
-
-		describer := b.imageDescriber()
-		if img.Enabled && len(imageURLs) > 0 && describer != nil {
-			descriptions, err := describer.DescribeImages(ctx, imageURLs)
-			if err != nil {
-				logger.Warnf("[process] failed to describe images for message %s: %v", m.ID, err)
-			} else {
-				// DescribeImages cached them by image key.
-				imageDescriptions = descriptions
-			}
-		}
-
-		msg = &types.DiscordMessage{
-			ID:                m.ID,
-			ChannelID:         m.ChannelID,
-			GuildID:           m.GuildID,
-			AuthorID:          m.Author.ID,
-			Username:          m.Author.Username,
-			Content:           m.Content,
-			Embeds:            types.SummarizeEmbeds(m.Embeds),
-			Kinds:             types.MessageKinds(m.Message),
-			ImageURLs:         imageURLs,
-			ImageDescriptions: imageDescriptions,
-			Media:             types.ExtractMedia(m.Message),
-			Stickers:          types.ExtractStickers(m.Message),
-			Timestamp:         m.Timestamp,
-			IsBot:             m.Author.Bot,
-		}
-
-		if m.MessageReference != nil {
-			msg.ReplyToID = m.MessageReference.MessageID
-			if m.ReferencedMessage != nil && m.ReferencedMessage.Author != nil {
-				msg.ReplyToUsername = m.ReferencedMessage.Author.Username
-				msg.ReplyToAuthorID = m.ReferencedMessage.Author.ID
-				msg.ReplyToContent = types.QuoteText(m.ReferencedMessage)
-			} else {
-				msg.ReplyToUsername = "(deleted message)"
-			}
-		}
-	}
-
-	return msg, imageURLs, imageDescriptions
+// resolveCurrent returns the message being answered with its media turned
+// into text (every missing result is computed; see media.CurrentPolicy).
+func (b *Bot) resolveCurrent(ctx context.Context, m *discordgo.MessageCreate) *types.DiscordMessage {
+	cur := types.FromDiscordgo(m)
+	return b.mediaProcessor().Resolve(ctx, []*types.DiscordMessage{&cur}, media.CurrentPolicy())[0]
 }
 
 func (b *Bot) fetchRecentMessagesIfEmpty(ctx context.Context, channelID string, recentMessages []*types.DiscordMessage) []*types.DiscordMessage {
@@ -207,23 +163,6 @@ func (b *Bot) fetchRecentMessagesIfEmpty(ctx context.Context, channelID string, 
 		}
 	}
 	return recentMessages
-}
-
-// currentMediaText returns the text the enabled modalities turn the media of
-// the message being answered into: image descriptions, sticker text, audio
-// transcripts and video descriptions. Results are cached by attachment (or
-// sticker) ID, so the reply prompt built later reuses them.
-func (b *Bot) currentMediaText(ctx context.Context, m *discordgo.MessageCreate, imageDescriptions []string) string {
-	var sb strings.Builder
-	for i, d := range imageDescriptions {
-		fmt.Fprintf(&sb, "\n[Image %d: %s]", i+1, d)
-	}
-	if p := b.mediaProcessor(); p != nil && m != nil && m.Message != nil && m.Author != nil {
-		cur := types.FromDiscordgo(m)
-		sb.WriteString(p.AnnotateStickers(ctx, &cur, true))
-		sb.WriteString(p.AnnotateAV(ctx, &cur, media.AnnotateOptions{Current: true}).Text)
-	}
-	return sb.String()
 }
 
 // memorySearchQuery builds the memory search query for the message being
@@ -360,7 +299,7 @@ func (b *Bot) fetchProfileAndDisplayName(ctx context.Context, m *discordgo.Messa
 	return profile, displayName
 }
 
-func (b *Bot) buildModeContexts(m *discordgo.MessageCreate, pm *ProcessingMessage, displayName, guildName string, imageURLs, imageDescriptions []string) (ModeContext, GenerateContext) {
+func (b *Bot) buildModeContexts(m *discordgo.MessageCreate, pm *ProcessingMessage, displayName, guildName string, current *types.DiscordMessage) (ModeContext, GenerateContext) {
 	replyToUsername, replyToContent := extractReplyInfo(m)
 	replyToID := ""
 	if m.MessageReference != nil {
@@ -380,17 +319,13 @@ func (b *Bot) buildModeContexts(m *discordgo.MessageCreate, pm *ProcessingMessag
 		MessageID:       m.ID,
 		GuildName:       guildName,
 		Mentions:        m.Mentions,
-		Current:         types.FromDiscordgo(m),
 	}
 	if pm != nil {
 		pm.mu.RLock()
 		mc.InjectedContext = pm.InjectedContext
 		pm.mu.RUnlock()
 	}
-	gc := GenerateContext{
-		ImageURLs:         imageURLs,
-		ImageDescriptions: imageDescriptions,
-	}
+	gc := GenerateContext{Current: current}
 	return mc, gc
 }
 

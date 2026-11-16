@@ -35,7 +35,13 @@ func mediaTestBot(t *testing.T, mods config.ModalitiesConfig) (*Bot, *httptest.S
 	store.Store(cfg)
 	b := &Bot{configStore: store, mediaCache: media.NewCache(time.Hour, 10), stickerCache: media.NewCache(time.Hour, 10)}
 	b.media = media.New(cfg, b.mediaCache)
+	b.media.SetSelf(b.selfID)
 	return b, files
+}
+
+// resolveMsgs resolves msgs with the bot's processor.
+func resolveMsgs(b *Bot, pol media.Policy, msgs ...*types.DiscordMessage) []*types.DiscordMessage {
+	return b.mediaProcessor().Resolve(context.Background(), msgs, pol)
 }
 
 func voiceMsg(id, base string) *types.DiscordMessage {
@@ -70,16 +76,17 @@ func describeServer(t *testing.T, content string, partTypes *[]string) *httptest
 	return srv
 }
 
-// Audio in describe mode reaches the reply prompt as text only.
-func TestAnnotateCurrent_DescribeAudioIsText(t *testing.T) {
+// Audio in describe mode reaches the reply prompt as text only, on the
+// attachments line under the message, outside its quoted text.
+func TestResolveCurrent_DescribeAudioIsText(t *testing.T) {
 	var partTypes []string
 	omni := describeServer(t, "listen to this", &partTypes)
 	b, files := mediaTestBot(t, config.ModalitiesConfig{Audio: config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeDescribe, ModalityModel: config.ModalityModel{Model: "omni", APIBaseURL: omni.URL}}})
-	cur := *voiceMsg("cur", files.URL)
-	cur.Content = "listen"
-	content := b.annotateCurrent(context.Background(), cur, GenerateContext{})
-	if content != "listen\n[Audio 1 (voice message, 2s): listen to this]" {
-		t.Fatalf("content = %q", content)
+	cur := voiceMsg("cur", files.URL)
+	cur.Content, cur.Username = "listen", "alice"
+	line := renderMessageLine(resolveMsgs(b, media.CurrentPolicy(), cur)[0], "bot", nil, nil)
+	if !strings.HasSuffix(line, `alice: "listen"`+"\n"+`  attachments: [Audio 1 (voice message, 2s): listen to this]`) {
+		t.Fatalf("line = %q", line)
 	}
 	if strings.Join(partTypes, ",") != "text,audio_url" {
 		t.Fatalf("describe request parts = %v", partTypes)
@@ -88,7 +95,7 @@ func TestAnnotateCurrent_DescribeAudioIsText(t *testing.T) {
 
 // History audio is transcribed on demand only for the replied-to message,
 // and only once (cached by attachment ID).
-func TestEnrichHistory_ASRBoundedAndCached(t *testing.T) {
+func TestResolveHistory_ASRBoundedAndCached(t *testing.T) {
 	var calls int32
 	asr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&calls, 1)
@@ -101,30 +108,56 @@ func TestEnrichHistory_ASRBoundedAndCached(t *testing.T) {
 
 	// A reply to the older voice message: it is not the most recent audio
 	// message, so nothing is computed.
-	out := b.enrichHistory(context.Background(), history, "cur", planRecentImageEnrichment("ok", "old"))
-	if calls != 0 || out[1].Content != "\n[Audio 1: voice message, 2s]" {
-		t.Fatalf("calls=%d content=%q", calls, out[1].Content)
+	out := resolveMsgs(b, media.HistoryPolicy("ok", "old"), history...)
+	if got := types.RenderAttachments(out[1], types.StylePrompt); calls != 0 || got != "  attachments: [Audio 1: voice message, 2s]" {
+		t.Fatalf("calls=%d attachments=%q", calls, got)
 	}
 	// A reply to the most recent one transcribes it.
-	out = b.enrichHistory(context.Background(), history, "cur", planRecentImageEnrichment("ok", "new"))
-	if calls != 1 || !strings.Contains(out[0].Content, "transcript (voice message, 2s): hi bot") {
-		t.Fatalf("calls=%d content=%q", calls, out[0].Content)
+	out = resolveMsgs(b, media.HistoryPolicy("ok", "new"), history...)
+	if got := types.RenderAttachments(out[0], types.StylePrompt); calls != 1 || !strings.Contains(got, "transcript (voice message, 2s): hi bot") {
+		t.Fatalf("calls=%d attachments=%q", calls, got)
 	}
 	// Later turns reuse the transcript without asking again.
-	out = b.enrichHistory(context.Background(), history, "cur", planRecentImageEnrichment("unrelated", ""))
-	if calls != 1 || !strings.Contains(out[0].Content, "hi bot") {
-		t.Fatalf("calls=%d content=%q", calls, out[0].Content)
+	out = resolveMsgs(b, media.HistoryPolicy("unrelated", ""), history...)
+	if got := types.RenderAttachments(out[0], types.StylePrompt); calls != 1 || !strings.Contains(got, "hi bot") {
+		t.Fatalf("calls=%d attachments=%q", calls, got)
 	}
-	if history[0].Content != "" {
-		t.Fatal("enrichHistory must not modify its input")
+	if history[0].Content != "" || history[0].ResolvedMedia != nil {
+		t.Fatal("Resolve must not modify its input")
 	}
 }
 
-func TestEnrichHistory_AllModalitiesOffIsNoop(t *testing.T) {
+// The bot's own TTS reply (an mp3 the openai-tts plugin attached) is never
+// annotated or transcribed, even when the next user message asks to listen
+// to it or replies to it; its prompt line has no attachments line.
+func TestOwnTTSAudioIsNotAnnotated(t *testing.T) {
+	var calls int32
+	asr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		_, _ = io.WriteString(w, `{"text":"echo"}`)
+	}))
+	defer asr.Close()
+	b, files := mediaTestBot(t, config.ModalitiesConfig{Audio: config.AudioModalityConfig{Enabled: true, Mode: config.AudioModeASR, ModalityModel: config.ModalityModel{Model: "asr", APIBaseURL: asr.URL}}})
+	b.cfg().Discord.OwnBotID = "bot"
+	tts := &types.DiscordMessage{ID: "tts", AuthorID: "bot", Username: "yapper", Content: "here you go", Media: []types.MediaAttachment{{
+		ID: "att-tts", Kind: types.MediaAudio, URL: files.URL + "/discord_1_2.mp3", Filename: "discord_1_2.mp3", ContentType: "audio/mpeg", DurationSec: 7,
+	}}}
+	for _, pol := range []media.Policy{media.HistoryPolicy("listen to that audio", "tts"), media.MemoryPolicy()} {
+		out := resolveMsgs(b, pol, tts)
+		if line := renderMessageLine(out[0], "bot", nil, nil); strings.Contains(line, "attachments:") || strings.Contains(line, "Audio") {
+			t.Fatalf("own message line = %q", line)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("asr calls = %d, want none for the bot's own audio", calls)
+	}
+}
+
+func TestResolveHistory_AllModalitiesOffIsNoop(t *testing.T) {
 	b, files := mediaTestBot(t, config.ModalitiesConfig{})
 	history := []*types.DiscordMessage{voiceMsg("a", files.URL)}
-	if out := b.enrichHistory(context.Background(), history, "cur", planRecentImageEnrichment("voice", "a")); out[0] != history[0] || out[0].Content != "" {
-		t.Fatal("history must be returned unchanged when no modality is enabled")
+	if out := resolveMsgs(b, media.HistoryPolicy("voice", "a"), history...); len(out[0].ResolvedMedia) != 0 || out[0].Content != "" {
+		t.Fatal("history must carry no media text when no modality is enabled")
 	}
 }
 
@@ -136,15 +169,14 @@ func TestStickersInCurrentAndHistory(t *testing.T) {
 		return media.StickerInfo{Name: "wave", Description: "waves hello"}, nil
 	}, media.NewCache(time.Hour, 10))
 	msg := types.DiscordMessage{ID: "cur", Content: "hi", Stickers: []types.StickerRef{{ID: "1", Name: "wave", FormatType: types.StickerPNG}}}
-	content := b.annotateCurrent(context.Background(), msg, GenerateContext{})
-	if content != "hi\n[Sticker: wave — waves hello]" {
-		t.Fatalf("current = %q", content)
+	want := "  attachments: [Sticker: wave — waves hello]"
+	if got := types.RenderAttachments(resolveMsgs(b, media.CurrentPolicy(), &msg)[0], types.StylePrompt); got != want {
+		t.Fatalf("current = %q", got)
 	}
 	hist := msg
 	hist.ID = "old"
-	out := b.enrichHistory(context.Background(), []*types.DiscordMessage{&hist}, "cur", planRecentImageEnrichment("", ""))
-	if out[0].Content != "hi\n[Sticker: wave — waves hello]" {
-		t.Fatalf("history = %q", out[0].Content)
+	if got := types.RenderAttachments(resolveMsgs(b, media.HistoryPolicy("", ""), &hist)[0], types.StylePrompt); got != want {
+		t.Fatalf("history = %q", got)
 	}
 }
 
@@ -165,7 +197,7 @@ func TestApplyRuntimeConfig_RefusesMissingFFmpeg(t *testing.T) {
 }
 
 // Images are described by the image model; the reply prompt gets the text.
-func TestAnnotateCurrent_ImageDescription(t *testing.T) {
+func TestResolveCurrent_ImageDescription(t *testing.T) {
 	img := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = io.WriteString(w, "png")
@@ -174,9 +206,10 @@ func TestAnnotateCurrent_ImageDescription(t *testing.T) {
 	var partTypes []string
 	vl := describeServer(t, "a red square", &partTypes)
 	b, _ := mediaTestBot(t, config.ModalitiesConfig{Image: config.ImageModalityConfig{Enabled: true, ModalityModel: config.ModalityModel{Model: "vl", APIBaseURL: vl.URL}}})
-	content := b.annotateCurrent(context.Background(), types.DiscordMessage{ID: "c", Content: "look"}, GenerateContext{ImageURLs: []string{img.URL + "/a.png"}})
-	if content != "look [Image 1: a red square]" {
-		t.Fatalf("content=%q", content)
+	cur := &types.DiscordMessage{ID: "c", Content: "look", ImageURLs: []string{img.URL + "/a.png"}}
+	out := resolveMsgs(b, media.CurrentPolicy(), cur)[0]
+	if got := types.RenderAttachments(out, types.StylePrompt); got != "  attachments: [Image 1: a red square]" || out.Content != "look" {
+		t.Fatalf("attachments=%q content=%q", got, out.Content)
 	}
 	if strings.Join(partTypes, ",") != "text,image_url" {
 		t.Fatalf("describe request parts = %v", partTypes)

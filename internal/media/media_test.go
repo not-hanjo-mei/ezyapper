@@ -152,23 +152,23 @@ func TestAnnotateASRCurrentHistoryAndCache(t *testing.T) {
 	msg := &types.DiscordMessage{ID: "m1", Media: []types.MediaAttachment{voice(files.URL)}}
 
 	// History without permission to compute: placeholder only, no call.
-	ann := p.AnnotateAV(context.Background(), msg, AnnotateOptions{})
-	if ann.Text != "\n[Audio 1: voice message, 3s]" || asrCalls != 0 {
-		t.Fatalf("history placeholder = %q calls=%d", ann.Text, asrCalls)
+	ann := annotate(p, msg, HistoryPolicy("", ""))
+	if ann != "  attachments: [Audio 1: voice message, 3s]" || asrCalls != 0 {
+		t.Fatalf("history placeholder = %q calls=%d", ann, asrCalls)
 	}
 	// Current message: transcribed, whitespace collapsed onto one line.
-	ann = p.AnnotateAV(context.Background(), msg, AnnotateOptions{Current: true})
-	if ann.Text != "\n[Audio 1 transcript (voice message, 3s): see you at noon]" {
-		t.Fatalf("current = %q", ann.Text)
+	ann = annotate(p, msg, CurrentPolicy())
+	if ann != "  attachments: [Audio 1 transcript (voice message, 3s): see you at noon]" {
+		t.Fatalf("current = %q", ann)
 	}
 	// Later turns reuse the cached transcript (keyed by attachment ID, even
 	// when the CDN URL was re-signed).
 	resigned := *msg
 	resigned.Media = []types.MediaAttachment{voice(files.URL)}
 	resigned.Media[0].URL += "?ex=new&hm=sig"
-	ann = p.AnnotateAV(context.Background(), &resigned, AnnotateOptions{})
-	if !strings.Contains(ann.Text, "see you at noon") || asrCalls != 1 {
-		t.Fatalf("cached history = %q calls=%d", ann.Text, asrCalls)
+	ann = annotate(p, &resigned, HistoryPolicy("", ""))
+	if !strings.Contains(ann, "see you at noon") || asrCalls != 1 {
+		t.Fatalf("cached history = %q calls=%d", ann, asrCalls)
 	}
 }
 
@@ -181,9 +181,9 @@ func TestAnnotateAudioLimits(t *testing.T) {
 	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, NewCache(time.Hour, 10))
 	msg := &types.DiscordMessage{ID: "m1", Media: []types.MediaAttachment{voice(files.URL)}}
-	ann := p.AnnotateAV(context.Background(), msg, AnnotateOptions{Current: true})
-	if ann.Text != "\n[Audio 1: voice message, 3s]" || calls != 0 {
-		t.Fatalf("over-long audio must not be sent: %q calls=%d", ann.Text, calls)
+	ann := annotate(p, msg, CurrentPolicy())
+	if ann != "  attachments: [Audio 1 (voice message, 3s): (could not be processed)]" || calls != 0 {
+		t.Fatalf("over-long audio must not be sent and must leave a placeholder: %q calls=%d", ann, calls)
 	}
 }
 
@@ -201,13 +201,13 @@ func TestAnnotateDescribeAudio(t *testing.T) {
 	msg := &types.DiscordMessage{ID: "m1", Media: []types.MediaAttachment{voice(files.URL), {ID: "v1", Kind: types.MediaVideo, URL: files.URL + "/v.mp4"}}}
 
 	// History without permission to compute: placeholder only, no call.
-	if hist := p.AnnotateAV(context.Background(), msg, AnnotateOptions{}); hist.Text != "\n[Audio 1: voice message, 3s]" || calls != 0 {
-		t.Fatalf("history = %q calls=%d", hist.Text, calls)
+	if hist := annotate(p, msg, HistoryPolicy("", "")); hist != "  attachments: [Audio 1: voice message, 3s]" || calls != 0 {
+		t.Fatalf("history = %q calls=%d", hist, calls)
 	}
 	// Video is disabled: no line.
-	ann := p.AnnotateAV(context.Background(), msg, AnnotateOptions{Current: true})
-	if ann.Text != "\n[Audio 1 (voice message, 3s): hello there]" {
-		t.Fatalf("text = %q", ann.Text)
+	ann := annotate(p, msg, CurrentPolicy())
+	if ann != "  attachments: [Audio 1 (voice message, 3s): hello there]" {
+		t.Fatalf("text = %q", ann)
 	}
 	doc := bodies[0]
 	if doc["model"] != "omni" {
@@ -222,8 +222,8 @@ func TestAnnotateDescribeAudio(t *testing.T) {
 		t.Fatalf("audio url = %v", u)
 	}
 	// Later turns reuse the cached text.
-	if hist := p.AnnotateAV(context.Background(), msg, AnnotateOptions{}); !strings.Contains(hist.Text, "hello there") || calls != 1 {
-		t.Fatalf("cached history = %q calls=%d", hist.Text, calls)
+	if hist := annotate(p, msg, HistoryPolicy("", "")); !strings.Contains(hist, "hello there") || calls != 1 {
+		t.Fatalf("cached history = %q calls=%d", hist, calls)
 	}
 }
 
@@ -241,11 +241,11 @@ func TestDescribeVideoTransportAndCache(t *testing.T) {
 		p := New(cfg, NewCache(time.Hour, 10))
 		msg := &types.DiscordMessage{ID: "m1", Media: []types.MediaAttachment{{ID: "vid1", Kind: types.MediaVideo, URL: files.URL + "/v.mp4", Filename: "v.mp4", ContentType: "video/mp4", Size: 9}}}
 
-		ann := p.AnnotateAV(context.Background(), msg, AnnotateOptions{Current: true})
-		if ann.Text != "\n[Video 1 (v.mp4): a dog runs]" {
-			t.Fatalf("%s: text = %q", transport, ann.Text)
+		ann := annotate(p, msg, CurrentPolicy())
+		if ann != "  attachments: [Video 1 (v.mp4): a dog runs]" {
+			t.Fatalf("%s: text = %q", transport, ann)
 		}
-		_ = p.AnnotateAV(context.Background(), msg, AnnotateOptions{Current: true})
+		_ = annotate(p, msg, CurrentPolicy())
 		if calls != 1 {
 			t.Fatalf("%s: video must be described once, got %d calls", transport, calls)
 		}
@@ -265,7 +265,7 @@ func TestDescribeVideoTransportAndCache(t *testing.T) {
 	}
 }
 
-func TestDescribeImagesDescribeMode(t *testing.T) {
+func TestResolveImageDescribe(t *testing.T) {
 	files := cdn(t)
 	var calls int32
 	var bodies []map[string]any
@@ -274,9 +274,9 @@ func TestDescribeImagesDescribeMode(t *testing.T) {
 	cfg.AI.Modalities.Image = config.ImageModalityConfig{Enabled: true, ModalityModel: config.ModalityModel{Model: "vm"}}
 	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, nil)
-	got, err := p.ImageDescriber().DescribeImages(context.Background(), []string{files.URL + "/x.png"})
-	if err != nil || len(got) != 1 || got[0] != "a red square" {
-		t.Fatalf("got %v %v", got, err)
+	got := annotate(p, &types.DiscordMessage{ID: "m", ImageURLs: []string{files.URL + "/x.png"}}, CurrentPolicy())
+	if got != "  attachments: [Image 1: a red square]" {
+		t.Fatalf("got %q", got)
 	}
 	content := bodies[0]["messages"].([]any)[0].(map[string]any)["content"].([]any)
 	if content[0].(map[string]any)["text"] != cfg.AI.Modalities.Image.Prompt {
@@ -292,11 +292,9 @@ func TestDisabledModalitiesAreIgnored(t *testing.T) {
 	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, nil)
 	msg := &types.DiscordMessage{ID: "m1", Media: []types.MediaAttachment{{ID: "a", Kind: types.MediaVoice}, {ID: "v", Kind: types.MediaVideo}}}
-	if ann := p.AnnotateAV(context.Background(), msg, AnnotateOptions{Current: true}); ann.Text != "" {
+	msg.ImageURLs = []string{"https://cdn.discordapp.com/attachments/1/2/a.png"}
+	if ann := annotate(p, msg, CurrentPolicy()); ann != "" {
 		t.Fatalf("disabled modalities must add nothing: %+v", ann)
-	}
-	if p.ImageDescriber() != nil {
-		t.Fatal("no image describer when images are off")
 	}
 }
 
@@ -363,4 +361,9 @@ func TestAudioPartNormalizesDiscordContentType(t *testing.T) {
 	if !strings.HasPrefix(part.URL, "data:audio/mpeg;base64,") {
 		t.Fatalf("url = %.40s", part.URL)
 	}
+}
+
+// annotate resolves msg with pol and renders its prompt attachments line.
+func annotate(p *Processor, msg *types.DiscordMessage, pol Policy) string {
+	return types.RenderAttachments(p.Resolve(context.Background(), []*types.DiscordMessage{msg}, pol)[0], types.StylePrompt)
 }

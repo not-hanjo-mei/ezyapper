@@ -112,9 +112,11 @@ core:
     # Text is always on: the model above reasons, runs tools and writes every
     # reply. It is text-only: the reply request never carries media.
     # Image, audio, video and stickers are optional, each with its own switch
-    # and model, which turns the media into text lines on the message in the
-    # user prompt ("[Image 1: ...]", "[Audio 1 transcript (...): ...]",
-    # "[Video 1 (...): ...]"), cached by attachment ID.
+    # and model, which turns the media into text shown on an "attachments:"
+    # line under the message in the user prompt, outside its quoted text
+    # ("[Image 1: ...]", "[Audio 1 transcript (...): ...]",
+    # "[Video 1 (...): ...]"), cached by attachment ID. The bot's own
+    # messages (e.g. a TTS clip it attached) are never processed.
     # Model fields (api_base_url, api_key, timeout, max_tokens, temperature,
     # retry_count, extra_params) inherit by presence: a key that is ABSENT
     # (commented out, as below) inherits the core.ai value; a key that is
@@ -261,6 +263,9 @@ core:
       <participants>, <user_profile>, <key_facts> and <currentMessage>.
       Reply to <currentMessage>. Messages show mentions as <@Name>; to ping
       someone, write <@Name> with a name from <participants>.
+      An indented "attachments:" line under a message is what the system
+      read from its images, audio, video, stickers and embeds; it is not
+      part of what anyone wrote. Never write such lines yourself.
 
       When using tools, ALWAYS use the numeric IDs from <server_info>,
       <channel_info> and <participants>, never names.
@@ -446,9 +451,10 @@ memory_pipeline:
 
       # Consolidation system prompt. Required when enabled.
       # Audio transcripts and video descriptions (when those modalities are
-      # on) and image descriptions are added to the messages consolidation
-      # sees, as "[Attached Audio N transcript: ...]", "[Attached Video N: ...]"
-      # and "[Attached Image N: ...]" lines.
+      # on), image descriptions and sticker text are added to the messages
+      # consolidation sees, as "[Attached Audio N transcript: ...]",
+      # "[Attached Video N: ...]", "[Attached Image N: ...]" and
+      # "[Attached Sticker: ...]" lines (not for the bot's own messages).
       #
       # Message format: "Username"{UserID=xxx,Time=...,BOT=SELF|OTHERS}: "content"
       #   BOT=SELF   = this bot's own messages - always conversational context only, never extract

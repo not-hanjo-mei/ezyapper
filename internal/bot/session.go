@@ -642,6 +642,7 @@ func (b *Bot) ApplyRuntimeConfig() error {
 	}
 	b.media = media.New(cfg, b.mediaCache)
 	b.media.SetStickers(b.lookupSticker, b.stickerCache)
+	b.media.SetSelf(b.selfID)
 	return nil
 }
 
@@ -713,18 +714,13 @@ func (b *Bot) mediaProcessor() *media.Processor {
 	return b.media
 }
 
-// imageDescriber returns the image describer, or nil when images are not
-// described (image modality off).
-func (b *Bot) imageDescriber() imageDescriber {
-	if d := b.mediaProcessor().ImageDescriber(); d != nil {
-		return d
+// selfID returns the bot's own user ID: the session's user, or
+// core.discord.own_bot_id before the session is ready.
+func (b *Bot) selfID() string {
+	if sess := b.sess(); sess != nil && sess.State != nil && sess.State.User != nil && sess.State.User.ID != "" {
+		return sess.State.User.ID
 	}
-	return nil
-}
-
-// imageDescriber describes images (implemented by media.Processor).
-type imageDescriber interface {
-	DescribeImages(ctx context.Context, imageURLs []string) ([]string, error)
+	return b.cfg().Discord.OwnBotID
 }
 
 // RefreshPluginTools reloads plugin tool registrations into the AI tool registry.

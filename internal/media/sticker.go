@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"ezyapper/internal/ai"
 	"ezyapper/internal/logger"
@@ -105,55 +104,4 @@ func (p *Processor) describeSticker(ctx context.Context, s types.StickerRef) (st
 		}
 		return oneLine(d), nil
 	})
-}
-
-// AnnotateStickers returns "[Sticker: ...]" lines for msg's stickers.
-//
-// Stickers are always annotated. The text is the name, description and tags
-// from Discord (looked up once per sticker ID, for history messages too: it
-// is a cheap Discord API call, not a model call). With sticker.enabled the
-// cached vision description of the image is used instead; a missing one is
-// only computed for the message being answered (current), history falls
-// back to text. Lottie stickers cannot be rendered and always use text.
-func (p *Processor) AnnotateStickers(ctx context.Context, msg *types.DiscordMessage, current bool) string {
-	if p == nil || msg == nil || len(msg.Stickers) == 0 {
-		return ""
-	}
-	st := p.mods.Sticker
-	var sb strings.Builder
-	for i, s := range msg.Stickers {
-		if st.MaxItems > 0 && i >= st.MaxItems {
-			break
-		}
-		info := p.stickerInfo(ctx, s)
-		if st.Enabled && s.FormatType != types.StickerLottie {
-			desc, ok := p.stickerCache.Get(keyStickerVision + s.ID)
-			if !ok && current {
-				var err error
-				desc, err = p.describeSticker(ctx, s)
-				if err != nil {
-					logger.Warnf("[media] sticker %s not described, using its text: %v", s.ID, err)
-				} else {
-					ok = true
-				}
-			}
-			if ok {
-				fmt.Fprintf(&sb, "\n[Sticker: %s — %s]", info.Name, desc)
-				continue
-			}
-		}
-		sb.WriteString("\n" + stickerTextLine(info))
-	}
-	return sb.String()
-}
-
-func stickerTextLine(info StickerInfo) string {
-	line := "[Sticker: " + info.Name
-	if d := oneLine(info.Description); d != "" {
-		line += " — " + d
-	}
-	if t := strings.TrimSpace(info.Tags); t != "" && !strings.EqualFold(t, info.Name) {
-		line += " (tags: " + t + ")"
-	}
-	return line + "]"
 }

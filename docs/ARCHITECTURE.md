@@ -36,13 +36,12 @@ This doc walks through the layers and how a message flows through them. For conf
     Optional: WebUI (internal/web)  ──→ same Memory + Plugin layers
 ```
 
-The bot process holds five LLM client instances:
+The bot process holds four groups of LLM clients:
 
 1. main chat client (`core.ai.*`)
 2. embedding client (`memory_pipeline.embedding.*`, may inherit from `core.ai`)
 3. consolidation chat client (`memory_pipeline.memory.consolidation.*`, may inherit)
-4. consolidation image describer (the image modality, optionally overridden by `consolidation.vision` to route image descriptions to a cheaper model)
-5. media processor (image/audio/video clients derived from `core.ai.modalities.*`, used at request time)
+4. media processor (image/audio/video/sticker clients derived from `core.ai.modalities.*`, plus the consolidation image client: the image modality optionally overridden by `consolidation.vision` to route consolidation image descriptions to a cheaper model)
 
 Each can have its own endpoint, key, model, and `extra_params`. They are built during boot and rebuilt when a hot reload changes their settings (see [CONFIGURATION.md](CONFIGURATION.md#hot-reload)).
 
@@ -57,7 +56,7 @@ Eleven sequential phases. Anything that fails is fatal — the bot does not star
 | 1 | CLI flags | `pflag` parses `--config` / `-c`. Without it, `config.yaml` is looked up in `.`, `./config` and `/etc/ezyapper`. |
 | 2 | Config load | `config.Load(path)` reads YAML, applies env overrides (only for keys present in the file) and runs every validator. It fills in no values: there are no built-in defaults. All errors joined and reported at once. |
 | 3 | Logger init | Zap logger with file rotation via lumberjack. The global `logger.L()` helper returns a no-op logger before this runs (so `init()`-free packages don't NPE). |
-| 4 | Memory service | Builds the embedding client, Qdrant gRPC client, embedder, image describer, consolidator. If both `retrieval.top_k=0` and `consolidation.enabled=false`, returns a `NoopService` instead. Calls `RepairOrDeleteDamagedMemories()` (best-effort startup repair) and starts the maintenance worker. |
+| 4 | Memory service | Builds the embedding client, Qdrant gRPC client, embedder, consolidator. If both `retrieval.top_k=0` and `consolidation.enabled=false`, returns a `NoopService` instead. Calls `RepairOrDeleteDamagedMemories()` (best-effort startup repair) and starts the maintenance worker. |
 | 5 | Plugin manager | `plugin.NewManager(...)` with all the configured timeouts (startup, RPC, before-send, command, shutdown, disable). Plugins aren't loaded yet. |
 | 6 | Config store | `atomic.Value` holding `*config.Config`. Used for copy-on-write reads from anywhere in the app. |
 | 7 | Bot creation | `bot.New(...)` — wires every dependency into the `Bot` struct. Creates the Discord session (not connected), tool registry, MCP manager, decision service (or nil), rate limiter, media processor (when any modality is enabled). Registers Discord tools and any MCP/plugin tools available at construction time. |
@@ -104,7 +103,7 @@ The `Bot` struct is the dependency-injection hub. It owns the Discord session, t
 
 - **Channel message buffer** — recent messages per channel, drained during channel-scoped consolidation.
 - **Channel consolidating** — dedup flag set while a channel batch is in flight.
-- **Historical image description cache** — TTL-bounded cache of vision describer output keyed by image URL set, so a repeated message+image set doesn't re-describe.
+- **Media cache** — shared with memory consolidation: image descriptions, transcripts and video descriptions keyed by attachment ID or CDN path (see [MEDIA.md](MEDIA.md#shared-media-cache)). `media.Processor.Resolve` turns a message's media into `ResolvedMedia` (never touching its text) under a policy (current message, history, memory); `types.RenderAttachments` renders it for the prompt, consolidation or the memory query. The bot's own messages are never resolved.
 - **Processing messages** — tracks in-flight messages by ID with phase (`Received → Deciding → Generating → Sending`) and a cancel func, so edits and deletes can preempt cleanly.
 
 Event handlers live in `handlers*.go` files split by concern:
@@ -173,7 +172,7 @@ re-embedded. The old collection is never modified.
 Highlights:
 
 - **Hybrid retrieval** — dense + sparse via reciprocal rank fusion (`rrf_k`).
-- **Media in consolidation** — the conversation text sent to the consolidation model includes image descriptions (`[Attached Image N: ...]`), audio transcripts or descriptions (`[Attached Audio N transcript: ...]`, `[Attached Audio N: ...]`) and video descriptions (`[Attached Video N: ...]`) for the enabled modalities, taken from the shared media cache or computed once.
+- **Media in consolidation** — the bot resolves the batch (`media.MemoryPolicy`) before handing it to the memory service; the conversation text sent to the consolidation model includes image descriptions (`[Attached Image N: ...]`), sticker text (`[Attached Sticker: ...]`), audio transcripts or descriptions (`[Attached Audio N transcript: ...]`, `[Attached Audio N: ...]`) and video descriptions (`[Attached Video N: ...]`) for the enabled modalities, taken from the shared media cache or computed once; a failed item shows `(could not be processed)`. The bot's own messages get no media lines.
 - **Empty-embedding guard** — empty or whitespace-only text is never sent to the embedding API (which rejects it): the embedder returns `ErrEmptyEmbeddingInput`, search with a blank query returns no results, and the memory search query for the current message includes the text of its media, so a voice message is searched by its transcript. A memory record without a vector stays in the source tier and is embedded by the next vector sync; maintenance skips records without an embedding.
 - **Scoring decay** — every memory has a `decay_category` and a per-type rate; `prune_decay_threshold` removes stale ones during maintenance.
 - **Mention tracking** — extracted at consolidation time, stored in payload, queryable via `SearchByMentionedUser`. Supports cross-user recall ("what does the bot remember about Alice from when Bob mentioned her").

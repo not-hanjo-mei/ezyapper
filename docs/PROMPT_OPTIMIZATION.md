@@ -46,7 +46,9 @@ Each message is one line:
   When the model writes `<@Name>` for an unambiguous participant, it is
   converted back to a real `<@id>` ping before sending.
 - Text is not HTML-escaped.
-- Image descriptions, audio transcripts and video descriptions (describe/asr modalities) are appended as `[Image N: ...]`, `[Audio N transcript (...): ...]`, `[Video N (...): ...]`.
+- Only the message text is quoted. Image descriptions, audio transcripts, video descriptions, stickers and embeds go on one indented line under the message, outside the quote:
+  `  attachments: [Image 1: ...] [Audio 1 transcript (voice message, 7s): ...] [Embed (YouTube) "Title": ...]`.
+  The bot's own messages carry no media items. Replies are cleaned before sending: lines in these formats and leaked tool-call markup are dropped (see [MEDIA.md](MEDIA.md#reply-cleanup)).
 
 ## Anchored context window
 

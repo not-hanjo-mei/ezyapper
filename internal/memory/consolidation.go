@@ -114,21 +114,11 @@ type aiChatCompleter interface {
 	CreateChatCompletionSingle(ctx context.Context, req ai.ChatCompletionRequest) (*ai.ChatCompletionResponse, error)
 }
 
-// visionDescriber describes images for consolidation (media.Processor).
-type visionDescriber interface {
-	DescribeImages(ctx context.Context, imageURLs []string) ([]string, error)
-}
-
-// ImageDescriber is the exported name of the image describer NewService
-// accepts.
-type ImageDescriber = visionDescriber
-
 // Consolidator extracts and stores memories from conversation context using LLM analysis.
 type Consolidator struct {
 	qdrant              qdrantStore
 	embedder            Embedder
 	aiClient            aiChatCompleter
-	visionDescriber     visionDescriber
 	maxMessages         int
 	model               string
 	prompt              string
@@ -166,12 +156,11 @@ func (c *Consolidator) embedWithRetry(ctx context.Context, text string) ([]float
 }
 
 // NewConsolidator creates a new consolidator with the given Qdrant client, embedder, and AI configuration.
-func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient aiChatCompleter, visionDescriber visionDescriber, cfg *config.ConsolidationConfig, ownBotID string, consolidationInterval int, memorySearchLimit int, otherBotPolicy config.OtherBotPolicy, entropyMinWordRatio float64, retryMaxRetries int, retryBaseDelayMs int, retryMaxDelayMs int) *Consolidator {
+func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient aiChatCompleter, cfg *config.ConsolidationConfig, ownBotID string, consolidationInterval int, memorySearchLimit int, otherBotPolicy config.OtherBotPolicy, entropyMinWordRatio float64, retryMaxRetries int, retryBaseDelayMs int, retryMaxDelayMs int) *Consolidator {
 	return &Consolidator{
 		qdrant:              qdrant,
 		embedder:            embedder,
 		aiClient:            aiClient,
-		visionDescriber:     visionDescriber,
 		model:               cfg.Model,
 		maxMessages:         consolidationInterval,
 		prompt:              cfg.SystemPrompt,
@@ -185,9 +174,12 @@ func NewConsolidator(qdrant *QdrantClient, embedder Embedder, aiClient aiChatCom
 	}
 }
 
-// buildConversationText builds a conversation text from messages for LLM analysis.
+// buildConversationText builds a conversation text from messages for LLM
+// analysis and returns it with the number of described images. Media text
+// comes from the messages' ResolvedMedia (media.Processor.Resolve with
+// MemoryPolicy, done by the caller) as "[Attached ...]" lines.
 // userID is used for logging context; if empty, logs omit per-user details.
-func (c *Consolidator) buildConversationText(ctx context.Context, messages []*DiscordMessage, userID string) (string, int) {
+func (c *Consolidator) buildConversationText(messages []*DiscordMessage, userID string) (string, int) {
 	var conversation strings.Builder
 	var imageCount int
 	for i, msg := range messages {
@@ -206,66 +198,16 @@ func (c *Consolidator) buildConversationText(ctx context.Context, messages []*Di
 			logger.Debugf("[consolidation] message %d [%s]: %s (ID=%s)%s: %s", i+1, timeStr, msg.Username, msg.AuthorID, botMarker, msg.Content)
 		}
 
-		imageCount += c.writeImageLines(ctx, &conversation, msg, i, userID)
-		writeMediaLines(&conversation, msg)
+		if att := types.RenderAttachments(msg, types.StyleMemory); att != "" {
+			conversation.WriteString(att + "\n")
+		}
+		for _, it := range msg.ResolvedMedia {
+			if it.Kind == types.ResolvedImage && it.Status == types.MediaOK {
+				imageCount++
+			}
+		}
 	}
 	return conversation.String(), imageCount
-}
-
-// writeImageLines writes "[Attached Image N: ...]" lines for msg's images and
-// returns how many it wrote. Descriptions the message already carries are
-// used as is; otherwise the describer is asked (it serves cached
-// descriptions by attachment ID before calling the model).
-func (c *Consolidator) writeImageLines(ctx context.Context, w *strings.Builder, msg *DiscordMessage, i int, userID string) int {
-	if len(msg.ImageURLs) == 0 {
-		return 0
-	}
-	descriptions := msg.ImageDescriptions
-	if len(descriptions) == 0 {
-		if c.visionDescriber == nil {
-			return 0
-		}
-		var err error
-		descriptions, err = c.visionDescriber.DescribeImages(ctx, msg.ImageURLs)
-		if err != nil {
-			if userID != "" {
-				logger.Warnf("[consolidation] failed to describe images for user=%s message=%d: %v", userID, i+1, err)
-			} else {
-				logger.Warnf("[consolidation] failed to describe images for message %d: %v", i+1, err)
-			}
-			return 0
-		}
-	}
-	for j, desc := range descriptions {
-		fmt.Fprintf(w, "  [Attached Image %d: %s]\n", j+1, desc)
-	}
-	return len(descriptions)
-}
-
-// writeMediaLines writes the transcripts and descriptions of msg's audio,
-// voice and video attachments (filled by media.Processor.AnnotateForMemory)
-// as "[Attached Audio N transcript: ...]", "[Attached Audio N: ...]" and
-// "[Attached Video N: ...]" lines. Attachments without text are skipped.
-func writeMediaLines(w *strings.Builder, msg *DiscordMessage) {
-	audioN, videoN := 0, 0
-	for _, a := range msg.Media {
-		switch {
-		case a.IsAudio():
-			audioN++
-			switch {
-			case a.Text == "":
-			case a.Transcript:
-				fmt.Fprintf(w, "  [Attached Audio %d transcript: %s]\n", audioN, a.Text)
-			default:
-				fmt.Fprintf(w, "  [Attached Audio %d: %s]\n", audioN, a.Text)
-			}
-		case a.Kind == types.MediaVideo:
-			videoN++
-			if a.Text != "" {
-				fmt.Fprintf(w, "  [Attached Video %d: %s]\n", videoN, a.Text)
-			}
-		}
-	}
 }
 
 // ProcessWithMessages consolidates memories for a user using the provided messages as context.
@@ -295,7 +237,7 @@ func (c *Consolidator) ProcessWithMessages(ctx context.Context, userID string, m
 	}
 	messages = filtered
 
-	conversation, imageCount := c.buildConversationText(ctx, messages, userID)
+	conversation, imageCount := c.buildConversationText(messages, userID)
 	logger.Infof("[consolidation] built conversation for user=%s length=%d chars images=%d", userID, len(conversation), imageCount)
 
 	profile, err := c.getOrCreateProfile(ctx, userID)
@@ -606,7 +548,7 @@ func (c *Consolidator) ProcessChannelMessages(ctx context.Context, channelID str
 	}
 	messages = filtered
 
-	conversation, imageCount := c.buildConversationText(ctx, messages, "")
+	conversation, imageCount := c.buildConversationText(messages, "")
 
 	logger.Infof("[consolidation] built conversation length=%d chars images=%d users=%v", len(conversation), imageCount, targetUserIDs)
 

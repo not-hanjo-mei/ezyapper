@@ -11,7 +11,6 @@ import (
 	"ezyapper/internal/ai"
 	"ezyapper/internal/ai/tools"
 	"ezyapper/internal/config"
-	"ezyapper/internal/logger"
 	"ezyapper/internal/types"
 )
 
@@ -24,6 +23,11 @@ type Processor struct {
 	base *ai.Client
 	// imageClient describes images (image enabled).
 	imageClient *ai.Client
+	// memoryImageClient and memoryImagePrompt describe images for memory
+	// consolidation (the image modality with consolidation.vision
+	// overrides).
+	memoryImageClient *ai.Client
+	memoryImagePrompt string
 	// videoClient describes videos.
 	videoClient *ai.Client
 	// asr transcribes audio (audio mode asr).
@@ -42,6 +46,9 @@ type Processor struct {
 
 	maxImageBytes int64
 	cache         *Cache
+
+	// selfID returns the bot's own user ID (see SetSelf).
+	selfID func() string
 }
 
 // New builds a Processor from cfg. Every model it calls only turns media
@@ -60,6 +67,10 @@ func New(cfg *config.Config, cache *Cache) *Processor {
 	if mods.Image.Enabled {
 		ic := mods.Image.Resolve(cfg.AI)
 		p.imageClient = ai.NewClient(&ic, tools.NewToolRegistry())
+		mi := cfg.ConsolidationImage()
+		mc := mi.Resolve(cfg.AI)
+		p.memoryImageClient = ai.NewClient(&mc, tools.NewToolRegistry())
+		p.memoryImagePrompt = mi.Prompt
 	}
 	if mods.Video.Enabled {
 		vc := mods.Video.Resolve(cfg.AI)
@@ -116,66 +127,6 @@ func (p *Processor) ImagePart(ctx context.Context, url string) (ai.MediaPart, er
 // key (for Discord CDN URLs the attachment path with its attachment ID, so a
 // re-signed URL still hits).
 func ImageCacheKey(url string) string { return keyImage + types.StableImageKey(url) }
-
-// DescribeImages describes each image with the image model. Descriptions are
-// cached by attachment (ImageCacheKey); the model is only called on a cache
-// miss, so the reply path and memory consolidation, sharing one cache,
-// describe each image once. It satisfies the image describer interface used
-// by memory consolidation.
-func (p *Processor) DescribeImages(ctx context.Context, urls []string) ([]string, error) {
-	if p == nil || p.imageClient == nil {
-		return nil, fmt.Errorf("image modality is disabled")
-	}
-	if len(urls) == 0 {
-		return nil, fmt.Errorf("no images provided")
-	}
-	out := make([]string, 0, len(urls))
-	for _, u := range urls {
-		d, err := p.cache.Do(ImageCacheKey(u), func() (string, error) {
-			part, err := p.ImagePart(ctx, u)
-			if err != nil {
-				return "", fmt.Errorf("failed to fetch image: %w", err)
-			}
-			d, err := p.imageClient.DescribeMedia(ctx, p.mods.Image.Prompt, part)
-			if err != nil {
-				return "", fmt.Errorf("failed to describe image: %w", err)
-			}
-			return d, nil
-		})
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, d)
-	}
-	return out, nil
-}
-
-// CachedImageDescriptions returns the cached description of each image
-// (empty where there is none) without calling the model, and whether any
-// was found. History uses it so a plain-text turn never re-describes an
-// image.
-func (p *Processor) CachedImageDescriptions(urls []string) ([]string, bool) {
-	if p == nil || len(urls) == 0 {
-		return nil, false
-	}
-	out := make([]string, len(urls))
-	found := false
-	for i, u := range urls {
-		if d, ok := p.cache.Get(ImageCacheKey(u)); ok {
-			out[i], found = d, true
-		}
-	}
-	return out, found
-}
-
-// ImageDescriber returns p as an image describer, or nil when images are not
-// enabled (so callers can keep a nil check).
-func (p *Processor) ImageDescriber() *Processor {
-	if p == nil || p.imageClient == nil {
-		return nil
-	}
-	return p
-}
 
 // checkLimits rejects media over the configured size or duration. The
 // duration is only known for voice messages (Discord sends duration_secs).
@@ -332,162 +283,6 @@ func (p *Processor) DescribeVideo(ctx context.Context, a types.MediaAttachment) 
 		}
 		return p.videoClient.DescribeMedia(ctx, p.mods.Video.Prompt, part)
 	})
-}
-
-// Annotation is the result of processing a message's audio and video.
-type Annotation struct {
-	// Text is appended to the message content ("\n[Audio 1 transcript: ...]").
-	Text string
-}
-
-// AnnotateOptions controls AnnotateAV.
-type AnnotateOptions struct {
-	// Current is true for the message being answered: missing results are
-	// computed.
-	Current bool
-	// ComputeAudio / ComputeVideo allow computing missing results for a
-	// history message (bounded on-demand enrichment).
-	ComputeAudio, ComputeVideo bool
-}
-
-// AVText returns the text an audio or video attachment was turned into: the
-// transcript (audio, asr mode; transcript is true) or the description (audio
-// in describe mode, video). Cached results are always used; a missing one is
-// only computed when compute is true. ok is false when the modality is
-// disabled, the attachment is not audio/video, or there is no result.
-func (p *Processor) AVText(ctx context.Context, a types.MediaAttachment, compute bool) (text string, transcript bool, ok bool) {
-	if p == nil {
-		return "", false, false
-	}
-	switch {
-	case a.IsAudio() && p.mods.Audio.Enabled:
-		describe := p.mods.Audio.Mode == config.AudioModeDescribe
-		key, run := keyAudio+a.ID, p.Transcribe
-		if describe {
-			key, run = keyAudioDescribe+a.ID, p.DescribeAudio
-		}
-		if v, hit := p.cache.Get(key); hit {
-			return v, !describe, true
-		}
-		if !compute {
-			return "", !describe, false
-		}
-		v, err := run(ctx, a)
-		if err != nil {
-			logger.Warnf("[media] audio %s not processed: %v", a.ID, err)
-			return "", !describe, false
-		}
-		return v, !describe, true
-	case a.Kind == types.MediaVideo && p.mods.Video.Enabled:
-		if v, hit := p.cache.Get(keyVideo + a.ID); hit {
-			return v, false, true
-		}
-		if !compute {
-			return "", false, false
-		}
-		v, err := p.DescribeVideo(ctx, a)
-		if err != nil {
-			logger.Warnf("[media] video %s not described: %v", a.ID, err)
-			return "", false, false
-		}
-		return v, false, true
-	}
-	return "", false, false
-}
-
-// AnnotateAV returns text lines for the audio, voice and video attachments
-// of msg.
-// Cached results are always used; missing ones are only computed when opts
-// allow it. Media whose modality is disabled is left out entirely.
-func (p *Processor) AnnotateAV(ctx context.Context, msg *types.DiscordMessage, opts AnnotateOptions) Annotation {
-	var out Annotation
-	if p == nil || msg == nil || len(msg.Media) == 0 {
-		return out
-	}
-	var sb strings.Builder
-	audioN, videoN := 0, 0
-	au, vi := p.mods.Audio, p.mods.Video
-	for _, a := range msg.Media {
-		switch {
-		case a.IsAudio() && au.Enabled:
-			audioN++
-			if audioN > au.MaxItems && au.MaxItems > 0 {
-				continue
-			}
-			label := audioLabel(a)
-			text, transcript, ok := p.AVText(ctx, a, opts.Current || opts.ComputeAudio)
-			switch {
-			case ok && !transcript:
-				fmt.Fprintf(&sb, "\n[Audio %d (%s): %s]", audioN, label, oneLine(text))
-			case ok:
-				fmt.Fprintf(&sb, "\n[Audio %d transcript (%s): %s]", audioN, label, oneLine(text))
-			default:
-				fmt.Fprintf(&sb, "\n[Audio %d: %s]", audioN, label)
-			}
-		case a.Kind == types.MediaVideo && vi.Enabled:
-			videoN++
-			if videoN > vi.MaxItems && vi.MaxItems > 0 {
-				continue
-			}
-			label := videoLabel(a)
-			if text, _, ok := p.AVText(ctx, a, opts.Current || opts.ComputeVideo); ok {
-				fmt.Fprintf(&sb, "\n[Video %d (%s): %s]", videoN, label, oneLine(text))
-			} else {
-				fmt.Fprintf(&sb, "\n[Video %d: %s]", videoN, label)
-			}
-		}
-	}
-	out.Text = sb.String()
-	return out
-}
-
-// AnnotateForMemory returns msgs with the Text of their audio, voice and
-// video attachments filled, for memory consolidation. Results come from the
-// cache (by attachment ID) when the reply path already produced them; a
-// missing one is computed once and cached. The per-message max_items limits
-// apply. Messages without such media are returned as is; the others are
-// copies (the input is not modified).
-func (p *Processor) AnnotateForMemory(ctx context.Context, msgs []*types.DiscordMessage) []*types.DiscordMessage {
-	if p == nil || (!p.mods.Audio.Enabled && !p.mods.Video.Enabled) {
-		return msgs
-	}
-	out := make([]*types.DiscordMessage, len(msgs))
-	for i, msg := range msgs {
-		out[i] = msg
-		if msg == nil || len(msg.Media) == 0 {
-			continue
-		}
-		atts := make([]types.MediaAttachment, len(msg.Media))
-		copy(atts, msg.Media)
-		changed := false
-		audioN, videoN := 0, 0
-		for j, a := range atts {
-			switch {
-			case a.IsAudio() && p.mods.Audio.Enabled:
-				audioN++
-				if p.mods.Audio.MaxItems > 0 && audioN > p.mods.Audio.MaxItems {
-					continue
-				}
-			case a.Kind == types.MediaVideo && p.mods.Video.Enabled:
-				videoN++
-				if p.mods.Video.MaxItems > 0 && videoN > p.mods.Video.MaxItems {
-					continue
-				}
-			default:
-				continue
-			}
-			if text, transcript, ok := p.AVText(ctx, a, true); ok {
-				atts[j].Text, atts[j].Transcript = oneLine(text), transcript
-				changed = true
-			}
-		}
-		if changed {
-			cp := *msg
-			cp.Media = atts
-			out[i] = &cp
-		}
-	}
-	return out
 }
 
 func audioLabel(a types.MediaAttachment) string {

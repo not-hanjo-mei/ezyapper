@@ -218,12 +218,6 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 		return
 	}
 
-	if !b.cfg().AI.Modalities.Image.Enabled {
-		b.wg.Add(1)
-		go b.processMessageWithoutImages(messageCtx, s, m, pm, recentMessages)
-		return
-	}
-
 	b.wg.Add(1)
 	go b.processMessage(messageCtx, s, m, pm, recentMessages)
 }

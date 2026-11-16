@@ -1,7 +1,6 @@
 package bot
 
 import (
-	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -40,14 +39,12 @@ func TestHistoryReusesReplyPathImageDescription(t *testing.T) {
 	first := "https://cdn.discordapp.com/attachments/1/2/cat.png?ex=1&is=2&hm=3&"
 	resigned := "https://cdn.discordapp.com/attachments/1/2/cat.png?ex=9&is=8&hm=7&"
 
-	if _, err := b.imageDescriber().DescribeImages(context.Background(), []string{first}); err != nil {
-		t.Fatal(err)
-	}
+	_ = resolveMsgs(b, media.CurrentPolicy(), &types.DiscordMessage{ID: "m1", ImageURLs: []string{first}})
 	history := []*types.DiscordMessage{{ID: "m1", Content: "look", ImageURLs: []string{resigned}}}
 	for range 3 {
-		out := b.enrichHistory(context.Background(), history, "cur", planRecentImageEnrichment("thanks", ""))
-		if out[0].Content != "look\n[Image 1: a cat]" {
-			t.Fatalf("content = %q", out[0].Content)
+		out := resolveMsgs(b, media.HistoryPolicy("thanks", ""), history...)
+		if got := types.RenderAttachments(out[0], types.StylePrompt); got != "  attachments: [Image 1: a cat]" {
+			t.Fatalf("attachments = %q", got)
 		}
 	}
 	if calls != 1 {
@@ -56,8 +53,8 @@ func TestHistoryReusesReplyPathImageDescription(t *testing.T) {
 	// A different image is not served from the cache, and a plain-text turn
 	// does not describe it.
 	other := []*types.DiscordMessage{{ID: "m2", Content: "x", ImageURLs: []string{"https://cdn.discordapp.com/attachments/1/3/dog.png"}}}
-	if out := b.enrichHistory(context.Background(), other, "cur", planRecentImageEnrichment("ok", "")); out[0].Content != "x" || calls != 1 {
-		t.Fatalf("content=%q calls=%d", out[0].Content, calls)
+	if out := resolveMsgs(b, media.HistoryPolicy("ok", ""), other...); out[0].ResolvedMedia[0].Status != types.MediaPending || calls != 1 {
+		t.Fatalf("media=%+v calls=%d", out[0].ResolvedMedia, calls)
 	}
 }
 

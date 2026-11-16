@@ -83,8 +83,7 @@ type promptInput struct {
 
 	// History is newest first (as fetched), without the current message.
 	History []*types.DiscordMessage
-	// Current is the message being answered; Content may already include
-	// image/audio descriptions.
+	// Current is the message being answered, with its media resolved.
 	Current *types.DiscordMessage
 	// Extra users (e.g. the current message's mentions) used to resolve
 	// mentions and fill participants.
@@ -202,7 +201,11 @@ func roleOf(m *types.DiscordMessage, botID string) string {
 	}
 }
 
-// renderMessageLine renders one message in the canonical line format.
+// renderMessageLine renders one message in the canonical line format. Only
+// the message text is quoted; the text media was turned into and the
+// message's embeds go on their own indented line under it, so the model
+// never reads them as something the author wrote (see
+// types.RenderAttachments).
 func renderMessageLine(m *types.DiscordMessage, botID string, names map[string]string, channels map[string]string) string {
 	var b strings.Builder
 	ts := m.Timestamp
@@ -225,7 +228,10 @@ func renderMessageLine(m *types.DiscordMessage, botID string, names map[string]s
 			fmt.Fprintf(&b, "[reply to %s] ", who)
 		}
 	}
-	fmt.Fprintf(&b, "%s: %q", displayNameOf(m), resolveMentions(m.FullText(), names, channels))
+	fmt.Fprintf(&b, "%s: %q", displayNameOf(m), resolveMentions(m.Content, names, channels))
+	if att := types.RenderAttachments(m, types.StylePrompt); att != "" {
+		b.WriteString("\n" + resolveMentions(att, names, channels))
+	}
 	return b.String()
 }
 

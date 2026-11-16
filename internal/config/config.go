@@ -313,6 +313,22 @@ type ConsolidationVisionConfig struct {
 	DescriptionPrompt string `mapstructure:"description_prompt" yaml:"description_prompt,omitempty"`
 }
 
+// ConsolidationImage returns the image modality that describes images
+// during consolidation: core.ai.modalities.image with the
+// consolidation.vision overrides applied. Each override key applies when it
+// is set (an explicit 0 or {} included); absent keys keep image's, which in
+// turn fall back to core.ai's when the client is built
+// (ModalityModel.Resolve).
+func (c *Config) ConsolidationImage() ImageModalityConfig {
+	img := c.AI.Modalities.Image
+	o := c.Memory.Consolidation.Vision
+	img.ModalityModel = o.ModalityModel.Over(img.ModalityModel)
+	if o.DescriptionPrompt != "" {
+		img.Prompt = o.DescriptionPrompt
+	}
+	return img
+}
+
 type RetrievalConfig struct {
 	TopK                   int     `mapstructure:"top_k" yaml:"top_k"`
 	MinScore               float64 `mapstructure:"min_score" yaml:"min_score"`

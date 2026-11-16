@@ -1,7 +1,6 @@
 package memory
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
@@ -14,23 +13,26 @@ import (
 func TestBuildConversationText_IncludesAudioAndVideoText(t *testing.T) {
 	c := &Consolidator{ownBotID: "bot"}
 	msgs := []*DiscordMessage{
-		{ID: "1", AuthorID: "u1", Username: "alice", Timestamp: time.Unix(0, 0), Media: []types.MediaAttachment{
-			{ID: "a1", Kind: types.MediaVoice, Text: "my dog is called Pixel", Transcript: true},
+		{ID: "1", AuthorID: "u1", Username: "alice", Timestamp: time.Unix(0, 0), ResolvedMedia: []types.ResolvedMedia{
+			{Kind: types.ResolvedVoice, Text: "my dog is called Pixel", TextKind: types.TextTranscript, Status: types.MediaOK},
 		}},
-		{ID: "2", AuthorID: "u1", Username: "alice", Content: "watch", Timestamp: time.Unix(0, 0), Media: []types.MediaAttachment{
-			{ID: "a2", Kind: types.MediaAudio, Text: "a piano melody"},
-			{ID: "v1", Kind: types.MediaVideo, Text: "a cat jumps on a sofa"},
-			{ID: "v2", Kind: types.MediaVideo}, // not processed: no line
+		{ID: "2", AuthorID: "u1", Username: "alice", Content: "watch", Timestamp: time.Unix(0, 0), ResolvedMedia: []types.ResolvedMedia{
+			{Kind: types.ResolvedAudio, Text: "a piano melody", TextKind: types.TextDescription, Status: types.MediaOK},
+			{Kind: types.ResolvedVideo, Text: "a cat jumps on a sofa", Status: types.MediaOK},
+			{Kind: types.ResolvedVideo, Status: types.MediaPending}, // not processed: no line
+			{Kind: types.ResolvedVideo, Status: types.MediaFailed},
 		}},
 		{ID: "3", AuthorID: "u1", Username: "alice", Content: "look", Timestamp: time.Unix(0, 0),
-			ImageURLs: []string{"https://cdn.discordapp.com/attachments/1/2/a.png"}, ImageDescriptions: []string{"a red bike"}},
+			ImageURLs:     []string{"https://cdn.discordapp.com/attachments/1/2/a.png"},
+			ResolvedMedia: []types.ResolvedMedia{{Kind: types.ResolvedImage, Text: "a red bike", Status: types.MediaOK}}},
 	}
-	text, images := c.buildConversationText(context.Background(), msgs, "")
+	text, images := c.buildConversationText(msgs, "")
 	for _, want := range []string{
 		"  [Attached Audio 1 transcript: my dog is called Pixel]\n",
 		"  [Attached Audio 1: a piano melody]\n",
 		"  [Attached Video 1: a cat jumps on a sofa]\n",
 		"  [Attached Image 1: a red bike]\n",
+		"  [Attached Video 3: (could not be processed)]\n",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("conversation is missing %q:\n%s", want, text)
@@ -48,11 +50,11 @@ func TestBuildConversationText_IncludesAudioAndVideoText(t *testing.T) {
 // when its media carries content.
 func TestPassesEntropyGate_MediaOnlyMessages(t *testing.T) {
 	cfg := EntropyGateConfig{MinUniqueWordRatio: 0.3}
-	voice := &DiscordMessage{Media: []types.MediaAttachment{{Kind: types.MediaVoice, Text: "hello there"}}}
+	voice := &DiscordMessage{ResolvedMedia: []types.ResolvedMedia{{Kind: types.ResolvedVoice, Text: "hello there", Status: types.MediaOK}}}
 	if !PassesEntropyGate(voice, cfg) {
 		t.Error("a transcribed voice message must pass")
 	}
-	unprocessed := &DiscordMessage{Media: []types.MediaAttachment{{Kind: types.MediaVoice}}}
+	unprocessed := &DiscordMessage{ResolvedMedia: []types.ResolvedMedia{{Kind: types.ResolvedVoice, Status: types.MediaPending}}}
 	if PassesEntropyGate(unprocessed, cfg) {
 		t.Error("a voice message without a transcript has nothing to consolidate")
 	}

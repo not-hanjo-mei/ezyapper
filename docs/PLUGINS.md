@@ -416,7 +416,7 @@ The repo ships eleven example plugins under `examples/plugins/`. Each has its ow
 | `datetime-go` | Go | Tool returning current date/time with configurable timezone |
 | `emote-go` | Go | Two tools: `search_emote`, `send_emote`. Auto-steals emotes when missing. |
 | `kimi-tools-go` | Go | Loads tool definitions from Kimi's Formula API at startup |
-| `openai-tts-go` | Go | TTS pipeline using `before_send` to attach generated audio. Optional AI rewriter step. |
+| `openai-tts-go` | Go | TTS pipeline using `before_send` to attach generated audio to every reply; exposes no AI tools. Optional AI rewriter step. |
 | `systemspec-go` | Go | Returns CPU/memory info about the host |
 
 ### Command (`runtime: "command"`)
