@@ -126,11 +126,11 @@ func TestLiveImageDescribe(t *testing.T) {
 	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, nil)
 	start := time.Now()
-	got, err := p.DescribeImages(context.Background(), []string{base + "/img.webp"})
+	got, err := p.describeImage(context.Background(), base+"/img.webp", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("image (%s): %q", time.Since(start).Round(time.Millisecond), got[0])
+	t.Logf("image (%s): %q", time.Since(start).Round(time.Millisecond), got)
 }
 
 // TestLiveStickerVision describes a real sticker from the Discord media
@@ -147,7 +147,7 @@ func TestLiveStickerVision(t *testing.T) {
 	p := New(cfg, nil)
 	p.SetStickers(nil, NewCache(time.Hour, 10))
 	start := time.Now()
-	got := p.AnnotateStickers(context.Background(), &types.DiscordMessage{Stickers: []types.StickerRef{{ID: id, Name: "live", FormatType: types.StickerPNG}}}, true)
+	got := annotate(p, &types.DiscordMessage{Stickers: []types.StickerRef{{ID: id, Name: "live", FormatType: types.StickerPNG}}}, CurrentPolicy())
 	if !strings.Contains(got, "[Sticker: live — ") {
 		t.Fatalf("no vision description: %q", got)
 	}

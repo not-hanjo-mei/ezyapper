@@ -211,7 +211,7 @@ func TestCacheDoFailureCaching(t *testing.T) {
 
 // Processor level: a model 415 is cached, so the same image is not sent
 // again on the next turn; a 503 is retried.
-func TestDescribeImagesCachesPermanentModelFailure(t *testing.T) {
+func TestDescribeImageCachesPermanentModelFailure(t *testing.T) {
 	var calls int32
 	status := http.StatusUnsupportedMediaType
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -223,9 +223,9 @@ func TestDescribeImagesCachesPermanentModelFailure(t *testing.T) {
 	cfg.AI.Modalities.Image = config.ImageModalityConfig{Enabled: true, Transport: config.TransportURL}
 	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, NewCache(time.Hour, 10))
-	url := []string{"https://cdn.discordapp.com/attachments/1/2/a.png?ex=1"}
+	url := "https://cdn.discordapp.com/attachments/1/2/a.png?ex=1"
 	for range 3 {
-		if _, err := p.DescribeImages(context.Background(), url); err == nil {
+		if _, err := p.describeImage(context.Background(), url, false); err == nil {
 			t.Fatal("want the error")
 		}
 	}
@@ -233,10 +233,10 @@ func TestDescribeImagesCachesPermanentModelFailure(t *testing.T) {
 		t.Fatalf("415 must be cached, model calls=%d", calls)
 	}
 	status = http.StatusServiceUnavailable
-	url = []string{"https://cdn.discordapp.com/attachments/1/3/b.png"}
-	_, _ = p.DescribeImages(context.Background(), url)
+	url = "https://cdn.discordapp.com/attachments/1/3/b.png"
+	_, _ = p.describeImage(context.Background(), url, false)
 	before := atomic.LoadInt32(&calls)
-	_, _ = p.DescribeImages(context.Background(), url)
+	_, _ = p.describeImage(context.Background(), url, false)
 	if atomic.LoadInt32(&calls) == before {
 		t.Fatal("503 must not be cached")
 	}
@@ -325,7 +325,7 @@ func TestDescribeStickerCachesPermanentFailure(t *testing.T) {
 	p, _ := stickerProcessor(t, true, chat.URL)
 	s := types.StickerRef{ID: "123", Name: "Amika Thumbs Up", FormatType: types.StickerPNG}
 	for range 3 {
-		_ = p.AnnotateStickers(context.Background(), stickerMsg(s), true)
+		_ = annotate(p, stickerMsg(s), CurrentPolicy())
 	}
 	if fetches != 1 || calls != 0 {
 		t.Fatalf("fetches=%d model calls=%d, want 1 and 0", fetches, calls)

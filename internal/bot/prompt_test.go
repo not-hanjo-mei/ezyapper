@@ -108,3 +108,21 @@ func TestMentionsToIDs(t *testing.T) {
 		t.Fatalf("got %q want %q", got, want)
 	}
 }
+
+// Media text goes on its own attachments line, outside the quoted speech.
+func TestUserPromptAttachmentsOutsideQuote(t *testing.T) {
+	ts := time.Date(2026, 11, 1, 5, 0, 0, 0, time.UTC)
+	hist := &types.DiscordMessage{ID: "1", AuthorID: "100", Username: "alice", Content: "look", Timestamp: ts,
+		ResolvedMedia: []types.ResolvedMedia{{Kind: types.ResolvedImage, Text: "a cat", Status: types.MediaOK}}}
+	cur := &types.DiscordMessage{ID: "2", AuthorID: "100", Username: "alice", Timestamp: ts,
+		ResolvedMedia: []types.ResolvedMedia{{Kind: types.ResolvedVoice, Label: "voice message, 7s", Text: "hi", TextKind: types.TextTranscript, Status: types.MediaOK}}}
+	p := buildUserPrompt(promptInput{BotID: "999", History: []*types.DiscordMessage{hist}, Current: cur})
+	for _, want := range []string{
+		`alice: "look"` + "\n" + `  attachments: [Image 1: a cat]`,
+		`alice: ""` + "\n" + `  attachments: [Audio 1 transcript (voice message, 7s): hi]` + "\n</currentMessage>",
+	} {
+		if !strings.Contains(p, want) {
+			t.Errorf("missing %q in\n%s", want, p)
+		}
+	}
+}

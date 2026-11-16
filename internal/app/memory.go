@@ -12,7 +12,6 @@ import (
 	"ezyapper/internal/config"
 	"ezyapper/internal/hotreload"
 	"ezyapper/internal/logger"
-	"ezyapper/internal/media"
 	"ezyapper/internal/memory"
 )
 
@@ -22,16 +21,11 @@ import (
 // only reach it through a fallback (core.ai.api_key used when
 // memory_pipeline.embedding.api_key is empty, and so on).
 type memoryInputs struct {
-	Enabled         bool
-	EmbeddingModel  string
-	EmbeddingClient config.AIConfig
-	Qdrant          config.QdrantConfig
-	Consolidation   config.AIConfig
-	// ImageAI is what describes images in consolidated messages: the core
-	// LLM settings plus the image modality, with consolidation.vision
-	// overrides applied. Only those fields are kept, so unrelated core.ai
-	// edits (the chat prompt, other modalities) do not rebuild memory.
-	ImageAI          config.AIConfig
+	Enabled          bool
+	EmbeddingModel   string
+	EmbeddingClient  config.AIConfig
+	Qdrant           config.QdrantConfig
+	Consolidation    config.AIConfig
 	Service          memory.ServiceConfig
 	ConsolidationCfg config.ConsolidationConfig
 }
@@ -64,7 +58,6 @@ func memoryInputsFor(cfg *config.Config) memoryInputs {
 	in.Qdrant = cfg.Qdrant
 	cons := buildConsolidationAIConfig(cfg)
 	in.Consolidation = *cons
-	in.ImageAI = buildConsolidationImageAI(cfg)
 	in.ConsolidationCfg = cfg.Memory.Consolidation
 	in.Service = buildServiceConfig(cfg)
 	in.Service.Consolidation = nil // compared through ConsolidationCfg
@@ -74,10 +67,9 @@ func memoryInputsFor(cfg *config.Config) memoryInputs {
 // BuildMemoryService builds the memory service for cfg: the no-op service
 // when memory is disabled, otherwise a Qdrant-backed service (which
 // connects, prepares the tiered collections and starts re-embedding).
-// mediaCache is the bot's media cache (may be nil): the consolidation image
-// describer reads and fills it, so images the reply path described are not
-// described again.
-func BuildMemoryService(cfg *config.Config, mediaCache *media.Cache) (memory.Service, error) {
+// Media in consolidated messages is turned into text by the bot before the
+// messages reach the service (media.Processor.Resolve with MemoryPolicy).
+func BuildMemoryService(cfg *config.Config) (memory.Service, error) {
 	in := memoryInputsFor(cfg)
 	if !in.Enabled {
 		logger.Info("[main] Memory subsystem is disabled by config (retrieval.top_k=0 and consolidation.enabled=false)")
@@ -90,17 +82,6 @@ func BuildMemoryService(cfg *config.Config, mediaCache *media.Cache) (memory.Ser
 	}
 
 	consolidationAIClient := ai.NewClient(&in.Consolidation, tools.NewToolRegistry())
-	// Images in consolidated messages are described by the image modality,
-	// optionally routed to another model by consolidation.vision.
-	var imageDescriber memory.ImageDescriber
-	if in.ImageAI.Modalities.Image.Enabled {
-		imgCfg := &config.Config{}
-		imgCfg.AI = in.ImageAI
-		if d := media.New(imgCfg, mediaCache).ImageDescriber(); d != nil {
-			imageDescriber = d
-		}
-	}
-
 	qdrantClient, err := memory.NewQdrantClient(context.Background(), &in.Qdrant, in.EmbeddingModel)
 	if err != nil {
 		embedder.Stop()
@@ -110,7 +91,7 @@ func BuildMemoryService(cfg *config.Config, mediaCache *media.Cache) (memory.Ser
 	svcCfg := in.Service
 	cons := in.ConsolidationCfg
 	svcCfg.Consolidation = &cons
-	svc, err := memory.NewService(&svcCfg, &in.Qdrant, qdrantClient, embedder, consolidationAIClient, imageDescriber)
+	svc, err := memory.NewService(&svcCfg, &in.Qdrant, qdrantClient, embedder, consolidationAIClient)
 	if err != nil {
 		embedder.Stop()
 		_ = qdrantClient.Close()
@@ -135,12 +116,9 @@ type MemoryComponent struct {
 	build func(*config.Config) (memory.Service, error)
 }
 
-// NewMemoryComponent returns the hot reload component for proxy. Rebuilt
-// services share mediaCache with the bot (see BuildMemoryService).
-func NewMemoryComponent(proxy *memory.Swappable, mediaCache *media.Cache) *MemoryComponent {
-	return &MemoryComponent{Proxy: proxy, build: func(cfg *config.Config) (memory.Service, error) {
-		return BuildMemoryService(cfg, mediaCache)
-	}}
+// NewMemoryComponent returns the hot reload component for proxy.
+func NewMemoryComponent(proxy *memory.Swappable) *MemoryComponent {
+	return &MemoryComponent{Proxy: proxy, build: BuildMemoryService}
 }
 
 func (*MemoryComponent) Name() string { return "memory" }
@@ -299,22 +277,4 @@ func buildEmbeddingAIConfig(cfg *config.Config) *config.AIConfig {
 	}
 
 	return &embeddingCfg
-}
-
-// buildConsolidationImageAI returns the client settings that describe
-// images during consolidation: core.ai's LLM fields and image modality, with
-// memory_pipeline.memory.consolidation.vision overrides applied to the
-// modality. Each override key applies when it is set (an explicit 0 or {}
-// included); absent keys keep image's, which in turn fall back to core.ai's
-// when the client is built (ModalityModel.Resolve).
-func buildConsolidationImageAI(cfg *config.Config) config.AIConfig {
-	img := cfg.AI.Modalities.Image
-	o := cfg.Memory.Consolidation.Vision
-	img.ModalityModel = o.ModalityModel.Over(img.ModalityModel)
-	if o.DescriptionPrompt != "" {
-		img.Prompt = o.DescriptionPrompt
-	}
-	out := config.AIConfig{LLMConfig: cfg.AI.LLMConfig, MaxImageBytes: cfg.AI.MaxImageBytes}
-	out.Modalities.Image = img
-	return out
 }

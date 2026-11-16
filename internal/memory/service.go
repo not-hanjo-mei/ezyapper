@@ -56,6 +56,9 @@ type ProfileStore interface {
 }
 
 // ConsolidationManager groups consolidation trigger and execution operations.
+//
+// Media in the messages is read from their ResolvedMedia: resolve them
+// first with media.Processor.Resolve and media.MemoryPolicy.
 type ConsolidationManager interface {
 	// ConsolidateWithMessages executes consolidation with provided messages
 	ConsolidateWithMessages(ctx context.Context, userID string, messages []*DiscordMessage) error
@@ -178,7 +181,7 @@ type Embedder interface {
 // repairScanLimit caps the one-time startup scan for damaged points.
 const repairScanLimit uint32 = 1000
 
-func NewService(cfg *ServiceConfig, qdrantCfg *config.QdrantConfig, qdrantClient *QdrantClient, embedder Embedder, aiClient aiChatCompleter, vd visionDescriber) (*MemoryService, error) {
+func NewService(cfg *ServiceConfig, qdrantCfg *config.QdrantConfig, qdrantClient *QdrantClient, embedder Embedder, aiClient aiChatCompleter) (*MemoryService, error) {
 	if qdrantClient == nil {
 		return nil, fmt.Errorf("qdrant client is required")
 	}
@@ -224,7 +227,7 @@ func NewService(cfg *ServiceConfig, qdrantCfg *config.QdrantConfig, qdrantClient
 		done:                  make(chan struct{}),
 	}
 
-	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, vd, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit, cfg.OtherBotPolicy, cfg.EntropyMinUniqueWordRatio, qdrantCfg.MaxRetries, qdrantCfg.RetryBaseDelayMs, qdrantCfg.RetryMaxDelayMs)
+	service.consolidator = NewConsolidator(qdrantClient, embedder, aiClient, cfg.Consolidation, cfg.OwnBotID, cfg.ConsolidationInterval, cfg.MemorySearchLimit, cfg.OtherBotPolicy, cfg.EntropyMinUniqueWordRatio, qdrantCfg.MaxRetries, qdrantCfg.RetryBaseDelayMs, qdrantCfg.RetryMaxDelayMs)
 
 	service.startAccessWorker()
 

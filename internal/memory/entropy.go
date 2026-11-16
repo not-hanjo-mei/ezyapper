@@ -1,6 +1,8 @@
 package memory
 
 import (
+	"ezyapper/internal/types"
+
 	"ezyapper/internal/config"
 	"regexp"
 	"strings"
@@ -62,13 +64,14 @@ func isPurelyEmoji(s string) bool {
 }
 
 // hasMediaContent reports whether msg carries an image or an audio/video
-// attachment that was turned into text.
+// attachment that was turned into text (see types.ResolvedMedia).
+// Stickers do not count.
 func hasMediaContent(msg *DiscordMessage) bool {
 	if len(msg.ImageURLs) > 0 {
 		return true
 	}
-	for _, a := range msg.Media {
-		if strings.TrimSpace(a.Text) != "" {
+	for _, it := range msg.ResolvedMedia {
+		if it.Kind != types.ResolvedSticker && it.Status == types.MediaOK && strings.TrimSpace(it.Text) != "" {
 			return true
 		}
 	}

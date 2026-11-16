@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -55,8 +54,9 @@ func TestChannelConsolidation_GetsAudioTranscript(t *testing.T) {
 	b.channelMessageBuffer = map[string][]*types.DiscordMessage{}
 
 	voice := voiceMsg("v1", files.URL)
+	voice.AuthorID = "u1"
 	// Reply path: the current message is transcribed and cached.
-	_ = b.annotateCurrent(context.Background(), *voice, GenerateContext{})
+	_ = resolveMsgs(b, media.CurrentPolicy(), voice)
 	b.addMessageToChannelBuffer("c1", voice)
 
 	b.triggerChannelConsolidation(context.Background(), "c1", 1)
@@ -64,11 +64,11 @@ func TestChannelConsolidation_GetsAudioTranscript(t *testing.T) {
 
 	cons.mu.Lock()
 	defer cons.mu.Unlock()
-	if len(cons.msgs) != 1 || len(cons.msgs[0].Media) != 1 {
+	if len(cons.msgs) != 1 {
 		t.Fatalf("consolidated messages = %+v", cons.msgs)
 	}
-	if got := cons.msgs[0].Media[0]; !strings.Contains(got.Text, "Osaka") || !got.Transcript {
-		t.Fatalf("voice attachment = %+v, want the transcript", got)
+	if got := types.RenderAttachments(cons.msgs[0], types.StyleMemory); got != "  [Attached Audio 1 transcript: I moved to Osaka last week]" {
+		t.Fatalf("memory attachments = %q, want the transcript", got)
 	}
 	if asrCalls != 1 {
 		t.Fatalf("asr calls = %d, want the cached transcript reused", asrCalls)

@@ -99,7 +99,7 @@ func TestInitMemoryService_DisabledBySwitchesUsesNoop(t *testing.T) {
 		},
 	}
 
-	svc, err := BuildMemoryService(cfg, nil)
+	svc, err := BuildMemoryService(cfg)
 	if err != nil {
 		t.Fatalf("BuildMemoryService returned error: %v", err)
 	}
@@ -143,27 +143,5 @@ func TestBuildConsolidationAIConfig_TemperatureAbsentVsZero(t *testing.T) {
 	}
 	if got.Timeout != 30 || got.RetryCount != 1 || got.MaxTokens != 100 || got.Model != "chat" {
 		t.Fatalf("unexpected consolidation client config: %+v", got.LLMConfig)
-	}
-}
-
-// consolidation.vision keys override image's when present (explicit 0 and
-// {} included) and leave image's (then core.ai's) when absent.
-func TestBuildConsolidationImageAI_Presence(t *testing.T) {
-	cfg := &config.Config{AI: config.AIConfig{LLMConfig: config.LLMConfig{Temperature: 0.8, RetryCount: 3, Timeout: 60, ExtraParams: map[string]any{"a": 1}}}}
-	cfg.AI.Modalities.Image = config.ImageModalityConfig{Enabled: true, Prompt: "p", ModalityModel: config.ModalityModel{Model: "vl", Temperature: new(float32(0.5))}}
-
-	r := buildConsolidationImageAI(cfg)
-	resolved := r.Modalities.Image.Resolve(r)
-	if resolved.Temperature != 0.5 || resolved.RetryCount != 3 || resolved.ExtraParams["a"] != 1 {
-		t.Fatalf("absent vision keys must keep image's then core.ai's, got %+v", resolved.LLMConfig)
-	}
-
-	cfg.Memory.Consolidation.Vision = config.ConsolidationVisionConfig{ModalityModel: config.ModalityModel{
-		Temperature: new(float32(0)), RetryCount: new(0), ExtraParams: map[string]any{},
-	}}
-	r = buildConsolidationImageAI(cfg)
-	resolved = r.Modalities.Image.Resolve(r)
-	if resolved.Temperature != 0 || resolved.RetryCount != 0 || len(resolved.ExtraParams) != 0 || resolved.Model != "vl" {
-		t.Fatalf("explicit 0 / {} vision keys must be used as is, got %+v", resolved.LLMConfig)
 	}
 }

@@ -55,7 +55,7 @@ func main() {
 	// attachment is turned into text once.
 	mediaCache := media.NewCache(time.Duration(cfg.Discord.ImageCacheTTLMin)*time.Minute, cfg.Discord.ImageCacheMaxEntries)
 
-	memoryService, err := app.BuildMemoryService(cfg, mediaCache)
+	memoryService, err := app.BuildMemoryService(cfg)
 	if err != nil {
 		logger.Fatalf("[main] Failed to initialize memory service: %v", err)
 	}
@@ -142,7 +142,7 @@ func main() {
 	// committed in the same order once all of them prepared.
 	reloader := hotreload.New(cfgStore,
 		app.LoggingComponent{},
-		app.NewMemoryComponent(memoryProxy, mediaCache),
+		app.NewMemoryComponent(memoryProxy),
 		discordBot,
 		app.PluginsComponent{Manager: pluginManager},
 		webServer,

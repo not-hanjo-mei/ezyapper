@@ -14,7 +14,8 @@ const (
 )
 
 // MediaAttachment is an audio, voice or video attachment of a message.
-// Images are kept in DiscordMessage.ImageURLs. The attachment ID is stable
+// Images are kept in DiscordMessage.ImageURLs. The text the attachment is
+// turned into is in DiscordMessage.ResolvedMedia. The attachment ID is stable
 // (unlike the signed CDN URL), so it is the cache key for transcripts and
 // descriptions.
 type MediaAttachment struct {
@@ -25,14 +26,6 @@ type MediaAttachment struct {
 	ContentType string  `json:"content_type,omitempty"`
 	Size        int     `json:"size,omitempty"`
 	DurationSec float64 `json:"duration_sec,omitempty"`
-	// Text is what the media modality turned the attachment into: an audio
-	// transcript or description, or a video description. It is filled for
-	// memory consolidation (see media.Processor.AnnotateForMemory); empty
-	// when the attachment was not processed.
-	Text string `json:"text,omitempty"`
-	// Transcript reports that Text is a transcript (audio in asr mode)
-	// rather than a description.
-	Transcript bool `json:"transcript,omitempty"`
 }
 
 // IsAudio reports whether the attachment is an audio file or voice message.

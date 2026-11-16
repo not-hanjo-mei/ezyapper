@@ -3,9 +3,7 @@ package bot
 
 import (
 	"context"
-	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"ezyapper/internal/ai"
@@ -35,16 +33,16 @@ type ModeContext struct {
 	MessageID       string
 	GuildName       string
 	Mentions        []*discordgo.User
-	// Current is the message being answered, in canonical form.
-	Current types.DiscordMessage
 	// InjectedContext holds prompt blocks plugins added in after_decision.
 	InjectedContext []plugin.ContextBlock
 }
 
-// GenerateContext bundles request and image parameters for response generation.
+// GenerateContext carries what the process path already resolved for the
+// reply.
 type GenerateContext struct {
-	ImageURLs         []string
-	ImageDescriptions []string
+	// Current is the message being answered with its media resolved
+	// (media.CurrentPolicy), done once per reply.
+	Current *types.DiscordMessage
 }
 
 // extractReplyInfo extracts reply-to username and content from the message reference.
@@ -73,19 +71,19 @@ func (b *Bot) generateResponse(ctx context.Context, mc ModeContext, gc GenerateC
 		botID = b.sess().State.User.ID
 	}
 
-	// Keep the media this prompt shows cached while it stays in context.
-	b.pinMediaWindow(mc.ChannelID, append(slices.Clone(recentMessages), &mc.Current, &types.DiscordMessage{ImageURLs: gc.ImageURLs})...)
-
-	// Historical media: cached descriptions/transcripts, plus bounded
-	// on-demand enrichment of the media message the user replied to.
-	history := b.enrichHistory(ctx, b.filterMessages(recentMessages), mc.MessageID, planRecentImageEnrichment(mc.UserContent, mc.ReplyToID))
-
-	current := mc.Current
+	current := types.DiscordMessage{ID: mc.MessageID, ChannelID: mc.ChannelID, GuildID: mc.GuildID, AuthorID: mc.UserID, Username: mc.Username, DisplayName: mc.DisplayName}
+	if gc.Current != nil {
+		current = *gc.Current
+	}
 	current.Content = mc.UserContent
 	current.Embeds = nil // already folded into UserContent
 
-	content := b.annotateCurrent(ctx, current, gc)
-	current.Content = content
+	// Keep the media this prompt shows cached while it stays in context.
+	b.pinMediaWindow(mc.ChannelID, append(slices.Clone(recentMessages), &current)...)
+
+	// Historical media: cached descriptions/transcripts, plus bounded
+	// on-demand processing of the media message the user asked about.
+	history := b.mediaProcessor().Resolve(ctx, withoutMessage(b.filterMessages(recentMessages), mc.MessageID), media.HistoryPolicy(mc.UserContent, mc.ReplyToID))
 
 	in := b.basePromptInput(mc, botID)
 	in.History = history
@@ -169,48 +167,10 @@ func (b *Bot) renderMemories(memories []*memory.Record) string {
 	return memory.FormatMemoriesForContext(memories, cfg.MemoryStrengthMultiplier, time.Now(), cfg.Retrieval.MentionedLimit(), cfg.Retrieval.ChannelLimit())
 }
 
-// annotateCurrent applies the enabled modalities to the message being
-// answered: it returns the content with image descriptions, sticker text,
-// audio transcripts and video descriptions added.
-func (b *Bot) annotateCurrent(ctx context.Context, current types.DiscordMessage, gc GenerateContext) string {
-	content := current.Content
-	p := b.mediaProcessor()
-	if p == nil {
-		return content
-	}
-	if p.ImageDescribeEnabled() {
-		content += b.describeCurrentImages(ctx, gc)
-	}
-	content += p.AnnotateStickers(ctx, &current, true)
-	content += p.AnnotateAV(ctx, &current, media.AnnotateOptions{Current: true}).Text
-	return content
-}
-
-// describeCurrentImages returns " [Image N: description]" suffixes for the
-// current message's images, using cached descriptions first.
-func (b *Bot) describeCurrentImages(ctx context.Context, gc GenerateContext) string {
-	if len(gc.ImageURLs) == 0 {
-		return ""
-	}
-	descriptions := gc.ImageDescriptions
-	if len(descriptions) == 0 {
-		describer := b.imageDescriber()
-		if describer == nil {
-			logger.Warnf("[media] image describer unavailable, continuing without image descriptions")
-			return ""
-		}
-		var err error
-		descriptions, err = describer.DescribeImages(ctx, gc.ImageURLs)
-		if err != nil {
-			logger.Warnf("[response] Failed to describe images: %v", err)
-			return ""
-		}
-	}
-	var sb strings.Builder
-	for i, d := range descriptions {
-		fmt.Fprintf(&sb, " [Image %d: %s]", i+1, d)
-	}
-	return sb.String()
+// withoutMessage returns msgs without the message id (the current message
+// is not history).
+func withoutMessage(msgs []*types.DiscordMessage, id string) []*types.DiscordMessage {
+	return slices.DeleteFunc(slices.Clone(msgs), func(m *types.DiscordMessage) bool { return m == nil || m.ID == id })
 }
 
 // completeTextWithTools completes chat with tool support.

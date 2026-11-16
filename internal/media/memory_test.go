@@ -16,7 +16,7 @@ import (
 
 // Consolidation gets audio transcripts and video descriptions as text: the
 // ones the reply path cached are reused, missing ones are computed once.
-func TestAnnotateForMemory(t *testing.T) {
+func TestResolveMemory(t *testing.T) {
 	files := cdn(t)
 	var asrCalls, videoCalls int32
 	asr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -37,52 +37,48 @@ func TestAnnotateForMemory(t *testing.T) {
 	textMsg := &types.DiscordMessage{ID: "m3", Content: "hi"}
 
 	// The reply path already transcribed the voice message.
-	_ = p.AnnotateAV(context.Background(), voiceMsg, AnnotateOptions{Current: true})
+	_ = annotate(p, voiceMsg, CurrentPolicy())
 	if asrCalls != 1 {
 		t.Fatalf("asr calls = %d", asrCalls)
 	}
 
 	in := []*types.DiscordMessage{voiceMsg, videoMsg, textMsg}
-	out := p.AnnotateForMemory(context.Background(), in)
-	if got := out[0].Media[0]; got.Text != "my birthday is in May" || !got.Transcript {
+	out := p.Resolve(context.Background(), in, MemoryPolicy())
+	if got := out[0].ResolvedMedia[0]; got.Text != "my birthday is in May" || got.TextKind != types.TextTranscript || got.Status != types.MediaOK {
 		t.Fatalf("voice = %+v", got)
 	}
-	if got := out[1].Media[0]; got.Text != "a cat jumps on a sofa" || got.Transcript {
+	if got := out[1].ResolvedMedia[0]; got.Text != "a cat jumps on a sofa" || got.TextKind != types.TextDescription {
 		t.Fatalf("video = %+v", got)
 	}
-	if out[2] != textMsg {
-		t.Fatal("messages without media must be passed through")
+	if len(out[2].ResolvedMedia) != 0 || out[2].Content != "hi" {
+		t.Fatal("messages without media must carry no media text")
 	}
 	if asrCalls != 1 || videoCalls != 1 {
 		t.Fatalf("asr=%d video=%d, want the cached transcript reused and the video described once", asrCalls, videoCalls)
 	}
-	if voiceMsg.Media[0].Text != "" || videoMsg.Media[0].Text != "" {
-		t.Fatal("AnnotateForMemory must not modify its input")
+	if voiceMsg.ResolvedMedia != nil || videoMsg.ResolvedMedia != nil {
+		t.Fatal("Resolve must not modify its input")
 	}
 	// Again: everything from the cache.
-	_ = p.AnnotateForMemory(context.Background(), in)
+	_ = p.Resolve(context.Background(), in, MemoryPolicy())
 	if asrCalls != 1 || videoCalls != 1 {
 		t.Fatalf("second pass asr=%d video=%d", asrCalls, videoCalls)
 	}
 }
 
-func TestAnnotateForMemory_DisabledIsNoop(t *testing.T) {
+func TestResolveMemory_DisabledIsNoop(t *testing.T) {
 	cfg := baseConfig("http://unused.invalid")
 	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, nil)
 	in := []*types.DiscordMessage{{ID: "m", Media: []types.MediaAttachment{{ID: "a", Kind: types.MediaVoice}}}}
-	if out := p.AnnotateForMemory(context.Background(), in); out[0] != in[0] {
-		t.Fatal("disabled modalities must leave messages untouched")
-	}
-	var nilP *Processor
-	if out := nilP.AnnotateForMemory(context.Background(), in); len(out) != 1 {
-		t.Fatal("nil processor must pass messages through")
+	if out := p.Resolve(context.Background(), in, MemoryPolicy()); len(out[0].ResolvedMedia) != 0 {
+		t.Fatal("disabled modalities must add no media text")
 	}
 }
 
-// The reply path and memory consolidation (its own processor, possibly
-// another vision model) share one cache: an image is described once.
-func TestDescribeImages_SharedCacheDescribesOnce(t *testing.T) {
+// The reply path and memory consolidation share one cache: an image is
+// described once, even across processors.
+func TestResolveImages_SharedCacheDescribesOnce(t *testing.T) {
 	var replyCalls, consCalls int32
 	replyVL := chatServer(t, "a red bike", &replyCalls, nil)
 	consVL := chatServer(t, "should not be asked", &consCalls, nil)
@@ -105,13 +101,15 @@ func TestDescribeImages_SharedCacheDescribesOnce(t *testing.T) {
 	// URL (new ex/hm query) still hits.
 	u1 := "https://cdn.discordapp.com/attachments/1/42/bike.png?ex=a&hm=b"
 	u2 := "https://cdn.discordapp.com/attachments/1/42/bike.png?ex=c&hm=d"
-	got, err := reply.DescribeImages(context.Background(), []string{u1})
-	if err != nil || len(got) != 1 || got[0] != "a red bike" {
-		t.Fatalf("reply: %v %v", got, err)
+	text := func(p *Processor, u string, pol Policy) string {
+		out := p.Resolve(context.Background(), []*types.DiscordMessage{{ID: "m", ImageURLs: []string{u}}}, pol)
+		return types.RenderAttachments(out[0], types.StyleQuery)
 	}
-	got, err = cons.DescribeImages(context.Background(), []string{u2})
-	if err != nil || len(got) != 1 || got[0] != "a red bike" {
-		t.Fatalf("consolidation: %v %v", got, err)
+	if got := text(reply, u1, CurrentPolicy()); got != "a red bike" {
+		t.Fatalf("reply: %q", got)
+	}
+	if got := text(cons, u2, MemoryPolicy()); got != "a red bike" {
+		t.Fatalf("consolidation: %q", got)
 	}
 	if replyCalls != 1 || consCalls != 0 {
 		t.Fatalf("reply calls=%d consolidation calls=%d, want 1 and 0", replyCalls, consCalls)
@@ -119,8 +117,8 @@ func TestDescribeImages_SharedCacheDescribesOnce(t *testing.T) {
 
 	// A cache miss is described by the processor that missed.
 	other := img.URL + "/other.png"
-	if _, err := cons.DescribeImages(context.Background(), []string{other}); err != nil {
-		t.Fatal(err)
+	if got := text(cons, other, MemoryPolicy()); got != "should not be asked" {
+		t.Fatalf("consolidation miss: %q", got)
 	}
 	if consCalls != 1 {
 		t.Fatalf("consolidation calls=%d on a miss, want 1", consCalls)

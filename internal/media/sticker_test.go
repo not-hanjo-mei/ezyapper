@@ -49,18 +49,18 @@ func TestStickerDisabledUsesText(t *testing.T) {
 		t.Fatal("no sticker vision client may be built when sticker.enabled is false")
 	}
 	msg := stickerMsg(types.StickerRef{ID: "s1", Name: "Amika Thumbs Up", FormatType: types.StickerPNG})
-	want := "\n[Sticker: Amika Thumbs Up — Amika gives a thumbs up (tags: 👍)]"
-	if got := p.AnnotateStickers(context.Background(), msg, true); got != want {
+	want := "  attachments: [Sticker: Amika Thumbs Up — Amika gives a thumbs up (tags: 👍)]"
+	if got := annotate(p, msg, CurrentPolicy()); got != want {
 		t.Fatalf("got %q want %q", got, want)
 	}
 	// History reuses the cached details: one lookup per sticker ID.
-	if got := p.AnnotateStickers(context.Background(), msg, false); got != want || *lookups != 1 {
+	if got := annotate(p, msg, HistoryPolicy("", "")); got != want || *lookups != 1 {
 		t.Fatalf("history got %q lookups=%d", got, *lookups)
 	}
 	// A failed lookup falls back to the name and is not retried every turn.
 	gone := stickerMsg(types.StickerRef{ID: "gone", Name: "old one"})
 	for i := 0; i < 2; i++ {
-		if got := p.AnnotateStickers(context.Background(), gone, true); got != "\n[Sticker: old one]" {
+		if got := annotate(p, gone, CurrentPolicy()); got != "  attachments: [Sticker: old one]" {
 			t.Fatalf("fallback got %q", got)
 		}
 	}
@@ -70,7 +70,7 @@ func TestStickerDisabledUsesText(t *testing.T) {
 	// A transient failure (5xx) is not cached: the next turn looks it up again.
 	flaky := stickerMsg(types.StickerRef{ID: "flaky", Name: "flaky one"})
 	for i := 0; i < 2; i++ {
-		if got := p.AnnotateStickers(context.Background(), flaky, true); got != "\n[Sticker: flaky one]" {
+		if got := annotate(p, flaky, CurrentPolicy()); got != "  attachments: [Sticker: flaky one]" {
 			t.Fatalf("fallback got %q", got)
 		}
 	}
@@ -102,16 +102,16 @@ func TestStickerEnabledVisionCacheAndFallbacks(t *testing.T) {
 
 	guild := types.StickerRef{ID: "123", Name: "Amika Thumbs Up", FormatType: types.StickerPNG}
 	// History before the sticker was ever described: text, no model call.
-	if got := p.AnnotateStickers(context.Background(), stickerMsg(guild), false); !strings.Contains(got, "Amika gives a thumbs up") || calls != 0 {
+	if got := annotate(p, stickerMsg(guild), HistoryPolicy("", "")); !strings.Contains(got, "Amika gives a thumbs up") || calls != 0 {
 		t.Fatalf("history fallback got %q calls=%d", got, calls)
 	}
-	want := "\n[Sticker: Amika Thumbs Up — an anime girl giving a thumbs up]"
-	if got := p.AnnotateStickers(context.Background(), stickerMsg(guild), true); got != want {
+	want := "  attachments: [Sticker: Amika Thumbs Up — an anime girl giving a thumbs up]"
+	if got := annotate(p, stickerMsg(guild), CurrentPolicy()); got != want {
 		t.Fatalf("vision got %q", got)
 	}
 	// Cached by sticker ID: later turns (history or current) reuse it.
-	_ = p.AnnotateStickers(context.Background(), stickerMsg(guild), true)
-	if got := p.AnnotateStickers(context.Background(), stickerMsg(guild), false); got != want || calls != 1 {
+	_ = annotate(p, stickerMsg(guild), CurrentPolicy())
+	if got := annotate(p, stickerMsg(guild), HistoryPolicy("", "")); got != want || calls != 1 {
 		t.Fatalf("cache: got %q calls=%d", got, calls)
 	}
 	if bodies[0]["model"] != "vm" {
@@ -125,7 +125,7 @@ func TestStickerEnabledVisionCacheAndFallbacks(t *testing.T) {
 	// GIF stickers are fetched as .gif; Lottie ones are never fetched.
 	gif := types.StickerRef{ID: "456", Name: "dance", FormatType: types.StickerGIF}
 	lottie := types.StickerRef{ID: "789", Name: "wumpus", FormatType: types.StickerLottie}
-	got := p.AnnotateStickers(context.Background(), stickerMsg(gif, lottie), true)
+	got := annotate(p, stickerMsg(gif, lottie), CurrentPolicy())
 	if !strings.Contains(got, "[Sticker: Amika Thumbs Up — an anime girl") || !strings.Contains(got, "[Sticker: Amika Thumbs Up — Amika gives a thumbs up (tags: 👍)]") {
 		t.Fatalf("gif+lottie got %q", got)
 	}
@@ -141,7 +141,7 @@ func TestStickerDefaultConfigShowsName(t *testing.T) {
 	configtest.FillSuggested(t, &cfg.AI.Modalities)
 	p := New(cfg, nil)
 	p.SetStickers(nil, NewCache(time.Hour, 10))
-	if got := p.AnnotateStickers(context.Background(), stickerMsg(types.StickerRef{ID: "1", Name: "x", FormatType: types.StickerPNG}), true); got != "\n[Sticker: x]" {
+	if got := annotate(p, stickerMsg(types.StickerRef{ID: "1", Name: "x", FormatType: types.StickerPNG}), CurrentPolicy()); got != "  attachments: [Sticker: x]" {
 		t.Fatalf("got %q", got)
 	}
 }

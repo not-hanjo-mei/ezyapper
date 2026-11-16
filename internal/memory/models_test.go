@@ -11,19 +11,18 @@ func TestDiscordMessage_ReplyFields(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 
 	original := DiscordMessage{
-		ID:                "100",
-		ChannelID:         "200",
-		GuildID:           "300",
-		AuthorID:          "400",
-		Username:          "testuser",
-		Content:           "hello world",
-		ImageURLs:         nil,
-		ImageDescriptions: nil,
-		Timestamp:         now,
-		IsBot:             false,
-		ReplyToID:         "999",
-		ReplyToUsername:   "parentuser",
-		ReplyToContent:    "original message",
+		ID:              "100",
+		ChannelID:       "200",
+		GuildID:         "300",
+		AuthorID:        "400",
+		Username:        "testuser",
+		Content:         "hello world",
+		ImageURLs:       nil,
+		Timestamp:       now,
+		IsBot:           false,
+		ReplyToID:       "999",
+		ReplyToUsername: "parentuser",
+		ReplyToContent:  "original message",
 	}
 
 	data, err := json.Marshal(original)
@@ -55,16 +54,15 @@ func TestDiscordMessage_ReplyFields_Empty(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 
 	msg := DiscordMessage{
-		ID:                "100",
-		ChannelID:         "200",
-		GuildID:           "300",
-		AuthorID:          "400",
-		Username:          "testuser",
-		Content:           "no reply",
-		ImageURLs:         nil,
-		ImageDescriptions: nil,
-		Timestamp:         now,
-		IsBot:             false,
+		ID:        "100",
+		ChannelID: "200",
+		GuildID:   "300",
+		AuthorID:  "400",
+		Username:  "testuser",
+		Content:   "no reply",
+		ImageURLs: nil,
+		Timestamp: now,
+		IsBot:     false,
 		// ReplyToID, ReplyToUsername, ReplyToContent left zero-value
 	}
 

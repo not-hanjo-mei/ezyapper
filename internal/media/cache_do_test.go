@@ -89,11 +89,11 @@ func TestTranscribeConcurrentSameAttachmentOnce(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		_ = reply.AnnotateAV(context.Background(), msg, AnnotateOptions{Current: true})
+		_ = annotate(reply, msg, CurrentPolicy())
 	}()
 	go func() {
 		defer wg.Done()
-		_ = cons.AnnotateForMemory(context.Background(), []*types.DiscordMessage{msg})
+		_ = cons.Resolve(context.Background(), []*types.DiscordMessage{msg}, MemoryPolicy())
 	}()
 	wg.Wait()
 	if asrCalls != 1 {

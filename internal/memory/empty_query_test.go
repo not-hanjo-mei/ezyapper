@@ -53,7 +53,7 @@ func TestSearch_EmptyQuerySkipsSearch(t *testing.T) {
 		TopK:                  5,
 		Consolidation:         &config.ConsolidationConfig{Model: "m", SystemPrompt: "p"},
 	}
-	svc, err := NewService(cfg, testQdrantCfg, &QdrantClient{}, emb, nil, nil)
+	svc, err := NewService(cfg, testQdrantCfg, &QdrantClient{}, emb, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -101,13 +101,8 @@ func (b *Bot) onMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) 
 	}
 
 	// Re-process with updated content.
-	if !b.cfg().AI.Modalities.Image.Enabled {
-		b.wg.Add(1)
-		go b.processMessageWithoutImages(messageCtx, s, tempMsg, newPm, recentMessages)
-	} else {
-		b.wg.Add(1)
-		go b.processMessage(messageCtx, s, tempMsg, newPm, recentMessages)
-	}
+	b.wg.Add(1)
+	go b.processMessage(messageCtx, s, tempMsg, newPm, recentMessages)
 }
 
 // onMessageDelete handles message deletion events.
