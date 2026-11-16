@@ -415,7 +415,34 @@ type toolLoopResponse struct {
 	usage            openai.Usage
 }
 
-type toolLoopRequester func(ctx context.Context, messages []openai.ChatCompletionMessage) (*toolLoopResponse, error)
+// toolLoopRequester sends one completion request. closing is true for the
+// closing requests sent after the last tool round: they must offer only the
+// fixed tool_budget_exhausted tool instead of the full tool list.
+type toolLoopRequester func(ctx context.Context, messages []openai.ChatCompletionMessage, closing bool) (*toolLoopResponse, error)
+
+// ToolBudgetToolName is the fixed tool the closing requests offer once the
+// core.ai.max_tool_iterations rounds are used up. Its description and the
+// result every call gets come from core.ai.tool_budget.
+const ToolBudgetToolName = "tool_budget_exhausted"
+
+// maxClosingRequests caps the closing requests sent after the last tool
+// round: the first one answers the leftover calls with the fixed result, a
+// second one follows only if the model still calls a tool. This is an
+// internal protocol limit, not a tuning knob, so it is not a config key.
+const maxClosingRequests = 2
+
+// toolBudgetTool is the only tool a closing request offers. It takes no
+// arguments.
+func (c *Client) toolBudgetTool() openai.Tool {
+	return openai.Tool{
+		Type: openai.ToolTypeFunction,
+		Function: &openai.FunctionDefinition{
+			Name:        ToolBudgetToolName,
+			Description: c.config.ToolBudget.Description,
+			Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
+		},
+	}
+}
 
 func validateToolCallsArgs(registry *tools.ToolRegistry, toolCalls []openai.ToolCall) error {
 	if registry == nil {
@@ -440,7 +467,11 @@ func validateToolCallsArgs(registry *tools.ToolRegistry, toolCalls []openai.Tool
 	return nil
 }
 
-func (c *Client) requestCompletionSlot(ctx context.Context, baseMessages []openai.ChatCompletionMessage, request toolLoopRequester) (*toolLoopResponse, error) {
+// requestCompletionSlot sends one request, retrying network failures and
+// (outside the closing phase) tool calls whose arguments fail their schema.
+// A closing request's tool calls are never executed, so their arguments are
+// not validated.
+func (c *Client) requestCompletionSlot(ctx context.Context, baseMessages []openai.ChatCompletionMessage, request toolLoopRequester, closing bool) (*toolLoopResponse, error) {
 	messages := make([]openai.ChatCompletionMessage, len(baseMessages))
 	copy(messages, baseMessages)
 	var feedback string
@@ -456,7 +487,7 @@ func (c *Client) requestCompletionSlot(ctx context.Context, baseMessages []opena
 			})
 		}
 
-		resp, err := request(ctx, msgs)
+		resp, err := request(ctx, msgs, closing)
 		if err != nil {
 			lastErr = err
 			if !IsRetryableError(err) {
@@ -465,7 +496,7 @@ func (c *Client) requestCompletionSlot(ctx context.Context, baseMessages []opena
 			logger.Warnf("[ai] completion slot network failure attempt %d/%d: %v", attempt+1, c.config.RetryCount+1, err)
 			continue
 		}
-		if len(resp.toolCalls) == 0 {
+		if len(resp.toolCalls) == 0 || closing {
 			return resp, nil
 		}
 		if err := validateToolCallsArgs(c.toolRegistry, resp.toolCalls); err != nil {
@@ -487,17 +518,13 @@ func (c *Client) runToolLoop(ctx context.Context, initialMessages []openai.ChatC
 	messages := make([]openai.ChatCompletionMessage, len(initialMessages))
 	copy(messages, initialMessages)
 
-	resp, err := c.requestCompletionSlot(ctx, messages, request)
+	resp, err := c.requestCompletionSlot(ctx, messages, request, false)
 	if err != nil {
 		return nil, err
 	}
 
 	for i := 0; i < maxIterations && len(resp.toolCalls) > 0; i++ {
-		toolNames := make([]string, len(resp.toolCalls))
-		for j, tc := range resp.toolCalls {
-			toolNames[j] = tc.Function.Name
-		}
-		logger.Debugf("[ai] tool loop iteration %d/%d: executing %d tool calls: %s", i+1, maxIterations, len(resp.toolCalls), strings.Join(toolNames, ", "))
+		logger.Debugf("[ai] tool loop iteration %d/%d: executing %d tool calls: %s", i+1, maxIterations, len(resp.toolCalls), strings.Join(toolCallNames(resp.toolCalls), ", "))
 
 		messages = append(messages, openai.ChatCompletionMessage{
 			Role:             openai.ChatMessageRoleAssistant,
@@ -527,18 +554,60 @@ func (c *Client) runToolLoop(ctx context.Context, initialMessages []openai.ChatC
 			})
 		}
 
-		resp, err = c.requestCompletionSlot(ctx, messages, request)
+		resp, err = c.requestCompletionSlot(ctx, messages, request, false)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if len(resp.toolCalls) == 0 {
+		return resp, nil
+	}
+
+	// Closing phase: the rounds are used up but the model still calls
+	// tools. Dropping the calls would leave whatever text came with them,
+	// often none, so the calls are answered with the fixed result (not
+	// executed) and the model is asked again with only the fixed tool
+	// offered, at most maxClosingRequests times.
+	logger.Infof("[ai] %s rounds used up (%d) with %d pending tool calls (%s); entering closing phase: only %s offered, at most %d requests",
+		warnLabel, maxIterations, len(resp.toolCalls), strings.Join(toolCallNames(resp.toolCalls), ", "), ToolBudgetToolName, maxClosingRequests)
+	for k := 1; k <= maxClosingRequests && len(resp.toolCalls) > 0; k++ {
+		messages = append(messages, openai.ChatCompletionMessage{
+			Role:             openai.ChatMessageRoleAssistant,
+			Content:          resp.content,
+			ReasoningContent: resp.reasoningContent,
+			ToolCalls:        resp.toolCalls,
+		})
+		for _, toolCall := range resp.toolCalls {
+			logger.Debugf("[ai] closing phase: not executing %s (call %s); returning the fixed result", toolCall.Function.Name, toolCall.ID)
+			messages = append(messages, openai.ChatCompletionMessage{
+				Role:       openai.ChatMessageRoleTool,
+				Content:    c.config.ToolBudget.Result,
+				ToolCallID: toolCall.ID,
+			})
+		}
+		logger.Debugf("[ai] closing request %d/%d", k, maxClosingRequests)
+		resp, err = c.requestCompletionSlot(ctx, messages, request, true)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	if len(resp.toolCalls) > 0 {
-		logger.Warnf("[ai] %s loop exhausted with %d unprocessed tool calls", warnLabel, len(resp.toolCalls))
+		logger.Warnf("[ai] %s closing phase hit its cap of %d requests with %d tool calls still pending (%s); dropped them, using the %d chars of text already present",
+			warnLabel, maxClosingRequests, len(resp.toolCalls), strings.Join(toolCallNames(resp.toolCalls), ", "), len(resp.content))
 		resp.toolCalls = nil
 	}
 
 	return resp, nil
+}
+
+func toolCallNames(calls []openai.ToolCall) []string {
+	names := make([]string, len(calls))
+	for i, tc := range calls {
+		names[i] = tc.Function.Name
+	}
+	return names
 }
 
 func (c *Client) executeToolLoop(ctx context.Context, messages []openai.ChatCompletionMessage, request toolLoopRequester, toolHandler ToolHandler, warnLabel string) (*ChatCompletionResponse, error) {
@@ -561,10 +630,13 @@ func (c *Client) CreateChatCompletionWithTools(ctx context.Context, req ChatComp
 	toolDefs := c.toolRegistry.GetTools()
 	req.Tools = toolDefs
 
-	request := func(ctx context.Context, messages []openai.ChatCompletionMessage) (*toolLoopResponse, error) {
+	request := func(ctx context.Context, messages []openai.ChatCompletionMessage, closing bool) (*toolLoopResponse, error) {
 		reqCopy := req
 		reqCopy.Messages = messages
 		reqCopy.Tools = toolDefs
+		if closing {
+			reqCopy.Tools = []openai.Tool{c.toolBudgetTool()}
+		}
 		next, err := c.createChatCompletionOnce(ctx, reqCopy)
 		if err != nil {
 			return nil, err
