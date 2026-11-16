@@ -53,9 +53,10 @@ type AttachmentStyle int
 
 const (
 	// StylePrompt is one indented line for the reply prompt, placed under
-	// the message line and outside its quoted text:
+	// the message line and outside its quoted text. It also carries the
+	// message's embeds:
 	//
-	//	  attachments: [Image 1: ...] [Audio 1 transcript (voice message, 7s): ...]
+	//	  attachments: [Image 1: ...] [Audio 1 transcript (voice message, 7s): ...] [Embed ...]
 	StylePrompt AttachmentStyle = iota + 1
 	// StyleMemory is one indented "[Attached ...]" line per item, for the
 	// memory consolidation conversation.
@@ -90,6 +91,11 @@ func RenderAttachments(m *DiscordMessage, style AttachmentStyle) string {
 		}
 		if s := renderItem(it, n[group], style); s != "" {
 			items = append(items, s)
+		}
+	}
+	if style == StylePrompt {
+		for _, e := range m.Embeds {
+			items = append(items, e.Render())
 		}
 	}
 	if len(items) == 0 {

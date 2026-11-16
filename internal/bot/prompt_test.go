@@ -126,3 +126,15 @@ func TestUserPromptAttachmentsOutsideQuote(t *testing.T) {
 		}
 	}
 }
+
+// Embeds (bot cards, link previews) are not part of the quoted speech.
+func TestUserPromptEmbedsOutsideQuote(t *testing.T) {
+	ts := time.Date(2026, 11, 1, 5, 0, 0, 0, time.UTC)
+	m := &types.DiscordMessage{ID: "1", AuthorID: "100", Username: "alice", Content: "watch <@100>", Timestamp: ts,
+		Embeds: []types.EmbedSummary{{Provider: "YouTube", Title: "Song", Description: "by <@100>"}}}
+	p := buildUserPrompt(promptInput{BotID: "999", History: []*types.DiscordMessage{m}})
+	want := `alice: "watch <@alice>"` + "\n" + `  attachments: [Embed (YouTube) "Song": by <@alice>]`
+	if !strings.Contains(p, want) {
+		t.Fatalf("missing %q in\n%s", want, p)
+	}
+}

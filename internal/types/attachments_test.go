@@ -17,18 +17,23 @@ func resolvedMsg() *DiscordMessage {
 }
 
 func TestRenderAttachmentsPrompt(t *testing.T) {
-	got := RenderAttachments(resolvedMsg(), StylePrompt)
+	m := resolvedMsg()
+	m.Embeds = []EmbedSummary{{Provider: "YouTube", Title: "Song", Description: "a\nb"}}
+	got := RenderAttachments(m, StylePrompt)
 	want := "  attachments: [Image 1: a red bike] [Image 2: (could not be processed)] [Image 3]" +
 		" [Sticker: wave — a waving cat] [Sticker: plain]" +
 		" [Audio 1 transcript (voice message, 7s): meet at noon] [Audio 2: song.mp3]" +
-		" [Audio 3 (x.mp3): (could not be processed)] [Video 1 (clip.mp4): a dog runs]"
+		" [Audio 3 (x.mp3): (could not be processed)] [Video 1 (clip.mp4): a dog runs]" +
+		` [Embed (YouTube) "Song": a b]`
 	if got != want {
 		t.Fatalf("prompt style:\n got %q\nwant %q", got, want)
 	}
 }
 
 func TestRenderAttachmentsMemory(t *testing.T) {
-	got := RenderAttachments(resolvedMsg(), StyleMemory)
+	m := resolvedMsg()
+	m.Embeds = []EmbedSummary{{Title: "only in the prompt style"}}
+	got := RenderAttachments(m, StyleMemory)
 	want := "  [Attached Image 1: a red bike]\n" +
 		"  [Attached Image 2: (could not be processed)]\n" +
 		"  [Attached Sticker: wave — a waving cat]\n" +
@@ -46,6 +51,16 @@ func TestRenderAttachmentsQuery(t *testing.T) {
 	want := "a red bike\na waving cat\nmeet at noon\na dog runs"
 	if got != want {
 		t.Fatalf("query style:\n got %q\nwant %q", got, want)
+	}
+}
+
+func TestRenderAttachmentsEmbedOnly(t *testing.T) {
+	m := &DiscordMessage{Embeds: []EmbedSummary{{Title: "card"}}}
+	if got := RenderAttachments(m, StylePrompt); got != `  attachments: [Embed "card"]` {
+		t.Fatalf("embed only = %q", got)
+	}
+	if got := RenderAttachments(m, StyleQuery); got != "" {
+		t.Fatalf("query style must leave embeds out, got %q", got)
 	}
 }
 

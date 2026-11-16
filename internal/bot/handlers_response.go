@@ -71,12 +71,12 @@ func (b *Bot) generateResponse(ctx context.Context, mc ModeContext, gc GenerateC
 		botID = b.sess().State.User.ID
 	}
 
-	current := types.DiscordMessage{ID: mc.MessageID, ChannelID: mc.ChannelID, GuildID: mc.GuildID, AuthorID: mc.UserID, Username: mc.Username, DisplayName: mc.DisplayName}
+	// Content stays the raw text; embeds and media go on the attachments
+	// line (renderMessageLine).
+	current := types.DiscordMessage{ID: mc.MessageID, ChannelID: mc.ChannelID, GuildID: mc.GuildID, AuthorID: mc.UserID, Username: mc.Username, DisplayName: mc.DisplayName, Content: mc.UserContent}
 	if gc.Current != nil {
 		current = *gc.Current
 	}
-	current.Content = mc.UserContent
-	current.Embeds = nil // already folded into UserContent
 
 	// Keep the media this prompt shows cached while it stays in context.
 	b.pinMediaWindow(mc.ChannelID, append(slices.Clone(recentMessages), &current)...)
