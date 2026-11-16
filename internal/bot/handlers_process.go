@@ -98,6 +98,18 @@ func (b *Bot) processMessageCore(ctx context.Context, s *discordgo.Session, m *d
 		return
 	}
 
+	// The model sometimes copies the prompt's media annotation format or
+	// leaks tool-call markup as text; those lines are never sent.
+	response, removed := sanitizeReply(response)
+	if removed > 0 {
+		logger.Warnf("[processing] removed %d annotation/tool-markup line(s) from the reply to message %s", removed, m.ID)
+	}
+	if response == "" {
+		logger.Warnf("[processing] reply to message %s is empty after cleanup, not sending it", m.ID)
+		b.clearProcessingMessage(pm, m.ID)
+		return
+	}
+
 	if pm != nil {
 		pm.SetPhase(PhaseSending)
 	}
