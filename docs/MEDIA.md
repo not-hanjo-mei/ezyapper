@@ -9,16 +9,18 @@ Text is always handled by the base model (`core.ai`), which is treated as text-o
 The bot is multimodal from the user's point of view, but no model ever gets media and text together in the reply request:
 
 1. **Media to text.** For each attachment or sticker, a dedicated model turns the media into text: a vision model describes images and stickers, an ASR endpoint transcribes audio (`asr`) or an audio-capable chat model transcribes or describes it (`describe`), and a video-capable model describes videos.
-2. **Text into the prompt.** The descriptions and transcripts are appended to the message's text as lines such as `[Image 1: ...]`, `[Audio 1 transcript (voice message, 4s): ...]` or `[Video 1 (clip.mp4): ...]`.
+2. **Text into the prompt.** The descriptions and transcripts go on an `attachments:` line under the message, outside its quoted text, as items such as `[Image 1: ...]`, `[Audio 1 transcript (voice message, 4s): ...]` or `[Video 1 (clip.mp4): ...]` (see [Prompt layout](#prompt-layout)).
 3. **Text-only reply.** The chat model (`core.ai.model`) receives that text in the user prompt, with no image, audio or video parts, and writes the reply.
 
-The same text is reused for the memory search query of the current message and for memory consolidation, so a voice message is searchable and memorable through its transcript.
+The message being answered is resolved once per reply; the same text is used for the memory search query and the reply prompt. Memory consolidation reuses the cached results too, so a voice message is searchable and memorable through its transcript.
+
+**The bot's own messages are never processed.** Media the bot attached itself (for example the mp3 the `openai-tts-go` plugin adds to a reply, or a generated image) gets no description or transcript, in history, for the current message and in memory consolidation: the reply text is the source. Media from other bots is processed like a user's.
 
 ## Modes
 
 | Modality | Mode | What happens | Extra model calls |
 |----------|------|--------------|-------------------|
-| image | (always describe) | A vision model describes each image; `[Image N: ...]` is added to the message. | 1 per image (cached) |
+| image | (always describe) | A vision model describes each image; `[Image N: ...]` is added to the attachments line. | 1 per image (cached) |
 | audio | `asr` | Speech is transcribed by an `/audio/transcriptions` endpoint; `[Audio N transcript (...): ...]` is added. | 1 per audio (cached) |
 | audio | `describe` | An audio-capable chat model gets the audio as an `audio_url` data URI part (ogg/opus voice messages work as is) and returns a transcript or description; `[Audio N (...): ...]` is added. | 1 per audio (cached) |
 | video | (always describe) | A video-capable model describes each video (`video_url` part); `[Video N (...): ...]` is added. | 1 per video (cached) |
@@ -33,19 +35,24 @@ For audio, `asr` needs a transcription endpoint (e.g. `IFM/Jais-ASR`); `describe
 
 ## Prompt layout
 
-Everything media-related goes into the user prompt; the system prompt is byte-identical on every request. Each message line starts with its timestamp in RFC3339 format, in UTC, followed by the author's role (`User`, `Bot` for other bots, `Assistant` for the bot itself). The message text is quoted as a Go string literal, so the line breaks before media lines appear as `\n`. A current message with a voice message in `asr` mode looks like:
+Everything media-related goes into the user prompt; the system prompt is byte-identical on every request. Each message line starts with its timestamp in RFC3339 format, in UTC, followed by the author's role (`User`, `Bot` for other bots, `Assistant` for the bot itself). Only the message text is quoted (as a Go string literal). The text media was turned into, and the message's embeds (bot cards, link previews), go on one indented `attachments:` line under it, so the model never reads them as something the author wrote. A current message with a voice message in `asr` mode looks like:
 
 ```
 <currentMessage>
-[2026-11-02T01:20:00Z] [User] Alice: "what do you think?\n[Audio 1 transcript (voice message, 4s): should we meet at noon]"
+[2026-11-02T01:20:00Z] [User] Alice: "what do you think?"
+  attachments: [Audio 1 transcript (voice message, 4s): should we meet at noon]
 </currentMessage>
 ```
 
-History lines in `<context>` use the same format.
+History lines in `<context>` use the same format. Images, audio (voice messages included) and videos are numbered per kind. An item without text shows a placeholder: `[Image 2]` or `[Audio 1: voice message, 4s]` when it was not processed (history media nobody asked about), and `[Image 2: (could not be processed)]` or `[Audio 1 (voice message, 4s): (could not be processed)]` when processing failed (over a limit, download or model error).
+
+## Reply cleanup
+
+Before a reply is sent (and before plugins' `before_send` hooks see it), every line that starts with one of these annotation formats (`[Image N...]`, `[Audio N...]`, `[Video N...]`, `[Sticker:...]`, `[Embed...]`, `[Attached ...]`, `attachments:`) or with a leaked tool-call tag (`<function_calls>`, `<tool_call>`, `<parameter name=...>`, a namespaced `<xxx:invoke ...>` or `</xxx:parameter>`, and the like) is removed, and the text is trimmed. Lines inside fenced code blocks are kept, and so is ordinary text with angle brackets. If nothing is left, the reply is not sent and a warning is logged. The rules are built in; there is no setting.
 
 ## History enrichment
 
-History messages reuse cached descriptions/transcripts. A model call for a history message happens only for the most recent message of that kind, and only when the user replied to it or mentions it ("image", "photo", "voice", "audio", "video", "clip", ...). This keeps a busy channel from re-describing media on every reply.
+History messages reuse cached descriptions/transcripts. A model call for a history message happens only for the most recent message of that kind, and only when the user replied to it or mentions it ("image", "photo", "voice", "audio", "video", "clip", ...). This keeps a busy channel from re-describing media on every reply. The bot's own messages are skipped: "listen to that audio" after a TTS reply never transcribes the bot's clip (the most recent audio from someone else is the candidate instead). Stickers in history use their cached vision description or their Discord text, never a new model call.
 
 ## Shared media cache
 
@@ -61,7 +68,7 @@ Sticker details and descriptions use a separate cache keyed by sticker ID that f
 
 ## Limits
 
-`max_items` caps media per message; `max_bytes` and `max_duration_sec` skip oversized audio/video (all three are required when the modality is enabled) (the duration is known for Discord voice messages). Images use `core.ai.max_image_bytes`. Skipped media still shows a placeholder line so the model knows it was there.
+`max_items` caps media per message (items beyond it are left out); `max_bytes` and `max_duration_sec` skip oversized audio/video (all three are required when the modality is enabled) (the duration is known for Discord voice messages). Images use `core.ai.max_image_bytes`. Oversized media still shows a `(could not be processed)` placeholder so the model knows it was there.
 
 ## ffmpeg
 
