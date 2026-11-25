@@ -474,3 +474,30 @@ func TestSyncVectors_RecordWithCollidingTerms(t *testing.T) {
 		t.Fatalf("report %+v", rep)
 	}
 }
+
+// Loading vectors for a large scroll in one Get exceeded the gRPC 4 MiB
+// receive limit (1000 points × 1024 dims); they are fetched in batches.
+func TestScrollMemories_LargeScrollStaysUnderGRPCLimit(t *testing.T) {
+	const dim, n = 1024, 1100
+	store := newFakePointStore()
+	qc := newTestTieredClient(store, testModel, dim)
+	emb := &hashEmbedder{dim: dim}
+	for i := 1; i <= n; i++ {
+		r := newTestRecord(i, "1", fmt.Sprintf("text %d", i))
+		if err := qc.UpsertMemory(context.Background(), withEmbedding(r, emb.vector(r.Content))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pts, err := qc.ScrollMemories(context.Background(), 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pts) != 1000 {
+		t.Fatalf("got %d points", len(pts))
+	}
+	for _, p := range pts {
+		if len(p.Embedding) != dim {
+			t.Fatalf("point %s has no vector", p.ID)
+		}
+	}
+}

@@ -174,8 +174,19 @@ func (f *fakePointStore) Get(ctx context.Context, collection string, ids []strin
 		}
 		out = append(out, project(p, withPayload, withVectors))
 	}
+	// Like the gRPC client: a response above 4 MiB is refused.
+	size := 0
+	for _, p := range out {
+		size += 4*len(p.Dense) + 8*len(p.SparseIndices)
+	}
+	if size > fakeGRPCMaxRecv {
+		return nil, fmt.Errorf("get %d points from %s: received message larger than max (%d vs. %d)", len(ids), collection, size, fakeGRPCMaxRecv)
+	}
 	return out, nil
 }
+
+// fakeGRPCMaxRecv mirrors the gRPC client's default 4 MiB receive limit.
+const fakeGRPCMaxRecv = 4 * 1024 * 1024
 
 func project(p *tierPoint, withPayload, withVectors bool) *tierPoint {
 	cp := clonePoint(p)

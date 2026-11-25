@@ -653,6 +653,10 @@ func (qc *QdrantClient) ListMemoriesByType(ctx context.Context, userID string, m
 	return memories, nil
 }
 
+// vectorGetBatchSize caps the IDs per vector-tier Get that returns vectors,
+// keeping each response well under the gRPC 4 MiB receive limit.
+const vectorGetBatchSize = tierSyncBatchSize
+
 // ScrollMemories reads up to `limit` records from the source tier and
 // attaches their embeddings from the current vector tier. Records without a
 // vector yet (e.g. while re-embedding) are returned with an empty Embedding.
@@ -666,9 +670,12 @@ func (qc *QdrantClient) ScrollMemories(ctx context.Context, limit uint32) ([]*sc
 	for _, pt := range results {
 		ids = append(ids, pt.ID)
 	}
+	// Vectors are fetched in batches: one Get for every ID of a large scroll
+	// can exceed the gRPC client's 4 MiB receive limit (1000 points of a
+	// 1024-dim model plus sparse vectors are about 4.4 MB).
 	vectors := map[string][]float32{}
-	if len(ids) > 0 {
-		vecPoints, err := qc.store.Get(ctx, qc.vectorCollection, ids, false, true)
+	for chunk := range slices.Chunk(ids, vectorGetBatchSize) {
+		vecPoints, err := qc.store.Get(ctx, qc.vectorCollection, chunk, false, true)
 		if err != nil {
 			return nil, fmt.Errorf("scroll memories: load vectors: %w", err)
 		}
