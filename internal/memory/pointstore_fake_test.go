@@ -146,6 +146,14 @@ func (f *fakePointStore) Upsert(ctx context.Context, collection string, points [
 		if c.dim > 0 && len(p.Dense) != c.dim {
 			return fmt.Errorf("collection %s expects dim %d, got %d", collection, c.dim, len(p.Dense))
 		}
+		// Like Qdrant: sparse indices must be unique within a vector.
+		seen := make(map[uint32]bool, len(p.SparseIndices))
+		for _, idx := range p.SparseIndices {
+			if seen[idx] {
+				return fmt.Errorf("upsert into %s: sparse indices must be unique (point %s, index %d)", collection, p.ID, idx)
+			}
+			seen[idx] = true
+		}
 		c.points[p.ID] = clonePoint(p)
 	}
 	return nil

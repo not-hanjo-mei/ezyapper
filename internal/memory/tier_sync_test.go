@@ -434,3 +434,43 @@ func TestNewService_MigratesThenSyncsInBackground(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// "w39949" and "w43834" hash to the same 24-bit sparse index.
+const collidingTermA, collidingTermB = "w39949", "w43834"
+
+func TestComputeBM25SparseVector_MergesHashCollisions(t *testing.T) {
+	if hashToken(collidingTermA) != hashToken(collidingTermB) {
+		t.Fatal("test terms no longer collide")
+	}
+	idx, vals := computeBM25SparseVector(collidingTermA+" "+collidingTermB+" other", nil)
+	if len(idx) != 2 || len(vals) != 2 {
+		t.Fatalf("want 2 unique indices, got %v", idx)
+	}
+	for i := 1; i < len(idx); i++ {
+		if idx[i] <= idx[i-1] {
+			t.Fatalf("indices must be strictly increasing: %v", idx)
+		}
+	}
+	for i, x := range idx {
+		if x == hashToken(collidingTermA) && vals[i] <= 0 {
+			t.Fatalf("merged weight must be positive, got %v", vals[i])
+		}
+	}
+}
+
+// A record whose text holds two colliding terms used to be rejected by
+// Qdrant ("indices must be unique"), failing the whole sync batch.
+func TestSyncVectors_RecordWithCollidingTerms(t *testing.T) {
+	store := newFakePointStore()
+	qc := newTestTieredClient(store, testModel, testDim)
+	if err := qc.UpsertMemory(context.Background(), newTestRecord(1, "1", collidingTermA+" and "+collidingTermB)); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := qc.SyncVectors(context.Background(), &hashEmbedder{dim: testDim})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Embedded != 1 || rep.Failed != 0 {
+		t.Fatalf("report %+v", rep)
+	}
+}

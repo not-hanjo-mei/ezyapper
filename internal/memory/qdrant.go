@@ -1245,11 +1245,17 @@ func computeBM25SparseVector(content string, keywords []string) ([]uint32, []flo
 		idx uint32
 		w   float32
 	}
-	entries := make([]entry, 0, len(tf))
+	// Distinct terms can hash to the same index (FNV-1a folded to 24 bits).
+	// Qdrant rejects a sparse vector whose indices repeat, so the weights of
+	// colliding terms are summed into one entry.
+	weights := make(map[uint32]float32, len(tf))
 	for term, freq := range tf {
 		tfNorm := (float64(freq) * (k1 + 1)) / (float64(freq) + k1*(1-b+b*dl/avgdl))
-		idx := hashToken(term)
-		entries = append(entries, entry{idx: idx, w: float32(tfNorm)})
+		weights[hashToken(term)] += float32(tfNorm)
+	}
+	entries := make([]entry, 0, len(weights))
+	for idx, w := range weights {
+		entries = append(entries, entry{idx: idx, w: w})
 	}
 
 	slices.SortFunc(entries, func(a, b entry) int {
