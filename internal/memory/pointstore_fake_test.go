@@ -146,6 +146,14 @@ func (f *fakePointStore) Upsert(ctx context.Context, collection string, points [
 		if c.dim > 0 && len(p.Dense) != c.dim {
 			return fmt.Errorf("collection %s expects dim %d, got %d", collection, c.dim, len(p.Dense))
 		}
+		// Like Qdrant: sparse indices must be unique within a vector.
+		seen := make(map[uint32]bool, len(p.SparseIndices))
+		for _, idx := range p.SparseIndices {
+			if seen[idx] {
+				return fmt.Errorf("upsert into %s: sparse indices must be unique (point %s, index %d)", collection, p.ID, idx)
+			}
+			seen[idx] = true
+		}
 		c.points[p.ID] = clonePoint(p)
 	}
 	return nil
@@ -166,8 +174,19 @@ func (f *fakePointStore) Get(ctx context.Context, collection string, ids []strin
 		}
 		out = append(out, project(p, withPayload, withVectors))
 	}
+	// Like the gRPC client: a response above 4 MiB is refused.
+	size := 0
+	for _, p := range out {
+		size += 4*len(p.Dense) + 8*len(p.SparseIndices)
+	}
+	if size > fakeGRPCMaxRecv {
+		return nil, fmt.Errorf("get %d points from %s: received message larger than max (%d vs. %d)", len(ids), collection, size, fakeGRPCMaxRecv)
+	}
 	return out, nil
 }
+
+// fakeGRPCMaxRecv mirrors the gRPC client's default 4 MiB receive limit.
+const fakeGRPCMaxRecv = 4 * 1024 * 1024
 
 func project(p *tierPoint, withPayload, withVectors bool) *tierPoint {
 	cp := clonePoint(p)

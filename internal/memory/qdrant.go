@@ -653,6 +653,10 @@ func (qc *QdrantClient) ListMemoriesByType(ctx context.Context, userID string, m
 	return memories, nil
 }
 
+// vectorGetBatchSize caps the IDs per vector-tier Get that returns vectors,
+// keeping each response well under the gRPC 4 MiB receive limit.
+const vectorGetBatchSize = tierSyncBatchSize
+
 // ScrollMemories reads up to `limit` records from the source tier and
 // attaches their embeddings from the current vector tier. Records without a
 // vector yet (e.g. while re-embedding) are returned with an empty Embedding.
@@ -666,9 +670,12 @@ func (qc *QdrantClient) ScrollMemories(ctx context.Context, limit uint32) ([]*sc
 	for _, pt := range results {
 		ids = append(ids, pt.ID)
 	}
+	// Vectors are fetched in batches: one Get for every ID of a large scroll
+	// can exceed the gRPC client's 4 MiB receive limit (1000 points of a
+	// 1024-dim model plus sparse vectors are about 4.4 MB).
 	vectors := map[string][]float32{}
-	if len(ids) > 0 {
-		vecPoints, err := qc.store.Get(ctx, qc.vectorCollection, ids, false, true)
+	for chunk := range slices.Chunk(ids, vectorGetBatchSize) {
+		vecPoints, err := qc.store.Get(ctx, qc.vectorCollection, chunk, false, true)
 		if err != nil {
 			return nil, fmt.Errorf("scroll memories: load vectors: %w", err)
 		}
@@ -1245,11 +1252,17 @@ func computeBM25SparseVector(content string, keywords []string) ([]uint32, []flo
 		idx uint32
 		w   float32
 	}
-	entries := make([]entry, 0, len(tf))
+	// Distinct terms can hash to the same index (FNV-1a folded to 24 bits).
+	// Qdrant rejects a sparse vector whose indices repeat, so the weights of
+	// colliding terms are summed into one entry.
+	weights := make(map[uint32]float32, len(tf))
 	for term, freq := range tf {
 		tfNorm := (float64(freq) * (k1 + 1)) / (float64(freq) + k1*(1-b+b*dl/avgdl))
-		idx := hashToken(term)
-		entries = append(entries, entry{idx: idx, w: float32(tfNorm)})
+		weights[hashToken(term)] += float32(tfNorm)
+	}
+	entries := make([]entry, 0, len(weights))
+	for idx, w := range weights {
+		entries = append(entries, entry{idx: idx, w: w})
 	}
 
 	slices.SortFunc(entries, func(a, b entry) int {

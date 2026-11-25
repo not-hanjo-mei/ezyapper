@@ -298,3 +298,99 @@ func TestLiveTwoTierMemory(t *testing.T) {
 		t.Fatalf("search on re-embedded collection: %+v %v", hits, err)
 	}
 }
+
+// TestLiveVectorTierLimits checks against a real Qdrant the two failures
+// seen in production at startup: the repair scan's vector Get exceeding the
+// gRPC 4 MiB receive limit, and an upsert rejected because colliding BM25
+// terms produced duplicate sparse indices. It needs no embedding API.
+func TestLiveVectorTierLimits(t *testing.T) {
+	if os.Getenv("EZYAPPER_LIVE_QDRANT") != "1" {
+		t.Skip("set EZYAPPER_LIVE_QDRANT=1 to run the live vector-tier test")
+	}
+	const dim, n = 1024, 1100
+	port, _ := strconv.Atoi(liveEnv(t, "EZYAPPER_LIVE_QDRANT_PORT"))
+	cfg := &config.QdrantConfig{
+		Host:             liveEnv(t, "EZYAPPER_LIVE_QDRANT_HOST"),
+		Port:             port,
+		APIKey:           liveEnv(t, "EZYAPPER_LIVE_QDRANT_API_KEY"),
+		VectorSize:       dim,
+		MaxRetries:       1,
+		RetryBaseDelayMs: 100,
+		RetryMaxDelayMs:  100,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	raw, err := qdrant.NewClient(&qdrant.Config{Host: cfg.Host, Port: cfg.Port, APIKey: cfg.APIKey, UseTLS: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	dropTestCollections(t, raw)
+	defer dropTestCollections(t, raw)
+
+	qc := newQdrantClientWithStore(&grpcPointStore{client: raw}, cfg, "BAAI/bge-m3", liveTestPrefix)
+	if err := qc.ensureMemoryTiers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	emb := &hashEmbedder{dim: dim}
+
+	// 1. Duplicate sparse indices: a record holding two colliding terms,
+	//    written by the vector sync.
+	if err := qc.UpsertMemory(ctx, newTestRecord(1, "1", collidingTermA+" and "+collidingTermB)); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := qc.SyncVectors(ctx, emb)
+	if err != nil {
+		t.Fatalf("vector sync with colliding terms: %v", err)
+	}
+	if rep.Embedded != 1 {
+		t.Fatalf("sync report %+v", rep)
+	}
+
+	// 2. A scroll larger than one gRPC message can carry.
+	batch := make([]*tierPoint, 0, 128)
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		if err := qc.store.Upsert(ctx, qc.vectorCollection, batch); err != nil {
+			t.Fatal(err)
+		}
+		batch = batch[:0]
+	}
+	srcBatch := make([]*tierPoint, 0, 128)
+	for i := 2; i <= n; i++ {
+		r := newTestRecord(i, "1", fmt.Sprintf("memory number %d about tea and chess", i))
+		vp := vectorPointFor(r.ID, nil, emb.vector(r.Content), r.Content, r.Keywords)
+		batch = append(batch, vp)
+		srcBatch = append(srcBatch, &tierPoint{ID: r.ID, Payload: map[string]*qdrant.Value{"content": qdrant.NewValueString(r.Content), "schema_version": qdrant.NewValueInt(1)}})
+		if len(batch) == 128 {
+			if err := qc.store.Upsert(ctx, qc.sourceCollection, srcBatch); err != nil {
+				t.Fatal(err)
+			}
+			srcBatch = srcBatch[:0]
+			flush()
+		}
+	}
+	if err := qc.store.Upsert(ctx, qc.sourceCollection, srcBatch); err != nil {
+		t.Fatal(err)
+	}
+	flush()
+
+	pts, err := qc.ScrollMemories(ctx, 1000)
+	if err != nil {
+		t.Fatalf("scroll 1000 with vectors: %v", err)
+	}
+	withVec := 0
+	for _, p := range pts {
+		if len(p.Embedding) == dim {
+			withVec++
+		}
+	}
+	if len(pts) != 1000 || withVec != 1000 {
+		t.Fatalf("scroll returned %d points, %d with vectors", len(pts), withVec)
+	}
+	if _, _, err := qc.RepairOrDeleteDamagedMemories(ctx, 1000); err != nil {
+		t.Fatalf("repair scan: %v", err)
+	}
+}
